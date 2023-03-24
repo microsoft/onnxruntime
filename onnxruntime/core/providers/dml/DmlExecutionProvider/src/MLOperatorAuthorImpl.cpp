@@ -2281,6 +2281,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
     // for testing
     requiredConstantCpuInputsAvailable = false;
+
         // If input sizes are either available or not required at creation, no need to delay kernel creation.
         if (requiredConstantCpuInputsAvailable && (!m_requiresInputShapesAtCreation || InputTensorShapesDefined()))
         {
@@ -2429,8 +2430,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
         Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
 
-        // The kernel creation may have been delayed because input shapes were required but not inferred by schema.
-        if (RequiresLazyInitialization())
+        if (RequiresDynamicKernelCreation())
         {
             std::pair<EdgeShapes,ConstantInputSet> key;
 
@@ -2451,13 +2451,46 @@ namespace Windows::AI::MachineLearning::Adapter
                 }, constantInput);
             }
 
+            std::lock_guard<std::mutex> lock(m_mutex);
+
             auto& cachedKernel = m_kernelMap[key];
-            if (!cachedKernel)
+            kernel = cachedKernel.kernel;
+
+            if (!kernel)
             {
-                cachedKernel = inferShapesAndCreateKernel(key.first, m_inferredOutputShapes);
+                cachedKernel.kernel = inferShapesAndCreateKernel(key.first, m_inferredOutputShapes);
+                
+                // Update the time and retrieve the underlying CompPtr before modifying the map to evict kernels
+                cachedKernel.lastUsedTick = m_kernelCacheTick++;
+                kernel = cachedKernel.kernel;
+
+                // The maximum number of kernel variations per operator is reasonably small, so just iterate to find the oldest kernel
+                const size_t maximumCachedKernelsPerNode = 32;
+                if (m_kernelMap.size() > maximumCachedKernelsPerNode)
+                {
+                    assert(m_kernelMap.size() == maximumCachedKernelsPerNode + 1);
+
+                    KernelMap::iterator earliestKernelIter = m_kernelMap.end();
+                    uint64_t earliestTick = std::numeric_limits<uint64_t>::max();
+
+                    for (KernelMap::iterator iter = m_kernelMap.begin(); iter != m_kernelMap.end(); ++iter)
+                    {
+                        if (iter->second.lastUsedTick < earliestTick)
+                        {
+                            earliestKernelIter = iter;
+                            earliestTick = iter->second.lastUsedTick;
+                        }
+                    }
+
+                    assert(earliestKernelIter != m_kernelMap.find(key));
+                    m_kernelMap.erase(earliestKernelIter);
+                }
+            }
+            else
+            {
+                cachedKernel.lastUsedTick = m_kernelCacheTick++;
             }
 
-            kernel = cachedKernel;
         }
         else
         {

@@ -554,8 +554,7 @@ class AbiOpKernel : public onnxruntime::OpKernel
     onnxruntime::Status Compute(onnxruntime::OpKernelContext* context) const override;
 
  protected:
-    bool RequiresLazyInitialization() const { return (m_operatorFactory != nullptr) && !m_lazyInitialized; };
-    void SetLazyInitialized() const { m_lazyInitialized = true; };
+    bool RequiresDynamicKernelCreation() const { return (m_operatorFactory != nullptr); };
 
     EdgeShapes GetInputShapes(onnxruntime::OpKernelContext* context) const;
 
@@ -601,11 +600,19 @@ class AbiOpKernel : public onnxruntime::OpKernel
     using ConstantInputSet = std::vector<std::variant<TensorContent, std::vector<TensorContent>>>;
     
     mutable Microsoft::WRL::ComPtr<IMLOperatorKernel> m_kernel;
-    mutable std::map<std::pair<EdgeShapes, ConstantInputSet>, Microsoft::WRL::ComPtr<IMLOperatorKernel>> m_kernelMap;
+
+    struct CachedKernel
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
+        uint64_t lastUsedTick = 0;
+    };
+
+    using KernelMap = std::map<std::pair<EdgeShapes, ConstantInputSet>, CachedKernel>;
+    mutable KernelMap m_kernelMap;
+    mutable uint64_t m_kernelCacheTick = 0;
 
     // This is null unless the kernel requires lazy initialization
     ComPtr<IMLOperatorKernelFactory> m_operatorFactory;
-    mutable volatile bool m_lazyInitialized = false;
 
     ComPtr<IMLOperatorShapeInferrer> m_shapeInferrer;
 
