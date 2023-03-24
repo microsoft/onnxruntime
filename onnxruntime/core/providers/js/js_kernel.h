@@ -65,7 +65,7 @@ class JsKernel : public OpKernel {
  public:
   explicit JsKernel(const OpKernelInfo& info)
       : OpKernel(info) {}
-  virtual ~JsKernel() {
+  ~JsKernel() override {
       EM_ASM({ Module.jsepReleaseKernel($0); }, this);
   }
 
