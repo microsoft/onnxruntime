@@ -130,10 +130,13 @@ class TestInferenceSession(unittest.TestCase):
         x = TestInferenceSession.x
 
         for to, expect in expected.items():
-            onnx_model = self.model_cast_cast(to)
-            ref = ReferenceEvaluator(onnx_model)
-            y = ref.run(None, {"X": x})[0]
-            assert_allclose(expect, y)
+            with self.subTest(to=to):
+                onnx_model = self.model_cast_cast(to)
+                ref = ReferenceEvaluator(onnx_model)
+                y = ref.run(None, {"X": x})[0]
+                assert_allclose(expect, y)
+                self.assertEqual(expect.shape, y.shape)
+                self.assertEqual(expect.dtype, y.dtype)
 
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
     def test_model_cast_cast_cpu(self):
@@ -144,13 +147,15 @@ class TestInferenceSession(unittest.TestCase):
         x = TestInferenceSession.x
 
         for to, expect in expected.items():
-            print("CPU to=", to)
-            onnx_model = self.model_cast_cast(to)
-            sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), so, providers=["CPUExecutionProvider"])
-            y = sess.run(None, {"X": x})[0]
-            assert_allclose(expect, y)
-            self.assertEqual(expect.shape, y.shape)
-            self.assertEqual(expect.dtype, y.dtype)
+            with self.subTest(to=to):
+                onnx_model = self.model_cast_cast(to)
+                sess = onnxruntime.InferenceSession(
+                    onnx_model.SerializeToString(), so, providers=["CPUExecutionProvider"]
+                )
+                y = sess.run(None, {"X": x})[0]
+                assert_allclose(expect, y)
+                self.assertEqual(expect.shape, y.shape)
+                self.assertEqual(expect.dtype, y.dtype)
 
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
     def test_model_cast_cast_cuda(self):
@@ -161,16 +166,18 @@ class TestInferenceSession(unittest.TestCase):
         x = TestInferenceSession.x
 
         for to, expect in expected.items():
-            print("CUDA to=", to)
-            if to not in {TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2}:
-                # only those types are available on CUDA.
-                continue
-            onnx_model = self.model_cast_cast(to)
-            sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
-            y = sess.run(None, {"X": x})[0]
-            assert_allclose(expect, y)
-            self.assertEqual(expect.shape, y.shape)
-            self.assertEqual(expect.dtype, y.dtype)
+            with self.subTest(to=to):
+                if to not in {TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2}:
+                    # only those types are available on CUDA.
+                    continue
+                onnx_model = self.model_cast_cast(to)
+                sess = onnxruntime.InferenceSession(
+                    onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"]
+                )
+                y = sess.run(None, {"X": x})[0]
+                assert_allclose(expect, y)
+                self.assertEqual(expect.shape, y.shape)
+                self.assertEqual(expect.dtype, y.dtype)
 
 
 if __name__ == "__main__":
