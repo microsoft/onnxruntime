@@ -49,16 +49,16 @@ class TestInferenceSession(unittest.TestCase):
             [
                 0.000000e00,
                 0.000000e00,
-                1.953125e-03,
+                9.765625e-04,
                 9.765625e-03,
                 1.015625e-01,
                 1.000000e00,
                 2.000000e00,
                 1.000000e01,
                 1.040000e02,
-                4.480000e02,
-                4.480000e02,
-                4.480000e02,
+                2.400000e02,
+                2.400000e02,
+                2.400000e02,
                 np.nan,
                 np.nan,
                 np.nan,
@@ -69,16 +69,16 @@ class TestInferenceSession(unittest.TestCase):
             [
                 0.000000e00,
                 0.000000e00,
-                1.953125e-03,
+                9.765625e-04,
                 9.765625e-03,
-                1.015625e-01,
+                9.375000e-02,
                 1.000000e00,
                 2.000000e00,
                 1.000000e01,
-                1.040000e02,
-                4.480000e02,
-                4.480000e02,
-                4.480000e02,
+                9.600000e01,
+                1.024000e03,
+                1.024000e04,
+                5.734400e04,
                 np.inf,
                 -np.inf,
                 np.nan,
@@ -89,16 +89,16 @@ class TestInferenceSession(unittest.TestCase):
             [
                 0.000000e00,
                 0.000000e00,
-                1.953125e-03,
+                9.765625e-04,
                 9.765625e-03,
-                1.015625e-01,
+                9.375000e-02,
                 1.000000e00,
                 2.000000e00,
                 1.000000e01,
-                1.040000e02,
-                4.480000e02,
-                4.480000e02,
-                4.480000e02,
+                9.600000e01,
+                1.024000e03,
+                1.024000e04,
+                5.734400e04,
                 np.nan,
                 np.nan,
                 np.nan,
@@ -118,6 +118,20 @@ class TestInferenceSession(unittest.TestCase):
         return onnx_model
 
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
+    def test_model_cast_cast_reference(self):
+        so = onnxruntime.SessionOptions()
+        so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+
+        expected = TestInferenceSession.expected
+        x = TestInferenceSession.x
+
+        for to, expect in expected.items():
+            onnx_model = self.model_cast_cast(to)
+            ref = ReferenceEvaluator(onnx_model)
+            y = ref.run(None, {"X": x})[0]
+            assert_allclose(expect, y)
+
+    @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
     def test_model_cast_cast_cpu(self):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -128,11 +142,6 @@ class TestInferenceSession(unittest.TestCase):
         for to, expect in expected.items():
             print("to=", to)
             onnx_model = self.model_cast_cast(to)
-            ref = ReferenceEvaluator(onnx_model)
-            y = ref.run(None, {"X": x})[0]
-            assert_allclose(expect, y)
-            self.assertEqual(expect.shape, y.shape)
-            self.assertEqual(expect.dtype, y.dtype)
             sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), so, providers=["CPUExecutionProvider"])
             y = sess.run(None, {"X": x})[0]
             assert_allclose(expect, y)
@@ -163,5 +172,6 @@ class TestInferenceSession(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    TestInferenceSession().test_model_cast_cast_reference()
     TestInferenceSession().test_model_cast_cast_cpu()
     unittest.main()
