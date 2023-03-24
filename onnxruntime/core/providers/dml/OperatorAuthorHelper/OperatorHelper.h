@@ -1441,6 +1441,7 @@ using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;
 using ShapeInferenceHelper_GRU = RecurrentHelper;
 using ShapeInferenceHelper_LSTM = RecurrentHelper;
+using ShapeInferenceHelper_BiasAdd = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Gather = GatherHelper;
 using ShapeInferenceHelper_GatherElements = GetOutputShapeAsSpecificInputShapeHelper<1>;
