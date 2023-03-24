@@ -499,10 +499,10 @@ inline Env& Env::CreateAndRegisterExecutionProvider_XNNPACK(std::unordered_map<s
   return *this;
 }
 
-//inline Env& Env::CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options, int* provider_global_index) {
-//  ThrowOnError(GetApi().CreateAndRegisterExecutionProvider_CUDA_V2(p_, &provider_options, provider_global_index));
-//  return *this;
-//}
+inline Env& Env::CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options, int* provider_global_index) {
+  ThrowOnError(GetApi().CreateAndRegisterExecutionProvider_CUDA_V2(p_, &provider_options, provider_global_index));
+  return *this;
+}
 
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));

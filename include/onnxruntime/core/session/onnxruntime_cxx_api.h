@@ -430,7 +430,7 @@ struct Env : detail::Base<OrtEnv> {
 
   Env& CreateAndRegisterExecutionProvider_XNNPACK(std::unordered_map<std::string, std::string> provider_options, int* provider_global_index);  ///< Wraps OrtApi::CreateAndRegisterExecutionProvider_XNNPACK
 
-  //Env& CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options, int* provider_global_index);          ///< Wraps OrtApi::CreateAndRegisterExecutionProvider_CUDA_V2
+  Env& CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options, int* provider_global_index);          ///< Wraps OrtApi::CreateAndRegisterExecutionProvider_CUDA_V2
 };
 
 /** \brief Custom Op Domain

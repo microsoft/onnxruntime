@@ -2732,7 +2732,7 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::CreateSessionWithProviderGlobalIndex,
     &OrtApis::CreateAndRegisterExecutionProvider_CPU,
     &OrtApis::CreateAndRegisterExecutionProvider_XNNPACK,
-    //&OrtApis::CreateAndRegisterExecutionProvider_CUDA_V2,
+    &OrtApis::CreateAndRegisterExecutionProvider_CUDA_V2,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

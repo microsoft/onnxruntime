@@ -173,6 +173,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2,
   return CreateNotEnabledStatus("CUDA");
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterExecutionProvider_CUDA_V2, _Inout_ OrtEnv* env, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Out_ int* provider_global_index) {
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(provider_global_index);
+  return CreateNotEnabledStatus("CUDA");
+}
+
 ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
   ORT_UNUSED_PARAMETER(out);
   return CreateNotEnabledStatus("CUDA");

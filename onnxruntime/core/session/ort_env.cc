@@ -130,6 +130,11 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterExecutionProvider_XNNPACK(s
   return status;
 }
 
+onnxruntime::common::Status OrtEnv::CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2* provider_options, int* provider_global_index) {
+  auto status = value_->CreateAndRegisterExecutionProvider_CUDA_V2(provider_options, provider_global_index);
+  return status;
+}
+
 onnxruntime::common::Status OrtEnv::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
   return value_->UnregisterAllocator(mem_info);
 }

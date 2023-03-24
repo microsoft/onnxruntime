@@ -31,6 +31,10 @@
 #ifdef USE_XNNPACK
 #include "core/providers/xnnpack/xnnpack_provider_factory_creator.h"
 #endif
+#ifdef USE_CUDA
+include "core/providers/cuda/cuda_provider_factory_creator.h"
+#endif  // USE_CUDA
+
 
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -367,6 +371,7 @@ Status Environment::CreateAndRegisterExecutionProvider_CPU(bool use_arena, int* 
 }
 
 Status Environment::CreateAndRegisterExecutionProvider_XNNPACK(ProviderOptions provider_options, int* provider_global_index) {
+#ifdef USE_XNNPACK
   *provider_global_index = -1;
   SessionOptions so{};
   std::unique_ptr<IExecutionProvider> ep =  onnxruntime::XnnpackProviderFactoryCreator::Create(provider_options, &so)->CreateProvider();
@@ -376,6 +381,28 @@ Status Environment::CreateAndRegisterExecutionProvider_XNNPACK(ProviderOptions p
   }
 
   return Status::OK();
+#else
+  ORT_UNUSED_PARAMETER(provider_options);
+  ORT_UNUSED_PARAMETER(provider_global_index);
+  return Status::Status();
+#endif  // USE_XNNPACK
+}
+
+
+Status Environment::CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2* provider_options, int* provider_global_index) {
+#ifdef USE_CUDA
+  *provider_global_index = -1;
+  std::unique_ptr<IExecutionProvider> ep = onnxruntime::CudaProviderFactoryCreator::Create(provider_options)->CreateProvider();
+  if (ep) {
+    ORT_THROW_IF_ERROR(execution_providers_.Add(kXnnpackExecutionProvider, std::move(ep)));
+    *provider_global_index = static_cast<int>(execution_providers_.NumProviders()) - 1;
+  }
+  return Status::OK();
+#else
+  ORT_UNUSED_PARAMETER(provider_options);
+  ORT_UNUSED_PARAMETER(provider_global_index);
+  return Status::Status();
+#endif
 }
 
 }  // namespace onnxruntime

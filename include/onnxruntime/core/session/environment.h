@@ -74,6 +74,8 @@ class Environment {
 
   Status CreateAndRegisterExecutionProvider_XNNPACK(ProviderOptions provider_options, int* provider_global_index);
 
+  Status CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2* provider_options, int* provider_global_index);
+
   /**
    * Returns the list of registered allocators in this env.
    */
