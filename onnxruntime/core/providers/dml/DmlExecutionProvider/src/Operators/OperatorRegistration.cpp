@@ -194,6 +194,7 @@ struct OperatorRegistrationInformation
 DML_OP_EXTERN_CREATION_FUNCTION(Copy);
 DML_OP_EXTERN_CREATION_FUNCTION(FC);
 DML_OP_EXTERN_CREATION_FUNCTION(Conv);
+DML_OP_EXTERN_CREATION_FUNCTION(NhwcConv);
 DML_OP_EXTERN_CREATION_FUNCTION(ConvTranspose);
 DML_OP_EXTERN_CREATION_FUNCTION(ConvTransposeWithDynamicPads);
 DML_OP_EXTERN_CREATION_FUNCTION(AveragePool);
@@ -522,6 +523,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     // Deep Learning Standard Layers
     {REG_INFO(      7,  Conv,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Conv,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  NhwcConv,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  ConvTranspose,                      typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     11,  ConvTranspose,                      typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  AveragePool,                        typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
