@@ -70,7 +70,6 @@ struct Float8E4M3FN {
     } else {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
-      std::cout << "---v=" << v << "m=" << m << "e=" << e << "\n";
       if (e != 0) {
         if (e < 117) { // 0b1110101
         } else if (e < 118) { // 0b1110110
