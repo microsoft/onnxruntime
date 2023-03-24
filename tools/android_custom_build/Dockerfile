@@ -66,13 +66,14 @@ RUN GRADLE_VERSION=6.8.3 && \
 # flatbuffers
 RUN python3 -m pip install flatbuffers==2.0
 
-WORKDIR /workspace
-
-# configure user
+# configure user and set up workspace directory
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
-RUN adduser --gecos "onnxruntime Build User" --disabled-password --uid ${BUILD_UID} ${BUILD_USER}
+RUN adduser --gecos "onnxruntime Build User" --disabled-password --uid ${BUILD_UID} ${BUILD_USER} && \
+  mkdir /workspace && \
+  chown ${BUILD_USER} /workspace
 USER ${BUILD_USER}
+WORKDIR /workspace
 
 # get ORT repo
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
@@ -81,4 +82,4 @@ RUN git clone --single-branch --branch=${ONNXRUNTIME_BRANCH_OR_TAG} --recurse-su
   /workspace/onnxruntime
 
 # add scripts
-COPY scripts /workspace/scripts
+COPY --chown=${BUILD_UID} scripts /workspace/scripts
