@@ -143,21 +143,45 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
   return io_defs;
 }
 
+Status ValidateQDQNodeUnitDQNodes(const GraphViewer& graph_viewer,
+                                  const Node& target_node,
+                                  gsl::span<const Node* const> dq_nodes) {
+  // Within a QDQ node unit, a target node input is the only consumer of each DQ.
+  // This should have been ensured by the EnsureUniqueDQForNodeUnit graph transformer, but other graph modifications
+  // may have happened since. Verify that this is still true when creating QDQ node units.
+  for (const auto* dq_node : dq_nodes) {
+    const bool dq_produces_graph_output = graph_viewer.NodeProducesGraphOutput(*dq_node);
+    ORT_RETURN_IF(dq_produces_graph_output,
+                  "Node unit cannot have DQ node that produces a graph output. DQ node: ", dq_node->Name(),
+                  ", target node: ", target_node.Name());
+
+    const bool dq_has_single_output_edge_to_target =
+        dq_node->GetOutputEdgesCount() == 1 &&
+        dq_node->OutputEdgesBegin()->GetNode().Index() == target_node.Index();
+    ORT_RETURN_IF_NOT(dq_has_single_output_edge_to_target,
+                      "Node unit cannot have DQ that doesn't have a single output edge to the target node. DQ node: ",
+                      dq_node->Name(), ", target node: ", target_node.Name());
+  }
+
+  return Status::OK();
+}
+
 }  // namespace
 
 NodeUnit::NodeUnit(const Node& node)
-      :target_node_(node),
+    : target_node_(node),
       type_(Type::SingleNode) {
   InitForSingleNode();
 }
 
 NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group)
-      :q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
+    : q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
       dq_nodes_{GetQDQIONodes(graph_viewer, node_group, true /* is_input */)},
       target_node_(*graph_viewer.GetNode(node_group.target_node)),
       type_(Type::QDQGroup),
       inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
       outputs_{GetQDQIODefs(target_node_, node_group, false /* is_input */)} {
+  ORT_THROW_IF_ERROR(ValidateQDQNodeUnitDQNodes(graph_viewer, target_node_, dq_nodes_));
 }
 
 const std::string& NodeUnit::Domain() const noexcept { return target_node_.Domain(); }

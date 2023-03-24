@@ -51,20 +51,6 @@ bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  {
-    // a 'consumer' is an input of another node or a graph output
-    auto does_dq_node_have_multiple_consumers = [&graph_viewer](const Node* dq_node_ptr) {
-      // DQ has only one output to consider
-      const size_t output_edge_count = dq_node_ptr->GetOutputEdgesCount();
-      const bool produces_graph_output = graph_viewer.NodeProducesGraphOutput(*dq_node_ptr);
-      return produces_graph_output ? output_edge_count > 0 : output_edge_count > 1;
-    };
-
-    if (std::any_of(dq_nodes.begin(), dq_nodes.end(), does_dq_node_have_multiple_consumers)) {
-      return false;
-    }
-  }
-
   if (q_nodes.empty()) {
     return is_empty_q_nodes_allowed;
   }
