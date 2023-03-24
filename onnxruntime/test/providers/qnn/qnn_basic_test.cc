@@ -3,7 +3,6 @@
 
 #include <string>
 
-//#include "core/common/logging/logging.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
 
