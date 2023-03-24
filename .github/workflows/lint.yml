@@ -118,7 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: reviewdog/action-eslint@dae7461610a7a92a4abfa0ec9b882e2cdb87f6ea
+      - uses: reviewdog/action-eslint@v1
         with:
           reporter: github-pr-check
           level: error
