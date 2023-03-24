@@ -3,7 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-
-from ._subscriber_manager import SubscriberManager
+__all__ = [
+    "StatisticsSubscriber",
+    "SubscriberManager",
+]
 
 from ._statistics_subscriber import StatisticsSubscriber
+from ._subscriber_manager import SubscriberManager

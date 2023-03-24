@@ -3,9 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import h5py
-from collections.abc import Mapping
 import pickle
+from collections.abc import Mapping
+
+import h5py
 
 
 def _dfs_save(group, save_obj):
@@ -99,7 +100,7 @@ def from_serialized_hex(serialized_hex):
     # serialized_hex can be either a regular string or a byte string.
     # if it is a byte string, convert to regular string using decode()
     # if it is a regular string, do nothing to it
-    try:
+    try:  # noqa: SIM105
         serialized_hex = serialized_hex.decode()
     except AttributeError:
         pass

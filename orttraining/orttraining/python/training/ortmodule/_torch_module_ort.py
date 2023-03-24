@@ -2,15 +2,16 @@
 # Licensed under the MIT License.
 # _torch_module_ort.py
 
+from collections import OrderedDict
+from typing import Callable, Iterator, Optional, Tuple, TypeVar
+
+import torch
+
 from . import _io, _utils
-from .debug_options import DebugOptions
+from ._fallback import ORTModuleTorchModelException, _FallbackManager, wrap_exception
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
-from ._fallback import _FallbackManager, ORTModuleTorchModelException, wrap_exception
-from collections import OrderedDict
-import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Callable
-
+from .debug_options import DebugOptions
 
 T = TypeVar("T", bound="torch.nn.Module")
 
@@ -145,7 +146,7 @@ class TorchModuleORT(TorchModuleInterface):
             ),
         )
 
-    def add_module(self, name: str, module: Optional["Module"]) -> None:
+    def add_module(self, name: str, module: Optional["Module"]) -> None:  # noqa: F821
         raise wrap_exception(
             ORTModuleTorchModelException, NotImplementedError("ORTModule does not support adding modules to it.")
         )

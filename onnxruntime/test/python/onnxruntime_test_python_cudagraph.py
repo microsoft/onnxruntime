@@ -1,11 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import gc
-import os
-import sys
-import threading
-import time
+import gc  # noqa: F401
+import os  # noqa: F401
+import sys  # noqa: F401
+import threading  # noqa: F401
+import time  # noqa: F401
 
 # -*- coding: UTF-8 -*-
 import unittest
@@ -14,11 +14,11 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail  # noqa: F401
 
 
 class TestInferenceSessionWithCudaGraph(unittest.TestCase):
-    def testOrtValueUpdateInPlace(self):
+    def testOrtValueUpdateInPlace(self):  # noqa: N802
         x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         ortvalue_cpu = onnxrt.OrtValue.ortvalue_from_numpy(x0)
         np.testing.assert_allclose(x0, ortvalue_cpu.numpy())
@@ -34,10 +34,10 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
             ortvalue_gpu.update_inplace(x1)
             np.testing.assert_allclose(x1, ortvalue_gpu.numpy())
 
-    def testRunModelWithCudaGraph(self):
+    def testRunModelWithCudaGraph(self):  # noqa: N802
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
-            INPUT_SIZE = 1280
+            INPUT_SIZE = 1280  # noqa: N806
             x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]] * INPUT_SIZE, dtype=np.float32)
             y = np.array([[0.0], [0.0], [0.0]] * INPUT_SIZE, dtype=np.float32)
             x_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(x, "cuda", 0)

@@ -1,7 +1,7 @@
 import threading
 from functools import wraps
 
-import torch
+import torch  # noqa: F401
 
 from onnxruntime.capi import _pybind_state as _C
 

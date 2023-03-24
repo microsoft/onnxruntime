@@ -19,12 +19,11 @@ Example:
 
 """
 
-from pathlib import Path
-
 import argparse
 import logging
 import os
 import shutil
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

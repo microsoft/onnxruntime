@@ -12,11 +12,11 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from onnx import ModelProto, TensorProto, numpy_helper
+from onnx import ModelProto, TensorProto, numpy_helper  # noqa: F401
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data
-from onnx_model import OnnxModel
+from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
 
 
 def parse_arguments():
@@ -131,7 +131,7 @@ def get_longformer_inputs(onnx_file, input_ids_name=None, input_mask_name=None, 
         return input_ids, input_mask, global_mask
 
     if len(graph_inputs) != 3:
-        raise ValueError("Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs)))
+        raise ValueError(f"Expect the graph to have 3 inputs. Got {len(graph_inputs)}")
 
     # Try guess the inputs based on naming.
     input_ids = None
@@ -264,7 +264,6 @@ def create_longformer_test_data(
     global_mask_name,
     num_global_tokens,
 ):
-
     input_ids, input_mask, global_mask = get_longformer_inputs(model, input_ids_name, input_mask_name, global_mask_name)
     all_inputs = generate_test_data(
         batch_size,
@@ -290,7 +289,7 @@ def main():
         # Default output directory is a sub-directory under the directory of model.
         output_dir = os.path.join(
             Path(args.model).parent,
-            "b{}_s{}_g{}".format(args.batch_size, args.sequence_length, args.global_tokens),
+            f"b{args.batch_size}_s{args.sequence_length}_g{args.global_tokens}",
         )
 
     if output_dir is not None:

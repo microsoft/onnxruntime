@@ -4,9 +4,9 @@
 # --------------------------------------------------------------------------
 
 
+import sys
 from typing import Union
 
-import sys
 import torch
 
 
