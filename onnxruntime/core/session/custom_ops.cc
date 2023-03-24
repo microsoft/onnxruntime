@@ -463,9 +463,9 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
             schema.TypeConstraint(type_str, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
             undefined++;
           } else {
-            std::string type_str = "I" + std::to_string(i);
-            schema.Input(i, "Input" + std::to_string(i), "", type_str, option, is_homogeneous, min_arity);
-            schema.TypeConstraint(type_str, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+            std::string input_name = "Input" + std::to_string(i);
+            schema.Input(i, input_name, "", input_name, option, is_homogeneous, min_arity);
+            schema.TypeConstraint(input_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
           }
         }
 
@@ -497,9 +497,9 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
             }
             schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);
           } else {
-            std::string type_str = "O" + std::to_string(i);
-            schema.Output(i, "Output" + std::to_string(i), "", type_str, option, is_homogeneous, min_arity);
-            schema.TypeConstraint(type_str, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+            std::string output_name = "Output" + std::to_string(i);
+            schema.Output(i, output_name, "", output_name, option, is_homogeneous, min_arity);
+            schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
           }
         }
 
@@ -533,7 +533,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
         const auto type = op->GetInputType(op, i);
         type_map[op->GetName(op)].back().push_back(type);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED != type) {
-          def_builder.TypeConstraint("I" + std::to_string(i), DataTypeImpl::TensorTypeFromONNXEnum((int)type)->AsTensorType());
+          def_builder.TypeConstraint("Input" + std::to_string(i), DataTypeImpl::TensorTypeFromONNXEnum((int)type)->AsTensorType());
         }
       }
 
@@ -541,7 +541,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
         const auto type = op->GetOutputType(op, i);
         type_map[op->GetName(op)].back().push_back(type);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED != type) {
-          def_builder.TypeConstraint("O" + std::to_string(i), DataTypeImpl::TensorTypeFromONNXEnum((int)type)->AsTensorType());
+          def_builder.TypeConstraint("Output" + std::to_string(i), DataTypeImpl::TensorTypeFromONNXEnum((int)type)->AsTensorType());
         }
       }
 
@@ -615,7 +615,6 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
                                               domain->domain_,
                                               1 /* baseline opset version */,
                                               1000 /* opset version */));
-
 #else
     // For a minimal build, we may not need any of the ONNX schema stuff but we still need to track
     // the type template parameters to be used during the kernel def building step below
