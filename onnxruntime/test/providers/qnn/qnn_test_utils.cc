@@ -14,10 +14,19 @@
 namespace onnxruntime {
 namespace test {
 
-void RunModelTest(const GetQDQTestCaseFn& build_test_case, const char* test_description,
-                  const ProviderOptions& provider_options,
-                  const EPVerificationParams& params,
-                  const std::unordered_map<std::string, int>& domain_to_version) {
+void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
+                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
+                     const char* test_description) {
+
+  std::function<void(const Graph&)> graph_verify = [num_nodes_in_ep, test_description](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), num_nodes_in_ep) << test_description;
+  };
+
+  EPVerificationParams verification_params;
+  verification_params.ep_node_assignment = expected_ep_assignment;
+  verification_params.graph_verifier = &graph_verify;
+  const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}};
+
   onnxruntime::Model model(test_description, false, ModelMetaData(), PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
                            DefaultLoggingManager().DefaultLogger());
@@ -32,23 +41,7 @@ void RunModelTest(const GetQDQTestCaseFn& build_test_case, const char* test_desc
   model.ToProto().SerializeToString(&model_data);
   RunAndVerifyOutputsWithEP(model_data, "QnnEP.TestQDQModel",
                             QnnExecutionProviderWithOptions(provider_options),
-                            helper.feeds_, params);
-}
-
-void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
-                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
-                     const char* test_description) {
-
-  std::function<void(const Graph&)> graph_verify = [num_nodes_in_ep, test_description](const Graph& graph) -> void {
-    ASSERT_EQ(graph.NumberOfNodes(), num_nodes_in_ep) << test_description;
-  };
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = expected_ep_assignment;
-  verification_params.graph_verifier = &graph_verify;
-  const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}};
-
-  RunModelTest(build_test_case, test_description, provider_options, verification_params, domain_to_version);
+                            helper.feeds_, verification_params);
 }
 
 // Mock IKernelLookup class passed to QNN EP's GetCapability() function in order to
@@ -62,7 +55,10 @@ class MockKernelLookup : public onnxruntime::IExecutionProvider::IKernelLookup {
   }
 };
 
-HTPSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) {
+// Testing helper function that calls QNN EP's GetCapability() function with a mock graph to check
+// if the HTP backend is available.
+// TODO: Remove once HTP can be emulated on Windows ARM64.
+static HTPSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) {
   onnxruntime::Model model("Check if HTP is available", false, logger);
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);

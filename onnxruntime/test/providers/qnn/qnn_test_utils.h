@@ -18,13 +18,6 @@ namespace test {
 
 using GetTestModelFn = std::function<void(ModelTestBuilder& builder)>;
 
-// Testing helper function that runs a caller-provided QDQ graph (build_test_case) to allow the caller to
-// 1) test which nodes are assigned to an EP, and 2) check that the inference output matches with the CPU EP.
-void RunModelTest(const GetTestModelFn& build_test_case, const char* test_description,
-                  const ProviderOptions& provider_options,
-                  const EPVerificationParams& params = EPVerificationParams(),
-                  const std::unordered_map<std::string, int>& domain_to_version = {});
-
 /**
  * Runs a test model on the QNN EP. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
@@ -46,11 +39,6 @@ enum HTPSupport {
   HTP_SUPPORTED,
   HTP_SUPPORT_ERROR,
 };
-
-// Testing helper function that calls QNN EP's GetCapability() function with a mock graph to check
-// if the HTP backend is available.
-// TODO: Remove once HTP can be emulated on Windows ARM64.
-HTPSupport GetHTPSupport(const onnxruntime::logging::Logger& logger);
 
 // Testing fixture class for tests that require the HTP backend. Checks if HTP is available before the test begins.
 // The test is skipped if HTP is unavailable (may occur on Windows ARM64).

@@ -78,8 +78,6 @@ class ReduceOpBuilder : public BaseOpBuilder {
 
   Status GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                     InlinedHashSet<AxesOnnxIntType>& axes_set) const;
-  Status IsTypeAllowed(ONNX_NAMESPACE::DataType type, const std::vector<const char*>& allowed_types,
-                       const char* err_prefix) const;
 
   // Maps an operator type to the opset in which "axes" became an input instead of an attribute.
   static const std::array<int, REDUCE_OP_TYPE_COUNT> opset_with_axes_as_input;
@@ -192,42 +190,6 @@ Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_PROD && is_quantized_model) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: ReduceProd operator not supported by HTP backend.");
-  }
-
-  NodeAttrHelper node_attr_helper(node_unit);
-  const auto& inputs = node_unit.Inputs();
-  const auto& data_input = inputs[0];
-  std::vector<uint32_t> input_data_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(data_input.node_arg, input_data_shape),
-                    "Cannot get shape of data input");
-  const size_t input_data_rank = input_data_shape.size();
-  
-  InlinedHashSet<AxesOnnxIntType> axes_set;
-  ORT_RETURN_IF_ERROR(GetAxesSet(qnn_model_wrapper, node_unit, axes_set));
-  const size_t num_axes = axes_set.size();
-
-  // Check that the output data type matches the input data type.
-  const auto& reduced_output = node_unit.Outputs()[0];
-  ONNX_NAMESPACE::DataType output_data_type = reduced_output.node_arg.Type();
-  ONNX_NAMESPACE::DataType input_data_type = data_input.node_arg.Type();
-  if (output_data_type != input_data_type) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output data for QNN reduce operator must match the input data type");
-  }
-
-  const bool keep_dims = static_cast<bool>(node_attr_helper.Get("keepdims", (int32_t)1));
-  std::vector<uint32_t> output_data_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(reduced_output.node_arg, output_data_shape),
-                    "Cannot get shape of reduced output");
-  const size_t output_data_rank = output_data_shape.size();
-
-  // Output shape: K-dimensional, where K = rank(input[0]) if keep_dims is true,
-  // or K = max(1, rank(input[0]) - num_axes) otherwise.
-  if ((keep_dims && output_data_rank != input_data_rank) ||
-      (!keep_dims && output_data_rank != std::max(static_cast<size_t>(1), input_data_rank - num_axes))) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "QNN EP: reduce output must have K-dimensional shape, "
-                           "where K = rank(input[0]) if keepdims is true, or "
-                           "K = max(1, rank(input[0]) - num_axes) if keepdims is false");
   }
 
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
