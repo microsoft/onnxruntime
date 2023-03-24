@@ -196,14 +196,10 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   bool past_kv_and_current_kv = key != nullptr && past_key != nullptr && value != nullptr && past_value != nullptr;
   bool kv_BNSH = key->Shape().GetDims().size() == 4 && value->Shape().GetDims().size() == 4;
   
-  Tensor* present_k = nullptr;
-  Tensor* present_v = nullptr;
-  if (kv_BNSH || past_kv_and_current_kv) {
     std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(qk_head_size)});
     std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(v_head_size)});
-    present_k = context->Output(1, present_k_shape);
-    present_v = context->Output(2, present_v_shape);
-  }
+    Tensor* present_k = context->Output(1, present_k_shape);
+    Tensor* present_v = context->Output(2, present_v_shape);
 
   Tensor* past_kv = nullptr;
   OrtValue past;
