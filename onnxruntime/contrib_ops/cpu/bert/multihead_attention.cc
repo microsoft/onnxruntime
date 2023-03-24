@@ -196,14 +196,12 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   bool past_kv_and_current_kv = key != nullptr && past_key != nullptr && value != nullptr && past_value != nullptr;
   bool kv_BNSH = key->Shape().GetDims().size() == 4 && value->Shape().GetDims().size() == 4;
   
-  Tensor* present_k = nullptr;
-  Tensor* present_v = nullptr;
-  if (kv_BNSH || past_kv_and_current_kv) {
-    std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(qk_head_size)});
-    std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(v_head_size)});
-    present_k = context->Output(1, present_k_shape);
-    present_v = context->Output(2, present_v_shape);
-  }
+  std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(qk_head_size)});
+  std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(v_head_size)});
+  Tensor* present_k = context->Output(1, present_k_shape);
+  Tensor* present_v = context->Output(2, present_v_shape);
+
+  bool separate_present_kv = present_k != nullptr && present_v != nullptr;
 
   Tensor* past_kv = nullptr;
   OrtValue past;
@@ -241,7 +239,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                           key_padding_mask, past_kv, output, present_k, present_v, 
                           batch_size, q_sequence_length, kv_sequence_length, 
                           qk_head_size, v_head_size, v_hidden_size, 
-                          extra_add_qk, kv_BNSH, context);
+                          extra_add_qk, separate_present_kv, context);
   }
 
   OrtValue K;
@@ -271,7 +269,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                         key_padding_mask, past_kv, output, present_k, present_v,
                         batch_size, q_sequence_length, kv_sequence_length, 
                         qk_head_size, v_head_size, v_hidden_size, 
-                        extra_add_qk, past_kv_and_current_kv, context);
+                        extra_add_qk, separate_present_kv, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime
