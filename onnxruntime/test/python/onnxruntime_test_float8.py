@@ -198,7 +198,7 @@ class TestInferenceSession(unittest.TestCase):
                 sess = onnxruntime.InferenceSession(
                     onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"]
                 )
-                ortv = onnxruntime.OrtValue.ortvalue_from_numpy(x, device="cuda")
+                ortv = onnxruntime.OrtValue.ortvalue_from_numpy(x, device_type="cuda")
                 y = sess.run_with_ort_values(["Y"], {"X": ortv})[0].numpy()
                 assert_allclose(expect, y)
                 self.assertEqual(expect.shape, y.shape)
