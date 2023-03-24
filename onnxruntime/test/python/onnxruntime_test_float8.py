@@ -80,10 +80,10 @@ class TestInferenceSession(unittest.TestCase):
             y = ref.run(None, {"X": x})[0]
             assert_allclose(y, expect)
             for prov in ["CPUExecutionProvider", "CUDAExecutionProvider"]:
-                print("prov1", prov)
+                print("prov1", prov, to)
                 if prov not in available_providers:
                     continue
-                print("prov2", prov)
+                print("prov2", prov, to)
                 with self.subTest(provider=prov, to=to):
                     sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), so, providers=[prov])
                     y = sess.run(None, {"X": x})[0]
