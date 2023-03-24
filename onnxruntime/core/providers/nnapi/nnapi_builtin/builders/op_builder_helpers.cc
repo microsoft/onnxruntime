@@ -847,9 +847,9 @@ Status AddSqueezeOp(ModelBuilder& model_builder,
                     const std::string& node_name,
                     const std::string& input, const std::string& output,
                     std::vector<int32_t> axes) {
-  if (model_builder.GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
+  if (model_builder.GetEffectiveFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
     return ORT_MAKE_STATUS(
-        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetNNAPIFeatureLevel());
+        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetEffectiveFeatureLevel());
   }
 
   auto& shaper(model_builder.GetShaper());
@@ -1013,7 +1013,7 @@ bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit
 
     // Now the dest node is Gemm/Matmul, we want to make sure it is supported
     OpSupportCheckParams params{
-        model_builder.GetNNAPIFeatureLevel(),
+        model_builder.GetEffectiveFeatureLevel(),
         model_builder.UseNCHW(),
     };
 

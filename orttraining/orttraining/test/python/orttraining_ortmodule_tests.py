@@ -142,10 +142,26 @@ def run_data_sampler_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_hooks_tests(cwd, log):
+    log.debug("Running: Data hooks tests")
+
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_hooks.py"]
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def run_pytorch_export_contrib_ops_tests(cwd, log):
     log.debug("Running: PyTorch Export Contrib Ops Tests")
 
     command = [sys.executable, "-m", "pytest", "-sv", "test_pytorch_export_contrib_ops.py"]
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
+def run_lstm_training_op_tests(cwd, log):
+    log.debug("Running: LSTM Training Ops Tests")
+
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_lstm.py"]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
@@ -184,10 +200,14 @@ def main():
 
     run_data_sampler_tests(cwd, log)
 
+    run_hooks_tests(cwd, log)
+
     run_experimental_gradient_graph_tests(cwd, log)
 
     # TODO(bmeswani): Enable this test once it can run with latest pytorch
     # run_pytorch_export_contrib_ops_tests(cwd, log)
+
+    run_lstm_training_op_tests(cwd, log)
 
     return 0
 

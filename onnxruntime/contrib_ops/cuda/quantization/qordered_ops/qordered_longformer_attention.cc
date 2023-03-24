@@ -158,7 +158,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   int k = hidden_size;
 
   size_t qkv_count = (size_t)m * (size_t)n;
-  size_t qkv_size = batch_size * sequence_length * 3 * hidden_size * element_size;
+  size_t qkv_size = (size_t)batch_size * sequence_length * 3 * hidden_size * element_size;
   // Buffer for GEMM outputs of q, k, v, global_q, global_k and global_v
   // TODO(tianleiwu): compact global_q only need batch_size * window * hidden_size * element_size buffer size.
   size_t qkv_3 = qkv_size + qkv_size + 2 * qkv_count * sizeof(int8_t);

@@ -169,7 +169,6 @@ struct PyOptimizer {
   PyOptimizer(const std::string optimizer_model_uri,
               onnxruntime::training::api::Module* model, std::vector<std::shared_ptr<IExecutionProvider>> provider)
       : optimizer_() {
-
     auto env = GetTrainingEnv().GetORTEnv();
     // XXX: We hope that env will be around when optimizer needs it.
     optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
@@ -523,6 +522,14 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
     pool.RegisterTorchAutogradFunction(key, obj.ptr());
 #else
         ORT_UNUSED_PARAMETER(key);
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("register_miscellaneous_const_input", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterMiscellaneousConstInput(obj.ptr());
+#else
         ORT_UNUSED_PARAMETER(obj);
 #endif
   });
