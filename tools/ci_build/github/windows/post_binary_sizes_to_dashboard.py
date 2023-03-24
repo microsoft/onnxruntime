@@ -40,7 +40,7 @@ def parse_arguments():
 
 def get_binary_sizes(size_data_file):
     binary_size = []
-    with open(size_data_file, "r") as f:
+    with open(size_data_file) as f:
         line = f.readline()
         headers = line.strip().split(",")
         while line:

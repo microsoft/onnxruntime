@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -25,7 +24,7 @@ from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 class TestOpTranspose(unittest.TestCase):
     def input_feeds(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
@@ -77,7 +76,7 @@ class TestOpTranspose(unittest.TestCase):
 
         onnx.save(model, output_model_path)
 
-    def quantize_transpose_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_transpose_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "transpose_fp32.onnx"
         self.construct_model_matmul_transpose(model_fp32_path, [3, 7], [7, 5], [5, 3])
@@ -85,8 +84,8 @@ class TestOpTranspose(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_uint8_path = "transpose_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_uint8_qdq_path = "transpose_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
+        model_uint8_path = f"transpose_{activation_type_str}{weight_type_str}.onnx"
+        model_uint8_qdq_path = f"transpose_{activation_type_str}{weight_type_str}_qdq.onnx"
 
         # Verify QOperator model
         data_reader = self.input_feeds(1, {"input": [3, 7]})

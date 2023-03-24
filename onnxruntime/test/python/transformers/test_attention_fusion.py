@@ -178,7 +178,7 @@ class TestFusion(unittest.TestCase):
                 else:
                     model_suffix = "opt_no_skiplayernorm"
 
-                model_name = "gpt2_attention_{}.onnx".format(model_suffix)
+                model_name = f"gpt2_attention_{model_suffix}.onnx"
                 self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):
@@ -203,7 +203,7 @@ class TestFusion(unittest.TestCase):
             else:
                 model_suffix = "opt_no_skiplayernorm"
 
-            model_name = "gpt2_megatron_{}.onnx".format(model_suffix)
+            model_name = f"gpt2_megatron_{model_suffix}.onnx"
             self.verify_fusion(optimized_model, model_name)
 
 
