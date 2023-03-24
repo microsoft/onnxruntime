@@ -24,88 +24,92 @@ available_providers = [provider for provider in onnxruntime.get_available_provid
 
 class TestInferenceSession(unittest.TestCase):
     x = np.array([0, 1e-7, 1e-3, 1e-2, 1e-1, 1, 2, 10, 100, 1000, 1e4, 1e5, np.inf, -np.inf, np.nan], dtype=np.float32)
-    expected = {
-        TensorProto.FLOAT8E4M3FN: np.array(
-            [
-                0.000000e00,
-                0.000000e00,
-                1.953125e-03,
-                9.765625e-03,
-                1.015625e-01,
-                1.000000e00,
-                2.000000e00,
-                1.000000e01,
-                1.040000e02,
-                4.480000e02,
-                4.480000e02,
-                4.480000e02,
-                np.nan,
-                np.nan,
-                np.nan,
-            ],
-            dtype=np.float32,
-        ),
-        TensorProto.FLOAT8E4M3FNUZ: np.array(
-            [
-                0.000000e00,
-                0.000000e00,
-                9.765625e-04,
-                9.765625e-03,
-                1.015625e-01,
-                1.000000e00,
-                2.000000e00,
-                1.000000e01,
-                1.040000e02,
-                2.400000e02,
-                2.400000e02,
-                2.400000e02,
-                np.nan,
-                np.nan,
-                np.nan,
-            ],
-            dtype=np.float32,
-        ),
-        TensorProto.FLOAT8E5M2: np.array(
-            [
-                0.000000e00,
-                0.000000e00,
-                9.765625e-04,
-                9.765625e-03,
-                9.375000e-02,
-                1.000000e00,
-                2.000000e00,
-                1.000000e01,
-                9.600000e01,
-                1.024000e03,
-                1.024000e04,
-                5.734400e04,
-                np.inf,
-                -np.inf,
-                np.nan,
-            ],
-            dtype=np.float32,
-        ),
-        TensorProto.FLOAT8E5M2FNUZ: np.array(
-            [
-                0.000000e00,
-                0.000000e00,
-                9.765625e-04,
-                9.765625e-03,
-                9.375000e-02,
-                1.000000e00,
-                2.000000e00,
-                1.000000e01,
-                9.600000e01,
-                1.024000e03,
-                1.024000e04,
-                5.734400e04,
-                np.nan,
-                np.nan,
-                np.nan,
-            ],
-            dtype=np.float32,
-        ),
-    }
+    expected = (
+        {}
+        if not hasattr(TensorProto, "FLOAT8E4M3FN")
+        else {
+            TensorProto.FLOAT8E4M3FN: np.array(
+                [
+                    0.000000e00,
+                    0.000000e00,
+                    1.953125e-03,
+                    9.765625e-03,
+                    1.015625e-01,
+                    1.000000e00,
+                    2.000000e00,
+                    1.000000e01,
+                    1.040000e02,
+                    4.480000e02,
+                    4.480000e02,
+                    4.480000e02,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                ],
+                dtype=np.float32,
+            ),
+            TensorProto.FLOAT8E4M3FNUZ: np.array(
+                [
+                    0.000000e00,
+                    0.000000e00,
+                    9.765625e-04,
+                    9.765625e-03,
+                    1.015625e-01,
+                    1.000000e00,
+                    2.000000e00,
+                    1.000000e01,
+                    1.040000e02,
+                    2.400000e02,
+                    2.400000e02,
+                    2.400000e02,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                ],
+                dtype=np.float32,
+            ),
+            TensorProto.FLOAT8E5M2: np.array(
+                [
+                    0.000000e00,
+                    0.000000e00,
+                    9.765625e-04,
+                    9.765625e-03,
+                    9.375000e-02,
+                    1.000000e00,
+                    2.000000e00,
+                    1.000000e01,
+                    9.600000e01,
+                    1.024000e03,
+                    1.024000e04,
+                    5.734400e04,
+                    np.inf,
+                    -np.inf,
+                    np.nan,
+                ],
+                dtype=np.float32,
+            ),
+            TensorProto.FLOAT8E5M2FNUZ: np.array(
+                [
+                    0.000000e00,
+                    0.000000e00,
+                    9.765625e-04,
+                    9.765625e-03,
+                    9.375000e-02,
+                    1.000000e00,
+                    2.000000e00,
+                    1.000000e01,
+                    9.600000e01,
+                    1.024000e03,
+                    1.024000e04,
+                    5.734400e04,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                ],
+                dtype=np.float32,
+            ),
+        }
+    )
 
     def model_cast_cast(self, to):
         X = make_tensor_value_info("X", TensorProto.FLOAT, [None])
@@ -140,7 +144,7 @@ class TestInferenceSession(unittest.TestCase):
         x = TestInferenceSession.x
 
         for to, expect in expected.items():
-            print("to=", to)
+            print("CPU to=", to)
             onnx_model = self.model_cast_cast(to)
             sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), so, providers=["CPUExecutionProvider"])
             y = sess.run(None, {"X": x})[0]
@@ -157,13 +161,10 @@ class TestInferenceSession(unittest.TestCase):
         x = TestInferenceSession.x
 
         for to, expect in expected.items():
-            print("to=", to)
-            onnx_model = self.model_cast_cast(to)
-            ref = ReferenceEvaluator(onnx_model)
-            y = ref.run(None, {"X": x})[0]
-            assert_allclose(expect, y)
-            self.assertEqual(expect.shape, y.shape)
-            self.assertEqual(expect.dtype, y.dtype)
+            print("CUDA to=", to)
+            if to not in {TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2}:
+                # only those types are available on CUDA.
+                continue
             sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
             y = sess.run(None, {"X": x})[0]
             assert_allclose(expect, y)
@@ -173,5 +174,5 @@ class TestInferenceSession(unittest.TestCase):
 
 if __name__ == "__main__":
     TestInferenceSession().test_model_cast_cast_reference()
-    TestInferenceSession().test_model_cast_cast_cpu()
+    TestInferenceSession().test_model_cast_cast_cuda()
     unittest.main()
