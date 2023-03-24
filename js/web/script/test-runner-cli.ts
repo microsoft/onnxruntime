@@ -53,10 +53,10 @@ async function main() {
 
   // The default backends and opset version lists. Those will be used in suite tests.
   const DEFAULT_BACKENDS: readonly TestRunnerCliArgs.Backend[] =
-    args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl', 'webgpu'];
-      const DEFAULT_OPSET_VERSIONS = fs.readdirSync(TEST_DATA_MODEL_NODE_ROOT, {withFileTypes: true})
-      .filter(dir => dir.isDirectory() && dir.name.startsWith('opset'))
-      .map(dir => dir.name.slice(5));
+      args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl', 'webgpu'];
+  const DEFAULT_OPSET_VERSIONS = fs.readdirSync(TEST_DATA_MODEL_NODE_ROOT, {withFileTypes: true})
+                                     .filter(dir => dir.isDirectory() && dir.name.startsWith('opset'))
+                                     .map(dir => dir.name.slice(5));
 
   const FILE_CACHE_ENABLED = args.fileCache;         // whether to enable file cache
   const FILE_CACHE_MAX_FILE_SIZE = 1 * 1024 * 1024;  // The max size of the file that will be put into file cache
@@ -458,13 +458,13 @@ async function main() {
     } else {
       // STEP 5. use Karma to run test
       npmlog.info('TestRunnerCli.Run', '(4/4) Running karma to start test runner...');
-    const webgpu = args.backends.indexOf('webgpu') > -1;
-    const browser = getBrowserNameFromEnv(
+      const webgpu = args.backends.indexOf('webgpu') > -1;
+      const browser = getBrowserNameFromEnv(
           args.env,
           args.bundleMode === 'perf' ? 'perf' :
               args.debug             ? 'debug' :
                                        'test',
-               webgpu, config.options.globalEnvFlags?.webgpu?.profilingMode === 'default');
+          webgpu, config.options.globalEnvFlags?.webgpu?.profilingMode === 'default');
       const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
       if (args.debug) {
         karmaArgs.push('--log-level info --timeout-mocha 9999999');
@@ -477,7 +477,7 @@ async function main() {
       if (webgpu) {
         karmaArgs.push('--force-localhost');
       }
-        karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
+      karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
       if (browser === 'Edge') {
         // There are currently 2 Edge browser launchers:
         //  - karma-edge-launcher: used to launch the old Edge browser
@@ -569,10 +569,10 @@ async function main() {
   }
 
   function getBrowserNameFromEnv(
-    env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, profile: boolean) {
+      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, profile: boolean) {
     switch (env) {
       case 'chrome':
-      return selectChromeBrowser(mode, webgpu, profile);
+        return selectChromeBrowser(mode, webgpu, profile);
       case 'edge':
         return 'Edge';
       case 'firefox':

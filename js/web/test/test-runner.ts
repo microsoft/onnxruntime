@@ -595,7 +595,7 @@ async function runOpTestcase(
   const inputTensors =
       testcase.inputs.map(input => createTensor(input.dims, input.type as Tensor.DataType, input.data));
 
-  const results = await operator.impl(inferenceHandler, inputTensors, operator.context);
+  const results = operator.impl(inferenceHandler, inputTensors, operator.context);
 
   // try async data read.
   for (const result of results) {

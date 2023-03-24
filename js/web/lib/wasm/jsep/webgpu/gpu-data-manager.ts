@@ -72,15 +72,15 @@ class GpuDataManagerImpl implements GpuDataManager {
   // GPU Data ID => GPU Data ( read buffer )
   downloadCache: Map<GpuDataId, DownloadCacheValue>;
 
+  // pending buffers for uploading ( data is unmapped )
   private buffersForUploadingPending: GPUBuffer[];
-  // private buffersForDownloadingPending: GPUBuffer[];
+  // pending buffers for computing
   private buffersPending: GPUBuffer[];
 
   constructor(private backend: WebGpuBackend /* , private reuseBuffer: boolean */) {
     this.storageCache = new Map();
     this.downloadCache = new Map();
     this.buffersForUploadingPending = [];
-    // this.buffersForDownloadingPending = [];
     this.buffersPending = [];
   }
 

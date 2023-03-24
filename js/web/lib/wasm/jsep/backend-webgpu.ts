@@ -29,15 +29,40 @@ const getProgramInfoUniqueKey =
       return key;
     };
 
+/**
+ * this class is designed to store status and being used as a singleton for JSEP. It will be passed to jsepInit() as
+ * the first parameter so that it is stored for future use.
+ */
 export class WebGpuBackend {
   device: GPUDevice;
+  /**
+   * an instance of GpuDataManager to manage a GpuDataId -> GpuBuffer mapping
+   */
   gpuDataManager: GpuDataManager;
+  /**
+   * an instance of ProgramManager to build and run WebGPU compute shader program, and manage a ProgramKey -> Program
+   * artifacts mapping
+   */
   programManager: ProgramManager;
 
-  temporaryData: GpuData[];
+  /**
+   * representing the kernel ID of which is currently being computed (CPU code perspective).
+   * `null` means no kernel is being computed.
+   * only one kernel can be computed at a moment.
+   */
   currentKernelId: number|null = null;
+  /**
+   * a list of temporary GPU data for the current kernel. should release when the kernel done computation.
+   */
+  temporaryData: GpuData[];
+  /**
+   * a KernelID -> a GPU data list, which stores persistent GPU data owned by the specific kernel.
+   */
   kernelPersistentData: Map<number, GpuData[]>;
 
+  /**
+   * a KernelID -> kernel info mapping. value is [ name, run function, [optional] preprocess_attribute_once function ]
+   */
   kernels: Map<number, [string, RunFunction, [((attribute: unknown) => unknown) | undefined, unknown]]>;
 
   commandEncoder: GPUCommandEncoder|null = null;
@@ -130,9 +155,21 @@ export class WebGpuBackend {
     this.pendingDispatchNumber = 0;
   }
 
+  /**
+   * run a WebGPU program.
+   * @param program either a ProgramInfo instance containing metadata including the shader code, or a function that
+   * can be called and return a ProgramInfo instance
+   * @param inputs a TensorView array. each element represents a value already exists in GPU.
+   * @param outputIndices an indices array. each element can be either -1 (temporary data), -2 (persistent data) or an
+   * index to the kernel's output.
+   * @param createKernelOutput a callback function that create a value to kernel's output with the given index
+   * @param createIntermediateOutput a callback function that create a value as a intermediate value, either temporary
+   * or persistent (owned by the current kernel)
+   * @returns a TensorView array representing the result.
+   */
   run(program: ProgramInfoLoader|ProgramInfo, inputs: readonly TensorView[], outputIndices: readonly number[],
       createKernelOutput: (index: number, dataType: number, dims: readonly number[]) => TensorView,
-      createTemporaryOutput: (dataType: number, dims: readonly number[]) => TensorView): TensorView[] {
+      createIntermediateOutput: (dataType: number, dims: readonly number[]) => TensorView): TensorView[] {
     if (inputs.length !== program.inputTypes.length) {
       throw new Error(`Input size must be equal to ${program.inputTypes.length}.`);
     }
@@ -173,7 +210,7 @@ export class WebGpuBackend {
       const isTemporary = validatedOutputIndices[i] === -1;
       const isPersistent = validatedOutputIndices[i] === -2;
       const tensorView = (isTemporary || isPersistent) ?
-          createTemporaryOutput(programInfo.outputs[i].dataType, programInfo.outputs[i].dims) :
+          createIntermediateOutput(programInfo.outputs[i].dataType, programInfo.outputs[i].dims) :
           createKernelOutput(validatedOutputIndices[i], programInfo.outputs[i].dataType, programInfo.outputs[i].dims);
       const gpuData = this.gpuDataManager.get(tensorView.data);
       if (!gpuData) {

@@ -3,7 +3,7 @@
 
 import {env, InferenceSession} from 'onnxruntime-common';
 
-import {init} from './jsep/init';
+import {init as initJsep} from './jsep/init';
 import {OrtWasmMessage, SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import * as core from './wasm-core-impl';
 import {getInstance, initializeWebAssembly} from './wasm-factory';
@@ -149,7 +149,7 @@ export const initOrt = async(numThreads: number, loggingLevel: number): Promise<
     core.initOrt(numThreads, loggingLevel);
 
     // init JSEP if available
-    await init(getInstance());
+    await initJsep(getInstance());
   }
 };
 

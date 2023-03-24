@@ -117,7 +117,13 @@ export interface ComputeContextInputsOutputsMapping {
   readonly outputs?: readonly number[];
 }
 
+/**
+ * A ComputeContext instance carries the states that representing the current running of a kernel.
+ */
 export interface ComputeContext {
+  /**
+   * stores the pointer to OpKernelContext
+   */
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
   readonly customData: {[key: string]: unknown};

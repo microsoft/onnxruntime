@@ -179,11 +179,16 @@ export class BroadcastUtil {
 
 
 export class ShapeUtil {
+  /**
+   * calculate the size (number of elements)
+   */
   static size(dims: readonly number[]): number {
     return ShapeUtil.getSizeFromDimensionRange(dims, 0, dims.length);
   }
 
-  // `axis` inclusive
+  /**
+   * calculate the size (number of elements) from the given axis (inclusive)
+   */
   static sizeFromDimension(dims: readonly number[], axis: number): number {
     if (axis < 0 || axis > dims.length) {
       throw new Error(`invalid dimension of ${axis} for sizeFromDimension as Tensor has ${dims.length} dimensions.`);
@@ -191,7 +196,9 @@ export class ShapeUtil {
     return ShapeUtil.getSizeFromDimensionRange(dims, axis, dims.length);
   }
 
-  // `axis` exclusive
+  /**
+   * calculate the size (number of elements) to the given axis (exclusive)
+   */
   static sizeToDimension(dims: readonly number[], axis: number): number {
     if (axis < 0 || axis > dims.length) {
       throw new Error(`invalid dimension of ${axis} for sizeToDimension as Tensor has ${dims.length} dimensions.`);
@@ -199,6 +206,9 @@ export class ShapeUtil {
     return ShapeUtil.getSizeFromDimensionRange(dims, 0, axis);
   }
 
+  /**
+   * calculate the size (number of elements) from and to the given axis [start, end)
+   */
   static getSizeFromDimensionRange(dims: readonly number[], start: number, end: number): number {
     let size = 1;
     for (let i = start; i < end; i++) {
@@ -272,12 +282,10 @@ export class ShapeUtil {
     return axis < 0 ? axis + tensorRank : axis;
   }
 
-  static normalizeAxes(axes: readonly number[], tensorRank: number): number[] {
-    return axes.map(x => this.normalizeAxis(x, tensorRank));
+  static normalizeAxes(axes: readonly number[], tensorRank?: number): number[] {
+    return axes.map(x => this.normalizeAxis(x, tensorRank ?? axes.length));
   }
 
-  // Increment an index into a tensor (in lexicographic
-  // ordering), wrapping around the specified upper_bound.
   /**
    * Increment an index into a tensor (in lexicographic ordering), wrapping around the specified upper_bound.
    * @param index Given index to increment (Will be mutated)
