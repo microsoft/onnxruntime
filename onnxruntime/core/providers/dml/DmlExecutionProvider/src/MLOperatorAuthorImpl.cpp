@@ -2279,9 +2279,6 @@ namespace Windows::AI::MachineLearning::Adapter
             }
         }
 
-    // for testing
-    requiredConstantCpuInputsAvailable = false;
-
         // If input sizes are either available or not required at creation, no need to delay kernel creation.
         if (requiredConstantCpuInputsAvailable && (!m_requiresInputShapesAtCreation || InputTensorShapesDefined()))
         {
@@ -2429,6 +2426,8 @@ namespace Windows::AI::MachineLearning::Adapter
         };
 
         Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
+        
+        const EdgeShapes* inferredOutputShapeForCompute = &m_inferredOutputShapes;
 
         if (RequiresDynamicKernelCreation())
         {
@@ -2455,10 +2454,13 @@ namespace Windows::AI::MachineLearning::Adapter
 
             auto& cachedKernel = m_kernelMap[key];
             kernel = cachedKernel.kernel;
+            inferredOutputShapeForCompute = cachedKernel.inferredOutputShapes.get();
 
             if (!kernel)
             {
-                cachedKernel.kernel = inferShapesAndCreateKernel(key.first, m_inferredOutputShapes);
+                cachedKernel.inferredOutputShapes = std::make_shared<EdgeShapes>();
+                cachedKernel.kernel = inferShapesAndCreateKernel(key.first, *cachedKernel.inferredOutputShapes.get());
+                inferredOutputShapeForCompute = cachedKernel.inferredOutputShapes.get();
                 
                 // Update the time and retrieve the underlying CompPtr before modifying the map to evict kernels
                 cachedKernel.lastUsedTick = m_kernelCacheTick++;
@@ -2501,7 +2503,7 @@ namespace Windows::AI::MachineLearning::Adapter
             context,
             Info().GetExecutionProvider(),
             m_internalOperator,
-            m_requiresOutputShapesAtCreation ? &m_inferredOutputShapes : nullptr);
+            m_requiresOutputShapesAtCreation ? inferredOutputShapeForCompute : nullptr);
 
         ORT_THROW_IF_FAILED(kernel->Compute(kernelContextWrapper.Get()));
         kernelContextWrapper->Close();

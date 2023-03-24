@@ -604,6 +604,7 @@ class AbiOpKernel : public onnxruntime::OpKernel
     struct CachedKernel
     {
         Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
+        std::shared_ptr<EdgeShapes> inferredOutputShapes;
         uint64_t lastUsedTick = 0;
     };
 
