@@ -13,6 +13,7 @@ namespace onnxruntime {
 namespace contrib {
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearAveragePool);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearConvTranspose);
+class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, FusedConv);
 }  // namespace contrib
 namespace internal_nhwc_onnx {
 
@@ -48,6 +49,21 @@ void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPAC
                   })
                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
 }
+
+void RegisterNHWCSchemaWithSumActivation(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
+  auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
+  f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
+                  .Input(3, "Z", "", "T", ::ONNX_NAMESPACE::OpSchema::Optional)
+                  .Attr("activation", "", ONNX_NAMESPACE::AttributeProto::STRING, ONNX_NAMESPACE::OPTIONAL_VALUE)
+                  .Attr("activation_params", "", ONNX_NAMESPACE::AttributeProto::FLOATS, ONNX_NAMESPACE::OPTIONAL_VALUE)
+                  .TypeAndShapeInferenceFunction([onnx_inferencing_func](ONNX_NAMESPACE::InferenceContext& ctx) {
+                    NhwcInferenceContext nhwc_ctx(ctx);
+                    onnx_inferencing_func(nhwc_ctx);
+                    nhwc_ctx.PropagateOutputShape();
+                  })
+                  .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
+}
+
 }  // namespace
 
 #define REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(RegistrationFn, Op, SinceVersion) \
@@ -118,6 +134,8 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   // internal QLinear ops
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearConvTranspose, 1);
+  RegisterNHWCSchemaWithSumActivation(
+      fn, contrib::GetOpSchema<contrib::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, FusedConv)>());
 
   // not all schema are registered here. For part of layout insensitive ops
   // we will use onnx schema directly, for others, like fused-node/qdq-group
