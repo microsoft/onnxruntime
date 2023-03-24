@@ -129,7 +129,7 @@ def _build_aar(args):
             "--android_abi=" + abi,
             "--build_dir=" + abi_build_dir,
             "--path_to_protoc_exe",
-            os.path.join(build_dir, "protobuf", "bin", "protoc")
+            os.path.join(build_dir, "protobuf", "bin", "protoc"),
         ]
 
         if ops_config_path is not None:
