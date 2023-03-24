@@ -549,6 +549,118 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));
 
+constexpr const char* DecoderMaskedMultiHeadAttention_ver1_doc = R"DOC(
+Multihead attention that supports input sequence length of 1.
+Similar to DecoderMaskedSelfAttention but this op excludes QKV MatMul and Bias.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DecoderMaskedMultiHeadAttention, 1,
+    OpSchema()
+        .SetDoc(DecoderMaskedSelfAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("past_present_share_buffer",
+              "Corresponding past and present are same tensor, its size is "
+              "(batch_size, num_heads, max_sequence_length, head_size)",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "query",
+               "Query with shape (batch_size, 1, hidden_size)",
+               "T")
+        .Input(1,
+               "key",
+               "Key with shape (batch_size, 1, hidden_size) for self attention "
+               "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention",
+               "T")
+        .Input(2,
+               "value",
+               "Value with shape (batch_size, 1, v_hidden_size) for self attention "
+               "or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention",
+               "T")
+        .Input(3,
+               "mask_index",
+               "Mask values of shape (batch_size, total_sequence_length)",
+               "M",
+               OpSchema::Optional)
+        .Input(4,
+               "relative_position_bias",
+               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "T",
+               OpSchema::Optional)
+        .Input(4,
+               "past_key",
+               "past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) for self attention"
+               "When past_present_share_buffer is set, "
+               "its shape is (batch_size, num_heads, max_sequence_length, head_size). "
+               "The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape "
+               "(batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape "
+               "(batch_size, num_heads, max_sequence_length, head_size / x, x) is reordered to "
+               "become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`.",
+               "T",
+               OpSchema::Optional)
+        .Input(5,
+               "past_value",
+               "past state for value with shape (batch_size, num_heads, past_sequence_length, head_size) for self attention"
+               "When past_present_share_buffer is set, "
+               "its shape is (batch_size, num_heads, max_sequence_length, head_size). ",
+               "T",
+               OpSchema::Optional)
+        .Input(6,
+               "past_sequence_length",
+               "When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).",
+               "M")
+        .Input(7,
+               "beam_width",
+               "The beam width that is being used while decoding."
+               "If not provided, the beam width will be assumed to be 1.",
+               "M",
+               OpSchema::Optional)
+        .Input(8,
+               "cache_indirection",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
+               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
+               "M",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
+                "T")
+        .Output(1,
+                "present_key",
+                "past state for key with shape (batch_size, num_heads, total_sequence_length, head_size). "
+                "If past_present_share_buffer is set, "
+                "its shape is (batch_size, num_heads, max_sequence_length, head_size), "
+                "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
+                "T",
+                OpSchema::Optional)
+        .Output(2,
+                "present_value",
+                "past state for value with shape (batch_size, num_heads, total_sequence_length, head_size). "
+                "If past_present_share_buffer is set, "
+                "its shape is (batch_size, num_heads, max_sequence_length, head_size), "
+                "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
+                "T",
+                OpSchema::Optional)
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("M",
+                        {"tensor(int32)"},
+                        "Constrain mask index to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          // TODO:
+          (void) (ctx);
+        }));
+
 constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
 Multi-Head Self/Cross Attention. Bias from input projection is included.
 

@@ -4,7 +4,8 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
-#include "contrib_ops/cuda/decoder/decoder_masked_self_attention.h"
+#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/cuda/decoder/decoder_masked_multihead_attention.h"
 #include "contrib_ops/cuda/decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
 
 using namespace onnxruntime::cuda;
@@ -15,6 +16,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// TODO: refactor
 static constexpr int kPastSequenceLengthInputIndex = 6;
 static constexpr int kBeamWidthInputIndex = 7;
 static constexpr int kCacheIndirectionInputIndex = 8;
@@ -23,44 +25,62 @@ static constexpr int kPresentOutputIndex = 1;
 
 #define REGISTER_KERNEL_TYPED(T1, T2)                                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
-      DecoderMaskedSelfAttention,                                        \
+      DecoderMaskedMultiHeadAttention,                                        \
       kMSDomain,                                                              \
       1,                                                                      \
       T1,                                                                     \
       kCudaExecutionProvider,                                                 \
       (*KernelDefBuilder::Create())                                           \
           .MayInplace(kPastInputIndex, kPresentOutputIndex)                   \
+          .MayInplace(kPastInputIndex + 1, kPresentOutputIndex + 1)           \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())             \
           .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex) \
           .InputMemoryType(OrtMemTypeCPUInput, kBeamWidthInputIndex),         \
-      DecoderMaskedSelfAttention<T1, T2>);
+      DecoderMaskedMultiHeadAttention<T1, T2>);
 
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(MLFloat16, uint16_t)
 
 template <typename T1, typename T2>
-Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* input = context->Input<Tensor>(0);
-  const Tensor* weights = context->Input<Tensor>(1);
-  const Tensor* bias = context->Input<Tensor>(2);
+DecoderMaskedMultiHeadAttention<T1, T2>::DecoderMaskedMultiHeadAttention(const OpKernelInfo& info) : CudaKernel(info) {
+  int64_t num_heads = 0;
+  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
+  num_heads_ = static_cast<int>(num_heads);
+  mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
+}
+
+template <typename T1, typename T2>
+Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext* context) const {
+  const Tensor* query = context->Input<Tensor>(0);
+  const Tensor* key = context->Input<Tensor>(1);
+  const Tensor* value = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
-  const Tensor* past = context->Input<Tensor>(kPastInputIndex);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* relative_position_bias = context->Input<Tensor>(4);
+  const Tensor* past_key = context->Input<Tensor>(kPastInputIndex);
+  const Tensor* past_value = context->Input<Tensor>(kPastInputIndex + 1);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
   const Tensor* beam_width = context->Input<Tensor>(kBeamWidthInputIndex);
   const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
 
   auto& device_prop = GetDeviceProp();
   DecoderMaskedMultiHeadAttentionParams parameters;
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  weights->Shape(),
-                                  bias->Shape(),
-                                  mask_index,
-                                  past,
-                                  relative_position_bias,
-                                  &parameters,
-                                  device_prop.maxThreadsPerBlock,
-                                  past_seq_len));
+  ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
+                                                                      key,
+                                                                      value,
+                                                                      nullptr, //bias
+                                                                      mask_index,
+                                                                      relative_position_bias,
+                                                                      past_key,
+                                                                      past_value,
+                                                                      past_seq_len,
+                                                                      &parameters,
+                                                                      num_heads_,
+                                                                      mask_filter_value_,
+                                                                      scale_,
+                                                                      past_present_share_buffer_,
+                                                                      device_prop.maxThreadsPerBlock));
 
   // Sanity check
   ORT_ENFORCE(past_present_share_buffer_);
@@ -70,29 +90,17 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
 
   // This kernel is for decoding only (i.e.) sequence length has to be 1
   if (sequence_length != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedSelfAttention");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedMultiHeadAttention");
   }
 
-  // TODO(hasesh): In future, we may support CrossAttention. Currently, this kernel only supports SelfAttention.
-  if (parameters.sequence_length != parameters.kv_sequence_length) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedSelfAttention only supports self attention currently");
-  }
-
-  // TODO(hasesh): If there is a need, we will support this later
   if (parameters.head_size != parameters.v_head_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "QK head size should be same as V head size to use DecoderMaskedSelfAttention");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "QK head size should be same as V head size to use DecoderMaskedMultiHeadAttention");
   }
 
-  // TODO(hasesh): If there is a need, we will support this later
-  if (relative_position_bias != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedSelfAttention does not support relative position bias currently");
-  }
-
-  // TODO(hasesh): Support more mask types. Currently, it only supports the HuggingFace GreedySearch/BeamSearch pattern.
   if (parameters.mask_type != AttentionMaskType::MASK_2D_KEY_PADDING &&
       parameters.mask_type != AttentionMaskType::MASK_NONE) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "DecoderMaskedSelfAttention only supports no mask or 2D key "
+                           "DecoderMaskedMultiHeadAttention only supports no mask or 2D key "
                            "padding mask of shape [batch, total_seq_length] currently");
   }
 
@@ -103,62 +111,40 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   Tensor* output = context->Output(0, output_shape);
 
   // Present input will have the same shape as the past input
-  Tensor* present = context->Output(kPresentOutputIndex, past->Shape());
+  Tensor* present_key = context->Output(kPresentOutputIndex, past_key->Shape());
+  Tensor* present_value = context->Output(kPresentOutputIndex + 1, past_value->Shape());
 
   auto cuda_stream = Stream(context);
 
-  auto* present_data = present->MutableData<T1>();
-  auto* past_data = past->Data<T1>();
+  auto* present_key_data = present_key->MutableData<T1>();
+  auto* present_value_data = present_value->MutableData<T1>();
+  auto* past_key_data = past_key->Data<T1>();
+  auto* past_value_data = past_value->Data<T1>();
 
   // No production use-case will incur this copy cost as the implementation of
   // GreedySearch/BeamSearch is written in such a way that the past and present buffers
   // will be shared.
   // This is just to circumvent the OpTester's limitation of not being able to bind a specific
   // buffer to inputs/outputs.
-  // TODO(hasesh): Enhance the OpTester to support binding buffers for inputs/outputs
-  // If ever a production use-case using GreedySearch/BeamSearch incurs this copy test, we
-  // will have to debug the GreedySearch/BeamSearch operator
-  if (present_data != past_data) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_data, past_data, past->SizeInBytes(),
+  if (present_key_data != past_key_data || present_value_data != past_value_data) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_key_data, past_key_data, past_key->SizeInBytes(),
+                                         cudaMemcpyDeviceToDevice, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_value_data, past_value_data, past_value->SizeInBytes(),
                                          cudaMemcpyDeviceToDevice, cuda_stream));
   }
 
-  cublasHandle_t cublas = GetCublasHandle(context);
+  // typedef typename ToCudaType<T1>::MappedType CudaT;
 
-  typedef typename ToCudaType<T1>::MappedType CudaT;
-
-  IAllocatorUniquePtr<T1> gemm_buffer;
-  int m = batch_size * sequence_length;
-  int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
-  int k = parameters.input_hidden_size;
-  gemm_buffer = GetScratchBuffer<T1>(static_cast<size_t>(m) * n, context->GetComputeStream());
-
-  CudaT one = ToCudaType<T1>::FromFloat(1.0f);
-  CudaT zero = ToCudaType<T1>::FromFloat(0.0f);
-
-  // QKV Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
-  // The bias part is not included here since we fuse bias, transpose and output 3 matrices into one cuda kernel.
-  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-      reinterpret_cast<const CudaT*>(weights->Data<T1>()), n,
-      reinterpret_cast<const CudaT*>(input->Data<T1>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+  parameters.is_mha = true;
 
   // Update the q, k, and v buffers
-  parameters.q = gemm_buffer.get();
-  parameters.k = reinterpret_cast<CudaT*>(gemm_buffer.get()) + parameters.hidden_size;
-  parameters.v = reinterpret_cast<CudaT*>(gemm_buffer.get()) + 2 * static_cast<int64_t>(parameters.hidden_size);
-
-  // Update the q, k, and v bias
-  const T1* bias_data = bias->Data<T1>();
-  parameters.q_bias = const_cast<T1*>(bias_data);
-  parameters.k_bias = const_cast<T1*>(bias_data + parameters.hidden_size);
-  parameters.v_bias = const_cast<T1*>(bias_data + 2 * static_cast<int64_t>(parameters.hidden_size));
+  parameters.q = const_cast<T1*>(query->Data<T1>());
+  parameters.k = const_cast<T1*>(key->Data<T1>());
+  parameters.v = const_cast<T1*>(value->Data<T1>());
 
   // Half of the past/present buffer correspond to K - the other half is V.
-  auto k_size = present->Shape().Size() / 2;
-  parameters.k_cache = present->MutableDataRaw();
-  parameters.v_cache = present->MutableData<T1>() + k_size;
+  parameters.k_cache = present_key->MutableDataRaw();
+  parameters.v_cache = present_value->MutableData<T1>();
   parameters.out = output->MutableDataRaw();
 
   // Scale
@@ -199,7 +185,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
 
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "Unsupported head size in DecoderMaskedSelfAttention. "
+                             "Unsupported head size in DecoderMaskedMultiHeadAttention. "
                              "Got head size: ",
                              parameters.head_size);
   }

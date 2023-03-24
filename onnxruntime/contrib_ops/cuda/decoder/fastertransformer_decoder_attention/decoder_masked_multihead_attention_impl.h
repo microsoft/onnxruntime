@@ -10,8 +10,9 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-struct DecoderMaskedSelfAttentionParams : AttentionParameters {
+struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
   int beam_width = 1;
+  bool is_mha = false;
 
   void* q = nullptr;
   void* q_bias = nullptr;
@@ -43,10 +44,10 @@ template<
     int THREADS_PER_VALUE,
     // The number of threads in a threadblock.
     int THREADS_PER_BLOCK>
-__global__ void masked_multihead_attention_kernel(DecoderMaskedSelfAttentionParams params);
+__global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentionParams params);
 
 template<typename T, int head_size>
-void mmha_launch_kernel(const DecoderMaskedSelfAttentionParams& params, cudaStream_t stream);
+void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
 
 
 

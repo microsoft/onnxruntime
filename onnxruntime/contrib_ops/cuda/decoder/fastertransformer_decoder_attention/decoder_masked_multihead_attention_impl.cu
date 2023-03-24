@@ -46,7 +46,7 @@ template <
     int THREADS_PER_VALUE,
     // The number of threads in a threadblock.
     int THREADS_PER_BLOCK>
-__global__ void masked_multihead_attention_kernel(DecoderMaskedSelfAttentionParams params) {
+__global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentionParams params) {
   // This kernel contains some code that cannot be compiled on CUDA ARCH 5.3 or lower
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
   (void)(params);
@@ -498,32 +498,32 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedSelfAttentionPara
 // Template instantiation(s)
 
 // fp32 + head size = 64
-template void __global__ masked_multihead_attention_kernel<float, 64, 4, 16, 64>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 64, 4, 16, 64>(DecoderMaskedMultiHeadAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<float, 64, 2, 16, 128>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 64, 2, 16, 128>(DecoderMaskedMultiHeadAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<float, 64, 1, 16, 256>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 64, 1, 16, 256>(DecoderMaskedMultiHeadAttentionParams params);
 
 // fp16 + head size = 64
-template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 4, 8, 64>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 4, 8, 64>(DecoderMaskedMultiHeadAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 2, 8, 128>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 2, 8, 128>(DecoderMaskedMultiHeadAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 1, 8, 256>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 1, 8, 256>(DecoderMaskedMultiHeadAttentionParams params);
 
 // fp32 + head size = 128
-template void __global__ masked_multihead_attention_kernel<float, 128, 4, 32, 64>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 128, 4, 32, 64>(DecoderMaskedMultiHeadAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<float, 128, 2, 32, 128>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 128, 2, 32, 128>(DecoderMaskedMultiHeadAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<float, 128, 1, 32, 256>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 128, 1, 32, 256>(DecoderMaskedMultiHeadAttentionParams params);
 
 // fp16 + head size = 128
-template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 4, 16, 64>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 4, 16, 64>(DecoderMaskedMultiHeadAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedSelfAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionParams params);
 
 }  // namespace cuda
 }  // namespace contrib
