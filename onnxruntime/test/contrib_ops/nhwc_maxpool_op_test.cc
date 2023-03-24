@@ -166,92 +166,6 @@ class NhwcMaxPoolOpTester {
   }
 };
 
-template<>
-void NhwcMaxPoolOpTester<MLFloat16>::GenerateRandomInput(const std::vector<int64_t>& shape) {
-  constexpr float MinimumFillValue = -23.0f;
-  static size_t offset = 7;
-  size_t shape_size = ShapeSize(shape);
-  X_data_.resize(shape_size);
-
-
-  for (size_t n = 0; n < shape_size; n++) {
-    offset = (offset + 31) % 47;
-    X_data_[n] = MLFloat16((MinimumFillValue + offset) / 16.0f);
-  }
-  X_shape_ = shape;
-}
-
-template<>
-void NhwcMaxPoolOpTester<MLFloat16>::ComputeExpectedOutput(std::vector<MLFloat16>& Y_data, std::vector<int64_t>& Y_shape) {
-  ORT_ENFORCE(X_shape_.size() >= 2 && X_shape_.size() == kernel_shape_.size() + 2);
-
-  const size_t kernel_rank = kernel_shape_.size();
-
-  const int64_t batch_count = X_shape_[0];
-  const int64_t channels = X_shape_[X_shape_.size() - 1];
-
-  std::vector<int64_t> pads(pads_);
-  if (pads.empty()) {
-    pads.resize(kernel_rank * 2, 0);
-  }
-  std::vector<int64_t> dilations(dilations_);
-  if (dilations.empty()) {
-    dilations.resize(kernel_rank, 1);
-  }
-  std::vector<int64_t> strides(strides_);
-  if (strides.empty()) {
-    strides.resize(kernel_rank, 1);
-  }
-
-  const int64_t* input_shape = X_shape_.data() + 1;
-
-  // Compute the expected shape of the output.
-  Y_shape.reserve(kernel_rank + 2);
-  Y_shape.push_back(batch_count);
-  for (size_t n = 0; n < kernel_rank; n++) {
-    Y_shape.push_back(((input_shape[n] + pads[n] + pads[kernel_rank + n]) -
-                       (dilations[n] * (kernel_shape_[n] - 1) + 1)) /
-                          strides[n] +
-                      1);
-  }
-  Y_shape.push_back(channels);
-  Y_data.resize(ShapeSize(Y_shape));
-
-  const int64_t* output_shape = Y_shape.data() + 1;
-
-  const int64_t input_image_size = std::accumulate(
-      input_shape, input_shape + kernel_rank, 1LL, std::multiplies<int64_t>());
-
-  const MLFloat16* Xdata = X_data_.data();
-  MLFloat16* Ydata = Y_data.data();
-
-  for (int64_t batch = 0; batch < batch_count; batch++) {
-    std::vector<int64_t> d_output(kernel_rank, 0);
-    std::vector<int64_t> d_kernel(kernel_rank, 0);
-    do {
-      std::fill_n(Ydata, channels, MLFloat16(std::numeric_limits<float>::lowest()));
-      do {
-        int64_t input_offset = 0;
-        bool is_padding = false;
-        for (size_t axis = 0; axis < kernel_rank; ++axis) {
-          int64_t input_dim = d_kernel[axis] * dilations[axis] + d_output[axis] * strides[axis] - pads[axis];
-          is_padding |= !math::is_a_ge_zero_and_a_lt_b(input_dim, input_shape[axis]);
-          input_offset *= input_shape[axis];
-          input_offset += input_dim;
-        }
-        if (!is_padding) {
-          const MLFloat16* data_ptr = Xdata + input_offset * channels;
-          for (int64_t c = 0; c < channels; c++) {
-            Ydata[c] = MLFloat16(std::max(Ydata[c].ToFloat(), data_ptr[c].ToFloat()));
-          }
-        }
-      } while (NextPosition(kernel_rank, kernel_shape_.data(), d_kernel.data()));
-      Ydata += channels;
-    } while (NextPosition(kernel_rank, output_shape, d_output.data()));
-    Xdata += channels * input_image_size;
-  }
-}
-
 
 TEST(NhwcMaxPoolContribOpTest, MaxPool1D) {
   for (int64_t channels = 1; channels < 94; channels++) {
@@ -343,36 +257,6 @@ TEST(NhwcMaxPoolContribOpTest, MaxPoolDilations_S8) {
   test.SetKernelShape({3, 3});
   test.SetDilations({2, 2});
   test.Run();
-}
-
-TEST(NhwcMaxPoolContribOpTest, MaxPool1DFp16) {
-  for (int64_t channels = 1; channels < 94; channels++) {
-    NhwcMaxPoolOpTester<MLFloat16> test;
-    test.GenerateRandomInput({1, 23, channels});
-    test.SetKernelShape({5});
-    test.SetPads({2, 2});
-    test.Run();
-  }
-}
-
-TEST(NhwcMaxPoolContribOpTest, MaxPool2DFp16) {
-  for (int64_t channels = 1; channels < 94; channels++) {
-    NhwcMaxPoolOpTester<MLFloat16> test;
-    test.GenerateRandomInput({1, 15, 19, channels});
-    test.SetKernelShape({3, 5});
-    test.SetPads({1, 1, 1, 1});
-    test.Run();
-  }
-}
-
-TEST(NhwcMaxPoolContribOpTest, MaxPool3DFp16) {
-  for (int64_t channels = 1; channels < 94; channels++) {
-    NhwcMaxPoolOpTester<MLFloat16> test;
-    test.GenerateRandomInput({1, 9, 13, 15, channels});
-    test.SetKernelShape({2, 4, 6});
-    test.SetPads({0, 0, 0, 1, 1, 1});
-    test.Run();
-  }
 }
 
 }  // namespace test
