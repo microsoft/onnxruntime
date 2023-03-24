@@ -14,3 +14,7 @@
 [submodule "cmake/external/onnxruntime-extensions"]
 	path = cmake/external/onnxruntime-extensions
 	url = https://github.com/microsoft/onnxruntime-extensions.git
+[submodule "cmake/external/flatbuffers"]
+	path = cmake/external/flatbuffers
+	url = https://github.com/google/flatbuffers
+	branch = v1.12.0
