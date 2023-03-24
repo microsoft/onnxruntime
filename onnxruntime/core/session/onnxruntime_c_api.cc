@@ -693,6 +693,7 @@ struct LiteCustomKernel {
   CustomComputeFn custom_compute_fn_;
 };
 
+
 struct LiteCustomOp : public OrtCustomOp {
   LiteCustomOp(const char* op_name,
                const char* execution_provider,
@@ -744,7 +745,7 @@ struct LiteCustomOp : public OrtCustomOp {
 
     OrtCustomOp::KernelDestroy = [](void* op_kernel) {
       if (op_kernel) {
-        delete op_kernel;
+        delete (LiteCustomKernel*)op_kernel;
       }
     };
 
@@ -803,9 +804,9 @@ ORT_API_STATUS_IMPL(OrtApis::LiteCustomOpResgiter,
   }
   InlinedVector<ONNXTensorElementDataType> output_types;
   std::va_list args;
-  va_start(args, custom_compute_fn);
+  va_start(args, num_outputs);
   for (size_t i = 0; i < num_outputs; ++i) {
-    output_types.push_back(va_arg(args, ONNXTensorElementDataType));
+    //output_types.push_back(va_arg(args, ONNXTensorElementDataType));
   }
   va_end(args);
   GetCustomOpPool().emplace_back(std::make_unique<LiteCustomOp>(op_name, execution_provider, custom_compute_fn, std::move(output_types)));

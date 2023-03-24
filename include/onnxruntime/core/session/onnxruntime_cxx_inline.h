@@ -840,8 +840,8 @@ struct OrtCustomOpT : public OrtCustomOp {
       auto self = reinterpret_cast<MyType*>(op_kernel);
       size_t num_inputs;
       Ort::ThrowOnError(GetApi().KernelContext_GetInputCount(context, &num_inputs));
-      auto t = self->MakeTuple<0, Args...>(context, num_inputs);
-      std::apply([self](Args const&... t_args) { self->compute_fn_(t_args...); }, t);
+      //auto t = self->MakeTuple<0, Args...>(context, num_inputs);
+      //std::apply([self](Args const&... t_args) { self->compute_fn_(t_args...); }, t);
     };
 
     OrtCustomOp::version = ORT_API_VERSION;
@@ -899,15 +899,15 @@ struct OrtCustomOpT : public OrtCustomOp {
 
   ////////////////////// parse context ///////////////////////
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 == sizeof...(Args), std::tuple<T>>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 == sizeof...(Ts), std::tuple<T>>::type
   MakeTuple(OrtKernelContext* context, size_t num_inputs) {
     tensors_.push_back(std::make_unique<Custom::OutputTensor<T>>(context, indice - num_inputs));
     return std::tuple<T>{reinterpret_cast<T>(*tensors_[indice])};
   }
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 < sizeof...(Args) && !std::is_same<T, void*>::value, std::tuple<T, Args...>>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 < sizeof...(Ts) && !std::is_same<T, void*>::value, std::tuple<T, Args...>>::type
   MakeTuple(OrtKernelContext* context, size_t num_inputs) {
     if (indice < num_inputs) {
       tensors_.push_back(std::make_unique<Custom::InputTensor<T>>(context, indice));
@@ -915,84 +915,84 @@ struct OrtCustomOpT : public OrtCustomOp {
       tensors_.push_back(std::make_unique<Custom::OutputTensor<T>>(context, indice - num_inputs));
     }
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*tensors_[indice])};
-    auto next = MakeTuple<indice + 1, Args...>(context, num_inputs);
+    auto next = MakeTuple<indice + 1, Ts...>(context, num_inputs);
     return std::tuple_cat(current, next);
   }
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 < sizeof...(Args) && std::is_same<T, void*>::value, std::tuple<T, Args...>>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 < sizeof...(Ts) && std::is_same<T, void*>::value, std::tuple<T, Args...>>::type
   MakeTuple(OrtKernelContext* context, size_t num_inputs) {
     std::tuple<T> current = std::tuple<void*>{custom_handle_};
-    auto next = MakeTuple<indice, Args...>(context, num_inputs);
+    auto next = MakeTuple<indice, Ts...>(context, num_inputs);
     return std::tuple_cat(current, next);
   }
 
   ////////////////////// parse input ///////////////////////
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 == sizeof...(Args)>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 == sizeof...(Ts)>::type
   ParseInputType() {
   }
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 < sizeof...(Args) && std::is_same<T, const Custom::InputTensor<float>&>::value>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 < sizeof...(Ts) && std::is_same<T, const Custom::InputTensor<float>&>::value>::type
   ParseInputType() {
     input_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-    ParseInputType<indice + 1, Args...>();
+    ParseInputType<indice + 1, Ts...>();
   }
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 < sizeof...(Args) && std::is_same<T, const Custom::InputTensor<int32_t>&>::value>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 < sizeof...(Ts) && std::is_same<T, const Custom::InputTensor<int32_t>&>::value>::type
   ParseInputType() {
     input_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
-    ParseInputType<indice + 1, Args...>();
+    ParseInputType<indice + 1, Ts...>();
   }
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 < sizeof...(Args) && std::is_same<T, void*>::value>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 < sizeof...(Ts) && std::is_same<T, void*>::value>::type
   ParseInputType() {
-    ParseInputType<indice + 1, Args...>();
+    ParseInputType<indice + 1, Ts...>();
   }
 
   ////////////////////// parse output ///////////////////////
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 == sizeof...(Args) && std::is_same<T, Custom::OutputTensor<float>&>::value>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 == sizeof...(Ts) && std::is_same<T, Custom::OutputTensor<float>&>::value>::type
   ParseOutputType() {
     output_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
   }
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 == sizeof...(Args) && std::is_same<T, Custom::OutputTensor<int32_t>&>::value>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 == sizeof...(Ts) && std::is_same<T, Custom::OutputTensor<int32_t>&>::value>::type
   ParseOutputType() {
     output_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
   }
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 == sizeof...(Args) &&
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 == sizeof...(Ts) &&
                           !std::is_same<T, Custom::OutputTensor<float>&>::value &&
                           !std::is_same<T, Custom::OutputTensor<int32_t>&>::value>::type
   ParseOutputType() {}
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 < sizeof...(Args) && std::is_same<T, Custom::OutputTensor<float>&>::value>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 < sizeof...(Ts) && std::is_same<T, Custom::OutputTensor<float>&>::value>::type
   ParseOutputType() {
     output_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-    ParseOutputType<indice + 1, Args...>();
+    ParseOutputType<indice + 1, Ts...>();
   }
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 < sizeof...(Args) && std::is_same<T, Custom::OutputTensor<int32_t>&>::value>::type
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 < sizeof...(Ts) && std::is_same<T, Custom::OutputTensor<int32_t>&>::value>::type
   ParseOutputType() {
     output_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
-    ParseOutputType<indice + 1, Args...>();
+    ParseOutputType<indice + 1, Ts...>();
   }
 
-  template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 < sizeof...(Args) &&
+  template <size_t indice, typename T, typename... Ts>
+  typename std::enable_if<0 < sizeof...(Ts) &&
                           !std::is_same<T, Custom::OutputTensor<float>&>::value &&
                           !std::is_same<T, Custom::OutputTensor<int32_t>&>::value>::type
   ParseOutputType() {
-    ParseOutputType<indice + 1, Args...>();
+    ParseOutputType<indice + 1, Ts...>();
   }
 
   const std::string op_name_;
@@ -1031,8 +1031,8 @@ struct OrtCustomOpT2 : public OrtCustomOp {
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
       auto self = reinterpret_cast<MyType*>(op_kernel);
-      auto t = self->CreateInputTuple<0, 0, Args...>(context);
-      std::apply([self](Args const&... t_args) { self->compute_fn_(t_args...); }, t);
+      //auto t = self->CreateInputTuple<0, 0, Args...>(context);
+      //std::apply([self](Args const&... t_args) { self->compute_fn_(t_args...); }, t);
     };
 
     OrtCustomOp::version = ORT_API_VERSION;

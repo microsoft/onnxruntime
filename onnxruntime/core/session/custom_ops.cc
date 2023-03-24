@@ -287,11 +287,12 @@ struct CustomOpKernel : OpKernel {
   using CustomComputeFn = void (*)(OrtKernelContext*, void*);
 
   CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info) {
+    /*
     if (op.custom_compute_fn_ && op.raw_fn_) {
       custom_compute_fn_ = op.custom_compute_fn_;
       raw_fn_ = op.raw_fn_;
       return;
-    }
+    }*/
     op_ = &op;
     if (op_->version > ORT_API_VERSION) {
       ORT_THROW("Unsupported version '" + std::to_string(op_->version) + "' in custom op '" + op_->GetName(op_));

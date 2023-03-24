@@ -102,7 +102,8 @@ struct OrtCustomOpT2 : public OrtCustomOp {
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
       auto self = reinterpret_cast<MyType*>(op_kernel);
-      auto t = self->CreateInputTuple<0, 0, Args...>(context);
+      //auto t = self->CreateInputTuple<0, 0, Args...>(context);
+      auto t = self->CreateInputTupleInvoker(context);
       std::apply([self](Args const&... t_args) { self->compute_fn_(t_args...); }, t);
     };
 
@@ -253,6 +254,10 @@ struct OrtCustomOpT2 : public OrtCustomOp {
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*tensors_.back())};
     auto next = CreateInputTuple<ith_input, ith_output + 1, Ts...>(context);
     return std::tuple_cat(current, next);
+  }
+
+  std::tuple<Args...> CreateInputTupleInvoker(OrtKernelContext* context) {
+    return CreateInputTuple<0,0,Args...>(context);
   }
 
   /////////////////////////////  parse args ///////////////////////////////

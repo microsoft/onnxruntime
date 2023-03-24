@@ -1,7 +1,15 @@
 #include "onnxruntime_cxx_api.h"
+
 #include <iostream>
+#include <iterator>
+
+#ifdef WIN32
 #define FUSION_FILTER L"..\\..\\fusion_filter_2.onnx"
 #define SIMPLE_CUSTOM_OP_LIB L"simple_custom_op.dll"
+#else
+#define FUSION_FILTER "..\\..\\fusion_filter_2.onnx"
+#define SIMPLE_CUSTOM_OP_LIB "simple_custom_op.dll"
+#endif
 
 void TestNew() {
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "CustomOpNew");
@@ -13,7 +21,12 @@ void TestNew() {
   session_options.RegisterCustomOpsLibrary(SIMPLE_CUSTOM_OP_LIB);
   session_options.SetLogSeverityLevel(0);
 
+ #ifdef WIN32
   const wchar_t* model_path = FUSION_FILTER;
+ #else
+  const char* model_path = FUSION_FILTER;
+ #endif
+
   Ort::Session session(env, model_path, session_options);
 
   const char* input_names[] = {"vector_1", "vector_2", "alpha", "indices"};
