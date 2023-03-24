@@ -80,6 +80,10 @@ class TestInferenceSession(unittest.TestCase):
             y = ref.run(None, {"X": x})[0]
             assert_allclose(y, expect)
             for prov in ["CPUExecutionProvider", "CUDAExecutionProvider"]:
+                if prov == "CUDAExecutionProvider" and to in [TensorProto.FLOAT8E4M3FNUZ, TensorProto.FLOAT8E5M2FNUZ]:
+                    # Float 8 types not supported by CUDA API.
+                    continue
+
                 print("prov1", prov, to)
                 if prov not in available_providers:
                     continue
