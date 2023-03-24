@@ -250,13 +250,13 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     model_group.set_defaults(past_present_share_buffer=False)
 
     model_group.add_argument(
-        "--use_decoder_masked_multihead_attention",
+        "--use_decoder_masked_self_attention",
         required=False,
         action="store_true",
-        help="Uses `DecoderMaskedMultiheadAttention` to optimize the unidirectional decoding Attention computation. "
+        help="Uses `DecoderMaskedSelfAttention` to optimize the unidirectional decoding Attention computation. "
         "Must be used with `past_present_share_buffer`. Currently, only Attention head sizes of 64 and 128 are supported.",
     )
-    model_group.set_defaults(use_decoder_masked_multihead_attention=False)
+    model_group.set_defaults(use_decoder_masked_self_attention=False)
 
     model_group.add_argument(
         "--prefix_vocab_mask",
@@ -1074,15 +1074,15 @@ def update_decoder_subgraph_past_present_share_buffer(subg: GraphProto):
     return subg
 
 
-def update_decoder_subgraph_use_decoder_masked_multihead_attention(
+def update_decoder_subgraph_use_decoder_masked_self_attention(
     subg: GraphProto, is_beam_search: bool, switch_attention: bool
 ) -> bool:
-    """Update the Attention nodes to DecoderMaskedMultiheadAttention.
+    """Update the Attention nodes to DecoderMaskedSelfAttention.
 
     Args:
         subg (GraphProto): GraphProto of the decoder subgraph
         is_beam_search (bool): Boolean specifying if the sampling algo is BeamSearch
-        switch_attention (bool): Boolean specifying if `Attention` is to be switched with `DecoderMaskedMultiheadAttention`
+        switch_attention (bool): Boolean specifying if `Attention` is to be switched with `DecoderMaskedSelfAttention`
     """
     if is_beam_search:
         new_inputs = []
@@ -1106,6 +1106,7 @@ def update_decoder_subgraph_use_decoder_masked_multihead_attention(
             "past_present_share_buffer",
             "num_heads",
             "scale",
+            "mask_filter_value",
             "domain",
         ]
 
@@ -1126,7 +1127,7 @@ def update_decoder_subgraph_use_decoder_masked_multihead_attention(
                         # decoding attention kernels are unidirectional by definition.
                         if k != "unidirectional":
                             logger.warning(
-                                f"Removing attribute: {k} from Attention node while switching to DecoderMaskedMultiheadAttention"
+                                f"Removing attribute: {k} from Attention node while switching to DecoderMaskedSelfAttention"
                             )
 
                         del kwargs[k]
@@ -1143,9 +1144,7 @@ def update_decoder_subgraph_use_decoder_masked_multihead_attention(
                     if len(nis) < 9:
                         nis.extend(["cache_indirection"])
 
-                node = onnx.helper.make_node(
-                    "DecoderMaskedMultiheadAttention", nis, node.output, name=node.name, **kwargs
-                )
+                node = onnx.helper.make_node("DecoderMaskedSelfAttention", nis, node.output, name=node.name, **kwargs)
             new_nodes.extend([node])
         subg.ClearField("node")
         subg.node.extend(new_nodes)
@@ -1510,27 +1509,25 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             raise NotImplementedError("output_token_scores currently is not supported in greedy search/sampling")
 
     # For BeamSearch, sharing buffers for past and present states is only supported
-    # when using `use_decoder_masked_multihead_attention`
-    if past_present_share_buffer and is_beamsearch and not args.use_decoder_masked_multihead_attention:
+    # when using `use_decoder_masked_self_attention`
+    if past_present_share_buffer and is_beamsearch and not args.use_decoder_masked_self_attention:
         raise ValueError(
-            "`use_decoder_masked_multihead_attention` MUST be turned on to use `past_present_share_buffer` in case of BeamSearch"
+            "`use_decoder_masked_self_attention` MUST be turned on to use `past_present_share_buffer` in case of BeamSearch"
         )
 
     # For any kind of sampling, using decoder masked multihead attention is only supported
     # when using `past_present_share_buffer`
-    if args.use_decoder_masked_multihead_attention and not past_present_share_buffer:
-        raise ValueError(
-            "`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_multihead_attention`"
-        )
+    if args.use_decoder_masked_self_attention and not past_present_share_buffer:
+        raise ValueError("`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_self_attention`")
 
     # For any kind of sampling, using decoder masked multihead attention is only supported
     # on GPUs
-    if args.use_decoder_masked_multihead_attention and not args.use_gpu:
-        raise ValueError("`use_decoder_masked_multihead_attention` option is only supported on GPUs")
+    if args.use_decoder_masked_self_attention and not args.use_gpu:
+        raise ValueError("`use_decoder_masked_self_attention` option is only supported on GPUs")
 
     # Using decoder masked multihead attention is only supported for GPT2
-    if args.use_decoder_masked_multihead_attention and args.model_type in ["t5", "mt5"]:
-        raise ValueError("`use_decoder_masked_multihead_attention` option is only supported for GPT2")
+    if args.use_decoder_masked_self_attention and args.model_type in ["t5", "mt5"]:
+        raise ValueError("`use_decoder_masked_self_attention` option is only supported for GPT2")
 
     if is_gpt2:
         if args.decoder_onnx and os.path.exists(args.decoder_onnx):
@@ -1820,17 +1817,17 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 logger.info("*****update init decoder subgraph to make past and present share buffer******************")
                 update_decoder_subgraph_past_present_share_buffer(gpt2_init_decoder_model.graph)
 
-            # Update init decoder subgraph in preparation to use DecoderMaskedMultiheadAttention
-            # NOTE: Even if we will not use DecoderMaskedMultiheadAttention in the init decoder subgraph
+            # Update init decoder subgraph in preparation to use DecoderMaskedSelfAttention
+            # NOTE: Even if we will not use DecoderMaskedSelfAttention in the init decoder subgraph
             # it makes the runtime changes cleaner if we keep both the init decoder and decoder subgraphs
             # same in terms of the subgraph inputs.
             if (
-                args.use_decoder_masked_multihead_attention
-                and not update_decoder_subgraph_use_decoder_masked_multihead_attention(
+                args.use_decoder_masked_self_attention
+                and not update_decoder_subgraph_use_decoder_masked_self_attention(
                     gpt2_init_decoder_model.graph, is_beamsearch, False
                 )
             ):
-                raise ValueError("Could not update the init decoder subgraph to use DecoderMaskedMultiheadAttention")
+                raise ValueError("Could not update the init decoder subgraph to use DecoderMaskedSelfAttention")
 
             node.attribute.append(onnx.helper.make_attribute("init_decoder", gpt2_init_decoder_model.graph))
         else:
@@ -1843,14 +1840,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             logger.info("*****update decoder subgraph to make past and present share buffer******************")
             update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
 
-        # Update decoder subgraph in preparation to use DecoderMaskedMultiheadAttention
-        if (
-            args.use_decoder_masked_multihead_attention
-            and not update_decoder_subgraph_use_decoder_masked_multihead_attention(
-                decoder_model.graph, is_beamsearch, True
-            )
+        # Update decoder subgraph in preparation to use DecoderMaskedSelfAttention
+        if args.use_decoder_masked_self_attention and not update_decoder_subgraph_use_decoder_masked_self_attention(
+            decoder_model.graph, is_beamsearch, True
         ):
-            raise ValueError("Could not update the decoder subgraph to use DecoderMaskedMultiheadAttention")
+            raise ValueError("Could not update the decoder subgraph to use DecoderMaskedSelfAttention")
 
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 

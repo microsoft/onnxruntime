@@ -49,9 +49,9 @@ class BeamSearchGpt : public BeamSearchBase<T> {
         update_feeds_func_(update_feeds_func),
         cuda_device_prop_(cuda_device_prop),
         cuda_device_arch_(cuda_device_arch) {
-    if (gpt_subgraph_.has_decoder_masked_multihead_attention_) {
+    if (gpt_subgraph_.has_decoder_masked_self_attention_) {
       ORT_ENFORCE(cuda_device_arch_ >= 530,
-                  "Decoder masked multihead attention can only be used on "
+                  "Decoder masked self attention can only be used on "
                   "GPU cards of compute capability 5.3 or higher. "
                   "This card has compute capability ",
                   cuda_device_arch_);
@@ -69,7 +69,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
                             OrtValue& expanded_input_ids,
                             std::vector<OrtValue>& feeds,
                             IAllocatorUniquePtr<char>& buffer,
-                            bool add_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+                            bool add_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
   // Update the input for next iteration.
   Status UpdateFeeds(
@@ -83,7 +83,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
       gsl::span<const int32_t> beam_indices_gpu,
       int past_sequence_length,
       int input_sequence_len,
-      bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+      bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
   const SessionState* init_run_decoder_session_state_ = nullptr;
   GptSubgraph* init_run_gpt_subgraph_ = nullptr;
@@ -105,7 +105,7 @@ Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths
                                             OrtValue& expanded_input_ids,
                                             std::vector<OrtValue>& feeds,
                                             IAllocatorUniquePtr<char>& buffer,
-                                            bool add_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
+                                            bool add_beam_search_specific_inputs_for_decoder_masked_self_attention) {
   const OrtValue* input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
   const OrtValue* attn_mask_value = this->context_.GetInputOrtValue(9);
@@ -124,7 +124,7 @@ Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths
                                                       buffer,
                                                       this->ort_stream_,
                                                       this->parameters_->max_length,
-                                                      add_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+                                                      add_beam_search_specific_inputs_for_decoder_masked_self_attention);
   }
 
   return gpt_subgraph_.CreateInitialFeeds(input_ids,
@@ -140,7 +140,7 @@ Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths
                                           buffer,
                                           this->ort_stream_,
                                           this->parameters_->max_length,
-                                          add_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+                                          add_beam_search_specific_inputs_for_decoder_masked_self_attention);
 }
 
 template <typename T>
@@ -155,7 +155,7 @@ Status BeamSearchGpt<T>::UpdateFeeds(
     gsl::span<const int32_t> beam_indices_gpu,
     int past_sequence_length,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
   return update_feeds_func_(this->temp_space_allocator_,
                             this->ort_stream_,
                             last_outputs,
@@ -172,7 +172,7 @@ Status BeamSearchGpt<T>::UpdateFeeds(
                             gpt_subgraph_.past_present_share_buffer_,
                             past_sequence_length,
                             input_sequence_len,
-                            has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+                            has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 }
 
 template <typename T>
@@ -227,7 +227,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   IAllocatorUniquePtr<char> buffer;
   OrtValue expanded_input_ids_in_cpu;
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(cpu_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer,
-                                         gpt_subgraph_.has_decoder_masked_multihead_attention_));
+                                         gpt_subgraph_.has_decoder_masked_self_attention_));
 
   if (gpt_subgraph_.past_present_share_buffer_) {  // Reuse past and present
     fetches.reserve(static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex()) + gpt_subgraph_.num_layers);
@@ -253,7 +253,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                   parameters->max_length,
                   parameters->num_heads,
                   parameters->head_size,
-                  gpt_subgraph_.has_decoder_masked_multihead_attention_,
+                  gpt_subgraph_.has_decoder_masked_self_attention_,
                   parameters->output_scores,
                   use_position);
 
@@ -350,8 +350,8 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     ++current_length;
 
     // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
-    // contains DecoderMaskedMultiheadAttention nodes
-    if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_multihead_attention_) {
+    // contains DecoderMaskedSelfAttention nodes
+    if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_self_attention_) {
       size_t offset = static_cast<size_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
       // We will use the same staging buffer while transposing all the layers' past state
       // and this is okay because we use the same stream to do the staging copy and the transpose
@@ -376,12 +376,12 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       position_ids, increase_position,
                                       ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                       ReinterpretAsSpan<const int32_t>(beam_indices),
-                                      gpt_subgraph_.has_decoder_masked_multihead_attention_
+                                      gpt_subgraph_.has_decoder_masked_self_attention_
                                           ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
                                           : place_holder,
                                       current_length - 1,
                                       parameters->sequence_length,
-                                      gpt_subgraph_.has_decoder_masked_multihead_attention_));
+                                      gpt_subgraph_.has_decoder_masked_self_attention_));
     }
 
     if (gpt_subgraph_.past_present_share_buffer_) {

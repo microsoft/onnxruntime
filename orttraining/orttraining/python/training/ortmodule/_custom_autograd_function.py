@@ -44,7 +44,7 @@ def enable_custom_autograd_support(to_enable=True):
     )
     from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
 
-    from ._custom_autograd_function_exporter import _clear_nontensor_object_references, _export
+    from ._custom_autograd_function_exporter import _export
 
     if to_enable is True and custom_autograd_function_enabler.state is False:
         if custom_autograd_function_enabler.already_enabled is False:
@@ -59,8 +59,6 @@ def enable_custom_autograd_support(to_enable=True):
             # Clear all gradient functions, to avoid a deadlock issue.
             # Check the called function for more detailed comments.
             atexit.register(torch_interop_utils.clear_all_grad_fns)
-            # Clear all non-tensor object reference (for example, ProcessGroup passed to PythonOp).
-            atexit.register(_clear_nontensor_object_references)
 
         try:
             # This is for the latest Pytorch nightly after this commit:
