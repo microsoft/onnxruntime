@@ -150,7 +150,7 @@ GetQDQTestCaseFn BuildQDQInstanceNormTestCase(const std::vector<int64_t>& input_
 template <typename QuantType>
 GetQDQTestCaseFn BuildQDQReduceOpTestCase(const std::string& reduce_op_type, const std::vector<int64_t>& input_shape,
                                           bool axes_as_input, std::vector<int64_t> axes, bool keepdims,
-                                          bool noop_with_empty_axes, const std::string& domain) {
+                                          bool noop_with_empty_axes, const std::string& domain = "") {
   return [reduce_op_type, input_shape, axes_as_input, axes, keepdims,
           noop_with_empty_axes, domain](ModelTestBuilder& builder) {
     using QuantTypeLimits = std::numeric_limits<QuantType>;

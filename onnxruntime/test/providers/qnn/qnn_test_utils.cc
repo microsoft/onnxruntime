@@ -35,6 +35,22 @@ void RunModelTest(const GetQDQTestCaseFn& build_test_case, const char* test_desc
                             helper.feeds_, params);
 }
 
+void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
+                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
+                     const char* test_description) {
+
+  std::function<void(const Graph&)> graph_verify = [num_nodes_in_ep, test_description](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), num_nodes_in_ep) << test_description;
+  };
+
+  EPVerificationParams verification_params;
+  verification_params.ep_node_assignment = expected_ep_assignment;
+  verification_params.graph_verifier = &graph_verify;
+  const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}};
+
+  RunModelTest(build_test_case, test_description, provider_options, verification_params, domain_to_version);
+}
+
 // Mock IKernelLookup class passed to QNN EP's GetCapability() function in order to
 // determine if the HTP backend is supported on specific platforms (e.g., Windows ARM64).
 // TODO: Remove once HTP can be emulated on Windows ARM64.

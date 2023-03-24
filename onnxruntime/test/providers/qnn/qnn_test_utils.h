@@ -16,12 +16,29 @@
 namespace onnxruntime {
 namespace test {
 
+using GetTestModelFn = std::function<void(ModelTestBuilder& builder)>;
+
 // Testing helper function that runs a caller-provided QDQ graph (build_test_case) to allow the caller to
 // 1) test which nodes are assigned to an EP, and 2) check that the inference output matches with the CPU EP.
-void RunModelTest(const GetQDQTestCaseFn& build_test_case, const char* test_description,
+void RunModelTest(const GetTestModelFn& build_test_case, const char* test_description,
                   const ProviderOptions& provider_options,
                   const EPVerificationParams& params = EPVerificationParams(),
                   const std::unordered_map<std::string, int>& domain_to_version = {});
+
+/**
+ * Runs a test model on the QNN EP. Checks the graph node assignment, and that inference
+ * outputs for QNN and CPU match.
+ *
+ * \param build_test_case Function that builds a test model. See test/optimizer/qdq_test_utils.h
+ * \param provider_options Provider options for QNN EP.
+ * \param opset_version The opset version.
+ * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
+ * \param num_modes_in_ep The expected number of nodes assigned to QNN EP's partition.
+ * \param test_description Description of the test for error reporting.
+ */
+void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
+                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
+                     const char* test_description);
 
 enum HTPSupport {
   HTP_SUPPORT_UNKNOWN = 0,

@@ -30,12 +30,12 @@ namespace test {
  * \return A function that builds the graph with the provided builder.
  */
 template <typename DataType>
-static GetQDQTestCaseFn BuildReduceOpTestCase(const std::string& reduce_op_type,
-                                              const std::vector<int64_t>& input_shape,
-                                              bool axes_as_input, std::vector<int64_t> axes, bool keepdims,
-                                              bool noop_with_empty_axes, const std::string& domain) {
+static GetTestModelFn BuildReduceOpTestCase(const std::string& reduce_op_type,
+                                            const std::vector<int64_t>& input_shape,
+                                            bool axes_as_input, std::vector<int64_t> axes, bool keepdims,
+                                            bool noop_with_empty_axes) {
   return [reduce_op_type, input_shape, axes_as_input, axes, keepdims,
-          noop_with_empty_axes, domain](ModelTestBuilder& builder) {
+          noop_with_empty_axes](ModelTestBuilder& builder) {
     std::vector<NodeArg*> input_args;
 
     // Input data arg
@@ -48,7 +48,7 @@ static GetQDQTestCaseFn BuildReduceOpTestCase(const std::string& reduce_op_type,
     }
 
     auto* reduce_sum_output = builder.MakeOutput();
-    Node& reduce_sum_node = builder.AddNode(reduce_op_type, input_args, {reduce_sum_output}, domain);
+    Node& reduce_sum_node = builder.AddNode(reduce_op_type, input_args, {reduce_sum_output});
     reduce_sum_node.AddAttribute("keepdims", static_cast<int64_t>(keepdims));
 
     // Older opsets have "axes" as a node attribute.
@@ -58,6 +58,41 @@ static GetQDQTestCaseFn BuildReduceOpTestCase(const std::string& reduce_op_type,
       reduce_sum_node.AddAttribute("noop_with_empty_axes", static_cast<int64_t>(noop_with_empty_axes));
     }
   };
+}
+
+/**
+ * Runs a ReduceOp model on the QNN CPU backend. Checks the graph node assignment, and that inference
+ * outputs for QNN and CPU match.
+ *
+ * \param op_type The ReduceOp type (e.g., ReduceSum).
+ * \param opset The opset version. Some opset versions have "axes" as an attribute or input.
+ * \param test_description Description of the test for error reporting.
+ * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
+ * \param keepdims Common attribute for all reduce operations.
+ */
+template <typename DataType>
+static void RunReduceOpCpuTest(const std::string& op_type, int opset, const char* test_description,
+                               ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
+                               bool keepdims = true) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnCpu.dll";
+#else
+  provider_options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  constexpr int expected_nodes_in_partition = 1;
+  RunQnnModelTest(BuildReduceOpTestCase<DataType>(op_type,
+                                                  {2, 2},  // input shape
+                                                  ReduceOpHasAxesInput(op_type, opset),
+                                                  {0, 1},  // axes
+                                                  keepdims,
+                                                  false),  // noop_with_empty_axes
+                  provider_options,
+                  opset,
+                  expected_ep_assignment,
+                  expected_nodes_in_partition,
+                  test_description);
 }
 
 //
@@ -70,27 +105,7 @@ static GetQDQTestCaseFn BuildReduceOpTestCase(const std::string& reduce_op_type,
 // - The input and output data type is int32.
 // - Uses opset 13, which has "axes" as an input.
 TEST(QnnCPUBackendTests, TestInt32ReduceSumOpset13) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 13;
-  const std::string op_type = "ReduceSum";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<int32_t>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                              {0, 1}, true, false, domain),
-               "qnn_int32_reduce_sum_opset13",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<int32_t>("ReduceSum", 13, "TestInt32ReduceSumOpset13");
 }
 
 // Test creates a graph with a ReduceSum node, and checks that all
@@ -99,27 +114,7 @@ TEST(QnnCPUBackendTests, TestInt32ReduceSumOpset13) {
 // - The input and output data type is int32.
 // - Uses opset 11, which has "axes" as an attribute.
 TEST(QnnCPUBackendTests, TestInt32ReduceSumOpset11) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 11;
-  const std::string op_type = "ReduceSum";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<int32_t>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                              {0, 1}, true, false, domain),
-               "qnn_int32_reduce_sum_opset11",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<int32_t>("ReduceSum", 11, "TestInt32ReduceSumOpset11");
 }
 
 // Test creates a graph with a ReduceSum node, and checks that all
@@ -128,27 +123,7 @@ TEST(QnnCPUBackendTests, TestInt32ReduceSumOpset11) {
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an input.
 TEST(QnnCPUBackendTests, TestFloatReduceSumOpset13) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 13;
-  const std::string op_type = "ReduceSum";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<float>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                            {0, 1}, true, false, domain),
-               "qnn_float_reduce_sum_opset13",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<float>("ReduceSum", 13, "TestFloatReduceSumOpset13");
 }
 
 // Test creates a graph with a ReduceSum node, and checks that all
@@ -157,27 +132,7 @@ TEST(QnnCPUBackendTests, TestFloatReduceSumOpset13) {
 // - The input and output data type is float.
 // - Uses opset 11, which has "axes" as an attribute.
 TEST(QnnCPUBackendTests, TestFloatReduceSumOpset11) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 11;
-  const std::string op_type = "ReduceSum";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<float>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                            {0, 1}, true, false, domain),
-               "qnn_float_reduce_sum_opset11",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<float>("ReduceSum", 11, "TestFloatReduceSumOpset11");
 }
 
 //
@@ -190,27 +145,7 @@ TEST(QnnCPUBackendTests, TestFloatReduceSumOpset11) {
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
 TEST(QnnCPUBackendTests, TestReduceProdOpset18) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 18;
-  const std::string op_type = "ReduceProd";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<float>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                            {0, 1}, true, false, domain),
-               "qnn_float_reduce_prod_opset18",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<float>("ReduceProd", 18, "TestReduceProdOpset18");
 }
 
 // Test creates a graph with a ReduceProd node, and checks that all
@@ -219,27 +154,7 @@ TEST(QnnCPUBackendTests, TestReduceProdOpset18) {
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST(QnnCPUBackendTests, TestReduceProdOpset13) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 13;
-  const std::string op_type = "ReduceProd";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<float>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                            {0, 1}, true, false, domain),
-               "qnn_float_reduce_prod_opset13",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<float>("ReduceProd", 13, "TestReduceProdOpset13");
 }
 
 //
@@ -252,27 +167,7 @@ TEST(QnnCPUBackendTests, TestReduceProdOpset13) {
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
 TEST(QnnCPUBackendTests, TestReduceMaxOpset18) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 18;
-  const std::string op_type = "ReduceMax";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<float>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                            {0, 1}, true, false, domain),
-               "qnn_float_reduce_max_opset18",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<float>("ReduceMax", 18, "TestReduceMaxOpset18");
 }
 
 // Test creates a graph with a ReduceMax node, and checks that all
@@ -281,27 +176,7 @@ TEST(QnnCPUBackendTests, TestReduceMaxOpset18) {
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST(QnnCPUBackendTests, TestReduceMaxOpset13) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 13;
-  const std::string op_type = "ReduceMax";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<float>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                            {0, 1}, true, false, domain),
-               "qnn_float_reduce_max_opset13",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<float>("ReduceMax", 13, "TestReduceMaxOpset13");
 }
 
 //
@@ -314,27 +189,7 @@ TEST(QnnCPUBackendTests, TestReduceMaxOpset13) {
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
 TEST(QnnCPUBackendTests, TestReduceMinOpset18) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 18;
-  const std::string op_type = "ReduceMin";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<float>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                            {0, 1}, true, false, domain),
-               "qnn_float_reduce_min_opset18",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<float>("ReduceMin", 18, "TestReduceMinOpset18");
 }
 
 // Test creates a graph with a ReduceMin node, and checks that all
@@ -343,27 +198,7 @@ TEST(QnnCPUBackendTests, TestReduceMinOpset18) {
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST(QnnCPUBackendTests, TestReduceMinOpset13) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 13;
-  const std::string op_type = "ReduceMin";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<float>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                            {0, 1}, true, false, domain),
-               "qnn_float_reduce_min_opset13",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<float>("ReduceMin", 13, "TestReduceMinOpset18");
 }
 
 
@@ -377,27 +212,7 @@ TEST(QnnCPUBackendTests, TestReduceMinOpset13) {
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
 TEST(QnnCPUBackendTests, TestReduceMeanOpset18) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 18;
-  const std::string op_type = "ReduceMean";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<float>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                            {0, 1}, true, false, domain),
-               "qnn_float_reduce_mean_opset18",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<float>("ReduceMean", 18, "TestReduceMeanOpset18");
 }
 
 // Test creates a graph with a ReduceMean node, and checks that all
@@ -406,27 +221,7 @@ TEST(QnnCPUBackendTests, TestReduceMeanOpset18) {
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST(QnnCPUBackendTests, TestReduceMeanOpset13) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-
-  const std::string domain = "";
-  const int opset = 13;
-  const std::string op_type = "ReduceMean";
-
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  const std::unordered_map<std::string, int> domain_to_version = {{domain, opset}};
-
-  RunModelTest(BuildReduceOpTestCase<float>(op_type, {2, 2}, ReduceOpHasAxesInput(op_type, opset),
-                                            {0, 1}, true, false, domain),
-               "qnn_float_reduce_mean_opset13",
-               provider_options,
-               verification_params,
-               domain_to_version);
+  RunReduceOpCpuTest<float>("ReduceMean", 13, "TestReduceMeanOpset13");
 }
 
 }  // namespace test
