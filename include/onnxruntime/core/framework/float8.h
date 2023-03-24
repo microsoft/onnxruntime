@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <iostream>
+
 #include "endian.h"
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 #include "cuda_fp8.h"
