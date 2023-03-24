@@ -79,22 +79,21 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Lo
   const auto& input_1 = *node.InputDefs()[0];
   const auto& input_2 = *node.InputDefs()[1];
   // Pow we only support both inputs as fp32 for now
-  if (node.OpType() == "Pow") {
-    int32_t input_type_1;
-    if (!GetType(input_1, input_type_1, logger))
-      return false;
+  int32_t input_type_1;
+  if (!GetType(input_1, input_type_1, logger))
+    return false;
 
-    int32_t input_type_2;
-    if (!GetType(input_2, input_type_2, logger))
-      return false;
+  int32_t input_type_2;
+  if (!GetType(input_2, input_type_2, logger))
+    return false;
 
-    if (input_type_1 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT || input_type_1 != input_type_2) {
-      LOGS(logger, VERBOSE) << "Pow only supports fp32 inputs, actual input type"
-                            << ", Input type 1: " << input_type_1
-                            << ", Input type 2: " << input_type_2;
-      return false;
-    }
+  if (input_type_1 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT || input_type_1 != input_type_2) {
+    LOGS(logger, VERBOSE) << "Pow only supports fp32 inputs, actual input type"
+                          << ", Input type 1: " << input_type_1
+                          << ", Input type 2: " << input_type_2;
+    return false;
   }
+
   return true;
 }
 
