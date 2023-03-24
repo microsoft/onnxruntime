@@ -127,7 +127,7 @@ def run_model(
     return 0, feeds, num_iters > 0 and outputs
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Simple ONNX Runtime Test Tool.")
     parser.add_argument("model_path", help="model path")
     parser.add_argument(
@@ -155,3 +155,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     exit_code, _, _ = run_model(args.model_path, args.num_iters, args.debug, args.profile, args.symbolic_dims)
     sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()
