@@ -473,7 +473,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       } else if (key == "rpc_control_latency") {
         qnn_options[key] = value;
       } else {
-        ORT_THROW(R"(Wrong key type entered. Choose from options: 
+        ORT_THROW(R"(Wrong key type entered. Choose from options:
 ['backend_path', 'profiling_level', 'rpc_control_latency'])");
       }
     }
@@ -546,16 +546,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         nnapi_flags |= NNAPI_FLAG_USE_NCHW;
       } else if (key == "NNAPI_FLAG_CPU_DISABLED") {
         nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
-      } else if (key == "NNAPI_FLAG_CPU_DISABLED_SOFT") {
-        nnapi_flags |= NNAPI_FLAG_CPU_DISABLED_SOFT;
       } else if (key == "NNAPI_FLAG_CPU_ONLY") {
         nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
       } else if (key.empty()) {
       } else {
         ORT_THROW(
             "[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options that are available for NNAPI. "
-            "['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED',"
-            " 'NNAPI_FLAG_CPU_DISABLED_SOFT', 'NNAPI_FLAG_CPU_ONLY'] \n");
+            "['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
       }
     }
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));

@@ -543,9 +543,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
     bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
                                          [](bool is_supported) { return is_supported; });
-    // To allow fallback to CPU if it's not strict CPU_DISABLED mode
     if (!all_ops_supported) {
-      if (target_device_option_ != TargetDeviceOption::CPU_DISABLED_SOFT) {
       // There are some ops not supported by the list of the target devices
       // Fail the Compile
       //
@@ -555,7 +553,6 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "The model cannot run using the current set of target devices, ",
                                GetDevicesDescription(nnapi_target_devices_));
-      }
     } else if (target_device_option_ != TargetDeviceOption::ALL_DEVICES) {
       // Workaround bugs in NNAPI drives on some phones
       // where ops are passed checking by 'ANeuralNetworksModel_getSupportedOperationsForDevices'

@@ -45,19 +45,9 @@ enum NNAPIFlags {
   // and NNAPI_FLAG_CPU_ONLY flags are set
   NNAPI_FLAG_CPU_ONLY = 0x008,
 
-  // DISABLE_CPU may bring perf improvement, but may also make it failed in initialization.
-  // Given that, nnapi-reference is only a reference implementation for correctness verification
-  // and not optimized for mobile devices. It's nature to run as more ops as possible on the other devices.
-  // However, we can prove if a op can run on nnapi-accelerated device at early stage if we don't compile it.
-  // A workaround is to use a soft disabling flag, which will try to disable CPU first, and if it fails, fallback to CPU again.
-  // Hence, the benefit, when compared to CPU_DISABLED, is that
-  // we have a chance to fallback and run the model on nnapi-reference instead of fail directly.
-  // Note: If a op passed compatibility check but failed at compile time, it will still fail.
-  NNAPI_FLAG_CPU_DISABLED_SOFT = 0x010,
-
   // Keep NNAPI_FLAG_LAST at the end of the enum definition
   // And assign the last NNAPIFlag to it
-  NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_DISABLED_SOFT,
+  NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_ONLY,
 };
 
 #ifdef __cplusplus
