@@ -61,7 +61,6 @@ public:
         TensorDesc gammaBetaTensorDesc = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), inputShape, gammaBetaStrides);
         const DML_TENSOR_DESC gammaBetaDmlTensorDesc = gammaBetaTensorDesc.GetDmlDesc();
 
-        // Transpose the output to the format expected by ORT
         const std::array<uint32_t, 4> outputShape = {batch, channelsPerGroup, height * width, groups};
         const std::array<uint32_t, 4> outputStrides = {channelsPerGroup * height * width * groups, 1, channelsPerGroup * groups, channelsPerGroup};
         TensorDesc outputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), outputShape, outputStrides);
