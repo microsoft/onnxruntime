@@ -11,6 +11,7 @@ from numpy.testing import assert_allclose
 from onnx import TensorProto
 from onnx.checker import check_model
 from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+from onnx.reference import ReferenceEvaluator
 
 import onnxruntime
 
@@ -75,7 +76,11 @@ class TestInferenceSession(unittest.TestCase):
 
         for to, expect in expected.items():
             onnx_model = self.model_cast_cast(to)
+            ref = ReferenceEvaluator(onnx_model)
+            y = ref.run(None, {"X": x})[0]
+            assert_allclose(y, expect)
             for prov in ["CPUExecutionProvider", "CUDAExecutionProvider"]:
+                print("prov")
                 if prov not in available_providers:
                     continue
                 with self.subTest(provider=prov, to=to):
