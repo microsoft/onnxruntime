@@ -92,12 +92,12 @@ set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
 
-#flatbuffers 1.11.0 does not have flatbuffers::IsOutRange, therefore we require 1.12.0+
-FetchContent_Declare(
-    flatbuffers
-    URL ${DEP_URL_flatbuffers}
-    URL_HASH SHA1=${DEP_SHA1_flatbuffers}
-    FIND_PACKAGE_ARGS 1.12.0...<2.0.0 NAMES Flatbuffers
+# Add FlatBuffers directly to our build. This defines the `flatbuffers` target.
+set(FLATBUFFERS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/flatbuffers")
+add_subdirectory(
+  ${FLATBUFFERS_SRC_DIR}
+  ${CMAKE_CURRENT_BINARY_DIR}/flatbuffers-build
+  EXCLUDE_FROM_ALL
 )
 
 #Here we support two build mode:
@@ -265,7 +265,7 @@ FetchContent_Declare(
 )
 
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
-onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL flatbuffers)
+onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL)
 if(NOT flatbuffers_FOUND)
   if(NOT TARGET flatbuffers::flatbuffers)
     add_library(flatbuffers::flatbuffers ALIAS flatbuffers)
