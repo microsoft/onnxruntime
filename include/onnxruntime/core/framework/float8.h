@@ -41,19 +41,19 @@ struct Float8E4M3FN {
     #if defined(CUDA_VERSION)
 
     #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-    #error CUDA Wrong PATH 900.
+    #error "CUDA Wrong PATH 800."
     #endif
 
     #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
-    #error CUDA Wrong PATH 700.
+    #error "CUDA Wrong PATH 700."
     #endif
 
     #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600
-    #error CUDA Wrong PATH 600.
+    #error "CUDA Wrong PATH 600."
     #endif
 
     #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 500
-    #error CUDA Wrong PATH 500.
+    #error "CUDA Wrong PATH 500."
     #endif
 
     #endif
