@@ -20,6 +20,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
+  * <a href="#com.microsoft.DecoderMaskedSelfAttention">com.microsoft.DecoderMaskedSelfAttention</a>
   * <a href="#com.microsoft.DequantizeBFP">com.microsoft.DequantizeBFP</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
   * <a href="#com.microsoft.DequantizeWithOrder">com.microsoft.DequantizeWithOrder</a>
@@ -50,6 +51,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
   * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
+  * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
@@ -143,17 +145,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (3 - 7)
+#### Inputs (2 - 7)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
 <dd>Input tensor with shape (batch_size, sequence_length, input_hidden_size)</dd>
 <dt><tt>weights</tt> : T</dt>
 <dd>Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)</dd>
-<dt><tt>bias</tt> : T</dt>
+<dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
-<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size)</dd>
+<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size) or (3 * batch_size + 2)</dd>
 <dt><tt>past</tt> (optional) : T</dt>
 <dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)When past_present_share_buffer is set, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>relative_position_bias</tt> (optional) : T</dt>
@@ -1097,6 +1099,82 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float and float16 tensors.</dd>
 <dt><tt>B</tt> : tensor(bool)</dt>
 <dd>Constrain key_padding_mask to bool tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.DecoderMaskedSelfAttention"></a><a name="com.microsoft.decodermaskedselfattention">**com.microsoft.DecoderMaskedSelfAttention**</a>
+
+  Self attention that supports input sequence length of 1.
+  
+  The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
+  is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
+  and v_hidden_size is that of V.
+  
+  The mask_index is optional. If it is provided, only raw attention mask with shape (batch_size, total_sequence_length) is supported currently.
+  
+  Both past and present state need to be provided.
+  
+  The qkv_hidden_sizes is required only when K and V have different hidden sizes.
+  
+  The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
+  Currently, only self attention is supported which means that kv_sequence_length equals to sequence_length (sequence length of Q).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+<dt><tt>past_present_share_buffer</tt> : int</dt>
+<dd>Corresponding past and present are same tensor, its size is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+</dl>
+
+#### Inputs (7 - 9)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (batch_size, 1, input_hidden_size)</dd>
+<dt><tt>weights</tt> : T</dt>
+<dd>Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection</dd>
+<dt><tt>mask_index</tt> (optional) : M</dt>
+<dd>Mask values of shape (batch_size, total_sequence_length)</dd>
+<dt><tt>past</tt> : T</dt>
+<dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)When past_present_share_buffer is set, its shape is (2, batch_size, num_heads, max_sequence_length, head_size). The first `batch_size * num_heads * max_sequence_length * head_size` elements correspond to keys and the next `batch_size * num_heads * max_sequence_length * head_size` elements correspond to values. The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape (batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape (batch_size, num_heads, max_sequence_length, head_size / x, x) is reordered to become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`.</dd>
+<dt><tt>relative_position_bias</tt> (optional) : T</dt>
+<dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)</dd>
+<dt><tt>past_sequence_length</tt> : M</dt>
+<dd>When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).</dd>
+<dt><tt>beam_width</tt> (optional) : M</dt>
+<dd>The beam width that is being used while decoding.If not provided, the beam width will be assumed to be 1.</dd>
+<dt><tt>cache_indirection</tt> (optional) : M</dt>
+<dd>A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifieswhich beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
+<dt><tt>present</tt> : T</dt>
+<dd>past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (2, batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask index to integer types</dd>
 </dl>
 
 
@@ -2310,30 +2388,40 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs (1 - 6)
+#### Inputs (1 - 8)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
 <dd>Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)</dd>
 <dt><tt>key</tt> (optional) : T</dt>
-<dd>Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size)</dd>
+<dd>Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)</dd>
 <dt><tt>value</tt> (optional) : T</dt>
-<dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size)</dd>
+<dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size), or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size)</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>key_padding_mask</tt> (optional) : M</dt>
-<dd>Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)</dd>
+<dd>Key padding mask with shape (batch_size) or (3 * batch_size + 2) or (batch_size, kv_sequence_length)</dd>
 <dt><tt>relative_position_bias</tt> (optional) : T</dt>
 <dd>relative position bias: addition to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length) or (1, num_heads, sequence_length, total_sequence_length)</dd>
+<dt><tt>past_key</tt> (optional) : T</dt>
+<dd>past state for self attention key with shape (batch_size, num_heads, past_sequence_length, head_size)</dd>
+<dt><tt>past_value</tt> (optional) : T</dt>
+<dd>past state for self attention value with shape (batch_size, num_heads, past_sequence_length, head_size)</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
+<dt><tt>present_key</tt> (optional) : T</dt>
+<dd>present state for cross attention key with shape (batch_size, num_heads, kv_sequence_length, head_size)or present state for self attention key with shape (batch_size, num_heads, total_sequence_length, head_size)</dd>
+<dt><tt>present_value</tt> (optional) : T</dt>
+<dd>present state for cross attention value with shape (batch_size, num_heads, kv_sequence_length, head_size)or present state for self attention value with shape (batch_size, num_heads, total_sequence_length, head_size)</dd>
 </dl>
 
 #### Type Constraints
@@ -2519,6 +2607,78 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(int8), tensor(uint8)</dt>
 <dd></dd>
+</dl>
+
+
+### <a name="com.microsoft.PackedAttention"></a><a name="com.microsoft.packedattention">**com.microsoft.PackedAttention**</a>
+
+  This is the packed version of Attention.
+  
+  Sequences in one batch usually don't have same length and they are padded to have same length,
+  e.g., below is a batch with 3 sequences and tokens* are padded.
+    Sequence_0:   0,  1*, 2*,  3*
+    Sequence_1:   4,  5,  6*,  7*
+    Sequence_2:   8,  9,  10,  11
+  
+  PackedAttention is designed to takes in packed input, i.e., only the real tokens without padding.
+  An input as above will be packed into 3 tensors like below:
+   - input ([h0, h4, h5, h8, h9, h10, h11])
+   - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
+   - cumulated_token_count: 0, 1, 1+2, 1+2+4
+  
+  Input tensors contains the hidden embedding of real tokens.
+  Token_offset records the offset of token in the unpacked input.
+  cumulated_token_count records cumulated length of each sequnces length.
+  
+  The operator only supports BERT like model with padding on right now.
+  
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+<dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
+<dd>Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+</dl>
+
+#### Inputs (5 - 6)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (token_count, input_hidden_size)</dd>
+<dt><tt>weights</tt> : T</dt>
+<dd>Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection</dd>
+<dt><tt>token_offset</tt> : M</dt>
+<dd>In packing mode, it specifies the offset of each token(batch_size, sequence_length).</dd>
+<dt><tt>cumulative_sequence_length</tt> : M</dt>
+<dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.</dd>
+<dt><tt>relative_position_bias</tt> (optional) : T</dt>
+<dd>A tensor with shape (batch_size, num_heads, sequence_length, sequence_length)or (1, num_heads, sequence_length, sequence_length).It specifies the additional bias to QxK'</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>2D output tensor with shape (token_count, v_hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask index to integer types</dd>
 </dl>
 
 

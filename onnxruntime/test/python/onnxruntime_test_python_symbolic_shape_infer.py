@@ -7,6 +7,7 @@ import os
 import onnx, numpy
 from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper
 
+
 if os.path.exists(
     os.path.join(
         os.path.dirname(__file__),
@@ -106,7 +107,7 @@ class TestSymbolicShapeInference(unittest.TestCase):
 
 class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def _check_shapes(self, graph, inferred_graph, vis):  # type: (GraphProto, GraphProto, List[ValueInfoProto]) -> None
-        names_in_vis = set(x.name for x in vis)
+        names_in_vis = {x.name for x in vis}
         vis = list(x for x in graph.value_info if x.name not in names_in_vis) + vis
         inferred_vis = list(inferred_graph.value_info)
         vis = list(sorted(vis, key=lambda x: x.name))
@@ -114,12 +115,12 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         if vis == inferred_vis:
             return
         # otherwise some custom logic to give a nicer diff
-        vis_names = set(x.name for x in vis)
-        inferred_vis_names = set(x.name for x in inferred_vis)
+        vis_names = {x.name for x in vis}
+        inferred_vis_names = {x.name for x in inferred_vis}
         assert vis_names == inferred_vis_names, (vis_names, inferred_vis_names)
         for vi, inferred_vi in zip(vis, inferred_vis):
-            assert vi == inferred_vi, "\n%s\n%s\n" % (vi, inferred_vi)
-        assert False
+            assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
+        raise AssertionError()
 
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(

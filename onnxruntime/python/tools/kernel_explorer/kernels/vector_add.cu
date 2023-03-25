@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 // This file serve as a simple example for adding a tunable op to onnxruntime.
-#include "python/tools/kernel_explorer/kernels/vector_add.h"
 
 #if USE_CUDA
 #include <cuda_runtime_api.h>
@@ -26,10 +25,10 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
-//#####################################################################################################################
-// In practice, VectorAddParam, VectorAddOp and VectorAddTunableOp should be tightly integrated to onnxruntime.
-// We place them here purely for demo purpose.
-//#####################################################################################################################
+// #####################################################################################################################
+//  In practice, VectorAddParam, VectorAddOp and VectorAddTunableOp should be tightly integrated to onnxruntime.
+//  We place them here purely for demo purpose.
+// #####################################################################################################################
 
 // Extend the OpParams so that all specializations have the same parameter passing interface
 template <typename T>
@@ -91,10 +90,10 @@ class VectorAddTunableOp :
 
 #undef ADD_OP
 
-//#####################################################################################################################
-// Following code just wraps our kernel implementation and expose them as python interface. This is the code that
-// should be in the kernel_explorer directory.
-//#####################################################################################################################
+// #####################################################################################################################
+//  Following code just wraps our kernel implementation and expose them as python interface. This is the code that
+//  should be in the kernel_explorer directory.
+// #####################################################################################################################
 
 template <typename T, int TPB, int Vec>
 class VectorAdd : public IKernelExplorer {
@@ -174,7 +173,7 @@ class VectorAddTunable : public IKernelExplorer {
       .def("Profile", &VectorAddTunable<type>::Profile)                \
       .def("Run", &VectorAddTunable<type>::Run);
 
-void InitVectorAdd(py::module m) {
+KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(VectorAdd, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(VectorAdd, float);
 

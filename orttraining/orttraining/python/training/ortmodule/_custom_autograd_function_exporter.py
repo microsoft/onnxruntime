@@ -11,10 +11,11 @@ import torch.utils.checkpoint
 from packaging import version
 from torch.onnx import symbolic_helper
 
-from onnxruntime.capi._pybind_state import register_torch_autograd_function
+from onnxruntime.capi._pybind_state import register_miscellaneous_const_input, register_torch_autograd_function
 from onnxruntime.training import ortmodule
 
 from . import _logger
+from ._custom_op_symbolic_registry import pytorch_type_to_onnx
 from ._fallback import ORTModuleONNXModelException, wrap_exception
 
 # Some autograd.Function's shouldn't be exported as PythonOp.
@@ -50,20 +51,11 @@ def _full_name(klass):
     return module + "." + klass.__qualname__
 
 
-def _pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:  # noqa: F811
     try:
         return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
     except AttributeError:
         return _CAST_PYTORCH_TO_ONNX[scalar_type]
-
-
-# For pointer needed for PythonOp execution, we firstly append it into a global store to hold a
-# reference (in case it is released after module exported).
-NONTENSOR_OBJECT_POINTER_STORE = {}
-
-
-def _clear_nontensor_object_references():
-    NONTENSOR_OBJECT_POINTER_STORE.clear()
 
 
 def _export_pt_1_10(g, n, *args, **kwargs):
@@ -126,12 +118,13 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         input_pointer_scalar_positions = []
 
         tensor_args = []
+        debug_comment = ""
         # Encode inputs to autograd.Function.
         for i, arg, call_type in zip(range(len(args)), args, cconv):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
+                scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
             elif call_type == "c":
@@ -163,11 +156,18 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                             ORTModuleONNXModelException, Exception(f"Unknown argument type found: {type(arg)}.")
                         )
                 else:
+                    if name == "_InspectActivation" and isinstance(arg, str):
+                        # _InspectActivation is a special case where the first argument is a string
+                        # that is used to determine the activation name to be inspected.
+                        debug_comment += arg
+
                     # All other inputs are accessed via "pointers".
                     input_pointer_scalar_positions.append(i)
                     input_pointer_scalars.append(id(arg))
 
-                    NONTENSOR_OBJECT_POINTER_STORE[id(arg)] = arg
+                    # For pointer (for example, ProcessGroup passed to PythonOp) needed for PythonOp execution,
+                    # we append it into a global store to hold a reference (in case it is released after module exported).
+                    register_miscellaneous_const_input(arg)
             else:
                 raise wrap_exception(
                     ORTModuleONNXModelException,
@@ -178,7 +178,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
+            scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 
@@ -193,6 +193,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             "output_tensor_types_i": output_tensor_types,
             "output_tensor_ranks_i": output_tensor_ranks,
             "training_mode_i": 1 if training_mode else 0,
+            "comment_s": debug_comment,
         }
 
         if len(input_int_scalars) > 0:
@@ -219,7 +220,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
     except Exception as e:
         sys.stdout.flush()
         sys.stderr.flush()
-        raise wrap_exception(ORTModuleONNXModelException, e)
+        raise wrap_exception(ORTModuleONNXModelException, e)  # noqa: B904
 
 
 # Starting from PyTorch 1.11, there has been a change to symbolic function signature

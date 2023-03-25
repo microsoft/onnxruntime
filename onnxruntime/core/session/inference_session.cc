@@ -51,6 +51,7 @@
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
+#include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
@@ -593,6 +594,8 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   flatbuffers::Offset<fbs::KernelTypeStrResolver> fbs_kernel_type_str_resolver;
   KernelTypeStrResolver kernel_type_str_resolver{};
   ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
+  ORT_RETURN_IF_ERROR(standalone::RegisterCustomOpNodeSchemas(kernel_type_str_resolver, model_->MainGraph()));
+
   for (const auto* op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
@@ -1021,7 +1024,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
                 "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
-#else  // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
+#else   // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
   const auto has_saved_runtime_optimizations = [](const fbs::InferenceSession& fbs_session) -> bool {
     if (const auto* fbs_model = fbs_session.model()) {
       if (const auto* fbs_graph = fbs_model->graph()) {
@@ -1382,8 +1385,13 @@ common::Status InferenceSession::Initialize() {
 
 #ifdef USE_DML
       if (execution_providers_.Get(kDmlExecutionProvider)) {
+        // DML graph fusion is an important runtime optimization that cannot be done ahead of time; it must be disabled
+        // when running in "offline mode" and saving an optimized model to disk. To support users that want to optimize
+        // models offline, and then disable graph optimizations when running "online", this transformer ignores the ORT
+        // graph optimization level and is generally always applied.
         bool dml_graph_fusion_enabled = session_options_.optimized_model_filepath.empty() &&
-                                        session_options_.graph_optimization_level >= TransformerLevel::Level3;
+                                        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableDmlGraphFusion, "0") == "0";
+
         if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
                                                                                                                                       execution_providers_.Get(kDmlExecutionProvider));
@@ -1520,12 +1528,16 @@ common::Status InferenceSession::Initialize() {
       std::vector<uint8_t>().swap(ort_format_model_bytes_data_holder_);
     }
 
+    // once the model is saved, we may remove unnecessary attributes for inference
+    session_state_->PruneRemovableAttributes();
+
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
+
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
   ORT_CATCH(const NotImplementedException& ex) {

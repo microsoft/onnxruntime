@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -70,7 +71,8 @@ public class OrtSession implements AutoCloseable {
   OrtSession(OrtEnvironment env, String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     this(
-        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelPath, options.nativeHandle),
+        createSession(
+            OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelPath, options.getNativeHandle()),
         allocator);
   }
 
@@ -86,7 +88,8 @@ public class OrtSession implements AutoCloseable {
   OrtSession(OrtEnvironment env, byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     this(
-        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelArray, options.nativeHandle),
+        createSession(
+            OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelArray, options.getNativeHandle()),
         allocator);
   }
 
@@ -292,7 +295,7 @@ public class OrtSession implements AutoCloseable {
               "Unknown output name " + s + ", expected one of " + outputNames.toString());
         }
       }
-      long runOptionsHandle = runOptions == null ? 0 : runOptions.nativeHandle;
+      long runOptionsHandle = runOptions == null ? 0 : runOptions.getNativeHandle();
 
       OnnxValue[] outputValues =
           run(
@@ -555,6 +558,15 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Package accessor for the native pointer.
+     *
+     * @return The native pointer.
+     */
+    long getNativeHandle() {
+      return nativeHandle;
+    }
+
+    /**
      * Sets the execution mode of this options object, overriding the old setting.
      *
      * @param mode The execution mode to use.
@@ -697,6 +709,7 @@ public class OrtSession implements AutoCloseable {
      */
     public void registerCustomOpLibrary(String path) throws OrtException {
       checkClosed();
+      Objects.requireNonNull(path, "path must not be null");
       long customHandle = registerCustomOpLibrary(OnnxRuntime.ortApiHandle, nativeHandle, path);
       customLibraryHandles.add(customHandle);
     }
@@ -1165,6 +1178,15 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Package accessor for native pointer.
+     *
+     * @return The native pointer.
+     */
+    long getNativeHandle() {
+      return nativeHandle;
+    }
+
+    /**
      * Sets the current logging level on this RunOptions.
      *
      * @param level The new logging level.
@@ -1243,6 +1265,20 @@ public class OrtSession implements AutoCloseable {
       setTerminate(OnnxRuntime.ortApiHandle, nativeHandle, terminate);
     }
 
+    /**
+     * Adds a configuration entry to this {@code RunOptions}.
+     *
+     * <p>Setting the same key will overwrite the value.
+     *
+     * @param key The configuration key.
+     * @param value The configuration value.
+     * @throws OrtException If the native library call failed.
+     */
+    public void addRunConfigEntry(String key, String value) throws OrtException {
+      checkClosed();
+      addRunConfigEntry(OnnxRuntime.ortApiHandle, nativeHandle, key, value);
+    }
+
     /** Checks if the RunOptions is closed, if so throws {@link IllegalStateException}. */
     private void checkClosed() {
       if (closed) {
@@ -1279,6 +1315,9 @@ public class OrtSession implements AutoCloseable {
 
     private native void setTerminate(long apiHandle, long nativeHandle, boolean terminate)
         throws OrtException;
+
+    private native void addRunConfigEntry(
+        long apiHandle, long nativeHandle, String key, String value) throws OrtException;
 
     private static native void close(long apiHandle, long nativeHandle);
   }

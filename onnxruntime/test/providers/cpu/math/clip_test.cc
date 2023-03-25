@@ -211,7 +211,8 @@ TEST(MathOpTest, ClipDimWithZero) {
 
   // Tensorrt does not support Clip opset 11 yet.
   // CoreML EP does not support empty inputs
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
+  // QNN can't handle zero dim
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider});
 
   OpTester test1("Clip");  //
   test1.AddInput<float>("X", dims, {});
@@ -220,7 +221,8 @@ TEST(MathOpTest, ClipDimWithZero) {
   test1.AddOutput<float>("Y", dims, {});
   // TRT doesn't handle this
   // CoreML EP does not support empty inputs
-  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
+  // QNN can't handle zero dim
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider});
 }
 
 }  // namespace test

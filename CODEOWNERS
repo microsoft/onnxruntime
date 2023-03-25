@@ -1,14 +1,17 @@
+/CODEOWNERS @microsoft/onnxruntime-admin
+
 # Mobile
 /onnxruntime/core/flatbuffers/schema/ort.fbs @microsoft/onnxruntime-mobile
 
-# Contrib Ops
+# MLAS and related contrib ops
 /onnxruntime/core/graph/contrib_ops/nhwc_schema_defs.cc @microsoft/onnxruntime-mlas
 /onnxruntime/core/graph/contrib_ops/nchwc_schema_defs.cc @microsoft/onnxruntime-mlas
 /onnxruntime/core/graph/contrib_ops/quantization_defs.* @microsoft/onnxruntime-mlas
 /onnxruntime/core/mlas/** @microsoft/onnxruntime-mlas
 
-# build pipelines
+# build pipelines and workflows
 /tools/ci_build/github/azure-pipelines @microsoft/onnxruntime-es
+/.github/workflows @microsoft/onnxruntime-es
 
 # Dependencies
 requirements-dev.txt @microsoft/onnxruntime-admin

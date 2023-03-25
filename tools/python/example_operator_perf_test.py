@@ -70,7 +70,6 @@ def create_test_input(n, num_items, k):
 # Example code that tests various combinations of input sizes.
 #
 def run_perf_tests(model_path, num_threads=1):
-
     so = rt.SessionOptions()
     so.intra_op_num_threads = num_threads
     sess = rt.InferenceSession(model_path, sess_options=so)
@@ -99,7 +98,7 @@ def run_perf_tests(model_path, num_threads=1):
         # run the model and measure time after 'iters' calls
         while total < num_seconds:
             start = time.time_ns()
-            for i in range(iters):
+            for _i in range(iters):
                 # ignore the outputs as we're not validating them in a performance test
                 sess.run(None, inputs)
             end = time.time_ns()
@@ -108,7 +107,7 @@ def run_perf_tests(model_path, num_threads=1):
             total_iters += iters
 
         # Adjust the output you want as needed
-        print("n={},items={},k={},avg:{:.4f}".format(n, num_items, k, total / total_iters))
+        print(f"n={n},items={num_items},k={k},avg:{total / total_iters:.4f}")
 
     # combine the various input parameters and create input for each test
     for n in batches:
@@ -128,7 +127,6 @@ def run_perf_tests(model_path, num_threads=1):
 # so that the model can be easily run directly or from a debugger.
 #
 def create_example_test_directory():
-
     # fill in the inputs that we want to use specific values for
     input_data = {}
     input_data["K"] = np.asarray([64]).astype(np.int64)

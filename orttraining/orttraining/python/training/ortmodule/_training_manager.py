@@ -262,6 +262,7 @@ class TrainingManager(GraphExecutionManager):
                         inputs,
                         kwargs,
                         self._device,
+                        self._rt_inspector.input_density_ob,
                     )
                 ),
             )
@@ -315,6 +316,11 @@ class TrainingManager(GraphExecutionManager):
                 initializer_index += 1
             else:
                 self._gradient_map.append(-1)
+
+        # Set up data sparsity inspection.
+        self._rt_inspector.input_density_ob.initialize(
+            self._onnx_models.optimized_pre_grad_model, self._graph_info.user_input_names
+        )
 
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
@@ -384,7 +390,7 @@ class TrainingManager(GraphExecutionManager):
         return False
 
     def __getstate__(self):
-        state = super(TrainingManager, self).__getstate__()
+        state = super().__getstate__()
 
         # Only top level classes are pickleable. So, _ORTModuleFunction is
         # not pickleable. So, let's not pickle it, and redefine it when
@@ -393,6 +399,6 @@ class TrainingManager(GraphExecutionManager):
         return state
 
     def __setstate__(self, state):
-        super(TrainingManager, self).__setstate__(state)
+        super().__setstate__(state)
 
         _utils.reinitialize_training_manager(self)

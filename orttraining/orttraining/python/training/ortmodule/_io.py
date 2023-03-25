@@ -11,7 +11,7 @@ from collections import abc
 
 import torch
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception
+from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception  # noqa: F401
 from ._utils import warn_of_constant_inputs
 
 
@@ -66,7 +66,7 @@ class _OutputIdentityOp(torch.autograd.Function):
         return g.op("Identity", self)
 
 
-class _PrimitiveType(object):
+class _PrimitiveType:
     _primitive_types = {int, bool, float}
 
     @staticmethod
@@ -110,7 +110,7 @@ def flatten_kwargs(kwargs, device):
     return flattened_kwargs
 
 
-class _InputInfo(object):
+class _InputInfo:
     def __init__(
         self,
         names,
@@ -161,7 +161,9 @@ class _InputInfo(object):
         return args, kwargs
 
 
-def _combine_input_buffers_initializers(params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device):
+def _combine_input_buffers_initializers(
+    params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device, input_density_ob
+):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
@@ -222,7 +224,7 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
 
         if inp is None:
             # Registered buffers are translated to user_input+initializer in ONNX
-            try:
+            try:  # noqa: SIM105
                 inp = buffer_names_dict[name]
             except KeyError:
                 # ONNX input name is not present in the registered buffer dict.
@@ -231,6 +233,8 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         if inp is not None:
             if _PrimitiveType.is_primitive_type(inp):
                 inp = _PrimitiveType.get_tensor(inp, device)
+
+            input_density_ob.inspect_from_input_data(name, inp)
             result.append(inp)
         else:
             raise wrap_exception(
@@ -264,7 +268,7 @@ def deepcopy_model_input(*inputs, **kwargs):
     return sample_inputs_copy, sample_kwargs_copy
 
 
-class _TensorStub(object):
+class _TensorStub:
     """Tensor stub class used to represent model's input or output"""
 
     __slots__ = ["name", "dtype", "shape", "shape_dims"]
@@ -298,7 +302,7 @@ class _TensorStub(object):
         if not other:
             return False
         elif not isinstance(other, _TensorStub):
-            raise NotImplemented("_TensorStub must only be compared to another _TensorStub instance!")
+            raise NotImplementedError("_TensorStub must only be compared to another _TensorStub instance!")
         elif self.name != other.name:
             return False
         elif self.dtype != other.dtype:
@@ -462,7 +466,7 @@ def _transform_output_to_flat_tuple(data):
 
 class _FlattenedModule(torch.nn.Module):
     def __init__(self, original_module):
-        super(_FlattenedModule, self).__init__()
+        super().__init__()
         self._original_module = original_module
 
         # Before `forward` is called, _ort_module must be assigned
