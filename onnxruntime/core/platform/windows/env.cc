@@ -562,12 +562,16 @@ common::Status WindowsEnv::GetCanonicalPath(
     PathString& canonical_path) const {
   // adapted from MSVC STL std::filesystem::canonical() implementation
   // https://github.com/microsoft/STL/blob/ed3cbf36416a385828e7a5987ca52cb42882d84b/stl/inc/filesystem#L2986
+  CREATEFILE2_EXTENDED_PARAMETERS param;
+  memset(&param, 0, sizeof(param));
+  param.dwSize = sizeof(CREATEFILE2_EXTENDED_PARAMETERS);
+  param.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
   wil::unique_hfile file_handle{CreateFile2(
       path.c_str(),
       FILE_READ_ATTRIBUTES,
       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
       OPEN_EXISTING,
-      NULL)};
+      &param)};
 
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
