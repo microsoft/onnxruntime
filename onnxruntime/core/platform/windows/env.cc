@@ -136,14 +136,14 @@ class WindowsThread : public EnvThread {
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
-    
+
     const ORTCHAR_T* name_prefix =
         (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
     std::wostringstream oss;
     oss << name_prefix << "-" << p->index;
     // Ignore the error
     (void)SetThreadDescription(GetCurrentThread(), oss.str().c_str());
-    
+
     unsigned ret = 0;
     ORT_TRY {
       if (p->affinity.has_value() && !p->affinity->empty()) {
