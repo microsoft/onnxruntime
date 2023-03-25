@@ -9,7 +9,7 @@ import os
 import unittest
 
 import packaging.version
-from onnx import ModelProto, helper, version
+from onnx import ModelProto, helper, version  # noqa: F401
 from onnx.backend.base import Backend
 from onnx.checker import check_model
 
@@ -27,9 +27,9 @@ class OnnxRuntimeBackend(Backend):
     `Importing models from ONNX to Caffe2 <https://github.com/onnx/tutorials/blob/master/tutorials/OnnxCaffe2Import.ipynb>`_
     shows how to use *caffe2* as a backend for a converted model.
     Note: This is not the official Python API.
-    """  # noqa: E501
+    """
 
-    allowReleasedOpsetsOnly = bool(os.getenv("ALLOW_RELEASED_ONNX_OPSET_ONLY", "1") == "1")
+    allowReleasedOpsetsOnly = bool(os.getenv("ALLOW_RELEASED_ONNX_OPSET_ONLY", "1") == "1")  # noqa: N815
 
     @classmethod
     def is_compatible(cls, model, device=None, **kwargs):
@@ -59,11 +59,11 @@ class OnnxRuntimeBackend(Backend):
                 domain = opset.domain if opset.domain else "ai.onnx"
                 try:
                     key = (domain, opset.version)
-                    if not (key in helper.OP_SET_ID_VERSION_MAP):
+                    if key not in helper.OP_SET_ID_VERSION_MAP:
                         error_message = (
                             "Skipping this test as only released onnx opsets are supported."
                             "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
-                            " Got Domain '{0}' version '{1}'.".format(domain, opset.version)
+                            " Got Domain '{}' version '{}'.".format(domain, opset.version)
                         )
                         return False, error_message
                 except AttributeError:
@@ -74,7 +74,7 @@ class OnnxRuntimeBackend(Backend):
                         error_message = (
                             "Skipping this test as only released onnx opsets are supported."
                             "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
-                            " Got Domain '{0}' version '{1}'.".format(domain, opset.version)
+                            " Got Domain '{}' version '{}'.".format(domain, opset.version)
                         )
                         return False, error_message
         return True, ""
@@ -121,7 +121,7 @@ class OnnxRuntimeBackend(Backend):
             # which may hide test failures.
             inf.disable_fallback()
             if device is not None and not cls.supports_device(device):
-                raise RuntimeError("Incompatible device expected '{0}', got '{1}'".format(device, get_device()))
+                raise RuntimeError(f"Incompatible device expected '{device}', got '{get_device()}'")
             return cls.prepare(inf, device, **kwargs)
         else:
             # type: ModelProto

@@ -4086,10 +4086,6 @@ struct OrtApi {
    * \since Version 1.15.
    */
   ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out); 
-
-#ifdef __cplusplus
-  OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
-#endif
 };
 
 /*

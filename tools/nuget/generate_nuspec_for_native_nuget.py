@@ -362,7 +362,7 @@ def generate_files(line_list, args):
     else:
         runtimes_native_folder = "native"
 
-    runtimes = '{}{}\\{}"'.format(runtimes_target, args.target_architecture, runtimes_native_folder)
+    runtimes = f'{runtimes_target}{args.target_architecture}\\{runtimes_native_folder}"'
 
     # Process headers
     files_list.append(

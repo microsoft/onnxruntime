@@ -1603,3 +1603,41 @@ MlasHalfGemmConvertPackB(
     size_t ldb,
     void* PackedB
     );
+
+/**
+ * @brief Indirect Depthwise convolution for fp16
+ * @param Input         Supplies the indirect buffer for NHWC input
+ * @param Filter        Supplies the address for filter tensor
+ * @param Output        Supplies the address for the result tensor
+ * @param Channels      # of input channels
+ * @param OutputCount   # of output pixels
+ * @param KernelSize    # kernel size
+ * @return 
+*/
+void
+MLASCALL
+MlasConvDepthwise(
+    const MLAS_FP16* const* Input,
+    const MLAS_FP16* Filter,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize,
+    MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
+    );
+
+
+inline
+void
+MlasTranspose(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t M,
+    size_t N
+    )
+{
+    MlasTranspose(
+        reinterpret_cast<const uint16_t*>(Input),
+        reinterpret_cast<uint16_t*>(Output),
+        M, N);
+}

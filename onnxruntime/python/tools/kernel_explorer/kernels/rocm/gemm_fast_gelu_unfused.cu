@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu_unfused.h"
 
 #include <pybind11/stl.h>
 
@@ -89,11 +88,9 @@ class GemmFastGeluUnfused : public IKernelExplorer {
       .def("ListOps", &GemmFastGeluUnfused<type>::ListOps)               \
       .def("SelectOp", &GemmFastGeluUnfused<type>::SelectOp);
 
-void InitGemmFastGeluUnfused(py::module m) {
+KE_REGISTER(m) {
   REGISTER_OP(float)
   REGISTER_OP(half)
 }
-
-#undef REGISTER_OP
 
 }  // namespace onnxruntime

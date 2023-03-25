@@ -5,7 +5,6 @@
 
 const path = require('path');
 const fs = require('fs-extra');
-const globby = require('globby');
 const { spawn } = require('child_process');
 const startServer = require('./simple-http-server');
 
@@ -32,29 +31,31 @@ function getNextUserDataDir() {
   return dir;
 }
 
-// find packed package
-
-const ORT_COMMON_FOLDER = path.resolve(JS_ROOT_FOLDER, 'common');
-const ORT_COMMON_PACKED_FILEPATH_CANDIDATES = globby.sync('onnxruntime-common-*.tgz', { cwd: ORT_COMMON_FOLDER });
-
-const PACKAGES_TO_INSTALL = [];
-
-if (ORT_COMMON_PACKED_FILEPATH_CANDIDATES.length === 1) {
-  PACKAGES_TO_INSTALL.push(path.resolve(ORT_COMMON_FOLDER, ORT_COMMON_PACKED_FILEPATH_CANDIDATES[0]));
-} else if (ORT_COMMON_PACKED_FILEPATH_CANDIDATES.length > 1) {
-  throw new Error('multiple packages found for onnxruntime-common.');
-}
-
-const ORT_WEB_FOLDER = path.resolve(JS_ROOT_FOLDER, 'web');
-const ORT_WEB_PACKED_FILEPATH_CANDIDATES = globby.sync('onnxruntime-web-*.tgz', { cwd: ORT_WEB_FOLDER });
-if (ORT_WEB_PACKED_FILEPATH_CANDIDATES.length !== 1) {
-  throw new Error('cannot find exactly single package for onnxruntime-web.');
-}
-PACKAGES_TO_INSTALL.push(path.resolve(ORT_WEB_FOLDER, ORT_WEB_PACKED_FILEPATH_CANDIDATES[0]));
-
-// we start here:
-
 async function main() {
+
+  // find packed package
+  const {globbySync} = await import('globby');
+
+  const ORT_COMMON_FOLDER = path.resolve(JS_ROOT_FOLDER, 'common');
+  const ORT_COMMON_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-common-*.tgz', { cwd: ORT_COMMON_FOLDER });
+
+  const PACKAGES_TO_INSTALL = [];
+
+  if (ORT_COMMON_PACKED_FILEPATH_CANDIDATES.length === 1) {
+    PACKAGES_TO_INSTALL.push(path.resolve(ORT_COMMON_FOLDER, ORT_COMMON_PACKED_FILEPATH_CANDIDATES[0]));
+  } else if (ORT_COMMON_PACKED_FILEPATH_CANDIDATES.length > 1) {
+    throw new Error('multiple packages found for onnxruntime-common.');
+  }
+
+  const ORT_WEB_FOLDER = path.resolve(JS_ROOT_FOLDER, 'web');
+  const ORT_WEB_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-web-*.tgz', { cwd: ORT_WEB_FOLDER });
+  if (ORT_WEB_PACKED_FILEPATH_CANDIDATES.length !== 1) {
+    throw new Error('cannot find exactly single package for onnxruntime-web.');
+  }
+  PACKAGES_TO_INSTALL.push(path.resolve(ORT_WEB_FOLDER, ORT_WEB_PACKED_FILEPATH_CANDIDATES[0]));
+
+  // we start here:
+
   // install dev dependencies
   await runInShell(`npm install"`);
 

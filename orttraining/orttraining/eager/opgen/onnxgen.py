@@ -5,6 +5,7 @@
 
 import os.path as path
 from sys import argv
+
 from onnx import defs
 
 out_file = path.join(path.dirname(path.realpath(__file__)), "opgen", "onnxops.py")
@@ -38,7 +39,7 @@ def convert_to_aten_type(onnx_type_strs):
     return result
 
 
-with open(out_file, "wt") as fp:
+with open(out_file, "w") as fp:
 
     def write(s):
         fp.write(s)
@@ -46,20 +47,20 @@ with open(out_file, "wt") as fp:
     def writeline(s=""):
         fp.write(s + "\n")
 
-    writeline(f"# AUTO-GENERATED CODE! - DO NOT EDIT!")
+    writeline("# AUTO-GENERATED CODE! - DO NOT EDIT!")
     writeline(f'# $ python {" ".join(argv)}')
     writeline()
 
     writeline("from opgen.generator import ONNXAttr, ONNXOp, AttrType")
     writeline()
 
-    for op_name, schema in sorted(onnx_ops.items()):
+    for _op_name, schema in sorted(onnx_ops.items()):
         writeline(f"class {schema.name}(ONNXOp):")
-        writeline(f'  """')
+        writeline('  """')
         doc_str = schema.doc.strip("\r\n")
         for doc_line in str.splitlines(doc_str, keepends=False):
             writeline(f"  {doc_line}")
-        writeline(f'  """')
+        writeline('  """')
         writeline()
         write("  def __init__(self")
 
@@ -68,7 +69,7 @@ with open(out_file, "wt") as fp:
 
         if len(schema.attributes) > 0:
             writeline(",")
-            for i, (k, attr) in enumerate(schema.attributes.items()):
+            for i, (_k, attr) in enumerate(schema.attributes.items()):
                 write(f"    {attr.name}=None")
                 if i < len(schema.attributes) - 1:
                     writeline(", ")
@@ -88,7 +89,7 @@ with open(out_file, "wt") as fp:
 
         if len(schema.attributes) > 0:
             writeline(",")
-            for i, (k, attr) in enumerate(schema.attributes.items()):
+            for i, (_k, attr) in enumerate(schema.attributes.items()):
                 write(f"      {attr.name}=ONNXAttr({attr.name}, {attr.type})")
                 if i < len(schema.attributes) - 1:
                     writeline(", ")
@@ -97,7 +98,7 @@ with open(out_file, "wt") as fp:
         writeline()
 
     writeline("onnx_ops = {")
-    for i, (op_name, schema) in enumerate(onnx_ops.items()):
+    for i, (op_name, schema) in enumerate(onnx_ops.items()):  # noqa: B007
         writeline(f"  '{op_name}': {schema.name},")
     write("}")
 

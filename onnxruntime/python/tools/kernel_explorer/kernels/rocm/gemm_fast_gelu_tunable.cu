@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu_tunable.h"
-
 #include <pybind11/stl.h>
 
 #include <string>
@@ -97,11 +95,9 @@ class GemmFastGeluTunable : public IKernelExplorer {
   REGISTER_OP(type, Col, Row, "TN");      \
   REGISTER_OP(type, Col, Col, "TT");
 
-void InitGemmFastGeluTunable(py::module m) {
+KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_TRANSAB(float);
   REGISTER_OP_FOR_ALL_TRANSAB(half);
 }
-
-#undef REGISTER_OP
 
 }  // namespace onnxruntime
