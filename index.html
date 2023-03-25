@@ -17,6 +17,7 @@
 	<title>ONNX Runtime | Home</title>
 	<link rel="icon" href="./images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16" />
 	<link rel="stylesheet" href="css/fonts.css" />
+	
 	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" />
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.3.0/css/all.min.css" />
 	<link rel="stylesheet" href="css/bootstrap.min.js">
@@ -24,10 +25,6 @@
 	<link rel="stylesheet" href="css/responsive.css?v1.6" />
 	<!-- Syntax highlighting -->
 	<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-light.min.css" />
-	<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
-	<script>
-		hljs.highlightAll();
-	</script>
 </head>
 
 <body>
@@ -119,9 +116,9 @@
 						<div class="row">
 							<div class="col-md-8 d-md-block d-none">
 								<div class="row">
-									<div class="col-3 pt-4 pr-0">
-										<div class="nav flex-column nav-pills" style="background-color: #fafafa; height: 220px" id="v-pills-tab" role="tablist"
-											aria-orientation="vertical">
+									<div class="col-3 pr-0">
+										<div class="nav flex-column nav-pills h-100" style="background-color: #fafafa;"
+											id="v-pills-tab" role="tablist" aria-orientation="vertical">
 											<a class="nav-link rounded-0 active" id="v-pills-python-tab"
 												data-toggle="pill" href="#v-pills-python" role="tab"
 												aria-controls="v-pills-python" aria-selected="true"><i
@@ -141,13 +138,13 @@
 												aria-selected="false">C#</a>
 										</div>
 									</div>
-									<div class="col-9 pl-0">
+									<div class="col-9 pl-0 h-100 bg-light">
 										<div class="tab-content" id="v-pills-tabContent">
-											<div class="tab-pane fade show active" id="v-pills-python" role="tabpanel"
+											<div class="tab-pane fade show active" style="padding: 0; margin: 0"
+												id="v-pills-python" role="tabpanel"
 												aria-labelledby="v-pills-python-tab">
-												<pre style="overflow: hidden">
-<code>
-import onnxruntime as ort
+												<pre class="mb-0" style="overflow: hidden;">
+												<code>import onnxruntime as ort 
 import numpy as np
 ort_sess = ort.InferenceSession('model.onnx')
 outputs = ort_sess.run(None, {'input': text.numpy(),'offsets':  torch.tensor([0]).numpy()})
@@ -238,7 +235,8 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 											Runtime</a>
 									</div>
 									<div class="col-6 p-1">
-										<a href="docs/execution-providers/" class="btn btn-block btn-primary btn-lg rounded-0 "
+										<a href="docs/execution-providers/"
+											class="btn btn-block btn-primary btn-lg rounded-0 "
 											style="height: 80px; display: flex; align-items: center; justify-content: center;">Hardware
 											Acceleration</a>
 									</div>
@@ -248,372 +246,272 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 					</section>
 
 					<section class="py-md-5 pb-4 pt-4 get-started-section border-top" id="getStartedTable">
-							<div class="text-center pb-3">
-								<h2 class="section-heading">GET STARTED EASILY</h2>
+						<div class="text-center pb-3">
+							<h2 class="section-heading">GET STARTED EASILY</h2>
+						</div>
+						<noscript>
+							<div class="javascript-is-disabled row">
+								<div class="col">
+									<div class="ns-callout">
+										<h2>
+											Please enable JavaScript to use the interactive
+											installation guide.
+										</h2>
+										<p class="mb-0">
+											Need help enabling JavaScript? Follow the instructions
+											<a href="https://www.whatismybrowser.com/guides/how-to-enable-javascript/auto"
+												target="_blank">here</a>.
+										</p>
+									</div>
+								</div>
 							</div>
-							<noscript>
-								<div class="javascript-is-disabled row">
+						</noscript>
+						<p class="text-center">Select the configuration you want to use and run the corresponding
+							installation script.
+							<br />ONNXRuntime supports a variety of hardware and architectures to fit any need.
+						</p>
+						<div>
+							
+							<div class="nav tbl_tablist" role="tablist">
+								<li class="tbl_tab nav-link mr-1 active" id="OI_tab" data-toggle="pill"
+									aria-selected="true" role="tab" tabindex="0" aria-controls="panel1">Optimize
+									Inferencing</a>
+								<li class="tbl_tab nav-link" id="OT_tab" data-toggle="pill" aria-selected="false"
+									aria-controls="panel2" role="tab" tabindex="0">Optimize
+									Training ​</a>
+							</div>
+							<div id="panel1" class="tbl_panel" aria-labelledby="tab1" role="tabpanel"
+								aria-hidden="false">
+								<div class="row ml-0">
 									<div class="col">
-										<div class="ns-callout">
-											<h2>
-												Please enable JavaScript to use the interactive
-												installation guide.
-											</h2>
-											<p class="mb-0">
-												Need help enabling JavaScript? Follow the instructions
-												<a href="https://www.whatismybrowser.com/guides/how-to-enable-javascript/auto"
-													target="_blank">here</a>.
-											</p>
-										</div>
-									</div>
-								</div>
-							</noscript>
-
-							<div>
-								<p class="text-center">Select the configuration you want to use and run the corresponding installation script. 
-									<br/>ONNXRuntime supports a variety of hardware and architectures to fit any need.</p>
-								<div class="nav tbl_tablist" role="tablist">
-									<li class="tbl_tab nav-link mr-1 active" id="OI_tab" data-toggle="pill"
-										aria-selected="true" role="tab" tabindex="0" aria-controls="panel1">Optimize
-										Inferencing</a>
-									<li class="tbl_tab nav-link mr-1" id="OT_tab" data-toggle="pill"
-										aria-selected="false" aria-controls="panel2" role="tab" tabindex="0">Optimize
-										Training ​</a>
-								</div>
-								<!-- <ul class="tbl_tablist" role="tablist">
-									<li id="OI_tab" class="tbl_tab nav flex-column nav-pills" aria-controls="panel1" aria-selected="true"
-										role="tab" tabindex="0">
-										Optimize Inferencing
-									</li>
-									<li id="OT_tab" class="tbl_tab nav flex-column nav-pills" aria-controls="panel2" role="tab"
-										aria-selected="false" tabindex="0">
-										Optimize Training ​
-									</li>
-								</ul> -->
-
-								<div id="panel1" class="tbl_panel" aria-labelledby="tab1" role="tabpanel"
-									aria-hidden="false">
-									<div class="row ml-0">
-										<div class="col">
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="selectOS">Platform</h3>
-													<p id="decriptionOS" class="sr-only">
-														Platform list contains six items
-													</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
-													id="listbox-1" aria-labelledby="selectOS"
-													aria-describedby="decriptionOS">
-													<div class="row os">
-														<div class="col-lg-2dot4 col r-option version" role="option"
-															tabindex="0" aria-selected="false" id="windows">
-															<span>Windows</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="linux">
-															<span>Linux</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="mac">
-															<span>Mac</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="android">
-															<span>Android</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="ios">
-															<span>iOS</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="web">
-															<span>Web Browser (Preview)</span>
-														</div>
-													</div>
-												</div>
+										<div class="row r-wrap mb-1 mb-md-0 mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 id="selectOS">Platform</h3>
+												<p id="decriptionOS" class="sr-only">
+													Platform list contains six items
+												</p>
 											</div>
-
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="selectLanguage">API</h3>
-													<p id="decriptionLanguage" class="sr-only">
-														API list contains eight items
-													</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
-													id="listbox-2" aria-labelledby="selectLanguage"
-													aria-describedby="decriptionLanguage">
-													<div class="row language">
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="0" aria-selected="false" id="Python">
-															<span>Python</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="-1" aria-selected="false" id="C++">
-															<span>C++</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" aria-selected="false"
-															role="option" tabindex="-1" id="C#">
-															<span><abbr>C#</abbr></span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="-1" aria-selected="false" id="C-API">
-															<span>C</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="-1" aria-selected="false" id="Java">
-															<span>Java</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="-1" aria-selected="false" id="JS">
-															<span>JS</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="-1" aria-selected="false" id="objectivec">
-															<span>Obj-C</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="-1" aria-selected="false" id="WinRT">
-															<span>WinRT</span>
-														</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-1"
+												aria-labelledby="selectOS" aria-describedby="decriptionOS">
+												<div class="row os">
+													<div class="col-lg-2dot4 col r-option version" role="option"
+														tabindex="0" aria-selected="false" id="windows">
+														<span>Windows</span>
 													</div>
-												</div>
-											</div>
-
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="selectArchitecture" class="align-self-center">
-														Architecture
-													</h3>
-													<p id="decriptionArchitecture" class="sr-only">
-														Architecture list contains five items
-													</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
-													id="listbox-3" aria-labelledby="selectArchitecture"
-													aria-describedby="decriptionArchitecture">
-													<div class="row architecture">
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="0" aria-selected="false" id="X64">
-															<span><abbr>X64</abbr></span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="-1" aria-selected="false" id="X86">
-															<span><abbr>X86</abbr></span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="-1" aria-selected="false" id="ARM64">
-															<span><abbr>ARM64</abbr></span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="-1" aria-selected="false" id="ARM32">
-															<span><abbr>ARM32</abbr></span>
-														</div>
-														<div class="col-lg-2dot4 col r-option" role="option"
-															tabindex="-1" aria-selected="false" id="Power">
-															<span><abbr>IBM Power</abbr></span>
-														</div>
+													<div class="col-lg-2dot4 col r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="linux">
+														<span>Linux</span>
 													</div>
-												</div>
-											</div>
-
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="selectHardwareAcceleration">
-														Hardware Acceleration
-													</h3>
-													<p id="decriptionHardwareAcceleration" class="sr-only">
-														Hardware Acceleration list contains seventeen
-														items
-													</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
-													id="listbox-4" aria-labelledby="selectHardwareAcceleration"
-													aria-describedby="decriptionHardwareAcceleration">
-													<div class="row hardwareAcceleration">
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="0" aria-selected="false" id="DefaultCPU">
-															<span>Default&nbsp; <abbr>CPU</abbr></span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="CoreML">
-															<span>CoreML </span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="CUDA">
-															<span><abbr>CUDA</abbr></span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="DirectML">
-															<span>Direct<abbr>ML</abbr></span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="MIGraphX">
-															<span>MIGraphX </span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="NNAPI">
-															<span>NNAPI </span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="DNNL">
-															<span><abbr>oneDNN</abbr></span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="OpenVINO">
-															<span>OpenVINO</span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="ROCm">
-															<span>ROCm </span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="SNPE">
-															<span>SNPE</span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="TensorRT">
-															<span>Tensor<abbr>RT</abbr></span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="ACL">
-															<span>ACL (Preview)</span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="ArmNN">
-															<span>ArmNN (Preview)</span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="Azure">
-															<span>Azure (Preview)</span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="CANN">
-															<span>CANN (Preview)</span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="RockchipNPU">
-															<span>Rockchip NPU (Preview)</span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="TVM">
-															<span>TVM (Preview)</span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="VitisAI">
-															<span>Vitis AI (Preview)</span>
-														</div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option"
-															tabindex="-1" aria-selected="false" id="XNNPACK">
-															<span>XNNPACK (Preview)</span>
-														</div>
+													<div class="col-lg-2dot4 col r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="mac">
+														<span>Mac</span>
 													</div>
-												</div>
-											</div>
-
-											<div class="row r-wrap command-block row-eq-height mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="selectRunCommand">
-														Installation Instructions
-													</h3>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4">
-													<div class="row">
-														<div class="col r-option command-container" id="command"
-															role="status">
-															<span class="py-2">
-																Please select a combination of resources
-															</span>
-														</div>
+													<div class="col-lg-2dot4 col r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="android">
+														<span>Android</span>
+													</div>
+													<div class="col-lg-2dot4 col r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="ios">
+														<span>iOS</span>
+													</div>
+													<div class="col-lg-2dot4 col r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="web">
+														<span>Web Browser</span>
 													</div>
 												</div>
 											</div>
 										</div>
-									</div>
-								</div>
 
-								<div id="panel2" class="tbl_panel" aria-labelledby="tab2" role="tabpanel"
-									aria-hidden="true">
-									<div class="row ml-0">
-										<div class="col">
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="ot_selectOS">Platform</h3>
-													<p id="ot_decriptionOS" class="sr-only">
-														Platform list contains one item
-													</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
-													id="ot_listbox-1" aria-labelledby="ot_selectOS"
-													aria-describedby="ot_decriptionOS">
-													<div class="row ot_os">
-														<div class="col r-option selected" role="option" tabindex="0"
-															aria-selected="true" id="ot_linux">
-															<span>Linux</span>
-														</div>
+										<div class="row r-wrap mb-1 mb-md-0 mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 id="selectLanguage">API</h3>
+												<p id="decriptionLanguage" class="sr-only">
+													API list contains eight items
+												</p>
+											</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-2"
+												aria-labelledby="selectLanguage" aria-describedby="decriptionLanguage">
+												<div class="row language">
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="0"
+														aria-selected="false" id="Python">
+														<span>Python</span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1"
+														aria-selected="false" id="C++">
+														<span>C++</span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" aria-selected="false"
+														role="option" tabindex="-1" id="C#">
+														<span><abbr>C#</abbr></span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1"
+														aria-selected="false" id="C-API">
+														<span>C</span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1"
+														aria-selected="false" id="Java">
+														<span>Java</span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1"
+														aria-selected="false" id="JS">
+														<span>JS</span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1"
+														aria-selected="false" id="objectivec">
+														<span>Obj-C</span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1"
+														aria-selected="false" id="WinRT">
+														<span>WinRT</span>
 													</div>
 												</div>
 											</div>
+										</div>
 
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="ot_selectLanguage">API</h3>
-													<p id="ot_decriptionLanguage" class="sr-only">
-														API list contains one item
-													</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
-													id="ot_listbox-2" aria-labelledby="ot_selectLanguage"
-													aria-describedby="ot_decriptionLanguage">
-													<div class="row ot_language">
-														<div class="col r-option selected" role="option" tabindex="0"
-															aria-selected="true" id="ot_ORTModule">
-															<span>ORTModule for Pytorch</span>
-														</div>
+										<div class="row r-wrap mb-1 mb-md-0 mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 id="selectArchitecture" class="align-self-center">
+													Architecture
+												</h3>
+												<p id="decriptionArchitecture" class="sr-only">
+													Architecture list contains five items
+												</p>
+											</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-3"
+												aria-labelledby="selectArchitecture"
+												aria-describedby="decriptionArchitecture">
+												<div class="row architecture">
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="0"
+														aria-selected="false" id="X64">
+														<span><abbr>X64</abbr></span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1"
+														aria-selected="false" id="X86">
+														<span><abbr>X86</abbr></span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1"
+														aria-selected="false" id="ARM64">
+														<span><abbr>ARM64</abbr></span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1"
+														aria-selected="false" id="ARM32">
+														<span><abbr>ARM32</abbr></span>
+													</div>
+													<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1"
+														aria-selected="false" id="Power">
+														<span><abbr>IBM Power</abbr></span>
 													</div>
 												</div>
 											</div>
+										</div>
 
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="ot_selectHardwareAcceleration">
-														Hardware Acceleration
-													</h3>
-													<p id="ot_decriptionHardwareAcceleration" class="sr-only">
-														Hardware Acceleration list contains two items
-													</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
-													id="ot_listbox-4" aria-labelledby="ot_selectHardwareAcceleration"
-													aria-describedby="ot_decriptionHardwareAcceleration">
-													<div class="row ot_hardwareAcceleration">
-														<div class="col r-option version selected" role="option"
-															tabindex="0" aria-selected="true" id="ot_CUDA">
-															<span><abbr>CUDA</abbr></span>
-														</div>
-														<div class="col r-option version" role="option" tabindex="-1"
-															aria-selected="false" id="ot_ROCm">
-															<span><abbr>ROCm</abbr></span>
-														</div>
+										<div class="row r-wrap mb-1 mb-md-0 mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 id="selectHardwareAcceleration">
+													Hardware Acceleration
+												</h3>
+												<p id="decriptionHardwareAcceleration" class="sr-only">
+													Hardware Acceleration list contains seventeen
+													items
+												</p>
+											</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-4"
+												aria-labelledby="selectHardwareAcceleration"
+												aria-describedby="decriptionHardwareAcceleration">
+												<div class="row hardwareAcceleration">
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="0" aria-selected="false" id="DefaultCPU">
+														<span>Default&nbsp; <abbr>CPU</abbr></span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="CoreML">
+														<span>CoreML </span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="CUDA">
+														<span><abbr>CUDA</abbr></span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="DirectML">
+														<span>Direct<abbr>ML</abbr></span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="MIGraphX">
+														<span>MIGraphX </span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="NNAPI">
+														<span>NNAPI </span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="DNNL">
+														<span><abbr>oneDNN</abbr></span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="OpenVINO">
+														<span>OpenVINO</span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="ROCm">
+														<span>ROCm </span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="SNPE">
+														<span>SNPE</span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="TensorRT">
+														<span>Tensor<abbr>RT</abbr></span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="ACL">
+														<span>ACL (Preview)</span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="ArmNN">
+														<span>ArmNN (Preview)</span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="Azure">
+														<span>Azure (Preview)</span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="CANN">
+														<span>CANN (Preview)</span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="RockchipNPU">
+														<span>Rockchip NPU (Preview)</span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="TVM">
+														<span>TVM (Preview)</span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="VitisAI">
+														<span>Vitis AI (Preview)</span>
+													</div>
+													<div class="col-lg-3 col-md-3 r-option version" role="option"
+														tabindex="-1" aria-selected="false" id="XNNPACK">
+														<span>XNNPACK (Preview)</span>
 													</div>
 												</div>
 											</div>
+										</div>
 
-											<div class="row r-wrap command-block row-eq-height mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="ot_selectRunCommand">
-														Installation Instructions
-													</h3>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4">
-													<div class="row">
-														<div class="col r-option command-container" id="ot_command"
-															role="status">
-															<span class="py-2">
-																Please select a combination of resources
-															</span>
-														</div>
+										<div class="row r-wrap command-block row-eq-height mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 class="text-white" id="selectRunCommand">
+													Installation Instructions
+												</h3>
+											</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4">
+												<div class="row">
+													<div class="col r-option command-container" id="command"
+														role="status">
+														<span class="py-2">
+															Please select a combination of resources
+														</span>
 													</div>
 												</div>
 											</div>
@@ -621,6 +519,95 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 									</div>
 								</div>
 							</div>
+
+							<div id="panel2" class="tbl_panel" aria-labelledby="tab2" role="tabpanel"
+								aria-hidden="true">
+								<div class="row ml-0">
+									<div class="col">
+										<div class="row r-wrap mb-1 mb-md-0 mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 id="ot_selectOS">Platform</h3>
+												<p id="ot_decriptionOS" class="sr-only">
+													Platform list contains one item
+												</p>
+											</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
+												id="ot_listbox-1" aria-labelledby="ot_selectOS"
+												aria-describedby="ot_decriptionOS">
+												<div class="row ot_os">
+													<div class="col r-option selected" role="option" tabindex="0"
+														aria-selected="true" id="ot_linux">
+														<span>Linux</span>
+													</div>
+												</div>
+											</div>
+										</div>
+
+										<div class="row r-wrap mb-1 mb-md-0 mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 id="ot_selectLanguage">API</h3>
+												<p id="ot_decriptionLanguage" class="sr-only">
+													API list contains one item
+												</p>
+											</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
+												id="ot_listbox-2" aria-labelledby="ot_selectLanguage"
+												aria-describedby="ot_decriptionLanguage">
+												<div class="row ot_language">
+													<div class="col r-option selected" role="option" tabindex="0"
+														aria-selected="true" id="ot_ORTModule">
+														<span>ORTModule for Pytorch</span>
+													</div>
+												</div>
+											</div>
+										</div>
+
+										<div class="row r-wrap mb-1 mb-md-0 mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 id="ot_selectHardwareAcceleration">
+													Hardware Acceleration
+												</h3>
+												<p id="ot_decriptionHardwareAcceleration" class="sr-only">
+													Hardware Acceleration list contains two items
+												</p>
+											</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
+												id="ot_listbox-4" aria-labelledby="ot_selectHardwareAcceleration"
+												aria-describedby="ot_decriptionHardwareAcceleration">
+												<div class="row ot_hardwareAcceleration">
+													<div class="col r-option version selected" role="option"
+														tabindex="0" aria-selected="true" id="ot_CUDA">
+														<span><abbr>CUDA</abbr></span>
+													</div>
+													<div class="col r-option version" role="option" tabindex="-1"
+														aria-selected="false" id="ot_ROCm">
+														<span><abbr>ROCm</abbr></span>
+													</div>
+												</div>
+											</div>
+										</div>
+
+										<div class="row r-wrap command-block row-eq-height mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 class="text-white" id="ot_selectRunCommand">
+													Installation Instructions
+												</h3>
+											</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4">
+												<div class="row">
+													<div class="col r-option command-container" id="ot_command"
+														role="status">
+														<span class="py-2">
+															Please select a combination of resources
+														</span>
+													</div>
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
 					</section>
 
 					<section class="py-md-5 pb-4 pt-4 border-top">
@@ -952,6 +939,10 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 	</script>
 	<script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+	<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+	<script>
+		hljs.highlightAll();
+	</script>
 	<script src="./js/custom.js?v1.6"></script>
 	<script src="./js/script.js?v1.6"></script>
 </body>
