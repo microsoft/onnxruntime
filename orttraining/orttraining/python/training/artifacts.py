@@ -1,10 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import logging
 import os
 from enum import Enum
 from typing import List, Optional, Union
-import logging
 
 import onnx
 

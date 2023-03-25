@@ -1,10 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import contextlib
+import copy
 import logging
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Optional
-import copy
+from typing import Optional
 
 import onnx
 
@@ -344,20 +345,16 @@ class InputLike(Block):
 
     def build(self, input_name: Optional[str] = None):
         cloned_input = None
-        try:
+        with contextlib.suppress(LookupError):
             cloned_input = copy.deepcopy(_graph_utils.get_input_from_input_name(self.base, self._like))
-        except LookupError:
-            pass
 
-        try:
+        with contextlib.suppress(LookupError):
             cloned_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, self._like))
-        except LookupError:
-            pass
 
         if cloned_input is None:
             raise LookupError(f"Could not find input or output with name {self._like}")
 
-        cloned_input.name = input_name or _graph_utils.generate_graph_name("user_input")
+        cloned_input.name = input_name or _graph_utils.generate_graph_name("input")
         self.base.graph.input.append(cloned_input)
 
         return cloned_input.name

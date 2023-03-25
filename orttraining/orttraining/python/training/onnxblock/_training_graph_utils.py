@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 import copy
-from typing import List, Set, Tuple, Optional, Union
+from typing import List, Optional, Set, Tuple, Union
 
 import onnx
 
@@ -25,7 +25,6 @@ def _reorder_outputs(model: onnx.ModelProto, user_output_names: List[str], requi
 
 
 def _move_initializers_to_inputs(model: onnx.ModelProto, initializer_names: Optional[Set[str]] = None) -> None:
-
     # Move all trainable and non trainable initializers to graph inputs.
     # This allows training to pass in the parameters from outside the graph
     # so as to share the parameters across multiple sessions.
