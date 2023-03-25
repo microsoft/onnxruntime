@@ -21,60 +21,50 @@ stages:
 # o Windows x64
 # o Windows x86
 # Now we don't have coverage for ARM64EC yet. Will add it.
-- stage: ort_ext_combined_build
-  dependsOn: [ ]
-  jobs:
-  # TODO: Fix the build error
-  #- template: templates/mac-ci.yml
-  #  parameters:
-  #    AllowReleasedOpsetOnly: 1
-  #    BuildForAllArchs: true
-  #    AdditionalBuildFlags: --use_extensions
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    job_name_suffix: CPU_x86_default
+    EnvSetupScript: setup_env_x86.bat
+    buildArch: x86
+    msbuildPlatform: Win32
+    packageName: x86
+    buildparameter: --use_extensions --enable_onnx_tests
+    runTests: true
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
 
-  - template: templates/win-ci.yml
-    parameters:
-      DoCompliance: false
-      DoEsrp: false
-      job_name_suffix: CPU_x86_default
-      EnvSetupScript: setup_env_x86.bat
-      buildArch: x86
-      msbuildPlatform: Win32
-      packageName: x86
-      buildparameter: --use_extensions --enable_onnx_tests
-      runTests: true
-      buildJava: false
-      buildNodejs: false
-      ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    job_name_suffix: CPU_arm64_default
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildPlatform: arm64
+    packageName: arm64
+    buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: true
+    ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
 
-  - template: templates/win-ci.yml
-    parameters:
-      DoCompliance: false
-      DoEsrp: false
-      job_name_suffix: CPU_arm64_default
-      EnvSetupScript: setup_env.bat
-      buildArch: x64
-      msbuildPlatform: arm64
-      packageName: arm64
-      buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-      runTests: false
-      buildJava: false
-      buildNodejs: true
-      ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
-
-  - template: templates/win-ci.yml
-    parameters:
-      DoCompliance: false
-      DoEsrp: false
-      job_name_suffix: CPU_x64_default
-      EnvSetupScript: setup_env.bat
-      buildArch: x64
-      msbuildPlatform: x64
-      packageName: x64
-      buildparameter: --build_java --build_nodejs --use_extensions  --enable_onnx_tests
-      runTests: true
-      buildJava: true
-      buildNodejs: true
-      ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    job_name_suffix: CPU_x64_default
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: x64
+    buildparameter: --build_java --build_nodejs --use_extensions  --enable_onnx_tests
+    runTests: true
+    buildJava: true
+    buildNodejs: true
+    ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
 
 - stage: Mimalloc
   dependsOn: [ ]
