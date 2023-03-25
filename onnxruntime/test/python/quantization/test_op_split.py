@@ -74,7 +74,7 @@ class TestONNXModel(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         save(model, model_path)
 
-    def quantize_split_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_split_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "split_fp32.onnx"
         self.construct_model(model_fp32_path)
@@ -83,8 +83,8 @@ class TestONNXModel(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_uint8_path = "split_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_uint8_qdq_path = "split_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
+        model_uint8_path = f"split_{activation_type_str}{weight_type_str}.onnx"
+        model_uint8_qdq_path = f"split_{activation_type_str}{weight_type_str}_qdq.onnx"
 
         # Verify QOperator mode
         data_reader.rewind()

@@ -1,13 +1,13 @@
-from copy import deepcopy
+from copy import deepcopy  # noqa: F401
 
 import torch
 from opgen.generator import MakeTorchFallback, ONNXOp, SignatureOnly
-from opgen.onnxops import *
+from opgen.onnxops import *  # noqa: F403
 from packaging import version
 
 TORCH_API_CHANGE_VERSION = "1.11.1"
 
-kMSDomain = "onnxruntime::kMSDomain"
+kMSDomain = "onnxruntime::kMSDomain"  # noqa: N816
 
 
 class ReluGrad(ONNXOp):
@@ -55,7 +55,7 @@ class SoftmaxGrad(ONNXOp):
             ],
             dY,
             Y,
-            axis=ONNXAttr(axis, AttrType.INT),
+            axis=ONNXAttr(axis, AttrType.INT),  # noqa: F405
         )
         self.domain = kMSDomain
 
@@ -75,7 +75,7 @@ class LogSoftmaxGrad(ONNXOp):
             ],
             dY,
             Y,
-            axis=ONNXAttr(axis, AttrType.INT),
+            axis=ONNXAttr(axis, AttrType.INT),  # noqa: F405
         )
         self.domain = kMSDomain
 
@@ -134,13 +134,13 @@ unary_ops = [
 ]
 
 for unary_op in unary_ops_with_out:
-    ops[f"aten::{unary_op}.out"] = onnx_ops[unary_op]("self")
+    ops[f"aten::{unary_op}.out"] = onnx_ops[unary_op]("self")  # noqa: F405
 
 for unary_op in unary_ops_with_inplace:
-    ops[f"aten::{unary_op}_"] = onnx_ops[unary_op]("self")
+    ops[f"aten::{unary_op}_"] = onnx_ops[unary_op]("self")  # noqa: F405
 
 for unary_op in unary_ops:
-    ops[f"aten::{unary_op}"] = onnx_ops[unary_op]("self")
+    ops[f"aten::{unary_op}"] = onnx_ops[unary_op]("self")  # noqa: F405
 
 # Notes on Onnx op mapping
 #
@@ -162,41 +162,59 @@ hand_implemented = {
     "aten::as_strided": SignatureOnly(),
     # manually implement Slice using stride and offset.
     "aten::slice.Tensor": SignatureOnly(),
-    "aten::addmm": Gemm("mat1", "mat2", "self", alpha="alpha", beta="beta"),
-    "aten::t": Transpose("self"),
+    "aten::addmm": Gemm("mat1", "mat2", "self", alpha="alpha", beta="beta"),  # noqa: F405
+    "aten::t": Transpose("self"),  # noqa: F405
     # MatMul("self", "mat2"), fails since it resizes based on self but should be based on result shape of the mult
     "aten::mm.out": SignatureOnly(),
-    "aten::zeros_like": ConstantOfShape(
-        Shape("self")
+    "aten::zeros_like": ConstantOfShape(  # noqa: F405
+        Shape("self")  # noqa: F405
     ),  # the default constant is 0, so don't need to speicify attribute
-    "aten::sum.dim_IntList": ReduceSum("self", "dim", keepdims="keepdim"),
+    "aten::sum.dim_IntList": ReduceSum("self", "dim", keepdims="keepdim"),  # noqa: F405
     "aten::threshold_backward": ReluGrad("grad_output", "self"),
-    "aten::fmod.Scalar": Mod("self", "other", fmod=1),
-    "aten::fmod.Tensor": Mod("self", "other", fmod=1),
-    "aten::softshrink": Shrink("self", bias="lambd", lambd="lambd"),  # yes, bias is set to 'lambd'
-    "aten::hardshrink": Shrink("self", bias=0, lambd="lambd"),
+    "aten::fmod.Scalar": Mod("self", "other", fmod=1),  # noqa: F405
+    "aten::fmod.Tensor": Mod("self", "other", fmod=1),  # noqa: F405
+    "aten::softshrink": Shrink("self", bias="lambd", lambd="lambd"),  # yes, bias is set to 'lambd'  # noqa: F405
+    "aten::hardshrink": Shrink("self", bias=0, lambd="lambd"),  # noqa: F405
     "aten::gelu": Gelu("self"),
-    "aten::max": ReduceMax("self", keepdims=0),
-    "aten::min": ReduceMin("self", keepdims=0),
+    "aten::max": ReduceMax("self", keepdims=0),  # noqa: F405
+    "aten::min": ReduceMin("self", keepdims=0),  # noqa: F405
     "aten::cat.out": SignatureOnly(),
     "aten::fill_.Scalar": SignatureOnly(),
-    "aten::ne.Scalar_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
-    "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
-    "aten::eq.Tensor_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
-    "aten::eq.Scalar_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
-    "aten::bitwise_and.Tensor_out": And("self", "other"),  # This generates a fallback for all but Bool, as expected.
-    "aten::masked_select": GatherND("self", Transpose(NonZero(Expand("mask", Shape("self"))))),
+    "aten::ne.Scalar_out": Cast(  # noqa: F405
+        Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::ne.Tensor_out": Cast(  # noqa: F405
+        Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::eq.Tensor_out": Cast(  # noqa: F405
+        Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::eq.Scalar_out": Cast(  # noqa: F405
+        Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::bitwise_and.Tensor_out": And(  # noqa: F405
+        "self", "other"
+    ),  # This generates a fallback for all but Bool, as expected.
+    "aten::masked_select": GatherND("self", Transpose(NonZero(Expand("mask", Shape("self"))))),  # noqa: F405
     "aten::_local_scalar_dense": MakeTorchFallback(),  # This function extracts a scalar value from
     #   a tensor with exactly one value; there's no need to try to do this on an ORT device.
     #   See CPU impl at pytorch/blob/master/aten/src/ATen/native/Scalar.cpp
-    "aten::lt.Scalar_out": Cast(Less(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
-    "aten::lt.Tensor_out": Cast(Less(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
-    "aten::gt.Scalar_out": Cast(Greater(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
-    "aten::gt.Tensor_out": Cast(Greater(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
+    "aten::lt.Scalar_out": Cast(  # noqa: F405
+        Less(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::lt.Tensor_out": Cast(  # noqa: F405
+        Less(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::gt.Scalar_out": Cast(  # noqa: F405
+        Greater(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::gt.Tensor_out": Cast(  # noqa: F405
+        Greater(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
     "aten::equal": SignatureOnly(),
-    "aten::_softmax": Softmax("self", axis="dim"),
+    "aten::_softmax": Softmax("self", axis="dim"),  # noqa: F405
     "aten::argmax.out": SignatureOnly(),
-    "aten::nonzero": Transpose(NonZero("self")),
+    "aten::nonzero": Transpose(NonZero("self")),  # noqa: F405
     "aten::nonzero.out": SignatureOnly(),
     "aten::_log_softmax.out": SignatureOnly(),
     # NegativeLogLikelihoodLoss is not supported by the CPU Execution Provider so testing is not possible
@@ -205,9 +223,9 @@ hand_implemented = {
     "aten::nll_loss_backward.grad_input": MakeTorchFallback(),
     "aten::_softmax_backward_data": SoftmaxGrad("grad_output", "output", axis="dim"),
     "aten::_log_softmax_backward_data": LogSoftmaxGrad("grad_output", "output", axis="dim"),
-    "aten::squeeze.dim": Squeeze("self", "dim"),
+    "aten::squeeze.dim": Squeeze("self", "dim"),  # noqa: F405
     "aten::squeeze": SignatureOnly(),
-    "aten::unsqueeze": Unsqueeze(data="self", axes="dim"),
+    "aten::unsqueeze": Unsqueeze(data="self", axes="dim"),  # noqa: F405
     # until the generator is modified to include resizing out based on broadcast result, we hand write
     # add, sub, mul, and div. The majority of the code was generated by using the commented onnx ops.
     "aten::add.out": SignatureOnly(),  # Add("self", Mul("alpha", "other")),
@@ -224,7 +242,7 @@ aten_output_type["aten::nonzero"] = "at::ScalarType::Long"
 # This is done to make sure it is backward and future compatible
 if version.parse(torch.__version__) < version.parse(TORCH_API_CHANGE_VERSION):
     hand_implemented["aten::gelu_backward"] = GeluGrad("grad", "self")
-    hand_implemented["aten::_cat"] = Concat("tensors", "dim")
+    hand_implemented["aten::_cat"] = Concat("tensors", "dim")  # noqa: F405
 else:
     hand_implemented["aten::gelu_backward"] = GeluGrad("grad_output", "self")
 

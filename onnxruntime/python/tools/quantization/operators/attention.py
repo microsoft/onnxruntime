@@ -1,5 +1,5 @@
 import onnx
-from onnx import onnx_pb as onnx_proto
+from onnx import onnx_pb as onnx_proto  # noqa: F401
 
 from ..quant_utils import attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
@@ -29,7 +29,7 @@ class AttentionQuant(QuantOperatorBase):
         # attribute. This needs to be removed once the QAttention for varied q,k,v sizes
         # is implemented
         for attr in node.attribute:
-            if "qkv_hidden_sizes" == attr.name:
+            if attr.name == "qkv_hidden_sizes":
                 return super().quantize()
 
         (

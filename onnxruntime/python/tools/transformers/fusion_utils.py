@@ -130,9 +130,7 @@ class FusionUtils:
                 value = helper.get_attribute_value(attr)
 
         if isinstance(expected_value, list):
-            return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
-                expected_value, value, equal_nan=False
-            )
+            return (isinstance(value, (ndarray, list))) and array_equal(expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 
@@ -172,7 +170,7 @@ class FusionUtils:
         Returns:
             bool: whether the check is passed or not
         """
-        if not node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+        if node.op_type not in {"QuantizeLinear", "DequantizeLinear"}:
             logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")
 
         scale = model.get_constant_value(node.input[1])
@@ -219,9 +217,7 @@ class FusionUtils:
         value = self.model.get_constant_value(node.input[input_index])
 
         if isinstance(expected_value, list):
-            return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
-                expected_value, value, equal_nan=False
-            )
+            return (isinstance(value, (ndarray, list))) and array_equal(expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 
