@@ -50,7 +50,8 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Slice", {}},
           {"Softmax", {}},
           {"Sqrt", {}},
-          {"Tanh", {}}};
+          {"Tanh", {}},
+          {"Exp", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
@@ -76,6 +77,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetGemmOpVersionsMap() {
 }
 static const OpVersionsAndSelector::OpVersionsMap GetInstanceNormalizationOpVersionsMap() {
   return {{"InstanceNormalization", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetBatchNormalizationOpVersionsMap() {
+  return {{"BatchNormalization", {}}};
 }
 
 /* Selector rules registration related */
@@ -143,6 +147,13 @@ void RegisterInstanceNormalizationSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterBatchNormalizationSelector(Selectors& qdq_selectors) {
+  /* register selector for BatchNormalization op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<BatchNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetBatchNormalizationOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
@@ -153,6 +164,7 @@ void SelectorManager::CreateSelectors() {
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
   RegisterInstanceNormalizationSelector(qdq_selectors_);
+  RegisterBatchNormalizationSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {
