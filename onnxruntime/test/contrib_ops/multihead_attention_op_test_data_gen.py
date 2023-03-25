@@ -24,7 +24,7 @@ class Attention(nn.Module):
         v_head_size,
         is_decoder: bool,
     ):
-        super(Attention, self).__init__()
+        super().__init__()
         self.num_attention_heads = num_attention_heads
         self.qk_head_size = qk_head_size
         self.v_head_size = v_head_size
@@ -142,7 +142,7 @@ class Attention(nn.Module):
         outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
 
         if self.is_decoder:
-            outputs = outputs + (past_key_value,)
+            outputs = (*outputs, past_key_value)
 
         return outputs
 

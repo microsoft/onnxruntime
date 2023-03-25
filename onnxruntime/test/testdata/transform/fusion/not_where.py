@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum  # noqa: F401
 
 import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper
@@ -18,7 +18,7 @@ kwargs = {}
 kwargs["opset_imports"] = opsets
 
 
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [  # subgraph
         # float
         helper.make_node("Not", ["X"], ["not_X_1"], "not_1"),

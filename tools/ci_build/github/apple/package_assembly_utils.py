@@ -46,7 +46,7 @@ def gen_file_from_template(
     :param strict Whether to require the set of template variable names in the file and the keys of
                   `variable_substitutions` to be equal.
     """
-    with open(template_file, mode="r") as template:
+    with open(template_file) as template:
         content = template.read()
 
     variables_in_file = set()
@@ -94,7 +94,7 @@ def load_json_config(json_config_file: pathlib.Path):
     :param json_config_file The JSON configuration file path.
     :return The configuration info values.
     """
-    with open(json_config_file, mode="r") as config:
+    with open(json_config_file) as config:
         return json.load(config)
 
 
@@ -104,5 +104,5 @@ def get_ort_version():
 
     :return The ONNX Runtime version string.
     """
-    with open(repo_root / "VERSION_NUMBER", mode="r") as version_file:
+    with open(repo_root / "VERSION_NUMBER") as version_file:
         return version_file.read().strip()

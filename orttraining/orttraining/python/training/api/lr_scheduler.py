@@ -22,7 +22,6 @@ class LinearLRScheduler:
     """
 
     def __init__(self, optimizer, warmup_step_count, total_step_count, initial_lr) -> None:
-
         self._scheduler = C.LinearLRScheduler(optimizer._optimizer, warmup_step_count, total_step_count, initial_lr)
 
     def step(self):

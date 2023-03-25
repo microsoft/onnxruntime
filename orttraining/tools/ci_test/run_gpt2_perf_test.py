@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 
 import argparse
+import os
 import subprocess
 import sys
-import os
 from collections import namedtuple
 
 SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))

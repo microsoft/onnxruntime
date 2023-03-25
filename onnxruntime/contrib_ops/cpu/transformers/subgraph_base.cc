@@ -27,7 +27,7 @@ Subgraph::Subgraph(
       vocab_size(0),
       num_layers(0),
       past_present_share_buffer_(false),
-      has_decoder_masked_multihead_attention_(false),
+      has_decoder_masked_self_attention_(false),
       allocator_(nullptr),
       is_output_float16_(false) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
@@ -52,8 +52,8 @@ Subgraph::Subgraph(
   }
 
   for (const auto& n : subgraph.Nodes()) {
-    if (n.OpType() == "DecoderMaskedMultiheadAttention") {
-      has_decoder_masked_multihead_attention_ = true;
+    if (n.OpType() == "DecoderMaskedSelfAttention") {
+      has_decoder_masked_self_attention_ = true;
       break;
     }
   }

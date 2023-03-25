@@ -3,12 +3,12 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import os
+import shutil
+import warnings
 from pathlib import Path
 from typing import Union
 
-import os
-import warnings
-import shutil
 import torch
 
 from ._subscriber_base import SubscriberBase
@@ -53,7 +53,6 @@ class StatisticsSubscriber(SubscriberBase):
         self._output_dir = output_dir
         if os.path.exists(self._output_dir):
             if override_output_dir:
-
                 warnings.warn(f"Output directory {self._output_dir} already exists, overriding it.")
                 shutil.rmtree(self._output_dir)
             else:

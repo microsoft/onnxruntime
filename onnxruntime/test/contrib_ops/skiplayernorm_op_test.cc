@@ -280,23 +280,35 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec) {
       0.9f, -0.5f, 0.8f, 0.f, 0.3f, 0.3f, 0.3f, -0.6f,  // 7
       0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, 0.1f};  // 8
 
+  // Update test data result which use internal fp32 calculation for fp16 input/parameters.
+  // Following pytorch code snippet are used to generate the result: (Not torch uses fp32 internal calculation for this)
+  //
+  // gamma_tensor = torch.tensor(gamma_data, dtype=torch.float32).reshape(hidden_size).to('cuda:0').to(torch.float16)
+  // beta_tensor = torch.tensor(beta_data, dtype=torch.float32).reshape(hidden_size).to('cuda:0').to(torch.float16)
+  // input_tensor = torch.tensor(input_data, dtype=torch.float32).reshape(
+  //     batch_size, sequence_length, hidden_size).to('cuda:0').to(torch.float16)
+  // skip_tensor = torch.tensor(skip_data, dtype=torch.float32).reshape(
+  //     batch_size, sequence_length, hidden_size).to('cuda:0').to(torch.float16)
+  // added_input = torch.add(input_tensor, skip_tensor)
+  // out32 = torch.layer_norm(added_input, [hidden_size], gamma_tensor, beta_tensor, eps=epsilon_).to(torch.float32)
+  //
   std::vector<float> output_data = {
-      1.2490234f, -0.044372559f, 0.f, 1.7890625f, 0.61132812f, 0.1763916f, 0.28100586f, 0.014961243f,
-      0.20117188f, 2.6894531f, 5.8476562f, 0.78955078f, 0.54443359f, 0.1763916f, 4.8984375f, 0.1763916f,
-      0.64941406f, -0.044372559f, 0.f, 1.7890625f, -0.044372559f, 0.1763916f, 0.29882812f, 0.80175781f,
-      1.2490234f, -0.044372559f, 0.f, 2.9238281f, 0.61132812f, 0.17687988f, 0.29882812f, -0.077514648f,
-      0.21240234f, 11.59375f, 6.5273438f, -0.44458008f, 0.61132812f, 0.058441162f, 0.1763916f, -0.80664062f,
-      1.2490234f, -1.0439453f, 0.f, 3.7890625f, 0.61132812f, 0.63134766f, 0.78515625f, -0.39331055f,
-      1.5078125f, -0.044372559f, 0.3503418f, 3.8457031f, 0.29882812f, 0.29882812f, 0.29882812f, -1.2148438f,
-      0.85595703f, 0.40893555f, 0.f, 1.7890625f, 0.61132812f, 0.1763916f, 0.29882812f, -0.0025119781f,
-      1.0097656f, -0.12133789f, 0.f, 1.4189453f, 0.51367188f, 0.1583252f, -0.25830078f, -0.098876953f,
-      -1.0097656f, 4.8945312f, 1.2695312f, 4.3398438f, 0.50537109f, 0.1583252f, 4.6835938f, 0.12695312f,
-      0.40966797f, 0.46655273f, 0.f, 2.203125f, -0.23901367f, 0.1583252f, 0.26123047f, 0.38110352f,
-      1.0097656f, -0.23901367f, 0.f, 1.0273438f, 0.23901367f, 0.17907715f, 0.26123047f, -0.33178711f,
-      0.15234375f, -0.84863281f, 5.9804688f, -0.83789062f, 0.74853516f, -0.050079346f, 0.25244141f, -1.1015625f,
-      1.0097656f, -1.1210938f, 0.f, 3.4179688f, 0.51367188f, 0.67431641f, 0.37133789f, -0.098876953f,
-      1.1357422f, -0.12133789f, 0.77832031f, 0.053985596f, 0.30810547f, 0.47265625f, 0.096557617f, -0.53662109f,
-      0.82617188f, -0.12133789f, 0.f, 1.4189453f, 0.51367188f, 0.1583252f, 0.26123047f, 0.071289062f};
+    1.25000000f, -0.04403687f,  0.00000000f,  1.79003906f,  0.61132812f,  0.17639160f,  0.28125000f,  0.01530457f,
+    0.20166016f,  2.69140625f,  5.84765625f,  0.78955078f,  0.54443359f,  0.17639160f,  4.89843750f,  0.17639160f,
+    0.64990234f, -0.04403687f,  0.00000000f,  1.79003906f, -0.04403687f,  0.17639160f,  0.29882812f,  0.80175781f,
+    1.25000000f, -0.04403687f,  0.00000000f,  2.92382812f,  0.61132812f,  0.17687988f,  0.29882812f, -0.07745361f,
+    0.21240234f, 11.60156250f,  6.52734375f, -0.44482422f,  0.61132812f,  0.05844116f,  0.17639160f, -0.80712891f,
+    1.25000000f, -1.04394531f,  0.00000000f,  3.78906250f,  0.61132812f,  0.63134766f,  0.78564453f, -0.39331055f,
+    1.50878906f, -0.04403687f,  0.34985352f,  3.84765625f,  0.29882812f,  0.29882812f,  0.29882812f, -1.21582031f,
+    0.85595703f,  0.40966797f,  0.00000000f,  1.79003906f,  0.61132812f,  0.17639160f,  0.29882812f, -0.00255013f,
+    1.00976562f, -0.12152100f,  0.00000000f,  1.41894531f,  0.51367188f,  0.15832520f, -0.25805664f, -0.09875488f,
+    -1.00976562f,  4.89453125f,  1.26953125f,  4.33984375f,  0.50537109f,  0.15832520f,  4.68359375f,  0.12695312f,
+    0.40942383f,  0.46655273f,  0.00000000f,  2.20312500f, -0.23913574f,  0.15832520f,  0.26123047f,  0.38110352f,
+    1.00976562f, -0.23913574f,  0.00000000f,  1.02734375f,  0.23913574f,  0.17907715f,  0.26123047f, -0.33178711f,
+    0.15234375f, -0.85058594f,  5.98046875f, -0.83789062f,  0.74853516f, -0.04998779f,  0.25244141f, -1.10156250f,
+    1.00976562f, -1.12109375f,  0.00000000f,  3.41992188f,  0.51367188f,  0.67431641f,  0.37133789f, -0.09875488f,
+    1.13574219f, -0.12152100f,  0.77832031f,  0.05398560f,  0.30810547f,  0.47265625f,  0.09643555f, -0.53662109f,
+    0.82617188f, -0.12152100f,  0.00000000f,  1.41894531f,  0.51367188f,  0.15832520f,  0.26123047f,  0.07135010f};
 
   RunTest(input_data,
           skip_data,
@@ -436,8 +448,6 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias) {
           hidden_size);
 }
 
-// Don't enable this test for DML builds as these EP doesn't produce the new optional output yet
-#if !defined(USE_DML)
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias_ProducingOptionalOutput) {
   int batch_size = 2;
   int sequence_length = 2;
@@ -494,8 +504,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias_ProducingOptionalOutput) {
           hidden_size);
 }
 
-// SkipSimplifiedLayerNorm has not been enabled for ROCm yet
-#if !defined(USE_ROCM)
+// SkipSimplifiedLayerNorm has not been enabled for ROCm and DML yet
+#if !defined(USE_ROCM) && !defined(USE_DML)
 TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
   int batch_size = 1;
   int sequence_length = 2;
@@ -531,7 +541,6 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
           true,
           true);
 }
-#endif
 #endif
 
 }  // namespace test

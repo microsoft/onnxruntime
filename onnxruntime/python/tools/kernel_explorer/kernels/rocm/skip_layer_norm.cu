@@ -23,16 +23,16 @@ class SkipLayerNormSmall : public IKernelExplorer {
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
-    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormSmallOp<T, ThreadsPerBlock, VecSize>(&params_)));
+    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormSmallOp<T, float, T, ThreadsPerBlock, VecSize>(&params_)));
   }
 
   bool IsSupported() {
-    Status status = contrib::rocm::SkipLayerNormSmallOp<T, ThreadsPerBlock, VecSize>(&params_);
+    Status status = contrib::rocm::SkipLayerNormSmallOp<T, float, T, ThreadsPerBlock, VecSize>(&params_);
     return status.IsOK();
   }
 
  private:
-  using ParamsT = contrib::rocm::SkipLayerNormParams<T>;
+  using ParamsT = contrib::rocm::SkipLayerNormParams<T, T>;
   ParamsT params_{};
 };
 
@@ -47,16 +47,16 @@ class SkipLayerNormRegular : public IKernelExplorer {
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
-    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormRegularOp<T, ThreadsPerBlock, VecSize>(&params_)));
+    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormRegularOp<T, float, T, ThreadsPerBlock, VecSize>(&params_)));
   }
 
   bool IsSupported() {
-    Status status = contrib::rocm::SkipLayerNormRegularOp<T, ThreadsPerBlock, VecSize>(&params_);
+    Status status = contrib::rocm::SkipLayerNormRegularOp<T, float, T, ThreadsPerBlock, VecSize>(&params_);
     return status.IsOK();
   }
 
  private:
-  using ParamsT = contrib::rocm::SkipLayerNormParams<T>;
+  using ParamsT = contrib::rocm::SkipLayerNormParams<T, T>;
   ParamsT params_{};
 };
 
@@ -71,16 +71,16 @@ class SkipLayerNormStaticSelection : public IKernelExplorer {
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
-    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormStaticSelection<T>(&params_)));
+    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormStaticSelection<T, float, T>(&params_)));
   }
 
   bool IsSupported() {
-    Status status = contrib::rocm::SkipLayerNormStaticSelection<T>(&params_);
+    Status status = contrib::rocm::SkipLayerNormStaticSelection<T, float, T>(&params_);
     return status.IsOK();
   }
 
  private:
-  using ParamsT = contrib::rocm::SkipLayerNormParams<T>;
+  using ParamsT = contrib::rocm::SkipLayerNormParams<T, T>;
   ParamsT params_{};
 };
 
@@ -105,9 +105,9 @@ class SkipLayerNormTunable : public IKernelExplorer {
   }
 
  private:
-  using ParamsT = contrib::rocm::SkipLayerNormParams<T>;
+  using ParamsT = contrib::rocm::SkipLayerNormParams<T, T>;
   ParamsT params_{};
-  contrib::rocm::SkipLayerNormTunableOp<T> op_{};
+  contrib::rocm::SkipLayerNormTunableOp<T, float, T> op_{};
 };
 
 #define REGISTER_OP(name, type, threads_per_block, vec_size)                                                   \
