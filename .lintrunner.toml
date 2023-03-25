@@ -163,6 +163,7 @@ command = [
     'run',
     'rustfmt_linter',
     '--binary=rustfmt',
+    '--config-path=rust/rustfmt.toml',
     '--',
     '@{{PATHSFILE}}'
 ]

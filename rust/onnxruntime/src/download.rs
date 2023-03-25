@@ -10,7 +10,10 @@
 //! See [`AvailableOnnxModel`](enum.AvailableOnnxModel.html) for the different models available
 //! to download.
 
-#[cfg(feature = "model-fetching")]
+#[cfg(feature
+
+
+    = "model-fetching")]
 use std::{
     fs, io,
     path::{Path, PathBuf},
