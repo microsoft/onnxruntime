@@ -3,11 +3,12 @@
 
 import os
 import tempfile
+
 import pytest
 import torch
 
 from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
+from onnxruntime.training.utils.hooks import StatisticsSubscriber, SubscriberManager
 
 
 class NeuralNetSingleOutput(torch.nn.Module):

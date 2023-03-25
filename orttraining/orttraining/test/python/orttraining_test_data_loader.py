@@ -1,7 +1,9 @@
-from enum import Enum
 import random
+from enum import Enum
+
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
+
 from onnxruntime.capi.ort_trainer import generate_sample
 
 global_rng = random.Random()
@@ -48,9 +50,7 @@ class OrtTestDataset(Dataset):
             shape_ = []
             for i, axis in enumerate(input_desc.shape_):
                 if axis == "max_seq_len_in_batch":
-                    shape_ = shape_ + [
-                        seq_len,
-                    ]
+                    shape_ = [*shape_, seq_len]
                 elif axis != "batch":
                     shape_ = input_desc.shape_[i]
             input_desc.shape_ = shape_
@@ -85,7 +85,7 @@ def split_batch(batch, input_desc, args_count):
     args = []  # (input_ids[batch, seglen], attention_mask[batch, seglen])
     kwargs = {}  # {'token_type_ids': token_type_ids[batch,seglen], 'position_ids': token_type_ids[batch, seglen]}
     for i in range(args_count):
-        args = args + [batch[i]]
+        args = [*args, batch[i]]
 
     for i in range(args_count, total_argument_count):
         kwargs[input_desc[i].name_] = batch[i]
