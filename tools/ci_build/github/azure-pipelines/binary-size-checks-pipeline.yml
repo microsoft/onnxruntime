@@ -26,8 +26,7 @@ jobs:
   timeoutInMinutes: 60
   workspace:
     clean: all
-  pool: Linux-CPU-2019
-
+  pool: onnxruntime-Linux-CPU-2019
   strategy:
     # Notes:
     # - BuildConfigFile path is relative to repository root.
