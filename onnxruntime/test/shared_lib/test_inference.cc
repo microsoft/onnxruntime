@@ -2804,8 +2804,7 @@ TEST(CApiTest, single_schema_multi_kernel_custom_op_handler) {
   session_options.SetLogSeverityLevel(0);
   session_options.Add(v2_domain);
 
-  const wchar_t* model_path = CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL;
-  Ort::Session session(*ort_env, model_path, session_options);
+  Ort::Session session(*ort_env, CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL, session_options);
 
   const char* input_names[] = {"X"};
   const char* output_names[] = {"Y", "Z"};
