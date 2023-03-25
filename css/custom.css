@@ -247,7 +247,7 @@ a.link:active .link-arrow{
  }
 
 .blue-text{
-    color: #0F77D2;
+    color: #1fa2ff;
 }
 h3.blue-text{
     font-weight: 700;
@@ -279,7 +279,7 @@ h3.blue-text{
 }
 
 .alert a{
-    color: #0F77D2 !important;
+    color: #007bff !important;
     font-weight: bold !important;
 }
 
@@ -380,9 +380,9 @@ p.text-copyright{
     position: fixed;
     bottom: 25px;
     right: 25px;
-    background-color: #1FA2FF;
+    background-color: #007bff;
     width: 50px;
-    height: 44px;
+    height: 50px;
     padding: 0;
     border: 0;
     border-radius: 0;
@@ -790,9 +790,9 @@ a .abbr[data-original-title], a abbr[title]{
 
   li[aria-selected='true'],
   .custom-tab .nav-tabs .nav-link.active {
-    background-color: #0F77D2;
+    background-color: #007bff;
     color: #fff;
-    border: 1px solid #0F77D2;
+    border: 1px solid #007bff;
     margin-bottom: -1px;
   }
   
