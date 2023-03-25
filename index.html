@@ -114,7 +114,15 @@
 					</section>
 					<section class="py-md-5 pb-4 pt-4 border-top">
 						<div class="row">
-							<div class="col-md-8 d-md-block d-none">
+
+						<div class="col-md-8 d-md-block d-none">
+							<div class="text-center pb-3">
+								<h2 class="section-heading">Our API is available in multiple languages</h2>							
+								<p class="text-center"></p>
+									Check out the small snippets below to see how easy it is to inference your model in any language!
+								</p>
+							</div>
+
 								<div class="row">
 									<div class="col-3 pr-0">
 										<div class="nav flex-column nav-pills h-100" style="background-color: #fafafa;"
@@ -136,6 +144,9 @@
 											<a class="nav-link rounded-0" id="v-pills-cs-tab" data-toggle="pill"
 												href="#v-pills-cs" role="tab" aria-controls="v-pills-cs"
 												aria-selected="false">C#</a>
+											<a class="nav-link rounded-0" id="v-pills-more-tab" data-toggle="pill"
+												href="/docs/get-started/" role="tab" aria-controls="v-pills-cs"
+												aria-selected="false">more languages</a>
 										</div>
 									</div>
 									<div class="col-9 pl-0 h-100 bg-light">
@@ -158,11 +169,13 @@ print(result[0])
 												<pre style="overflow: hidden">
 <code>
 OrtEnvironment env = OrtEnvironment.getEnvironment();
-OrtSession session = env.createSession("model.onnx", new OrtSession.SessionOptions());
-var tensorFromArray = OnnxTensor.createTensor(env,sourceArray);
-OrtSession.Result output = session.run(Collections.singletonMap("input", tensorFromArray));
-float[][] result = (float[][]) output.get(0).getValue();
-System.out.println((int) result[0][0]);
+OrtSession session = env.createSession(Paths.get("model.onnx"), , new OrtSession.SessionOptions());
+float[] input = new float[] { 1.0f, 2.0f, 3.0f };
+TensorInfo inputInfo = session.getInputInfo().values().iterator().next();
+OnnxTensor inputTensor = OnnxTensor.createTensor(env, input, inputInfo);
+Result output = session.run(Collections.singletonMap(inputInfo.getName(), inputTensor));
+float[] outputFloats = (float[]) output.get(0).getValue();
+System.out.println(Arrays.toString(outputFloats));
 </code>
 											</pre>
 											</div>
