@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -27,7 +26,7 @@ from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantizationMode
 class TestQDQFormat(unittest.TestCase):
     def input_feeds(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
@@ -287,9 +286,9 @@ class TestQDQFormatConv(TestQDQFormat):
 
     def verify_quantize_conv(self, has_bias, per_channel, is_quant_type_int8=False):
         np.random.seed(1)
-        model_fp32_path = "conv_fp32.{}.{}.onnx".format(has_bias, per_channel)
-        model_int8_qdq_path = "conv_quant_qdq.{}.{}.onnx".format(has_bias, per_channel)
-        model_int8_qop_path = "conv_quant_qop.{}.{}.onnx".format(has_bias, per_channel)
+        model_fp32_path = f"conv_fp32.{has_bias}.{per_channel}.onnx"
+        model_int8_qdq_path = f"conv_quant_qdq.{has_bias}.{per_channel}.onnx"
+        model_int8_qop_path = f"conv_quant_qop.{has_bias}.{per_channel}.onnx"
         channel_count = 16
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
         self.construct_model_conv(model_fp32_path, [1, 8, 33, 33], [channel_count, 8, 3, 3], [1, 16, 31, 31], has_bias)
@@ -396,9 +395,9 @@ class TestQDQFormatConvClip(TestQDQFormat):
 
     def verify(self, per_channel, is_quant_type_int8):
         np.random.seed(1)
-        model_fp32_path = "conv_clip_fp32.{}.onnx".format(per_channel)
-        model_int8_qdq_path = "conv_clip_quant_qdq.{}.onnx".format(per_channel)
-        model_int8_qop_path = "conv_clip_quant_qop.{}.onnx".format(per_channel)
+        model_fp32_path = f"conv_clip_fp32.{per_channel}.onnx"
+        model_int8_qdq_path = f"conv_clip_quant_qdq.{per_channel}.onnx"
+        model_int8_qop_path = f"conv_clip_quant_qop.{per_channel}.onnx"
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
         self.construct_model_conv_clip(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [15376])
         quantize_static(
@@ -477,7 +476,7 @@ def construct_relu_conv_model(test_model_path: str) -> None:
       Relu2  Conv3
         |      |
       Conv2    |
-        \      /
+        \\      /
           Add
            |
           (AddOut)
@@ -566,9 +565,9 @@ class TestQDQFormatConvRelu(TestQDQFormat):
 
     def verify(self, per_channel, is_quant_type_int8):
         np.random.seed(1)
-        model_fp32_path = str(Path(self._tmp_model_dir.name) / "conv_relu_fp32.{}.onnx".format(per_channel))
-        model_int8_qdq_path = str(Path(self._tmp_model_dir.name) / "conv_relu_quant_qdq.{}.onnx".format(per_channel))
-        model_int8_qop_path = str(Path(self._tmp_model_dir.name) / "conv_relu_quant_qop.{}.onnx".format(per_channel))
+        model_fp32_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_fp32.{per_channel}.onnx")
+        model_int8_qdq_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_quant_qdq.{per_channel}.onnx")
+        model_int8_qop_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_quant_qop.{per_channel}.onnx")
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
         self.construct_model_conv_relu(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31])
         quantize_static(

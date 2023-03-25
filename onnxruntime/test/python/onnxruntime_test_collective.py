@@ -3,17 +3,17 @@
 import unittest
 
 import numpy as np
-import onnx
+import onnx  # noqa: F401
 from mpi4py import MPI
-from onnx import AttributeProto, GraphProto, TensorProto, helper
+from onnx import AttributeProto, GraphProto, TensorProto, helper  # noqa: F401
 
 import onnxruntime as ort
 
 
 class ORTBertPretrainTest(unittest.TestCase):
     def _create_allreduce_ut_model(self, shape):
-        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, shape)
-        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, shape)
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, shape)  # noqa: N806
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, shape)  # noqa: N806
         node_def = helper.make_node("AllReduce", ["X"], ["Y"], domain="com.microsoft")
         graph_def = helper.make_graph(
             [node_def],
@@ -28,10 +28,10 @@ class ORTBertPretrainTest(unittest.TestCase):
         return comm.Get_rank(), comm.Get_size()
 
     def _create_allgather_ut_model(self, shape):
-        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, shape)
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, shape)  # noqa: N806
         rank, size = self._get_rank_size()
         output_shape = [s * size if _ == 0 else s for _, s in enumerate(shape)]
-        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, output_shape)
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, output_shape)  # noqa: N806
         node_def = helper.make_node("AllGather", ["X"], ["Y"], domain="com.microsoft", group_size=size)
         graph_def = helper.make_graph(
             [node_def],
@@ -42,8 +42,8 @@ class ORTBertPretrainTest(unittest.TestCase):
         return helper.make_model(graph_def, producer_name="ort-distributed-inference-unittest")
 
     def _create_alltoall_ut_model(self, shape):
-        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, shape)
-        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, shape)
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, shape)  # noqa: N806
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, shape)  # noqa: N806
         _, size = self._get_rank_size()
         node_def = helper.make_node("AllToAll", ["X"], ["Y"], domain="com.microsoft", group_size=size)
         graph_def = helper.make_graph(
