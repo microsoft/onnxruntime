@@ -10,10 +10,7 @@
 //! See [`AvailableOnnxModel`](enum.AvailableOnnxModel.html) for the different models available
 //! to download.
 
-#[cfg(feature
-
-
-    = "model-fetching")]
+#[cfg(feature = "model-fetching")]
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -51,7 +48,10 @@ impl ModelUrl for AvailableOnnxModel {
     fn fetch_url(&self) -> &'static str {
         match self {
             AvailableOnnxModel::Vision(model) => model.fetch_url(),
-            AvailableOnnxModel::Language(model) => model.fetch_url(),
+            AvailableOnnxModel::Language(model) =>
+
+
+            model.fetch_url(),
         }
     }
 }
