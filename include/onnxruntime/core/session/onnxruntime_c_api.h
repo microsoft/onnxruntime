@@ -4023,7 +4023,7 @@ struct OrtApi {
    * Used in the KernelCompute callback of an OrtCustomOp to get a logger that can be used to log
    * messages during inference.
    *
-   * \param[in] info An instance of ::OrtKernelContext.
+   * \param[in] context An instance of ::OrtKernelContext.
    * \param[out] logger Pointer set to the kernel context's ::OrtLogger. Owned by ONNX Runtime, so do not free.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
