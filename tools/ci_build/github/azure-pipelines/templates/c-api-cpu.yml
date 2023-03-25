@@ -411,7 +411,6 @@ stages:
         msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-
     - task: MSBuild@1
       displayName: 'Build C# for pre-.net6 targets'
       inputs:
