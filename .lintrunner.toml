@@ -167,3 +167,4 @@ command = [
     '--',
     '@{{PATHSFILE}}'
 ]
+is_formatter = true
