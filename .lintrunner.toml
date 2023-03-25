@@ -167,16 +167,3 @@ command = [
     '--',
     '@{{PATHSFILE}}'
 ]
-
-[[linter]]
-code = 'CLIPPY'
-include_patterns = ['**/*.rs']
-command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'clippy_linter',
-    '--',
-    '@{{PATHSFILE}}'
-]
