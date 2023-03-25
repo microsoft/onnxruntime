@@ -3970,7 +3970,6 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
 
-  /// @}
   /// \name OrtKernelInfo
   /// Custom operator APIs.
   /// @{
@@ -4201,3 +4200,4 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOpt
 #ifdef __cplusplus
 }
 #endif
+/// @}
