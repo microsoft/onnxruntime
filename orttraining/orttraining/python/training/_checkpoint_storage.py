@@ -79,7 +79,7 @@ def load(path, key=None):
     load_obj = {}
     with h5py.File(path, "r") as f:
         if key:
-            f = f[key]
+            f = f[key]  # noqa: PLW2901
         if isinstance(f, h5py.Dataset):
             return f[()]
 

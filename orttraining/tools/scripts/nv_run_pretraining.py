@@ -529,7 +529,7 @@ def main():
                     # iter_start = time.time()
 
                     training_steps += 1
-                    batch = [t.to(device) for t in batch]
+                    batch = [t.to(device) for t in batch]  # noqa: PLW2901
                     input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels = batch
                     if not is_model_exported:
                         onnx_path = os.path.join(

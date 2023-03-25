@@ -325,7 +325,7 @@ def get_profile_metrics(path, profile_file_prefix, logger):
 
     data = []
     for profile in profiling_files:
-        profile = profile.split("\t")[1]
+        profile = profile.split("\t")[1]  # noqa: PLW2901
 
         logger.debug("Parsing profile %s ...", profile)
         with open(profile, encoding="utf-8") as fd:
