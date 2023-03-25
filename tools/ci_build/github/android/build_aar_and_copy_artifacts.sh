@@ -6,7 +6,7 @@
 
 set -e
 set -x
-export PATH=/opt/python/cp37-cp37m/bin:$PATH
+export PATH=/opt/python/cp38-cp38/bin:$PATH
 
 # build the AAR package, using the build settings under /home/onnxruntimedev/.build_settings/
 # if there is also include_ops_and_types.config exists in the same folder, use it to build with included ops/types
