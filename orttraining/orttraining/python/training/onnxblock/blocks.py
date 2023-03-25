@@ -348,8 +348,9 @@ class InputLike(Block):
         with contextlib.suppress(LookupError):
             cloned_input = copy.deepcopy(_graph_utils.get_input_from_input_name(self.base, self._like))
 
-        with contextlib.suppress(LookupError):
-            cloned_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, self._like))
+        if cloned_input is None:
+            with contextlib.suppress(LookupError):
+                cloned_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, self._like))
 
         if cloned_input is None:
             raise LookupError(f"Could not find input or output with name {self._like}")
