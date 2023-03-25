@@ -54,6 +54,10 @@ select = [
     "RUF", # Ruff-specific rules
     "SIM", # flake8-simplify
     "UP", # pyupgrade
+    "PLE", # pylint errors
+    "PLW", # pylint warnings
+    "PLC", # pylint conventions
+    "NPY", # numpy
 ]
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.
 # Always include a comment to explain why.

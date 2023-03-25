@@ -5,7 +5,6 @@ from orttraining_test_data_loader import BatchArgsOption, create_ort_test_datalo
 
 from onnxruntime.capi.ort_trainer import IODescription, ORTTrainer
 from onnxruntime.training import amp, optim, orttrainer
-from onnxruntime.training import orttrainer_options as orttrainer_options
 from onnxruntime.training.optim import _LRScheduler
 
 
