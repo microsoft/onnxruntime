@@ -146,66 +146,74 @@
 											<div class="tab-pane fade show active" id="v-pills-python" role="tabpanel"
 												aria-labelledby="v-pills-python-tab">
 												<pre style="overflow: hidden">
-												<code>import onnxruntime as ort 
+<code>
+import onnxruntime as ort
 import numpy as np
-x, y = test_data[0][0], test_data[0][1]
-ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-outputs = ort_sess.run(None, {'input': x.numpy()})
-
-predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-print(f'Predicted: "{predicted}", Actual: "{actual}"')</code>
+ort_sess = ort.InferenceSession('model.onnx')
+outputs = ort_sess.run(None, {'input': text.numpy(),'offsets':  torch.tensor([0]).numpy()})
+result = outputs[0].argmax(axis=1)
+print(result[0])
+</code>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-java" role="tabpanel"
 												aria-labelledby="v-pills-java-tab">
 												<pre style="overflow: hidden">
-												<code>import onnxruntime as ort2 
-import numpy as np
-x, y = test_data[0][0], test_data[0][1]
-ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-outputs = ort_sess.run(None, {'input': x.numpy()})
-
-predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-print(f'Predicted: "{predicted}", Actual: "{actual}"')</code>
+<code>
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+OrtSession session = env.createSession("model.onnx", new OrtSession.SessionOptions());
+var tensorFromArray = OnnxTensor.createTensor(env,sourceArray);
+OrtSession.Result output = session.run(Collections.singletonMap("input", tensorFromArray));
+float[][] result = (float[][]) output.get(0).getValue();
+System.out.println((int) result[0][0]);
+</code>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-javascript" role="tabpanel"
 												aria-labelledby="v-pills-javascript-tab">
 												<pre style="overflow: hidden">
-												<code>import onnxruntime as ort3 
-import numpy as np
-x, y = test_data[0][0], test_data[0][1]
-ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-outputs = ort_sess.run(None, {'input': x.numpy()})
-
-predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-print(f'Predicted: "{predicted}", Actual: "{actual}"')</code>
+<code>
+const ort = require('onnxruntime-web');
+var input = new Float32Array([1, 2, 3]);
+var offsets = new Int32Array([0]);
+var session = await ort.InferenceSession.create('model.onnx');
+var output = await session.run({ input, offsets });
+var result = output.values().next().value.argmax(1);
+console.log(result[0]);
+</code>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-cpp" role="tabpanel"
 												aria-labelledby="v-pills-cpp-tab">
 												<pre style="overflow: hidden">
-												<code>import onnxruntime as ort4
-import numpy as np
-x, y = test_data[0][0], test_data[0][1]
-ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-outputs = ort_sess.run(None, {'input': x.numpy()})
-
-predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-print(f'Predicted: "{predicted}", Actual: "{actual}"')</code>
+<code>
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+Ort::SessionOptions session_options;
+Ort::Session session(env, "model.onnx", session_options);
+std::vector<float> input = {1, 2, 3};
+std::vector<int64_t> offsets = {0};
+Ort::Value input_tensor = Ort::Value::CreateTensor<float>(input.data(), input.size(), {1, 3});
+Ort::Value offsets_tensor = Ort::Value::CreateTensor<int64_t>(offsets.data(), offsets.size(), {1});
+std::vector<Ort::Value> inputs = {input_tensor, offsets_tensor};
+auto output_tensors = session.Run(Ort::RunOptions{nullptr}, inputs, {"output"});
+auto result = output_tensors.front().GetTensorMutableData<int64_t>();
+std::cout << result[0] << std::endl;
+</code>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-cs" role="tabpanel"
 												aria-labelledby="v-pills-cs-tab">
 												<pre style="overflow: hidden">
-												<code>import onnxruntime as ort5 
-import numpy as np
-x, y = test_data[0][0], test_data[0][1]
-ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-outputs = ort_sess.run(None, {'input': x.numpy()})
-
-predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-print(f'Predicted: "{predicted}", Actual: "{actual}"')</code>
+<code>
+using Microsoft.ML.OnnxRuntime;
+review = "A text review";
+var modelPath = "./model.onnx";
+var inputTensor = new DenseTensor<string>(new string[] { review }, new int[] { 1, 1 });
+var input = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<string>("input", inputTensor) };
+var session = new InferenceSession(modelPath);
+var output = session.Run(input).ToList().Last().AsEnumerable<NamedOnnxValue>();
+var inferenceResult = output.First().AsDictionary<string, float>();
+</code>
 											</pre>
 											</div>
 										</div>
