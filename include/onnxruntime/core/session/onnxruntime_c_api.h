@@ -286,8 +286,6 @@ typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 typedef OrtStatus* OrtStatusPtr;
 #endif
 
-/// @}
-
 /** \brief Memory allocation interface
  *
  * Structure of function pointers that defines a memory allocator. This can be created and filled in by the user for custom allocators.
@@ -3972,6 +3970,7 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
 
+  /// @}
   /// \name OrtKernelInfo
   /// Custom operator APIs.
   /// @{
