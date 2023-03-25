@@ -19,11 +19,11 @@ PROTOC_BUILD_PATH=$2
 PROTOC_INSTALL_PATH=$3
 
 pushd .
-mkdir -p $PROTOC_BUILD_PATH
-cd $PROTOC_BUILD_PATH
-DEP_FILE_PATH=$ORT_REPO_ROOT/cmake/deps.txt
-protobuf_url=$(grep '^protobuf' $DEP_FILE_PATH | cut -d ';' -f 2 | sed 's/\.zip$/\.tar.gz/')
-curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o protobuf_src.tar.gz $protobuf_url
+mkdir -p "$PROTOC_BUILD_PATH"
+cd "$PROTOC_BUILD_PATH"
+DEP_FILE_PATH="$ORT_REPO_ROOT/cmake/deps.txt"
+protobuf_url=$(grep '^protobuf' "$DEP_FILE_PATH" | cut -d ';' -f 2 | sed 's/\.zip$/\.tar.gz/')
+curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o protobuf_src.tar.gz "$protobuf_url"
 tar -zxf protobuf_src.tar.gz --strip=1
 # The second 'cmake' is a folder name
 cmake cmake \
@@ -32,7 +32,7 @@ cmake cmake \
     -Dprotobuf_WITH_ZLIB_DEFAULT=OFF \
     -Dprotobuf_BUILD_SHARED_LIBS=OFF \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=$PROTOC_INSTALL_PATH
+    "-DCMAKE_INSTALL_PREFIX=$PROTOC_INSTALL_PATH"
 make -j $(getconf _NPROCESSORS_ONLN)
 make install
 popd
