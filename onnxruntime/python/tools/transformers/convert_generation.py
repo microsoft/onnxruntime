@@ -64,10 +64,10 @@ from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
 from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E402
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
-from benchmark_helper import setup_logger
+from benchmark_helper import setup_logger  # noqa: E402
 from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models  # noqa: E402
 from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS  # noqa: E402
-from onnx_model import OnnxModel
+from onnx_model import OnnxModel  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -646,7 +646,7 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
         ValueError: Output name is not expected.
         ValueError: Output data type is not expected.
     """
-    is_float16 = Precision.FLOAT16 == precision
+    is_float16 = precision == Precision.FLOAT16
 
     input_count = len(graph.input)
     layer_count = input_count - 3
@@ -702,7 +702,7 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         ValueError: Output name is not expected.
         ValueError: Output data type is not expected.
     """
-    is_float16 = Precision.FLOAT16 == precision
+    is_float16 = precision == Precision.FLOAT16
     float_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
 
     input_count = len(graph.input)
@@ -778,7 +778,7 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         ValueError: Output name is not expected.
         ValueError: Output data type is not expected.
     """
-    is_float16 = Precision.FLOAT16 == precision
+    is_float16 = precision == Precision.FLOAT16
     layer_count = (len(graph.output) - 2) // 4
     assert layer_count >= 1
 
@@ -982,7 +982,7 @@ def _attribute_to_pair(attribute):
         :return: attribute in {key: value} format.
     """
     if attribute.type == 0:
-        raise ValueError("attribute {} does not have type specified.".format(attribute.name))
+        raise ValueError(f"attribute {attribute.name} does not have type specified.")
 
     # Based on attribute type definitions from AttributeProto
     # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
@@ -1007,7 +1007,7 @@ def _attribute_to_pair(attribute):
     elif attribute.type == 10:
         value = attribute.graphs
     else:
-        raise ValueError("attribute {} has unsupported type {}.".format(attribute.name, attribute.type))
+        raise ValueError(f"attribute {attribute.name} has unsupported type {attribute.type}.")
 
     return (attribute.name, value)
 
@@ -1086,7 +1086,7 @@ def update_decoder_subgraph_use_decoder_masked_self_attention(
     """
     if is_beam_search:
         new_inputs = []
-        for i, vi in enumerate(subg.input):
+        for _i, vi in enumerate(subg.input):
             new_inputs.extend([vi])
 
         # Add 2 BeamSearch specific inputs
@@ -1251,7 +1251,6 @@ def generate_gpt2_init_decoder(
 
     # Try without the Casts before and after the MatMuls
     if logits_matmul_to_residual_add_path is None:
-
         # Normalization Node is : LayerNormalization
         logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
             logits_matmul_node,
@@ -1280,7 +1279,7 @@ def generate_gpt2_init_decoder(
     residual_add_node = logits_matmul_to_residual_add_path[-1]
 
     # If the last node in the pattern is SkipLayerNormalization, we need to adjust our pattern searches accordingly
-    is_skiplayernorm_path = True if residual_add_node.op_type == "SkipLayerNormalization" else False
+    is_skiplayernorm_path = residual_add_node.op_type == "SkipLayerNormalization"
 
     # Regular LayerNormalization path
     if not is_skiplayernorm_path:
@@ -1601,7 +1600,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             args.decoder_onnx, args.use_external_data_format
         ):
             # Can't proceed further - better to raise an exception
-            raise ValueError(f"Could not update the input shapes for the non-initial decoder subgraph.")
+            raise ValueError("Could not update the input shapes for the non-initial decoder subgraph.")
 
     # If the user explicitly requests running shape inference or if we padded/mutated
     # weight(s)/input shape(s) in the decoder, we want to run shape inference to capture the new
@@ -2337,7 +2336,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
         for i, sequence in enumerate(beam_outputs.sequences):
             decoded_sequence = tokenizer.decode(sequence, skip_special_tokens=True)
             torch_decoded_sequences.append(decoded_sequence)
-            print("{}: {}".format(i, decoded_sequence))
+            print(f"{i}: {decoded_sequence}")
 
     print("-" * 50)
     print("Testing beam search with onnxruntime...")

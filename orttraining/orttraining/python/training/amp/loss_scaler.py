@@ -1,4 +1,4 @@
-class LossScaler(object):
+class LossScaler:
     r"""Base class for implementing custom loss scaler strategies
 
     Once the scaler is configured, no user intervention is needed to update loss scale during training.
@@ -88,10 +88,10 @@ class DynamicLossScaler(LossScaler):
     def __init__(
         self,
         automatic_update=True,
-        loss_scale=float(1 << 16),
+        loss_scale=float(1 << 16),  # noqa: B008
         up_scale_window=2000,
         min_loss_scale=1.0,
-        max_loss_scale=float(1 << 24),
+        max_loss_scale=float(1 << 24),  # noqa: B008
     ):
         super().__init__(loss_scale)
         self.automatic_update = automatic_update

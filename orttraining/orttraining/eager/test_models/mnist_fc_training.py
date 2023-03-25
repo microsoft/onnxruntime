@@ -4,7 +4,6 @@
 # pylint: disable=missing-docstring
 # pylint: disable=C0103
 
-from __future__ import print_function
 
 import argparse
 import os
@@ -99,7 +98,7 @@ def main():
         shuffle=True,
         **kwargs,
     )
-    test_loader = torch.utils.data.DataLoader(
+    torch.utils.data.DataLoader(
         datasets.MNIST(
             dataset_root_dir,
             train=False,
