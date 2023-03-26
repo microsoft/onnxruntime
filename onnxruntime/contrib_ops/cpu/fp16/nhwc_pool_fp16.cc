@@ -152,9 +152,9 @@ class NhwcAvgPoolFp16 : public NhwcPoolFp16 {
 };
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    NhwcMaxPool,
-    kMSDomain,
-    1,
+    MaxPool,
+    kMSInternalNHWCDomain,
+    11,
     MLFloat16,
     kCpuExecutionProvider,
     KernelDefBuilder()
@@ -162,9 +162,9 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     NhwcMaxPoolFp16);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    NhwcAvgPool,
-    kMSDomain,
-    1,
+    AveragePool,
+    kMSInternalNHWCDomain,
+    11,
     MLFloat16,
     kCpuExecutionProvider,
     KernelDefBuilder()

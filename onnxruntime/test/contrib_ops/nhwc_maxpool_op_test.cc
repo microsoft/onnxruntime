@@ -166,7 +166,6 @@ class NhwcMaxPoolOpTester {
   }
 };
 
-
 TEST(NhwcMaxPoolContribOpTest, MaxPool1D) {
   for (int64_t channels = 1; channels < 94; channels++) {
     NhwcMaxPoolOpTester<uint8_t> test;

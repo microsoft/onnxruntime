@@ -168,7 +168,7 @@ class NhwcFp16PoolOpTester {
     std::vector<int64_t> Y_shape;
     ComputeExpectedOutput(Y_data, Y_shape);
 
-    OpTester test(is_max_pool_ ? "NhwcMaxPool" : "NhwcAvgPool", 1, onnxruntime::kMSDomain);
+    OpTester test(is_max_pool_ ? "MaxPool" : "AveragePool", 11, onnxruntime::kMSInternalNHWCDomain);
     test.AddInput<MLFloat16>("x", X_shape_, X_data_);
     test.AddOutput<MLFloat16>("y", Y_shape, Y_data);
     test.AddAttribute("kernel_shape", kernel_shape_);
@@ -270,6 +270,8 @@ TEST(NhwcFp16PoolOpTest, AvgPoolStrides) {
   test.Run();
 }
 
+/******
+ * AveragePool op does not support dilations until version 19
 TEST(NhwcFp16PoolOpTest, AvgPoolDilations) {
   NhwcFp16PoolOpTester test(false);
   test.GenerateRandomInput({4, 23, 19, 32});
@@ -277,9 +279,10 @@ TEST(NhwcFp16PoolOpTest, AvgPoolDilations) {
   test.SetDilations({2, 2});
   test.Run();
 }
+*/
 
 TEST(NhwcFp16PoolOpTest, AvgPoolIncludePadPixel) {
-  OpTester test("NhwcAvgPool", 1, onnxruntime::kMSDomain);
+  OpTester test("AveragePool", 11, onnxruntime::kMSInternalNHWCDomain);
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
