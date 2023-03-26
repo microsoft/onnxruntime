@@ -541,7 +541,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
         }
         // check outputs
         const auto& output_parameters = schema.outputs();
-        ORT_RETURN_IF_NOT(output_parameters.size() == input_count, "output count does not match");
+        ORT_RETURN_IF_NOT(output_parameters.size() == output_count, "output count does not match");
         for (size_t i = 0; i < output_parameters.size(); ++i) {
           const auto characteristic = op->GetOutputCharacteristic(op, i);
           const auto& formal_parameter = output_parameters[i];
