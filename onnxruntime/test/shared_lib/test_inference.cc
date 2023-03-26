@@ -2788,9 +2788,8 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
 }
 #endif
 
-#ifndef USE_CUDA
+#if !defined(USE_CUDA) && !defined(ORT_MINIMAL_BUILD)
 TEST(CApiTest, single_schema_multi_kernel_custom_op_handler) {
-
   Ort::CustomOpDomain v2_domain("v2");
   MulTopOpFloat mul_top_f32;
   MulTopOpInt32 mul_top_i32;
@@ -2819,5 +2818,59 @@ TEST(CApiTest, single_schema_multi_kernel_custom_op_handler) {
   Ort::RunOptions run_optoins;
   auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 1, output_names, 2);
   ASSERT_TRUE(*output_tensors[1].GetTensorData<int32_t>() == 72);
+}
+
+// expect input count mismatch exception
+TEST(CApiTest, single_schema_multi_kernel_custom_op_handler_input_count_mismatch) {
+  Ort::CustomOpDomain v2_domain("v2");
+  MulTopOpFloat mul_top_f32;
+  MulTopOpDouble mul_top_double;
+
+  v2_domain.Add(&mul_top_f32);
+  v2_domain.Add(&mul_top_double);
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.SetLogSeverityLevel(0);
+  session_options.Add(v2_domain);
+
+  EXPECT_THROW(Ort::Session session(*ort_env, CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL, session_options), std::exception);
+}
+
+// expect output count mismatch exception
+TEST(CApiTest, single_schema_multi_kernel_custom_op_handler_output_count_mismatch) {
+  Ort::CustomOpDomain v2_domain("v2");
+  MulTopOpFloat mul_top_f32;
+  MulTopOpInt16 mul_top_int64;
+
+  v2_domain.Add(&mul_top_f32);
+  v2_domain.Add(&mul_top_int64);
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.SetLogSeverityLevel(0);
+  session_options.Add(v2_domain);
+
+  EXPECT_THROW(Ort::Session session(*ort_env, CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL, session_options), std::exception);
+}
+
+// expect characteristic mismatch exception
+TEST(CApiTest, single_schema_multi_kernel_custom_op_handler_characteristic_mismatch) {
+  Ort::CustomOpDomain v2_domain("v2");
+  MulTopOpFloat mul_top_f32;
+  MulTopOpFloat16 mul_top_f16;
+
+  v2_domain.Add(&mul_top_f32);
+  v2_domain.Add(&mul_top_f16);
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.SetLogSeverityLevel(0);
+  session_options.Add(v2_domain);
+
+  EXPECT_THROW(Ort::Session session(*ort_env, CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL, session_options), std::exception);
 }
 #endif

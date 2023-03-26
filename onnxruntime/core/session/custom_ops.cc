@@ -502,13 +502,74 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
             schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
           }
         }
-
         schema.SetDomain(domain->domain_);
         schema.SinceVersion(1);
         schema.AllowUncheckedAttributes();
         schema_map.emplace(schema.Name(), schema);
-      } else {
-        // todo - perform some consistency check here
+      } else {  // perform consistency check
+        const auto& schema = schema_map_iter->second;
+        // check inputs
+        const auto& input_parameters = schema.inputs();
+        ORT_RETURN_IF_NOT(input_parameters.size() == input_count, "input count does not match");
+        for (size_t i = 0; i < input_parameters.size(); ++i) {
+          const auto characteristic = op->GetInputCharacteristic(op, i);
+          const auto& formal_parameter = input_parameters[i];
+          if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Optional,
+                              "custom op schemas mismatch, expecting ", i + 1,
+                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                              " input to be of optional type");
+          } else if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC) {
+            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Variadic,
+                              "custom op schemas mismatch, expecting ", i + 1,
+                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                              " input to be of variadic type");
+          } else {
+            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Single,
+                              "custom op schemas mismatch, expecting ", i + 1,
+                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                              " input to be of single type");
+          }
+          ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicOutputHomogeneity(op) != 0),
+                            "custom op schemas mismatch, expecting ", i + 1,
+                            i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                            " input to keep same homogeneity");
+          ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
+                            "custom op schemas mismatch, expecting ", i + 1,
+                            i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                            " input to keep same arity");
+        }
+        // check outputs
+        const auto& output_parameters = schema.outputs();
+        ORT_RETURN_IF_NOT(output_parameters.size() == input_count, "output count does not match");
+        for (size_t i = 0; i < output_parameters.size(); ++i) {
+          const auto characteristic = op->GetOutputCharacteristic(op, i);
+          const auto& formal_parameter = output_parameters[i];
+          if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Optional,
+                              "custom op schemas mismatch, expecting ", i + 1,
+                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                              " output to be of optional type");
+          } else if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC) {
+            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Variadic,
+                              "custom op schemas mismatch, expecting ", i + 1,
+                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                              " output to be of variadic type");
+          } else {
+            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Single,
+                              "custom op schemas mismatch, expecting ", i + 1,
+                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                              " output to be of single type");
+          }
+          ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicOutputHomogeneity(op) != 0),
+                            "custom op schemas mismatch, expecting ", i + 1,
+                            i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                            " output to keep same homogeneity");
+          ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
+                            "custom op schemas mismatch, expecting ", i + 1,
+                            i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                            " output to keep same arity");
+        }
       }
 
       type_map[op->GetName(op)].push_back({});
