@@ -115,7 +115,7 @@
 					<section class="py-md-5 pb-4 pt-4 border-top">
 						<div class="row">
 
-						<div class="col-md-8 d-md-block d-none">
+						<div class="col-md-9 d-md-block d-none">
 							<div class="text-center pb-3">
 								<h2 class="section-heading">Our API is available in multiple languages</h2>							
 								<p class="text-center"></p>
@@ -144,9 +144,10 @@
 											<a class="nav-link rounded-0" id="v-pills-cs-tab" data-toggle="pill"
 												href="#v-pills-cs" role="tab" aria-controls="v-pills-cs"
 												aria-selected="false">C#</a>
-											<a class="nav-link rounded-0" id="v-pills-more-tab" data-toggle="pill"
-												href="/docs/get-started/" role="tab" aria-controls="v-pills-cs"
-												aria-selected="false">more languages</a>
+											<a class="nav-link rounded-0"
+												href="/docs/get-started/" aria-controls="v-pills-cs"
+												aria-selected="false"><i class="fa-solid fa-plus"></i>
+												&nbsp; More languages</a>
 										</div>
 									</div>
 									<div class="col-9 pl-0 h-100 bg-light">
@@ -161,7 +162,7 @@ ort_sess = ort.InferenceSession('model.onnx')
 outputs = ort_sess.run(None, {'input': text.numpy(),'offsets':  torch.tensor([0]).numpy()})
 result = outputs[0].argmax(axis=1)
 print(result[0])
-</code>
+</code><a href="docs/get-started/with-python" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-java" role="tabpanel"
@@ -176,7 +177,7 @@ OnnxTensor inputTensor = OnnxTensor.createTensor(env, input, inputInfo);
 Result output = session.run(Collections.singletonMap(inputInfo.getName(), inputTensor));
 float[] outputFloats = (float[]) output.get(0).getValue();
 System.out.println(Arrays.toString(outputFloats));
-</code>
+</code><a href="docs/get-started/with-java" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-javascript" role="tabpanel"
@@ -190,7 +191,7 @@ var session = await ort.InferenceSession.create('model.onnx');
 var output = await session.run({ input, offsets });
 var result = output.values().next().value.argmax(1);
 console.log(result[0]);
-</code>
+</code><a href="docs/get-started/with-javascript" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-cpp" role="tabpanel"
@@ -208,7 +209,7 @@ std::vector<Ort::Value> inputs = {input_tensor, offsets_tensor};
 auto output_tensors = session.Run(Ort::RunOptions{nullptr}, inputs, {"output"});
 auto result = output_tensors.front().GetTensorMutableData<int64_t>();
 std::cout << result[0] << std::endl;
-</code>
+</code><a href="docs/get-started/with-cpp" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-cs" role="tabpanel"
@@ -223,7 +224,7 @@ var input = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<string>("
 var session = new InferenceSession(modelPath);
 var output = session.Run(input).ToList().Last().AsEnumerable<NamedOnnxValue>();
 var inferenceResult = output.First().AsDictionary<string, float>();
-</code>
+</code><a href="docs/get-started/with-csharp" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
 										</div>
@@ -231,23 +232,23 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 								</div>
 
 							</div>
-							<div class="col-md-4 p-5">
+							<div class="col-md-3 px-5 pt-3">
 								<div class="row">
-									<div class="col-6 p-1">
+									<div class="col-12 p-1">
 										<a href="docs/get-started/" class="btn btn-block btn-primary btn-lg rounded-0 "
 											style="height: 80px; display: flex; align-items: center; justify-content: center;">Quickstart</a>
 									</div>
-									<div class="col-6 p-1">
+									<div class="col-12 p-1">
 										<a href="docs/tutorials/" class="btn btn-block btn-primary btn-lg rounded-0 "
 											style="height: 80px; display: flex; align-items: center; justify-content: center;">Tutorials</a>
 									</div>
-									<div class="col-6 p-1">
+									<div class="col-12 p-1">
 										<a href="docs/install/" class="btn btn-block btn-primary btn-lg rounded-0 "
 											style="height: 80px; display: flex; align-items: center; justify-content: center;">Install
 											ONNX
 											Runtime</a>
 									</div>
-									<div class="col-6 p-1">
+									<div class="col-12 p-1">
 										<a href="docs/execution-providers/"
 											class="btn btn-block btn-primary btn-lg rounded-0 "
 											style="height: 80px; display: flex; align-items: center; justify-content: center;">Hardware
@@ -329,7 +330,7 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 													</div>
 													<div class="col-lg-2dot4 col r-option version" role="option"
 														tabindex="-1" aria-selected="false" id="web">
-														<span>Web Browser</span>
+														<span>Web Browser (Preview)</span>
 													</div>
 												</div>
 											</div>
@@ -735,9 +736,9 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 								</div>
 							</div>
 
-							<div class="row equalHeight-1 blue-title-columns">
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
+							<div class="row blue-title-columns">
+								<div class="col-4 col-md-2" >
+									<div class="customer-logo text-center" >
 										<a href="community.html#adobe"><img src="./images/logos/adobe-logo.png"
 												alt="Adobe logo" /></a>
 									</div>
@@ -774,7 +775,7 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 								</div>
 							</div>
 
-							<div class="row equalHeight-3 blue-title-columns">
+							<div class="row blue-title-columns">
 								<div class="col-4 col-md-2 mb-4 mb-md-0">
 									<div class="customer-logo text-center">
 										<a href="community.html#ghostwriter-ai"><img
@@ -815,7 +816,7 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 								</div>
 							</div>
 
-							<div class="row equalHeight-3 blue-title-columns">
+							<div class="row blue-title-columns">
 								<div class="col-4 col-md-2 mb-4 mb-md-0">
 									<div class="customer-logo text-center">
 										<a href="community.html#navitaire"><img
@@ -855,7 +856,7 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 								</div>
 							</div>
 
-							<div class="row equalHeight-3 blue-title-columns">
+							<div class="row blue-title-columns">
 								<div class="col-4 col-md-2 mb-4 mb-md-0">
 									<div class="customer-logo text-center">
 										<a href="community.html#ptw"><img src="./images/logos/ptw-logo.png"
@@ -894,7 +895,7 @@ var inferenceResult = output.First().AsDictionary<string, float>();
 								</div>
 							</div>
 
-							<div class="row equalHeight-3 blue-title-columns">
+							<div class="row blue-title-columns">
 								<div class="col-4 col-md-2 mb-4 mb-md-0">
 									<div class="customer-logo text-center">
 										<a href="community.html#topaz-labs"><img src="./images/logos/topazlabs-logo.png"

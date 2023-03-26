@@ -291,9 +291,9 @@ a.link:active .link-arrow {
 }
 
 .customer-logo img {
-    max-width: 100%;
-    padding-right: 10px;
-    padding-left: 10px;
+    max-width: 65%;
+    /* padding-right: 5px;
+    padding-left: 5px; */
 }
 
 .ms-logo img {
@@ -845,7 +845,6 @@ div.quotebox {
 }
 
 .row.blue-title-columns {
-    margin-bottom: 5px;
     text-align: center;
 }
 
