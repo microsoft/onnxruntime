@@ -52,6 +52,7 @@
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
+#include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
@@ -1426,8 +1427,13 @@ common::Status InferenceSession::Initialize() {
 
 #ifdef USE_DML
       if (execution_providers_.Get(kDmlExecutionProvider)) {
+        // DML graph fusion is an important runtime optimization that cannot be done ahead of time; it must be disabled
+        // when running in "offline mode" and saving an optimized model to disk. To support users that want to optimize
+        // models offline, and then disable graph optimizations when running "online", this transformer ignores the ORT
+        // graph optimization level and is generally always applied.
         bool dml_graph_fusion_enabled = session_options_.optimized_model_filepath.empty() &&
-                                        session_options_.graph_optimization_level >= TransformerLevel::Level3;
+                                        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableDmlGraphFusion, "0") == "0";
+
         if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
                                                                                                                                       execution_providers_.Get(kDmlExecutionProvider));

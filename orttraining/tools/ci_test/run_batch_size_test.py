@@ -4,9 +4,9 @@
 
 import argparse
 import collections
+import os
 import subprocess
 import sys
-import os
 
 
 def parse_args():

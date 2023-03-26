@@ -25,9 +25,6 @@ parameters:
 - name: IMAGE_CACHE_DIR
   type: string
   default: $(Agent.TempDirectory)/docker
-- name: DockerCacheKeys
-  type: string
-  default: 'tools/ci_build/github/linux/docker/**/*, !tools/ci_build/github/linux/docker/scripts/deps.txt'
 
 steps:
 
@@ -74,10 +71,11 @@ steps:
   - task: Cache@2
     displayName: Cache Docker Image Task
     inputs:
-      key: ' "${{ parameters.Repository }}" | ${{ parameters.DockerCacheKeys }} '
+      key: ' "${{ parameters.Repository }}" | "$(Build.SourceVersion)" '
       path: ${{ parameters.IMAGE_CACHE_DIR }}
       restoreKeys: |
-        "${{ parameters.Repository }}" | ${{ parameters.DockerCacheKeys }}
+        "${{ parameters.Repository }}" | "$(Build.SourceVersion)"
+        "${{ parameters.Repository }}"
       cacheHitVar: CACHE_RESTORED
     condition: eq('${{ parameters.UsePipelineCache }}', 'true')
 

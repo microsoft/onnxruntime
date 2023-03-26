@@ -58,7 +58,7 @@ class FusionShape(Fusion):
             Gather(indices=0)  Gather(indices=1)
                 |                |
             Unsqueeze(axes=0)   Unsqueeze(axes=0)
-                   \          /
+                   \\          /
                       Concat
                         |
 

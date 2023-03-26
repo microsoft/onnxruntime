@@ -124,23 +124,23 @@ def main():
         if tuning_results is None:
             sys.stderr.write(f"{args.input_onnx} does not have tuning results embedded!\n")
             sys.exit(-1)
-        json.dump(tuning_results, open(args.output_json, "w"))
+        json.dump(tuning_results, open(args.output_json, "w"))  # noqa: SIM115
     elif args.cmd == "embed":
         model = onnx.load_model(args.input_onnx)
         merger = Merger()
-        for tuning_results in [json.load(open(f)) for f in args.input_json]:
+        for tuning_results in [json.load(open(f)) for f in args.input_json]:  # noqa: SIM115
             merger.merge(tuning_results)
         model = embed(model, merger.get_merged(), args.force)
         onnx.save_model(model, args.output_onnx)
     elif args.cmd == "merge":
         merger = Merger()
-        for tuning_results in [json.load(open(f)) for f in args.input_json]:
+        for tuning_results in [json.load(open(f)) for f in args.input_json]:  # noqa: SIM115
             merger.merge(tuning_results)
-        json.dump(merger.get_merged(), open(args.output_json, "w"))
+        json.dump(merger.get_merged(), open(args.output_json, "w"))  # noqa: SIM115
     elif args.cmd == "pprint":
         tuning_results = None
-        try:
-            tuning_results = json.load(open(args.json_or_onnx, "r"))
+        try:  # noqa: SIM105
+            tuning_results = json.load(open(args.json_or_onnx))  # noqa: SIM115
         except Exception:
             # it might be an onnx file otherwise, try it latter
             pass

@@ -10,9 +10,11 @@ Copyright NVIDIA/apex
 This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 """
 
-import torch
-from ._multi_tensor_apply import MultiTensorApply
 from enum import IntEnum
+
+import torch
+
+from ._multi_tensor_apply import MultiTensorApply
 
 
 class AdamWMode(IntEnum):
@@ -72,12 +74,11 @@ class FusedAdam(torch.optim.Optimizer):
         weight_decay=0.0,
         set_grad_none=True,
     ):
-
         # The FusedAdam implementation is mathematically equivalent to
         # transformers AdamW. The input arguments also have the same defaults.
 
         defaults = dict(lr=lr, bias_correction=bias_correction, betas=betas, eps=eps, weight_decay=weight_decay)
-        super(FusedAdam, self).__init__(params, defaults)
+        super().__init__(params, defaults)
         self._adam_w_mode = adam_w_mode
         self._set_grad_none = set_grad_none
 
@@ -96,7 +97,7 @@ class FusedAdam(torch.optim.Optimizer):
                 for p in group["params"]:
                     p.grad = None
         else:
-            super(FusedAdam, self).zero_grad()
+            super().zero_grad()
 
     def step(self, closure=None):
         """Performs a single optimization step.
