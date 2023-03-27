@@ -22,6 +22,7 @@
 #include <hipcub/hipcub.hpp>
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/rocm_common.h"
+#include "contrib_ops/rocm/diffusion/group_norm_common.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl.h"
 #include "contrib_ops/rocm/transformers/dump_rocm_tensor.h"
 
@@ -56,57 +57,12 @@ struct GroupSumsOp {
   }
 };
 
-template <typename T>
-struct GroupNormNHWCParams {
-  // The output buffer. Layout NHWC.
-  T* dst;
-  // The input buffer. Layout NHWC.
-  T const* src;
-  // The gamma scaling factor.
-  float const* gamma;
-  // The beta term to add in GN.
-  float const* beta;
-  // The temporary buffer to do the global parallel reduction. Size:
-  // BLOCKS_PER_BATCH x C x 2.
-  float* redBuffer;
-
-  // The number of instances in the batch.
-  int32_t n;
-  // The height and width of each activation map.
-  int32_t h;
-  int32_t w;
-  // The number of channels.
-  int32_t c;
-  // The number of groups.
-  int32_t groups;
-  // Do we apply the Swish activation function?
-  bool withSwish;
-
-  // Precomputed values and parameters to control the execution of the kernels.
-
-  // The number of activations per instance (h * w) and the number of
-  // activations per block.
-  int32_t hw;
-  int32_t hwPerBlock;
-  // The number of channels per group and blocks per activation in the C
-  // dimension.
-  int32_t cPerBlock;
-  int32_t cPerGroup;
-
-  // The precomputed stride between instances.
-  int32_t hwc;
-  // The inverse of hwc in floats (to compute mean/var).
-  float invHWC;
-  // The precomputed number of groups per block.
-  int32_t groupsPerBlock;
-};
-
 template <typename T, typename U, int32_t ILP>
 inline __device__ void UpdateSum(const T* src, int64_t offset, U& sum, U& sumSq) {
   using VecT = onnxruntime::rocm::aligned_vector<T, ILP>;
   const VecT input_v = *reinterpret_cast<const VecT*>(src + offset);
 
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < ILP; i++) {
     const U val = static_cast<U>(input_v.val[i]);
     sum += val;
@@ -115,7 +71,8 @@ inline __device__ void UpdateSum(const T* src, int64_t offset, U& sum, U& sumSq)
 }
 
 template <typename T, int32_t tTHREADS_PER_BLOCK, int32_t ILP>
-__global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
+__global__ void groupNormNHWCSumKernel(const T* src, float* redBuffer, int32_t cPerBlock, int32_t hwPerBlock, int32_t hw,
+                                       int32_t hwc, int32_t c, int32_t cPerGroup, int32_t groups, int32_t groupsPerBlock) {
   // The object in charge of doing the sums for the different blocks.
   typedef hipcub::BlockScan<GroupSums, tTHREADS_PER_BLOCK> BlockScan;
 
@@ -128,29 +85,29 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   // The instance in the batch.
   int32_t ni = blockIdx.z;
   // The channel loaded by that thread (ILP channels per thread).
-  int32_t ci = blockIdx.x * params.cPerBlock + threadIdx.x * ILP;
+  int32_t ci = blockIdx.x * cPerBlock + threadIdx.x * ILP;
 
   // The first activation loaded by that block.
-  int32_t hwBegin = blockIdx.y * params.hwPerBlock;
+  int32_t hwBegin = blockIdx.y * hwPerBlock;
   // The last activation loaded by that block.
-  int32_t hwEnd = min(hwBegin + params.hwPerBlock, params.hw);
+  int32_t hwEnd = min(hwBegin + hwPerBlock, hw);
 
   // The sums.
   float sum = 0.F;
   float sumSq = 0.F;
 
   // Iterate over the activations to compute the sums.
-  if (ci < params.c) {
+  if (ci < c) {
     for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi) {
       // The offset.
-      int64_t offset = static_cast<int64_t>(ni) * params.hwc + static_cast<int64_t>(hwi) * params.c + ci;
-      UpdateSum<T, float, ILP>(params.src, offset, sum, sumSq);
+      int64_t offset = static_cast<int64_t>(ni) * hwc + static_cast<int64_t>(hwi) * c + ci;
+      UpdateSum<T, float, ILP>(src, offset, sum, sumSq);
     }
   }
 
   // The group that thread works on and the channel in the group (modulus).
-  int32_t gi = threadIdx.x * ILP / params.cPerGroup;
-  int32_t cj = threadIdx.x * ILP - params.cPerGroup * gi;
+  int32_t gi = threadIdx.x * ILP / cPerGroup;
+  int32_t cj = threadIdx.x * ILP - cPerGroup * gi;
 
   // The data for the summations.
   GroupSums inp{cj == 0 ? 1 : 0, sum, sumSq};
@@ -161,7 +118,7 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
 
   // Store the results for the groups in shared memory (to produce coalesced
   // stores later).
-  if (cj == params.cPerGroup - ILP) {  // ILP channels per thread
+  if (cj == cPerGroup - ILP) {  // ILP channels per thread
     smem[gi] = make_float2(out.sum, out.sumSq);
   }
 
@@ -169,10 +126,10 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   __syncthreads();
 
   // The global group index.
-  int32_t gj = blockIdx.x * params.groupsPerBlock + threadIdx.x;
+  int32_t gj = blockIdx.x * groupsPerBlock + threadIdx.x;
 
   // Threads that have nothing left to do, exit.
-  if (threadIdx.x >= params.groupsPerBlock || gj >= params.groups) {
+  if (threadIdx.x >= groupsPerBlock || gj >= groups) {
     return;
   }
 
@@ -180,38 +137,42 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   float2 sums = smem[threadIdx.x];
 
   // Store to global memory.
-  atomicAdd(&params.redBuffer[(2 * ni + 0) * params.groups + gj], sums.x);
-  atomicAdd(&params.redBuffer[(2 * ni + 1) * params.groups + gj], sums.y);
+  atomicAdd(&redBuffer[(2 * ni + 0) * groups + gj], sums.x);
+  atomicAdd(&redBuffer[(2 * ni + 1) * groups + gj], sums.y);
 }
 
 template <typename T>
-void groupNormNHWCSum(GroupNormNHWCParams<T> const& params, hipStream_t stream) {
+void groupNormNHWCSum(const GroupNormNHWCParams<T>* params) {
   // Make sure the values are as we expect.
-  ORT_ENFORCE(params.c % params.cPerBlock == 0 && params.hw % params.hwPerBlock == 0);
+  ORT_ENFORCE(params->c % params->cPerBlock == 0 && params->hw % params->hwPerBlock == 0);
   // Make sure a group does not span multiple blocks.
-  ORT_ENFORCE(params.cPerBlock % params.cPerGroup == 0);
+  ORT_ENFORCE(params->cPerBlock % params->cPerGroup == 0);
 
   dim3 grid;
 
   // The number of blocks to compute all the channels.
-  grid.x = params.c / params.cPerBlock;
+  grid.x = params->c / params->cPerBlock;
   // The number of blocks to compute all the activations in a given instance.
-  grid.y = divUp(params.hw, params.hwPerBlock);
+  grid.y = divUp(params->hw, params->hwPerBlock);
   // The number of instances.
-  grid.z = params.n;
+  grid.z = params->n;
 
-  switch (params.cPerBlock) {
+  switch (params->cPerBlock) {
     case 320:
-      groupNormNHWCSumKernel<T, 256, 2><<<grid, 256, 0, stream>>>(params);
+      groupNormNHWCSumKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
+                                                                          params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
       break;
     case 480:
-      groupNormNHWCSumKernel<T, 256, 2><<<grid, 256, 0, stream>>>(params);
+      groupNormNHWCSumKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
+                                                                          params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
       break;
     case 256:
-      groupNormNHWCSumKernel<T, 128, 2><<<grid, 128, 0, stream>>>(params);
+      groupNormNHWCSumKernel<T, 128, 2><<<grid, 128, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
+                                                                          params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
       break;
     case 128:
-      groupNormNHWCSumKernel<T, 64, 2><<<grid, 64, 0, stream>>>(params);
+      groupNormNHWCSumKernel<T, 64, 2><<<grid, 64, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
+                                                                        params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
       break;
     default:
       ORT_NOT_IMPLEMENTED("Not implemented");
@@ -225,7 +186,7 @@ __device__ void computeGroupNorm(const T* src, T* dst, int64_t offset, U mean, U
   const VecT input_v = *reinterpret_cast<const VecT*>(src + offset);
   VecT output_v;
 
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < ILP; i++) {
     U val = static_cast<U>(input_v.val[i]);
     val = (val - mean) * invStdDev;
@@ -240,10 +201,11 @@ __device__ void computeGroupNorm(const T* src, T* dst, int64_t offset, U mean, U
 }
 
 template <typename T, int32_t tTHREADS_PER_BLOCK, int32_t ILP>
-__global__ void groupNormNHWCScaleKernel(GroupNormNHWCParams<T> params) {
+__global__ void groupNormNHWCScaleKernel(T* dst, const T* src, const float* gamma, const float* beta, const float* redBuffer, int32_t c, int32_t cPerBlock,
+                                         int32_t cPerGroup, int32_t groups, int32_t hwc, float invHWC, int32_t hw, int32_t hwPerBlock, bool withSwish) {
   // The channel loaded by that thread (ILP channels per thread for F16x2).
-  int32_t ci = blockIdx.x * params.cPerBlock + threadIdx.x * ILP;
-  if (ci >= params.c) {
+  int32_t ci = blockIdx.x * cPerBlock + threadIdx.x * ILP;
+  if (ci >= c) {
     return;
   }
 
@@ -251,70 +213,74 @@ __global__ void groupNormNHWCScaleKernel(GroupNormNHWCParams<T> params) {
   int32_t ni = blockIdx.z;
 
   // The group that thread works on and the channel in the group (modulus).
-  int32_t gi = ci / params.cPerGroup;
+  int32_t gi = ci / cPerGroup;
 
   // Load the sum and sum of squares for the group.
   float sum = 0.F, sumSq = 0.F;
-  if (gi < params.groups) {
-    sum = params.redBuffer[(2 * ni + 0) * params.groups + gi];
-    sumSq = params.redBuffer[(2 * ni + 1) * params.groups + gi];
+  if (gi < groups) {
+    sum = redBuffer[(2 * ni + 0) * groups + gi];
+    sumSq = redBuffer[(2 * ni + 1) * groups + gi];
   }
 
   using VecF = onnxruntime::rocm::aligned_vector<float, ILP>;
 
-  const VecF gamma_v = *reinterpret_cast<const VecF*>(params.gamma + ci);
-  const VecF beta_v = *reinterpret_cast<const VecF*>(params.beta + ci);
+  const VecF gamma_v = *reinterpret_cast<const VecF*>(gamma + ci);
+  const VecF beta_v = *reinterpret_cast<const VecF*>(beta + ci);
 
   // Compute the mean.
-  float mean = sum * params.invHWC;
+  float mean = sum * invHWC;
   // Compute the variance.
-  float var = sumSq * params.invHWC - (mean * mean);
+  float var = sumSq * invHWC - (mean * mean);
   // Compute the inverse of the stddev.
   float invStdDev = var <= 0.F ? 1.F : rsqrtf(var);
 
   // The first activation loaded by that block.
-  int32_t hwBegin = blockIdx.y * params.hwPerBlock;
+  int32_t hwBegin = blockIdx.y * hwPerBlock;
   // The last activation loaded by that block.
-  int32_t hwEnd = min(hwBegin + params.hwPerBlock, params.hw);
+  int32_t hwEnd = min(hwBegin + hwPerBlock, hw);
 
   // Iterate over the activations to compute the sums.
   for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi) {
     // The src/dst offset.
-    int64_t offset = (int64_t)ni * params.hwc + hwi * params.c + ci;
+    int64_t offset = (int64_t)ni * hwc + hwi * c + ci;
 
     // Fetch ILP channels per thread.
-    computeGroupNorm<T, float, ILP>(params.src, params.dst, offset, mean, invStdDev, gamma_v.val, beta_v.val, params.withSwish);
+    computeGroupNorm<T, float, ILP>(src, dst, offset, mean, invStdDev, gamma_v.val, beta_v.val, withSwish);
   }
 }
 
 template <typename T>
-void groupNormNHWCScale(GroupNormNHWCParams<T> const& params, hipStream_t stream) {
+void groupNormNHWCScale(const GroupNormNHWCParams<T>* params) {
   // Make sure the dimensions are aligned with what we expect.
-  ORT_ENFORCE(params.c % params.cPerBlock == 0);
+  ORT_ENFORCE(params->c % params->cPerBlock == 0);
   // Make sure a group does not span multiple blocks.
-  ORT_ENFORCE(params.cPerBlock % params.cPerGroup == 0);
+  ORT_ENFORCE(params->cPerBlock % params->cPerGroup == 0);
 
   dim3 grid;
 
   // The number of blocks to compute all the channels.
-  grid.x = params.c / params.cPerBlock;
+  grid.x = params->c / params->cPerBlock;
   // The number of blocks to compute all the activations in a given instance.
-  grid.y = divUp(params.hw, params.hwPerBlock);
+  grid.y = divUp(params->hw, params->hwPerBlock);
   // The number of instances.
-  grid.z = params.n;
+  grid.z = params->n;
 
-  switch (params.cPerBlock) {
+  switch (params->cPerBlock) {
     case 320:
-      groupNormNHWCScaleKernel<T, 256, 2><<<grid, 256, 0, stream>>>(params);
+      groupNormNHWCScaleKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->c, params->cPerBlock,
+                                                                            params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
       break;
     case 480:
-      groupNormNHWCScaleKernel<T, 256, 2><<<grid, 256, 0, stream>>>(params);
+      groupNormNHWCScaleKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->c, params->cPerBlock,
+                                                                            params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
       break;
     case 256:
-      groupNormNHWCScaleKernel<T, 128, 2><<<grid, 128, 0, stream>>>(params);
+      groupNormNHWCScaleKernel<T, 128, 2><<<grid, 128, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->c, params->cPerBlock,
+                                                                            params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
       break;
     case 128:
-      groupNormNHWCScaleKernel<T, 64, 2><<<grid, 64, 0, stream>>>(params);
+      groupNormNHWCScaleKernel<T, 64, 2><<<grid, 64, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->c, params->cPerBlock,
+                                                                          params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
       break;
     default:
       ORT_NOT_IMPLEMENTED("Not implemented");
@@ -364,7 +330,6 @@ Status LaunchGroupNormKernel(
                            "only num_groups=32 is supported. Got", num_groups);
   }
 
-  GroupNormNHWCParams<T> params;
   int32_t cPerBlock = 320;
   int32_t maxBlocksPerHW = 1024;
   switch (num_channels) {
@@ -383,17 +348,9 @@ Status LaunchGroupNormKernel(
       cPerBlock = 320;
   }
 
-  params.withSwish = use_swish_activation;
-  params.dst = output;
-  params.src = input;
-  params.gamma = gamma;
-  params.beta = beta;
+  GroupNormNHWCParams<T> params(nullptr, stream, output, input, gamma, beta, batch_size, height, width, num_channels, num_groups, use_swish_activation);
+
   params.redBuffer = reinterpret_cast<float*>(workspace);
-  params.n = batch_size;
-  params.h = height;
-  params.w = width;
-  params.c = num_channels;
-  params.groups = num_groups;
   params.hw = params.h * params.w;
   const int32_t blocksPerHW = findMaxDivisor(params.hw, maxBlocksPerHW);
   params.hwPerBlock = divUp(params.hw, blocksPerHW);
@@ -408,10 +365,10 @@ Status LaunchGroupNormKernel(
   DUMP_TENSOR("gamma", gamma, 1, num_channels);
   DUMP_TENSOR("beta", beta, 1, num_channels);
   HIP_RETURN_IF_ERROR(hipMemsetAsync(params.redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), stream));
-  groupNormNHWCSum<T>(params, stream);
+  groupNormNHWCSum<T>(&params);
   DUMP_TENSOR("workspace", params.redBuffer, batch_size, num_groups, 2);
   HIP_RETURN_IF_ERROR(hipGetLastError());
-  groupNormNHWCScale<T>(params, stream);
+  groupNormNHWCScale<T>(&params);
   HIP_RETURN_IF_ERROR(hipGetLastError());
   DUMP_TENSOR("output", output, batch_size, num_channels, height * width);
   return Status::OK();
