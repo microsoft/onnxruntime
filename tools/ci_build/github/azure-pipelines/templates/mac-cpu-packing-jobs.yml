@@ -63,7 +63,7 @@ jobs:
   - task: Cache@2
     inputs:
       key: ' "$(TODAY)" | ccache | protocol | "$(Build.SourceVersion)" '
-      path: $(CCACHE_DIR)
+      path: $(CCACHE_DIR)/protobuf
       restoreKeys: |
         "$(TODAY)" | ccache | protocol
     displayName: ccache protocol
@@ -90,7 +90,7 @@ jobs:
   - task: Cache@2
     inputs:
       key: ' "$(TODAY)" | ccache  | onnxruntime | "$(Build.SourceVersion)" '
-      path: $(CCACHE_DIR)
+      path: $(CCACHE_DIR)/ort
       restoreKeys: |
         "$(TODAY)" | ccache | onnxruntime
     displayName: ccache MacOS Build
