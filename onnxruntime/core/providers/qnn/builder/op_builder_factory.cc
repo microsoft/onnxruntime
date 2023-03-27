@@ -39,11 +39,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Pow", *this);
     CreateSimpleOpBuilder("PRelu", *this);
     CreateSimpleOpBuilder("Relu", *this);
-    CreateSimpleOpBuilder("ReduceMax", *this);
-    CreateSimpleOpBuilder("ReduceMean", *this);
-    CreateSimpleOpBuilder("ReduceMin", *this);
-    CreateSimpleOpBuilder("ReduceProd", *this);
-    CreateSimpleOpBuilder("ReduceSum", *this);
     CreateSimpleOpBuilder("Round", *this);
     CreateSimpleOpBuilder("Where", *this);
     CreateSimpleOpBuilder("Sigmoid", *this);
@@ -57,6 +52,14 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("LogSoftmax", *this);
     CreateSimpleOpBuilder("MatMul", *this);
     CreateSimpleOpBuilder("Concat", *this);
+  }
+
+  {
+    CreateReduceOpBuilder("ReduceMax", *this);
+    CreateReduceOpBuilder("ReduceMean", *this);
+    CreateReduceOpBuilder("ReduceMin", *this);
+    CreateReduceOpBuilder("ReduceProd", *this);
+    CreateReduceOpBuilder("ReduceSum", *this);
   }
 
   {

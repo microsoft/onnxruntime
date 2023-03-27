@@ -869,7 +869,8 @@ std::vector<OrtValue> OpTester::ExecuteModel(
 
   RunOptions default_run_options{};
   default_run_options.run_tag = op_;
-  default_run_options.run_log_verbosity_level = 1;
+  default_run_options.run_log_severity_level = 0;
+  default_run_options.run_log_verbosity_level = 0;
 
   std::vector<OrtValue> fetches;
   for (int i = 0; i < num_run_calls_; ++i) {
@@ -1064,6 +1065,7 @@ void OpTester::Run(
   SessionOptions so;
   so.use_per_session_threads = false;
   so.session_logid = op_;
+  //so.session_log_severity_level = 0;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;

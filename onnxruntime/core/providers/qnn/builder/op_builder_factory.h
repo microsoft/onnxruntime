@@ -78,6 +78,8 @@ void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreateInstanceNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateReduceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateBatchNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace qnn
