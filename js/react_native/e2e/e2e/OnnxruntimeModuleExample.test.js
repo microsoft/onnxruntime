@@ -13,10 +13,10 @@ describe('OnnxruntimeModuleExample', () => {
   });
 
   it('OnnxruntimeModuleExampleE2ETest CheckOutputComponentExists', async () => {
-    await element(by.id('output'));
+    await element(by.label('output'));
   });
 
   it('OnnxruntimeModuleExampleE2ETest CheckInferenceResultValueIsCorrect', async () => {
-    await expect(element(by.id('output'))).toHaveText('Result: 3');
+    await expect(element(by.label('output'))).toHaveText('Result: 3');
   });
 });
