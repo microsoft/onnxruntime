@@ -19,9 +19,9 @@ from transformers import MT5ForConditionalGeneration, T5ForConditionalGeneration
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from float16 import float_to_float16_max_diff
-from onnx_model import OnnxModel
-from optimizer import optimize_model
+from float16 import float_to_float16_max_diff  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
+from optimizer import optimize_model  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ class T5Helper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: List[str] = [
+        op_block_list: List[str] = [  # noqa: B006
             "SimplifiedLayerNormalization",
             "SkipSimplifiedLayerNormalization",
             "Relu",
@@ -165,7 +165,7 @@ class T5Helper:
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
-        op_full_set = set([node.op_type for node in onnx_model.nodes()])
+        op_full_set = {node.op_type for node in onnx_model.nodes()}
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
         logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
