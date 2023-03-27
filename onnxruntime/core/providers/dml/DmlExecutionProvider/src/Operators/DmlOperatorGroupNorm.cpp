@@ -46,16 +46,16 @@ public:
         const uint32_t channelsPerGroup = channels / groups;
 
         // 1. Reshape the input from [batch, height, width, channels] to [batch, height * width, groups, channelsPerGroup]
-        // 2. Stride the reshaped input from [batch, height * width, groups, channelsPerGroup] to [batch, channelsPerGroup, height * width, groups]
-        const std::array<uint32_t, 4> inputShape = {batch, channelsPerGroup, height * width, groups};
-        const std::array<uint32_t, 4> inputStrides = {channelsPerGroup * height * width * groups, 1, channelsPerGroup * groups, channelsPerGroup};
+        // 2. Stride the reshaped input from [batch, height * width, groups, channelsPerGroup] to [batch, groups, height * width, channelsPerGroup]
+        const std::array<uint32_t, 4> inputShape = {batch, groups, height * width, channelsPerGroup};
+        const std::array<uint32_t, 4> inputStrides = {channelsPerGroup * height * width * groups, channelsPerGroup, groups * channelsPerGroup, 1};
         TensorDesc inputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), inputShape, inputStrides);
         const DML_TENSOR_DESC inputDmlTensorDesc = inputTensorDesc.GetDmlDesc();
 
         // 1. Reshape the gamma and beta from [channels] to [groups, channelsPerGroup]
         // 2. Broadcast the gamma and beta from [groups, channelsPerGroup] to [batch, height * width, groups, channelsPerGroup]
-        // 3. Stride the brodcasted gamma and beta from [batch, height * width, groups, channelsPerGroup] to [batch, channelsPerGroup, height * width, groups]
-        const std::array<uint32_t, 4> gammaBetaStrides = {0, 1, 0, channelsPerGroup};
+        // 3. Stride the brodcasted gamma and beta from [batch, height * width, groups, channelsPerGroup] to [batch, groups, height * width, channelsPerGroup]
+        const std::array<uint32_t, 4> gammaBetaStrides = {0, channelsPerGroup, 0, 1};
         TensorDesc gammaBetaTensorDesc = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), inputShape, gammaBetaStrides);
         const DML_TENSOR_DESC gammaBetaDmlTensorDesc = gammaBetaTensorDesc.GetDmlDesc();
 
@@ -69,19 +69,16 @@ public:
         }
         DML_OPERATOR_DESC dmlCastGammaBetaDesc = { DML_OPERATOR_CAST, &castGammaBetaDesc };
 
-        const std::array<uint32_t, 2> axes = {1, 2};
-
         // Then, perform MVN
-        DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC mvnDesc{};
+        DML_MEAN_VARIANCE_NORMALIZATION_OPERATOR_DESC mvnDesc{};
         mvnDesc.InputTensor = &inputDmlTensorDesc;
         mvnDesc.ScaleTensor = gammaBetaCastNeeded ? &inputDmlTensorDesc : &gammaBetaDmlTensorDesc;
         mvnDesc.BiasTensor = gammaBetaCastNeeded ? &inputDmlTensorDesc : &gammaBetaDmlTensorDesc;
         mvnDesc.OutputTensor = &inputDmlTensorDesc;
         mvnDesc.NormalizeVariance = true;
-        mvnDesc.AxisCount = gsl::narrow_cast<uint32_t>(axes.size());
-        mvnDesc.Axes = axes.data();
+        mvnDesc.CrossChannel = false;
         mvnDesc.Epsilon = epsilon;
-        DML_OPERATOR_DESC dmlMvnDesc = { DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1, &mvnDesc };
+        DML_OPERATOR_DESC dmlMvnDesc = { DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION, &mvnDesc };
 
         // Finally, execute the Swish activation function (x * sigmoid(x)) if provided
         DML_ACTIVATION_SIGMOID_OPERATOR_DESC swishSigmoidDesc{};
