@@ -1211,14 +1211,12 @@ def build_status(status_dict, results, is_fail):
         for model, model_info in results.items():
             for ep, _ep_info in model_info.items():
                 model_name = model
-                ep = ep  # noqa: PLW2901
                 status = "Fail"
                 add_status_dict(status_dict, model_name, ep, status)
     else:
         for model, value in results.items():
             for ep, _ep_info in value.items():
                 model_name = model
-                ep = ep  # noqa: PLW2901
                 status = "Pass"
                 add_status_dict(status_dict, model_name, ep, status)
 
