@@ -28,28 +28,28 @@ struct FuseImpl {
   FuseAlgo fuse_algo_;
 };
 
-FuseImpl<float>* InitFuse(const OrtKernelInfo* info) {
-  int64_t fuse_algo;
-  Ort::detail::attr_utils::GetAttr(info, "fuse_algo", fuse_algo);
-  return std::make_unique<FuseImpl<float>>((FuseImpl<float>::FuseAlgo)fuse_algo).release();
-}
-
-void Fuse(FuseImpl<float>* fuse_impl,
-          OrtKernelContext* ctx,
-          const Ort::Custom2::Span<float>& vector_1,
-          const Ort::Custom2::Span<float>& vector_2,
-          int32_t alpha,
-          Ort::Custom2::TensorT<float>& vector_output) {
-  auto len_output = std::min(vector_1.size(), vector_2.size());
-  float* floats_out = static_cast<float*>(vector_output.Allocate({(int64_t)len_output}));
-  for (size_t i = 0; i < len_output; ++i) {
-    floats_out[i] = alpha * fuse_impl->DoFuse(vector_1[i], vector_2[i]);
+struct FuseOp {
+  FuseOp(const OrtApi* ort_api, const OrtKernelInfo* info) {
+    int64_t fuse_algo;
+    ort_api->KernelInfoGetAttribute_int64(info, "fuse_algo", &fuse_algo);
+    fuse_impl_ = std::make_unique<FuseImpl<float>>((FuseImpl<float>::FuseAlgo)fuse_algo);
   }
-}
 
-void ExitFuse(FuseImpl<float>* fuse_impl) {
-  delete static_cast<FuseImpl<float>*>(fuse_impl);
-}
+  void Compute(
+      OrtKernelContext* ctx,
+      const Ort::Custom2::Span<float>& vector_1,
+      const Ort::Custom2::Span<float>& vector_2,
+      int32_t alpha,
+      Ort::Custom2::TensorT<float>& vector_output) {
+    auto len_output = std::min(vector_1.size(), vector_2.size());
+    float* floats_out = static_cast<float*>(vector_output.Allocate({(int64_t)len_output}));
+    for (size_t i = 0; i < len_output; ++i) {
+      floats_out[i] = alpha * fuse_impl_->DoFuse(vector_1[i], vector_2[i]);
+    }
+  }
+
+  std::unique_ptr<FuseImpl<float>> fuse_impl_;
+};
 
 /////////////////////////////////// Select ////////////////////////////////////////
 
@@ -94,9 +94,9 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
 
   static Ort::CustomOpDomain v2_domain{"v2"};
-  static std::unique_ptr<OrtCustomOp> fus_op_ptr{Ort::Custom2::CreateCustomOpT2("Fuse", "CPUExecutionProvider", InitFuse, Fuse, ExitFuse)};
-  static std::unique_ptr<OrtCustomOp> sel_op_ptr{Ort::Custom2::CreateCustomOpT2("Select", "CPUExecutionProvider", Select)};
-  static std::unique_ptr<OrtCustomOp> fil_op_ptr{Ort::Custom2::CreateCustomOpT2("Filter", "CPUExecutionProvider", Filter)};
+  static std::unique_ptr<OrtCustomOp> fus_op_ptr{Ort::Custom2::CreateCustomOp<FuseOp>("Fuse", "CPUExecutionProvider")};
+  static std::unique_ptr<OrtCustomOp> sel_op_ptr{Ort::Custom2::CreateCustomOp("Select", "CPUExecutionProvider", Select)};
+  static std::unique_ptr<OrtCustomOp> fil_op_ptr{Ort::Custom2::CreateCustomOp("Filter", "CPUExecutionProvider", Filter)};
 
   v2_domain.Add(fus_op_ptr.get());
   v2_domain.Add(sel_op_ptr.get());
