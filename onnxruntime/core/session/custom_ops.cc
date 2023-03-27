@@ -689,9 +689,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
           undefined++;
         }
       }
-    }
 
-    for (const auto* op : domain->custom_ops_) {
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
