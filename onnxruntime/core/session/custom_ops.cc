@@ -400,14 +400,12 @@ struct CustomOpKernel : OpKernel {
 
 common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domains,
                                     std::shared_ptr<CustomRegistry>& output) {
-
   output = std::make_shared<CustomRegistry>();
-  using OnnxTypeVec = std::vector<ONNXTensorElementDataType>;
 
   for (const auto& domain : op_domains) {
-
 #if !defined(ORT_MINIMAL_BUILD)
     std::unordered_map<std::string, ONNX_NAMESPACE::OpSchema> schema_map;
+    using OnnxTypeVec = std::vector<ONNXTensorElementDataType>;
     std::unordered_map<std::string, std::vector<OnnxTypeVec>> type_map;
 
     // Domain is not empty - add it to the DomainToVersion ONNX map
