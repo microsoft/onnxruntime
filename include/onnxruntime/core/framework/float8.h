@@ -39,7 +39,7 @@ struct Float8E4M3FN {
 #else
 
     #if defined(CUDA_VERSION)
-    #error "CUDA should not be used."
+    #error "CUDA should be used."
     #endif
 
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
@@ -98,6 +98,10 @@ struct Float8E4M3FN {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     return __half2float(__nv_cvt_fp8_to_halfraw(val, __NV_E4M3));
 #else
+    #if defined(CUDA_VERSION)
+    #error "CUDA should be used."
+    #endif
+
     uint32_t res;
     if (val == 255) {
       res = 0xffc00000;
@@ -338,6 +342,10 @@ struct Float8E5M2 {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E5M2);
 #else
+    #if defined(CUDA_VERSION)
+    #error "CUDA should be used."
+    #endif
+
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
 
@@ -386,6 +394,10 @@ struct Float8E5M2 {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     return __half2float(__nv_cvt_fp8_to_halfraw(val, __NV_E5M2));
 #else
+    #if defined(CUDA_VERSION)
+    #error "CUDA should be used."
+    #endif
+
     uint32_t res;
     if (val >= 253) {
       res = 0xffc00000;
