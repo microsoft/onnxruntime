@@ -34,7 +34,7 @@
         {
             "pathname": "/news",
             "redirect": "/blogs",
-            "testRedirect": "/onnxruntime/blogs"
+            "testRedirect": "/onnxruntime/news"
         }
    ]
 } 
