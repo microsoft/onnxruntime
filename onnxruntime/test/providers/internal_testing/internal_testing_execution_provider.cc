@@ -150,7 +150,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
                   const Node* node = graph_viewer.GetNode(node_index);
                   if (take_all_nodes_) {
                     if (enable_static_kernels_) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
                       supported_static_nodes.insert(node);
                       if (kernel_lookup.LookUpKernel(*node) == nullptr) {
                         RegisterDummyStaticKernel(*kernel_registry_, *node);
