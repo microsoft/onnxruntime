@@ -101,14 +101,14 @@ struct GroupNormNHWCParams {
   int32_t groupsPerBlock;
 };
 
-template <typename T, typename AccT, int32_t ILP>
-inline __device__ void UpdateSum(const T* src, int64_t offset, float& sum, float& sumSq) {
+template <typename T, typename U, int32_t ILP>
+inline __device__ void UpdateSum(const T* src, int64_t offset, U& sum, U& sumSq) {
   using VecT = onnxruntime::rocm::aligned_vector<T, ILP>;
   const VecT input_v = *reinterpret_cast<const VecT*>(src + offset);
 
   #pragma unroll
   for (int i = 0; i < ILP; i++) {
-    const AccT val = static_cast<AccT>(input_v.val[i]);
+    const U val = static_cast<U>(input_v.val[i]);
     sum += val;
     sumSq += val * val;
   }
@@ -218,16 +218,16 @@ void groupNormNHWCSum(GroupNormNHWCParams<T> const& params, hipStream_t stream) 
   }
 }
 
-template <typename T, typename AccT, int32_t ILP>
-__device__ void computeGroupNorm(const T* src, T* dst, int64_t offset, float mean, float invStdDev,
-                                 const float* gamma_v, const float* beta_v, bool swish) {
+template <typename T, typename U, int32_t ILP>
+__device__ void computeGroupNorm(const T* src, T* dst, int64_t offset, U mean, U invStdDev,
+                                 const U* gamma_v, const U* beta_v, bool swish) {
   using VecT = onnxruntime::rocm::aligned_vector<T, ILP>;
   const VecT input_v = *reinterpret_cast<const VecT*>(src + offset);
   VecT output_v;
 
   #pragma unroll
   for (int i = 0; i < ILP; i++) {
-    AccT val = static_cast<AccT>(input_v.val[i]);
+    U val = static_cast<U>(input_v.val[i]);
     val = (val - mean) * invStdDev;
     val = gamma_v[i] * val + beta_v[i];
 
