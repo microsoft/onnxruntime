@@ -34,8 +34,8 @@ jobs:
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: 'onnxruntimecpubuildaten'
-      UseImageCacheContainerRegistry: false
-      UsePipelineCache: true
+      UseImageCacheContainerRegistry: true
+      UsePipelineCache: false
 
   - task: Cache@2
     inputs:
