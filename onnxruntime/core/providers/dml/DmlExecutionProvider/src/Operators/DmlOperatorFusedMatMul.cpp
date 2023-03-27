@@ -36,39 +36,23 @@ public:
                   "Two inputs should have same rank and rank >= 3 if transBatchA or transBatchB is true");
         }
 
-        gsl::span<const uint32_t> inputShapes[2];
-        DML_MATRIX_TRANSFORM dmlTransA;
-        DML_MATRIX_TRANSFORM dmlTransB;
-
         auto [sizesA, stridesA] = OperatorHelper::GetFusedMatMulSizesAndStrides(inputShape0, transBatchA, transA);
+
         auto [sizesB, stridesB] = OperatorHelper::GetFusedMatMulSizesAndStrides(inputShape1, transBatchB, transB);
+
         OperatorHelper::FusedMatMulShapeMapping(sizesA, stridesA, sizesB, stridesB, outputShape);
-
-        if (transBatchA || transBatchB)
-        {
-            m_inputTensorDescs[0].SetStrides(stridesA);
-            m_inputTensorDescs[1].SetStrides(stridesB);
-
-            inputShapes[0] = sizesA;
-            inputShapes[1] = sizesB;
-            dmlTransA = DML_MATRIX_TRANSFORM_NONE;
-            dmlTransB = DML_MATRIX_TRANSFORM_NONE;
-        }
-        else
-        {
-            inputShapes[0] = inputShape0;
-            inputShapes[1] = inputShape1;
-            dmlTransA = transA ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE;
-            dmlTransB = transB ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE;
-        }
 
         // At this point, we have manipulated input/output shapes and strides and
         // we do not care about actual input shapes present in the model (.onnx file).
         // Create the TensorDesc with the manipulated input shapes becuase we don't want incorrect
         // broadcasting to be happen inside TensorDesc constructor.
         std::vector<std::optional<uint32_t>> inputIndices = { 0, 1, std::nullopt };
+        gsl::span<const uint32_t> inputShapes[2] = {sizesA, sizesB};
         gsl::span<const uint32_t> outputShapes[1] = {outputShape};
         DmlOperator::InitializeWithShapes(kernelInfo, inputIndices, std::nullopt, inputShapes, outputShapes, 1);
+
+        m_inputTensorDescs[0].SetStrides(stridesA);
+        m_inputTensorDescs[1].SetStrides(stridesB);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -83,8 +67,8 @@ public:
         gemmDesc.BTensor = &inputDescs[1];
         gemmDesc.CTensor = nullptr;
         gemmDesc.OutputTensor = &outputDescs[0];
-        gemmDesc.TransA = dmlTransA;
-        gemmDesc.TransB = dmlTransB;
+        gemmDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
+        gemmDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
         gemmDesc.Alpha = alpha;
         gemmDesc.Beta = 0.0f;
         gemmDesc.FusedActivation = fusedActivation ? &fusedActivationDmlDesc : nullptr;
