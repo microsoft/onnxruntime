@@ -466,13 +466,15 @@ class FusionAttention(Fusion):
         q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
         qb = NumpyHelper.to_array(q_bias)
         kb, vb = None, None
-        if k_add is not None and v_add is not None:
+        if k_add is not None:
             k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
-            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
             kb = NumpyHelper.to_array(k_bias)
-            vb = NumpyHelper.to_array(v_bias)
         else:
             kb = np.zeros_like(qb)
+        if v_add is not None:
+            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])            
+            vb = NumpyHelper.to_array(v_bias)
+        else:
             vb = np.zeros_like(qb)
 
         qkv_bias = np.stack((qb, kb, vb), axis=0)

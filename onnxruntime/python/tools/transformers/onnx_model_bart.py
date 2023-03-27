@@ -40,38 +40,31 @@ class FusionBartAttention(FusionAttention):
     ):
         concat_qkv_2_path = self.model.match_parent_path(reshape_qkv_2, ["Concat"], [1])
         if concat_qkv_2_path is None:
-            print("fail 1")
             return False
         concat_qkv_2 = concat_qkv_2_path[0]
 
         reshape_qkv_2_path_1 = self.model.match_parent_path(concat_qkv_2, ["Unsqueeze", "Gather", "Shape"], [0, 0, 0])
         reshape_qkv_2_path_2 = self.model.match_parent_path(concat_qkv_2, ["Unsqueeze", "Gather", "Shape"], [1, 0, 0])
         if reshape_qkv_2_path_1 is None or reshape_qkv_2_path_2 is None:
-            print("fail 2")
             return False
 
         _, gather_1, shape_1 = reshape_qkv_2_path_1
         _, gather_2, shape_2 = reshape_qkv_2_path_2
 
         if shape_1.input[0] != root_input or shape_2.input[0] != root_input:
-            print(shape_1.name, shape_2.name, root_input)
-            print("fail 3")
             return False
 
         reshape_qkv_1_path_1 = self.model.match_parent_path(reshape_qkv_1, ["Concat", "Unsqueeze", "Gather"], [1, 0, 0])
         reshape_qkv_1_path_2 = self.model.match_parent_path(reshape_qkv_1, ["Concat", "Unsqueeze", "Gather"], [1, 2, 0])
         if reshape_qkv_1_path_1 is None or reshape_qkv_1_path_2 is None:
-            print("fail 4")
             return False
         if reshape_qkv_1_path_1[-1].name != gather_1.name or reshape_qkv_1_path_2[-1].name != gather_2.name:
-            print("fail 5")
             return False
 
         reshape_q_2_path = self.model.match_parent_path(reshape_q_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0])
         reshape_k_2_path = self.model.match_parent_path(reshape_k_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0])
         reshape_v_2_path = self.model.match_parent_path(reshape_v_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0])
         if reshape_q_2_path is None or reshape_k_2_path is None or reshape_v_2_path is None:
-            print("fail 6")
             return False
 
         mul_q = reshape_q_2_path[-1]
@@ -80,7 +73,6 @@ class FusionBartAttention(FusionAttention):
 
         gather_1_out = gather_1.output[0]
         if mul_q.input[0] != gather_1_out or mul_k.input[0] != gather_1_out or mul_v.input[0] != gather_1_out:
-            print("fail 7")
             return False
 
         return True
@@ -272,13 +264,15 @@ class FusionBartAttention(FusionAttention):
         one_root_input = not three_root_inputs and matmul_k.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input 
         two_root_inputs = not three_root_inputs and matmul_q.input[0] == root_input and matmul_k.input[0] == matmul_v.input[0] and matmul_k.input[0] != matmul_q.input[0]
         
-        # There are 4 types of attention:
+        # There are 5 types of attention:
         # 1) Encoder attention with one_root_input=True and qk_nodes=qk_nodes_1
         # 2) Decoder attention with one_root_input=True and qk_nodes=qk_nodes_2
-        # 3) Decoder cross attention with two_root_inputs=True and qk_nodes=qk_nodes_1
-        # 4) Decoder cross attention with past with three_root_inputs=True and qk_nodes=qk_nodes_1
+        # 3) Decoder attention with past with one_root_input=True and qk_nodes=qk_nodes_1 and past_k=past_decoder_key and past_v=past_decoder_value
+        # 4) Decoder cross attention with two_root_inputs=True and qk_nodes=qk_nodes_1
+        # 5) Decoder cross attention with past with three_root_inputs=True and qk_nodes=qk_nodes_1
         encoder_attention = one_root_input and qk_nodes == qk_nodes_1
         decoder_attention = one_root_input and qk_nodes == qk_nodes_2
+        decoder_attention_with_past = encoder_attention and past_k != "" and past_v != ""
         decoder_cross_attention = two_root_inputs and qk_nodes == qk_nodes_1
         decoder_cross_attention_with_past = three_root_inputs and qk_nodes == qk_nodes_1
 
@@ -292,7 +286,7 @@ class FusionBartAttention(FusionAttention):
             )
             mask_index = mask_nodes[0].output[-1]
 
-        if encoder_attention or decoder_attention or decoder_cross_attention or decoder_cross_attention_with_past: 
+        if encoder_attention or decoder_attention or decoder_attention_with_past or decoder_cross_attention or decoder_cross_attention_with_past: 
             attention_last_node = reshape_qkv_2
             num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q_1)
 
@@ -302,22 +296,30 @@ class FusionBartAttention(FusionAttention):
             
             new_node = None
             print("Past/present:", past_k, past_v, present_k, present_v)
-            print("Attention type:", encoder_attention, decoder_attention, decoder_cross_attention, decoder_cross_attention_with_past)
-            if decoder_cross_attention or decoder_cross_attention_with_past:
+            print("Attention type:", encoder_attention, decoder_attention, decoder_attention_with_past, decoder_cross_attention, decoder_cross_attention_with_past)
+            if decoder_attention_with_past or decoder_cross_attention or decoder_cross_attention_with_past:
+                # Note: Decoder attention with past key and past value is fused as multihead attention
+                # rather than attention because multihead attention supports separate past key and past 
+                # value whereas attention supports concatenated past key and past value.
                 new_node = self.create_multihead_attention_node(
                     matmul_q,
-                    matmul_k if decoder_cross_attention else past_k,
-                    matmul_v if decoder_cross_attention else past_v,
+                    matmul_k if decoder_cross_attention or decoder_attention_with_past else past_k,
+                    matmul_v if decoder_cross_attention or decoder_attention_with_past else past_v,
                     add_q,
-                    add_k if decoder_cross_attention else None,
-                    add_v if decoder_cross_attention else None,
+                    add_k if decoder_cross_attention or decoder_attention_with_past else None,
+                    add_v if decoder_cross_attention or decoder_attention_with_past else None,
                     num_heads,
                     hidden_size,
                     attention_last_node.output[0],
+                    past_k=past_k if decoder_attention_with_past else "",
+                    past_v=past_v if decoder_attention_with_past else "",
                     present_k=present_k,
                     present_v=present_v,
                 ) if self.use_multi_head_attention else None
             else:
+                # Temporarily set multihead attention flag to false
+                use_multi_head_attention_ground_truth = self.use_multi_head_attention
+                self.use_multi_head_attention = False
                 new_node = self.create_attention_node(
                     None,
                     matmul_q,
@@ -336,6 +338,7 @@ class FusionBartAttention(FusionAttention):
                     present_k=present_k,
                     present_v=present_v,
                 )
+                self.use_multi_head_attention = use_multi_head_attention_ground_truth
             if new_node is None:
                 return
 
@@ -346,7 +349,7 @@ class FusionBartAttention(FusionAttention):
             self.nodes_to_remove.extend(qk_nodes)
             
             # When using multihead attention, keep MatMul nodes in original graph
-            if decoder_cross_attention or decoder_cross_attention_with_past:
+            if decoder_attention_with_past or decoder_cross_attention or decoder_cross_attention_with_past:
                 if q_nodes[-1].op_type == "MatMul":
                     q_nodes.pop()
                 if k_nodes[-1].op_type == "MatMul":
@@ -470,6 +473,10 @@ class BartOnnxModel(BertOnnxModel):
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionBartAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.bart_reshape_fusion_preprocess = FusionBartReshape(self)
+
+    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+        self.attention_fusion.use_multi_head_attention = False if options is None else options.use_multi_head_attention
+        super().optimize(options, add_dynamic_axes)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
