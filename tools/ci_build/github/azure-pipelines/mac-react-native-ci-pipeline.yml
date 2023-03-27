@@ -32,4 +32,4 @@ jobs:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     BuildConfig: 'Release'
-    PoolName: 'Linux-CPU-2019'
+    PoolName: 'onnxruntime-Linux-CPU-2019'
