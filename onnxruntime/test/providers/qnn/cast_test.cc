@@ -68,6 +68,10 @@ static void RunCastOpTest(const std::vector<int64_t>& shape, ONNX_NAMESPACE::Ten
                   test_description);
 }
 
+//
+// CPU tests:
+//
+
 // Cast int32_t to float on CPU
 TEST(QnnCPUBackendTests, TestCastInt32ToFloat) {
   RunCastOpTest<int32_t>({2, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
@@ -86,6 +90,11 @@ TEST(QnnCPUBackendTests, TestCastFloatToInt32) {
                        "TestCastInt32ToFloat", false);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+//
+// HTP tests:
+//
+
 // Cast int32_t to float on HTP
 TEST_F(QnnHTPBackendTests, TestCastInt32ToFloatHTP) {
   RunCastOpTest<int32_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
@@ -103,6 +112,7 @@ TEST_F(QnnHTPBackendTests, TestCastFloatToInt32HTP) {
   RunCastOpTest<float>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32, ExpectedEPNodeAssignment::All,
                        "TestCastFloatToInt32HTP", true);
 }
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime
