@@ -6,8 +6,9 @@
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 #include "cuda_fp8.h"
 #endif
-#if defined(CUDA_VERSION)
-#error "Wrong CUDA_VERSION."
+
+#if defined(COMPILED_IN_CAST)
+#error "Check COMPILED_IN_CAST"
 #endif
 
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
@@ -41,9 +42,9 @@ struct Float8E4M3FN {
     val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E4M3);
 #else
 
-    //#if defined(CUDA_VERSION)
+    #if defined(CUDA_VERSION)
     #error "CUDA should be used."
-    //#endif
+    #endif
 
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
