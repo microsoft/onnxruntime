@@ -47,7 +47,7 @@ function createLrnProgramInfo(inputs: Tensor[], attributes: LrnAttributes): Prog
   const rank = inputs[0].dims.length;
   const from = -Math.floor((attributes.size - 1) / 2);
   const to = Math.ceil((attributes.size - 1) / 2);
-  const alpha_norm = `float(${attributes.alpha}) / float(${attributes.size})`;
+  const alpha = `float(${attributes.alpha}) / float(${attributes.size})`;
   const bias = `float(${attributes.bias})`;
   const beta = `float(${attributes.beta})`;
 
@@ -65,7 +65,7 @@ function createLrnProgramInfo(inputs: Tensor[], attributes: LrnAttributes): Prog
             square_sum += j * j;
           }
         }
-        return x / pow(${bias} + ${alpha_norm} * square_sum, ${beta});
+        return x / pow(${bias} + ${alpha} * square_sum, ${beta});
     }`;
   return {
     ...lrnProgramMetadata,
