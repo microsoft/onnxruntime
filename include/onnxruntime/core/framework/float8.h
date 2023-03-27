@@ -6,6 +6,9 @@
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 #include "cuda_fp8.h"
 #endif
+#if defined(CUDA_VERSION)
+#error "Wrong CUDA_VERSION."
+#endif
 
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #include "core/common/narrow.h"
@@ -38,9 +41,9 @@ struct Float8E4M3FN {
     val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E4M3);
 #else
 
-    #if defined(CUDA_VERSION)
+    //#if defined(CUDA_VERSION)
     #error "CUDA should be used."
-    #endif
+    //#endif
 
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -221,7 +224,7 @@ struct Float8E4M3FNUZ {
             val += 1;
           }
         } else if (e < 120) {  // 127 - 8 + 1
-          auto d = 120 - e;
+          auto d = 119 - e;
           val |= 1 << (2 - d);
           val |= m >> (21 + d);
           if ((m >> (20 + d)) & 1) {
@@ -229,7 +232,7 @@ struct Float8E4M3FNUZ {
             val += 1;
           }
         } else if (e < 135) {  // 127 + 8
-          auto ex = e - 120;   // 127 - 7
+          auto ex = e - 119;   // 127 - 7
           if (ex == 0) {
             val |= 0x4;
             val |= m >> 21;
