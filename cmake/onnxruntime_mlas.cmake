@@ -44,7 +44,6 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/reorder.cpp
   ${MLAS_SRC_DIR}/snchwc.cpp
   ${MLAS_SRC_DIR}/activate.cpp
-  ${MLAS_SRC_DIR}/activate_fp16.cpp
   ${MLAS_SRC_DIR}/logistic.cpp
   ${MLAS_SRC_DIR}/tanh.cpp
   ${MLAS_SRC_DIR}/erf.cpp
@@ -73,6 +72,7 @@ function(setup_mlas_source_for_windows)
   # Sources common for all platforms.
   #
   target_sources(onnxruntime_mlas PRIVATE
+    ${MLAS_SRC_DIR}/activate_fp16.cpp
     ${MLAS_SRC_DIR}/dwconv.cpp
     ${MLAS_SRC_DIR}/pooling_fp16.cpp
   )
@@ -343,6 +343,7 @@ else()
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdot.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdotLd64.S
+          ${MLAS_SRC_DIR}/activate_fp16.cpp
           ${MLAS_SRC_DIR}/dwconv.cpp
           ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/pooling_fp16.cpp
@@ -532,6 +533,7 @@ else()
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
 
         set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/activate_fp16.cpp
           ${MLAS_SRC_DIR}/dwconv.cpp
           ${MLAS_SRC_DIR}/dgemm.cpp
           ${MLAS_SRC_DIR}/pooling_fp16.cpp
