@@ -30,11 +30,6 @@
             "pathname": "/docs/reference/api",
             "redirect": "/docs/api",
             "testRedirect": "/onnxruntime/docs/build"
-        },       
-        {
-            "pathname": "/news",
-            "redirect": "/blogs",
-            "testRedirect": "/onnxruntime/news"
         }
    ]
 } 
