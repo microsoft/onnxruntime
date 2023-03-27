@@ -615,28 +615,13 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto sequence_ops = std::array<char*, 6>{
+        auto sequence_ops = std::array<char*, 7>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
             "SequenceLength",
             "SequenceErase",
-            "SequenceInsert"
-        };
-
-        for (auto& sequence_op : sequence_ops)
-        {
-            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool IsDmlSequenceOperator(const onnxruntime::Node& node)
-    {
-        auto sequence_ops = std::array<char*, 1>{
+            "SequenceInsert",
             "Loop"
         };
 
@@ -701,7 +686,7 @@ namespace Dml
             // Allow nodeArgs that are SequenceTensor when they are actually implemented by CPU Kernels.
             if (edgeType == MLOperatorEdgeType::SequenceTensor)
             {
-                if (!IsCpuOnDmlOperator(node) && !IsDmlSequenceOperator(node))
+                if (!IsCpuOnDmlOperator(node))
                 {
                     nodeContainsSupportedDataTypes = false;
                 }
