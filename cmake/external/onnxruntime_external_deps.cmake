@@ -113,7 +113,6 @@ FetchContent_Declare(
   Protobuf
   URL ${DEP_URL_protobuf}
   URL_HASH SHA1=${DEP_SHA1_protobuf}
-  SOURCE_SUBDIR  cmake
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
   FIND_PACKAGE_ARGS 3.20.2 NAMES Protobuf
 )

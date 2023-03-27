@@ -383,7 +383,7 @@ function Install-Protobuf {
     cd *
     Get-Content $src_root\cmake\patches\protobuf\protobuf_cmake.patch | &'C:\Program Files\Git\usr\bin\patch.exe' --ignore-whitespace -p1
 
-    [string[]]$cmake_args = "cmake", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-DBUILD_SHARED_LIBS=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF"
+    [string[]]$cmake_args = ".", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-DBUILD_SHARED_LIBS=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF"
     $cmake_args += $cmake_extra_args
 
     $p = Start-Process -FilePath $cmake_path -ArgumentList $cmake_args -NoNewWindow -Wait -PassThru
