@@ -16,11 +16,11 @@ extern TensorrtLogger& GetTensorrtLogger();
  * Create custom op domain list for TRT plugins.
  *
  * Here, we collect all registered TRT plugins from TRT registry and create custom ops with "trt.plugins" domain. 
- * If users specify extra plugin libs, ORT TRT will load them at runtime which will register those plugins to TRT
- * plugin registry.
+ * Additionally, if users specify extra plugin libraries, TRT EP will load them at runtime which will register those
+ * plugins to TRT plugin registry and later TRT EP can get them as well.
  *
- * There are several TRT plugins registered as onnx schema op through contrib op with ONNX domain, for example, 
- * EfficientNMS_TRT, MultilevelCropAndResize_TRT, PyramidROIAlign_TRT and DisentangledAttention_TRT.
+ * There are several TRT plugins registered as onnx schema op through contrib op with ONNX domain in the past,
+ * for example, EfficientNMS_TRT, MultilevelCropAndResize_TRT, PyramidROIAlign_TRT and DisentangledAttention_TRT.
  * In order not to break the old models using those TRT plugins which were registered with ONNX domain and maintain
  * backward compatible, we need to keep those legacy TRT plugins registered with ONNX domain with contrib ops.
  *
@@ -31,8 +31,8 @@ common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& i
   std::unique_ptr<OrtProviderCustomOpDomain> custom_op_domain = std::make_unique<OrtProviderCustomOpDomain>();
   custom_op_domain->domain_ = "trt.plugins";
 
-  // Load any extra TRT plugin libs if any.
-  // When the plugin lib is loaded, the global static object is created and the plugin is registered to TRT registry.
+  // Load any extra TRT plugin library if any.
+  // When the TRT plugin library is loaded, the global static object is created and the plugin is registered to TRT registry.
   // This is done through macro, for example, REGISTER_TENSORRT_PLUGIN(VisionTransformerPluginCreator).
   std::string extra_plugin_lib_paths{""};
   if (info.has_trt_options) {
@@ -61,7 +61,7 @@ common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& i
   }
 
   // Get all registered TRT plugins from registry
-  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from registry ...";
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from TRT plugin registry ...";
   TensorrtLogger trt_logger = GetTensorrtLogger();
   initLibNvInferPlugins(&trt_logger, "");
 
