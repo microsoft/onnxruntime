@@ -27,7 +27,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    with open(args.build_check_binsize_config, mode="r") as config_file:
+    with open(args.build_check_binsize_config) as config_file:
         config = json.load(config_file)
 
     config_type = config["type"]
@@ -35,11 +35,35 @@ def main():
     arch = config["arch"]
     build_params = config["build_params"]
     build_config = "MinSizeRel"  # could make this configurable if needed
-
+    # Build and install protoc
+    protobuf_installation_script = (
+        REPO_ROOT
+        / "tools"
+        / "ci_build"
+        / "github"
+        / "linux"
+        / "docker"
+        / "inference"
+        / "x64"
+        / "python"
+        / "cpu"
+        / "scripts"
+        / "install_protobuf.sh"
+    )
+    subprocess.run(
+        [
+            str(protobuf_installation_script),
+            "-p",
+            str(pathlib.Path(args.build_dir) / "installed"),
+            "-d",
+            str(REPO_ROOT / "cmake" / "deps.txt"),
+        ],
+        shell=False,
+        check=True,
+    )
     # build ORT
     build_command = (
-        [sys.executable, str(REPO_ROOT / "tools/ci_build/build.py")]
-        + build_params
+        [sys.executable, str(REPO_ROOT / "tools/ci_build/build.py"), *build_params]
         + (["--cmake_extra_defines", "ADD_DEBUG_INFO_TO_MINIMAL_BUILD=ON"] if args.with_debug_info else [])
         # put the following options last so they don't get overridden by build_params
         + [
@@ -49,6 +73,8 @@ def main():
             "--build",
             "--parallel",
             "--test",
+            "--path_to_protoc_exe",
+            str(pathlib.Path(args.build_dir) / "installed" / "bin" / "protoc"),
         ]
     )
 

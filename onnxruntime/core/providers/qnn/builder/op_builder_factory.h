@@ -76,5 +76,9 @@ void CreateTopKOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateInstanceNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateReduceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 }  // namespace qnn
 }  // namespace onnxruntime

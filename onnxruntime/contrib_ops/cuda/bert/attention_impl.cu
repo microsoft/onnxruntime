@@ -297,7 +297,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
   // Default format for memory efficient attention.
-  // When there is past state, the format shal be BxNxSxH, so we disable memory efficient attention when there is past.
+  // When there is past state, the format shall be BxNxSxH, so we disable memory efficient attention when there is past.
   DUMP_TENSOR_INIT();
   if (nullptr != data.gemm_buffer) {
     if (data.bias == nullptr) {
@@ -333,6 +333,56 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
                              3, parameters.do_rotary, parameters.original_past_sequence_length);
     }
+  }
+  // cross attention with past/present state
+  else if (data.past_key != nullptr || data.present_key != nullptr) {
+    // no bias for T5 cross attention
+    assert(data.bias == nullptr);
+    // cross attention with past state
+    if (data.past_key != nullptr && data.present_key == nullptr) {
+      assert(data.past_value != nullptr);
+      assert(data.query != nullptr);
+      assert(data.key == nullptr);
+      assert(data.value == nullptr);
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
+                                         max_threads_per_block, false, data.query, q));
+    }
+    // cross attention with present state or self attention with present state
+    else if (data.past_key == nullptr && data.present_key != nullptr) {
+      assert(data.past_value == nullptr);
+      assert(data.present_value != nullptr);
+      assert(data.query != nullptr);
+      assert(data.key != nullptr);
+      assert(data.value != nullptr);
+
+      // TODO: supporting packed qkv for self attention may benefit performance
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
+                          max_threads_per_block, false, data.query, q));
+
+      // TODO: supporting packed kv for cross attention may benefit performance
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
+                          max_threads_per_block, false, data.key, data.present_key));
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
+                          max_threads_per_block, false, data.value, data.present_value));
+    }
+    // self attention with past and present state
+    else {
+      assert(data.past_key != nullptr);
+      assert(data.past_value != nullptr);
+      assert(data.present_key != nullptr);
+      assert(data.present_value != nullptr);
+      assert(data.query != nullptr);
+      assert(data.key != nullptr);
+      assert(data.value != nullptr);
+      // TODO: supporting packed qkv for self attention may benefit performance
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
+                          max_threads_per_block, false, data.query, q));
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
+                          max_threads_per_block, false, data.key, k));
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
+                          max_threads_per_block, false, data.value, v));
+    }
+    qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
   } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
     assert(data.bias == nullptr);
     assert(qk_head_size == v_head_size);
@@ -394,6 +444,14 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
     DUMP_TENSOR_D("key_bias", data.bias + num_heads * qk_head_size, num_heads, qk_head_size);
     DUMP_TENSOR_D("value", data.value, batch_size * kv_sequence_length, num_heads, v_head_size);
     DUMP_TENSOR_D("value_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
+
+    if (data.relative_position_bias != nullptr && parameters.broadcast_res_pos_bias) {
+      DUMP_TENSOR_D("relative_position_bias", data.relative_position_bias, num_heads, sequence_length, kv_sequence_length);
+    }
+
+    if (data.mask_index != nullptr && parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) {
+      DUMP_TENSOR_D("mask_index", data.mask_index, 3 * batch_size + 2, 1);
+    }
 
     if (data.fused_cross_attention_kernel != nullptr) {
       assert(qk_head_size == v_head_size);
@@ -536,6 +594,28 @@ Status QkvToContext(
       k = data.present;
       v = data.present + batches * present_size_per_batch_k;
     }
+
+    if (nullptr != data.past_key || nullptr != data.present_key) {
+      assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
+      if (nullptr != data.past_key && nullptr == data.present_key) {
+        k = const_cast<T*>(data.past_key);
+        v = const_cast<T*>(data.past_value);
+      } else if (nullptr == data.past_key && nullptr != data.present_key) {
+        k = data.present_key;
+        v = data.present_value;
+      } else {
+        ORT_RETURN_IF_ERROR(
+            LaunchConcatTensorToTensor(stream, parameters.total_sequence_length, sequence_length, batch_size, qk_head_size, num_heads,
+                                       max_threads_per_block, 1, data.past_key, k, data.present_key));
+        ORT_RETURN_IF_ERROR(
+            LaunchConcatTensorToTensor(stream, parameters.total_sequence_length, sequence_length, batch_size, v_head_size, num_heads,
+                                       max_threads_per_block, 1, data.past_value, v, data.present_value));
+
+        // Update pointers to present_k and present_v.
+        k = data.present_key;
+        v = data.present_value;
+      }
+    }
   } else {
     assert(qk_head_size == v_head_size);
     assert(data.fused_cross_attention_kernel == nullptr);
@@ -543,6 +623,11 @@ Status QkvToContext(
     assert(data.gemm_buffer != nullptr);
     assert(!data.use_memory_efficient_attention);
     assert(data.has_qkv_workspace);
+
+    if (nullptr != data.past_key || nullptr != data.present_key) {
+      // TODO: support this case.
+      ORT_THROW("buffer sharing for no bias case between past and present is not supported yet.");
+    }
 
     if (data.present != data.past) {
       // For easy testing. Production should better avoid this path.
@@ -658,11 +743,14 @@ Status QkvToContext(
     return Status::OK();
   }
 
+  // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
+  const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
+                                               : parameters.scale;
+
 #if USE_FLASH_ATTENTION
   if (data.use_memory_efficient_attention) {
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
-    assert(data.mask_index == nullptr);
     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
     const void* query = q;
@@ -677,23 +765,26 @@ Status QkvToContext(
     MemoryEfficientAttentionParams p;
     p.sm = device_prop.major * 10 + device_prop.minor;
     p.is_half = sizeof(T) == 2;
-    p.batch_size = data.mask_index == nullptr ? parameters.batch_size : 2 * parameters.batch_size;
+    p.batch_size = parameters.batch_size;
     p.num_heads = parameters.num_heads;
     p.sequence_length = parameters.sequence_length;
     p.kv_sequence_length = parameters.total_sequence_length;
     p.qk_head_size = parameters.head_size;
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_unidirectional;
-    p.cu_seqlens_q = nullptr;
-    p.cu_seqlens_k = nullptr;
+    p.scale = scale;
+    p.seqlen_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
+    p.seqstart_q_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + batch_size));
+    p.seqstart_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + 2 * batch_size + 1));
     p.query = query;
     p.key = key;
     p.value = value;
+    p.attn_bias = nullptr == data.relative_position_bias ? nullptr : data.relative_position_bias;
+    p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
     p.output = data.output;
     p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;
     run_memory_efficient_attention(p);
-
     DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
@@ -712,13 +803,12 @@ Status QkvToContext(
   float one = 1.0f;
   float zero = 0.f;
 
-  // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
-  const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
-                                               : parameters.scale;
   float alpha = use_raw_attention_mask ? one : scale;
 
   cublasSetStream(cublas, stream);
 
+  DUMP_TENSOR_D("q[BNSH]", q, batch_size, num_heads, sequence_length, qk_head_size);
+  DUMP_TENSOR_D("k[BNSH]", k, batch_size, num_heads, total_sequence_length, qk_head_size);
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_T, CUBLAS_OP_N,
       total_sequence_length, sequence_length, qk_head_size,
@@ -743,21 +833,22 @@ Status QkvToContext(
     T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place with masked score for persistent softmax.
     ORT_RETURN_IF_ERROR(
         ComputeSoftmaxWithRawMask<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads,
-                                     mask_index, nullptr, data.relative_position_bias, scratch1, scratch2,
-                                     parameters.is_unidirectional, scale, mask_dimension,
-                                     parameters.max_sequence_length, use_persistent_softmax,
-                                     persistent_softmax_workspace, mask_filter_value));
+                                     mask_index, nullptr, data.relative_position_bias, parameters.broadcast_res_pos_bias,
+                                     scratch1, scratch2, parameters.is_unidirectional, scale, mask_dimension,
+                                     parameters.max_sequence_length, use_persistent_softmax, persistent_softmax_workspace,
+                                     mask_filter_value));
   } else if (nullptr != mask_index) {  // 1d mask index
     assert(mask_index_dims.size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
     const int* mask_start = (mask_index_dims[0] > batch_size) ? mask_index + batch_size : nullptr;
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(
         stream, total_sequence_length, sequence_length, batch_size, num_heads,
-        mask_index, mask_start, data.relative_position_bias, scratch1, scratch2, parameters.is_unidirectional));
+        mask_index, mask_start, data.relative_position_bias, parameters.broadcast_res_pos_bias,
+        scratch1, scratch2, parameters.is_unidirectional));
   } else {  // no mask
     ORT_RETURN_IF_ERROR(
         ComputeSoftmax<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads, data.relative_position_bias,
-                          scratch1, scratch2, parameters.is_unidirectional));
+                          parameters.broadcast_res_pos_bias, scratch1, scratch2, parameters.is_unidirectional));
   }
 
   DUMP_TENSOR_D("Softmax", scratch2, batch_size * num_heads, sequence_length, total_sequence_length);
@@ -908,13 +999,15 @@ Status DecoderQkvToContext(
   if (has_key_padding_mask) {
     constexpr int mask_dimension = 2;
     constexpr int max_sequence_length = 0;
-    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads,
-                                                     nullptr, key_padding_mask, add_before_softmax, scratch1, scratch2,
-                                                     is_unidirectional, 1.0f, mask_dimension, max_sequence_length,
-                                                     false, nullptr, mask_filter_value));
+    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size,
+                                                     num_heads, nullptr, key_padding_mask, add_before_softmax,
+                                                     false/*broadcast rpb*/, scratch1, scratch2, is_unidirectional,
+                                                     1.0f, mask_dimension, max_sequence_length, false, nullptr,
+                                                     mask_filter_value));
   } else {
     ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads,
-                                          add_before_softmax, scratch1, scratch2, is_unidirectional));
+                                          add_before_softmax, false/*broadcast rpb*/, scratch1, scratch2,
+                                          is_unidirectional));
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH

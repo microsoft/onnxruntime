@@ -155,7 +155,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
         }
       }
       for (auto j = i + 1; j < new_rank; j++) {
-        new_permutations[j - 1] = new_permutations[j];
+        new_permutations[static_cast<ptrdiff_t>(j) - 1] = new_permutations[j];
       }
 
       // update input dims

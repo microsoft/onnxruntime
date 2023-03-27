@@ -57,7 +57,7 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
             )
 
         if name in provider_name_to_options:
-            warnings.warn("Duplicate provider '{}' encountered, ignoring.".format(name))
+            warnings.warn(f"Duplicate provider '{name}' encountered, ignoring.")
             return
 
         normalized_options = {str(key): str(value) for key, value in options.items()}
@@ -105,7 +105,6 @@ class Session:
     """
 
     def __init__(self):
-
         # self._sess is managed by the derived class and relies on bindings from C.InferenceSession
         self._sess = None
         self._enable_fallback = True
@@ -193,15 +192,15 @@ class Session:
         num_inputs = len(input_feed)
         # the graph may have optional inputs used to override initializers. allow for that.
         if num_inputs < num_required_inputs:
-            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
+            raise ValueError(f"Model requires {num_required_inputs} inputs. Input Feed contains {num_inputs}")
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
             return self._sess.run(output_names, input_feed, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print("EP Error: {} using {}".format(str(err), self._providers))
-                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
@@ -239,15 +238,15 @@ class Session:
         num_inputs = len(input_dict_ort_values)
         # the graph may have optional inputs used to override initializers. allow for that.
         if num_inputs < num_required_inputs:
-            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
+            raise ValueError(f"Model requires {num_required_inputs} inputs. Input Feed contains {num_inputs}")
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
             return invoke(self._sess, output_names, input_dict_ort_values, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print("EP Error: {} using {}".format(str(err), self._providers))
-                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
@@ -352,7 +351,7 @@ class InferenceSession(Session):
             self._model_path = None
             self._model_bytes = path_or_bytes  # TODO: This is bad as we're holding the memory indefinitely
         else:
-            raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
+            raise TypeError(f"Unable to load from type '{type(path_or_bytes)}'")
 
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
@@ -366,8 +365,8 @@ class InferenceSession(Session):
             self._create_inference_session(providers, provider_options, disabled_optimizers)
         except ValueError:
             if self._enable_fallback:
-                print("EP Error using {}".format(providers))
-                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                print(f"EP Error using {providers}")
+                print(f"Falling back to {self._fallback_providers} and retrying.")
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
                 self.disable_fallback()
@@ -392,7 +391,7 @@ class InferenceSession(Session):
         if providers == [] and len(available_providers) > 1:
             self.disable_fallback()
             raise ValueError(
-                "This ORT build has {} enabled. ".format(available_providers)
+                f"This ORT build has {available_providers} enabled. "
                 + "Since ORT 1.9, you are required to explicitly set "
                 + "the providers parameter when instantiating InferenceSession. For example, "
                 "onnxruntime.InferenceSession(..., providers={}, ...)".format(available_providers)

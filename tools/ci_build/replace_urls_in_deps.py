@@ -28,15 +28,15 @@ def parse_arguments():
 
 
 def main():
-    SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-    REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
+    SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))  # noqa: N806
+    REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))  # noqa: N806
 
     args = parse_arguments()
     new_dir = None
     if args.new_dir:
         new_dir = Path(args.new_dir)
     else:
-        BUILD_BINARIESDIRECTORY = os.environ.get("BUILD_BINARIESDIRECTORY")
+        BUILD_BINARIESDIRECTORY = os.environ.get("BUILD_BINARIESDIRECTORY")  # noqa: N806
         if BUILD_BINARIESDIRECTORY is None:
             raise NameError("Please specify --new_dir or set the env var BUILD_BINARIESDIRECTORY")
         new_dir = Path(BUILD_BINARIESDIRECTORY) / "deps"

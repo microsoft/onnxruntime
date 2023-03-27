@@ -20,7 +20,7 @@ stages:
 - stage: BUILD_STAGE
   jobs:
   - job: Build_CPU_EP
-    pool: Linux-CPU-2019
+    pool: onnxruntime-Linux-CPU-2019
     workspace:
       clean: all
     timeoutInMinutes: 30
@@ -45,8 +45,6 @@ stages:
       displayName: Install coreutils and ninja
 
     - template: "templates/use-android-ndk.yml"
-
-    - template: templates/set-up-gradle-wrapper-step.yml
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -107,7 +105,7 @@ stages:
     - template: templates/clean-agent-build-directory-step.yml
 
   - job: Build_NNAPI_EP
-    pool: Linux-CPU-2019
+    pool: onnxruntime-Linux-CPU-2019
     timeoutInMinutes: 60
     workspace:
       clean: all
@@ -129,8 +127,6 @@ stages:
       displayName: Install coreutils and ninja
 
     - template: "templates/use-android-ndk.yml"
-
-    - template: templates/set-up-gradle-wrapper-step.yml
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -196,7 +192,7 @@ stages:
   jobs:
   - job: Test_CPU_EP
     pool:
-      vmImage: 'macOS-11'
+      vmImage: 'macOS-12'
     workspace:
       clean: all
     condition: succeeded()
@@ -233,12 +229,10 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - template: templates/set-up-gradle-wrapper-step.yml
-
       - script: |
           python3 tools/python/run_android_emulator.py \
           --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+          --create-avd --system-image "system-images;android-31;default;x86_64" \
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
@@ -267,7 +261,7 @@ stages:
 
   - job: Test_NNAPI_EP
     pool:
-      vmImage: 'macOS-11'
+      vmImage: 'macOS-12'
     timeoutInMinutes: 90
     workspace:
       clean: all
@@ -305,12 +299,10 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - template: templates/set-up-gradle-wrapper-step.yml
-
       - script: |
           python3 tools/python/run_android_emulator.py \
           --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+          --create-avd --system-image "system-images;android-31;default;x86_64" \
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
@@ -362,7 +354,7 @@ stages:
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
-      vmImage: 'macOS-11'
+      vmImage: 'macOS-12'
     timeoutInMinutes: 180
     workspace:
       clean: all
@@ -387,8 +379,6 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - template: templates/set-up-gradle-wrapper-step.yml
-
       # used by Build Minimal ORT
       - script: brew install coreutils ninja
         displayName: Install coreutils and ninja
@@ -404,7 +394,7 @@ stages:
       - script: |
           python3 tools/python/run_android_emulator.py \
           --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-29;google_apis;x86_64" \
+          --create-avd --system-image "system-images;android-31;default;x86_64" \
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
@@ -462,7 +452,7 @@ stages:
     variables:
     - name: skipComponentGovernanceDetection
       value: true
-    pool: 'Linux-CPU-2019'
+    pool: 'onnxruntime-Linux-CPU-2019'
     condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
     dependsOn:
     - NNAPI_EP_MASTER

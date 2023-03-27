@@ -61,12 +61,12 @@ class CustomGradientRegistry:
 
     @classmethod
     def register(cls, domain, name, attributes, fn):
-        key = "::".join([domain, name] + list(attributes))
+        key = "::".join([domain, name, *list(attributes)])
         cls._GRADIENTS[key] = _to_gradient_definition(fn())
 
     @classmethod
     def register_custom_stop_gradient_edges(cls, edges, domain, name, *attributes):
-        key = "::".join([domain, name] + list(attributes))
+        key = "::".join([domain, name, *list(attributes)])
         cls._STOP_GRADIENT_EDGES[key] = set(edges)
 
     @classmethod
@@ -213,7 +213,7 @@ CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.ate
 
 
 @register_gradient("org.pytorch.aten", "ATen", "numpy_T", "")
-def numpy_T_gradient():
+def numpy_T_gradient():  # noqa: N802
     return [
         (
             ("ATen", "org.pytorch.aten"),
@@ -242,7 +242,7 @@ def native_group_norm_gradient():
 def _upsample_gradient(backward_fn, dims):
     scales = ["" for _ in range(dims)]
     if "bilinear" in backward_fn:
-        scales = ["I(2)"] + scales
+        scales = ["I(2)", *scales]
     return [
         ("Shape", ["I(0)"], ["Shape_X"]),
         ("Shape", ["O(0)"], ["Shape_Y"]),
@@ -251,7 +251,7 @@ def _upsample_gradient(backward_fn, dims):
         ("Slice", ["Shape_Y", "Const_Start", "Const_End"], ["Sliced_Shape_Y"]),
         (
             ("ATen", "org.pytorch.aten"),
-            ["GO(0)", "Sliced_Shape_Y", "Shape_X"] + scales,
+            ["GO(0)", "Sliced_Shape_Y", "Shape_X", *scales],
             ["GI(0)"],
             {"operator": {"value": backward_fn, "dtype": "string"}},
         ),
