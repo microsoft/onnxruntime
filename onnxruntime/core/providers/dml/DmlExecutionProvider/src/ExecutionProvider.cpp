@@ -701,16 +701,13 @@ namespace Dml
             // Allow nodeArgs that are SequenceTensor when they are actually implemented by CPU Kernels.
             if (edgeType == MLOperatorEdgeType::SequenceTensor)
             {
-                if (IsCpuOnDmlOperator(node) || IsDmlSequenceOperator(node))
-                {
-                    // Leave nodeContainsSupportedDataTypes alone.
-                    return;
-                }
-                else
+                if (!IsCpuOnDmlOperator(node) && !IsDmlSequenceOperator(node))
                 {
                     nodeContainsSupportedDataTypes = false;
                     return;
                 }
+                // Leave nodeContainsSupportedDataTypes alone.
+                return;
             }
 
             // Reject node for unknown DML data types.
