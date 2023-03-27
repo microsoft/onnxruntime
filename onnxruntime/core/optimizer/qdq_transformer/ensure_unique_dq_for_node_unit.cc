@@ -80,11 +80,23 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
 
   const auto& dq_node = node;
 
-  auto dq_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(dq_node, 0);
-
   // QDQ node units are only formed by nodes in the current graph, and not between nodes in the current graph and a
   // subgraph. Consequently, we only duplicate DQ's for edges to explicit inputs and skip edges to implicit (subgraph)
-  // inputs. Remove edges to implicit inputs from consideration.
+  // inputs.
+
+  const bool produces_graph_output = graph.NodeProducesGraphOutput(node);
+
+  auto dq_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(dq_node, 0);
+
+  // Check for common case where we don't need to do anything: DQ has exactly one output edge and no graph output.
+  // If the output edge is to an implicit input, there are only consumer nodes in a subgraph which we can ignore.
+  // Otherwise, the output edge is to an explicit input of the only same-graph consumer node so the DQ is already
+  // unique.
+  if (dq_output_edges.size() == 1 && !produces_graph_output) {
+    return Status::OK();
+  }
+
+  // Remove edges to implicit inputs from consideration.
   const auto dq_output_edges_to_explicit_inputs_end = std::remove_if(
       dq_output_edges.begin(), dq_output_edges.end(),
       [&const_graph = std::as_const(graph)](const graph_utils::GraphEdge& dq_output_edge) {
@@ -99,8 +111,6 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
   if (has_subgraph_consumer) {
     dq_output_edges.erase(dq_output_edges_to_explicit_inputs_end, dq_output_edges.end());
   }
-
-  const bool produces_graph_output = graph.NodeProducesGraphOutput(node);
 
   // If the original DQ produces a graph output or has a subgraph consumer node, we preserve any of those output
   // relationships and duplicate new unique DQ's for each of the same-graph consumer nodes.

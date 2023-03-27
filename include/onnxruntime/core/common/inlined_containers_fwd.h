@@ -57,6 +57,7 @@
 namespace onnxruntime {
 #ifndef DISABLE_ABSEIL
 /// Inspired by LLVM SmallVector with ONNX Runtime adjustments for abseil.
+/// https://github.com/llvm/llvm-project/blob/a85b37d0ca819776c6034c2dbda2b21e54e3393a/llvm/include/llvm/ADT/SmallVector.h#L1128-L1179
 ///
 /// Helper class for calculating the default number of inline elements for
 /// `InlinedVector<T>`.
@@ -98,7 +99,7 @@ struct CalculateInlinedVectorDefaultInlinedElements {
   // happens on a 32-bit host and then fails due to sizeof(T) *increasing* on a
   // 64-bit host, is expected to be very rare.
   static_assert(
-      sizeof(absl::InlinedVector<T, 1>) <= kPreferredInlinedVectorSizeof,
+      sizeof(T) <= 256,
       "You are trying to use a default number of inlined elements for "
       "`InlinedVector<T>` but `sizeof(T)` is really big! Please use an "
       "explicit number of inlined elements with `InlinedVector<T, N>` to make "
