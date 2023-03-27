@@ -109,8 +109,8 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return cuda::Impl_Cast(static_cast<cudaStream_t>(stream), input_data, output_data, count);
   }
 
-  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
-  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
+  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line); }
+  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line); }
 
   void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
     ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
