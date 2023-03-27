@@ -49,7 +49,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
-  * <a href="#com.microsoft.NhwcAvgPool">com.microsoft.NhwcAvgPool</a>
   * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
   * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
@@ -2515,53 +2514,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.NhwcAvgPool"></a><a name="com.microsoft.nhwcavgpool">**com.microsoft.NhwcAvgPool**</a>
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>auto_pad</tt> : string</dt>
-<dd></dd>
-<dt><tt>ceil_mode</tt> : int</dt>
-<dd></dd>
-<dt><tt>count_include_pad</tt> : int</dt>
-<dd>Whether include pad pixels when calculating values for the edges. Default is 0, doesn't count include pad.</dd>
-<dt><tt>dilations</tt> : list of ints</dt>
-<dd></dd>
-<dt><tt>kernel_shape</tt> : list of ints (required)</dt>
-<dd></dd>
-<dt><tt>pads</tt> : list of ints</dt>
-<dd></dd>
-<dt><tt>strides</tt> : list of ints</dt>
-<dd></dd>
-</dl>
-
-#### Inputs
-
-<dl>
-<dt><tt>x</tt> : T</dt>
-<dd></dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>y</tt> : T</dt>
-<dd></dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(float16)</dt>
-<dd></dd>
-</dl>
-
-
 ### <a name="com.microsoft.NhwcConv"></a><a name="com.microsoft.nhwcconv">**com.microsoft.NhwcConv**</a>
 
 #### Version
@@ -2651,7 +2603,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(int8), tensor(uint8), tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(int8), tensor(uint8)</dt>
 <dd></dd>
 </dl>
 
