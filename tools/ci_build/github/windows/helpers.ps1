@@ -402,6 +402,7 @@ function Install-Protobuf {
         Write-Host -Object "CMake command failed. Exitcode: $exitCode"
         exit $exitCode
     }
+    Write-Host "Installing protobuf finished."
     popd
 }
 
@@ -437,6 +438,18 @@ function Install-ONNX {
     }
     cd $onnx_src_dir
     cd *
+    [String]$requirements_txt_content = "protobuf==$protobuf_version`n"
+    foreach($line in Get-Content '.\requirements.txt') {
+      if($line -match "^protobuf"){
+        Write-Host "Replacing protobuf version to $protobuf_version"
+      } else{
+        $requirements_txt_content += "$line`n"
+      }
+    }
+
+    Set-Content -Path '.\requirements.txt' -Value $requirements_txt_content
+
+
     $Env:ONNX_ML=1
     if($build_config -eq 'Debug'){
        $Env:DEBUG='1'
