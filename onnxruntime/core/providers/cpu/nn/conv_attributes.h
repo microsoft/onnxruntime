@@ -113,11 +113,12 @@ struct ConvAttributes {
 
     const int64_t M = weight_shape[0];
     const int64_t C = input_channels_last ? input_shape.GetDims().back() : input_shape[1];
+    const int64_t weight_channels = weight_channels_last ? weight_shape.GetDims().back() : weight_shape[1];
 
-    if (C != (weight_channels_last ? weight_shape.GetDims().back() : weight_shape[1]) * group) {
+    if (C != weight_channels * group) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
                              " C: ", C,
-                             " kernel channels: ", weight_shape[1],
+                             " kernel channels: ", weight_channels,
                              " group: ", group);
     }
 
