@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List, Union
+from typing import Dict, List
 
 import numpy
 import torch
@@ -12,14 +12,14 @@ logger = logging.getLogger(__name__)
 class TypeHelper:
     @staticmethod
     def get_input_type(ort_session: InferenceSession, name: str) -> str:
-        for i, input in enumerate(ort_session.get_inputs()):
+        for _i, input in enumerate(ort_session.get_inputs()):
             if input.name == name:
                 return input.type
         raise ValueError(f"input name {name} not found")
 
     @staticmethod
     def get_output_type(ort_session, name: str) -> str:
-        for i, output in enumerate(ort_session.get_outputs()):
+        for _i, output in enumerate(ort_session.get_outputs()):
             if output.name == name:
                 return output.type
 

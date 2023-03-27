@@ -33,7 +33,9 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuildaten
+      Repository: 'onnxruntimecpubuildaten'
+      UseImageCacheContainerRegistry: true
+      UsePipelineCache: false
 
   - task: Cache@2
     inputs:
@@ -113,3 +115,7 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/explicitly-defined-final-tasks.yml
+
+  - script: |
+      df -h
+    displayName: check disk space

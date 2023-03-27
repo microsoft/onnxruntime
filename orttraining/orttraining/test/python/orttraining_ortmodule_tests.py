@@ -58,7 +58,7 @@ def run_ortmodule_fallback_tests(cwd, log, transformers_cache):
 
 
 def run_ortmodule_poc_net(cwd, log, no_cuda, data_dir):
-    log.debug("Running: ORTModule POCNet for MNIST with --no-cuda arg {}.".format(no_cuda))
+    log.debug(f"Running: ORTModule POCNet for MNIST with --no-cuda arg {no_cuda}.")
 
     command = [sys.executable, "orttraining_test_ortmodule_poc.py"]
     if no_cuda:
@@ -88,7 +88,7 @@ def run_ortmodule_torch_lightning(cwd, log, data_dir):
 
 
 def run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda, data_dir, transformers_cache):
-    log.debug("Running: ORTModule HuggingFace BERT for sequence classification with --no-cuda arg {}.".format(no_cuda))
+    log.debug(f"Running: ORTModule HuggingFace BERT for sequence classification with --no-cuda arg {no_cuda}.")
 
     env = get_env_with_transformers_cache(transformers_cache)
 
@@ -142,10 +142,26 @@ def run_data_sampler_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_hooks_tests(cwd, log):
+    log.debug("Running: Data hooks tests")
+
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_hooks.py"]
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def run_pytorch_export_contrib_ops_tests(cwd, log):
     log.debug("Running: PyTorch Export Contrib Ops Tests")
 
     command = [sys.executable, "-m", "pytest", "-sv", "test_pytorch_export_contrib_ops.py"]
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
+def run_lstm_training_op_tests(cwd, log):
+    log.debug("Running: LSTM Training Ops Tests")
+
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_lstm.py"]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
@@ -184,10 +200,14 @@ def main():
 
     run_data_sampler_tests(cwd, log)
 
+    run_hooks_tests(cwd, log)
+
     run_experimental_gradient_graph_tests(cwd, log)
 
     # TODO(bmeswani): Enable this test once it can run with latest pytorch
     # run_pytorch_export_contrib_ops_tests(cwd, log)
+
+    run_lstm_training_op_tests(cwd, log)
 
     return 0
 

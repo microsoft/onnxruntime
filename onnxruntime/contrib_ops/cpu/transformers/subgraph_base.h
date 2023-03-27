@@ -44,7 +44,7 @@ class Subgraph {
   int vocab_size;
   int num_layers;
   bool past_present_share_buffer_;
-  bool has_decoder_masked_multihead_attention_;
+  bool has_decoder_masked_self_attention_;
 
   // Setup execution
   Status Setup(const SessionState& session_state,

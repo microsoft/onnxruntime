@@ -2,13 +2,13 @@
 # Licensed under the MIT License.
 # module.py
 
+from typing import List
+
 import numpy as np
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue, get_ort_device_type
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
-
-from typing import List
 
 
 class Module:

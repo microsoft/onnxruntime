@@ -27,7 +27,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    with open(args.build_check_binsize_config, mode="r") as config_file:
+    with open(args.build_check_binsize_config) as config_file:
         config = json.load(config_file)
 
     config_type = config["type"]
@@ -38,8 +38,7 @@ def main():
 
     # build ORT
     build_command = (
-        [sys.executable, str(REPO_ROOT / "tools/ci_build/build.py")]
-        + build_params
+        [sys.executable, str(REPO_ROOT / "tools/ci_build/build.py"), *build_params]
         + (["--cmake_extra_defines", "ADD_DEBUG_INFO_TO_MINIMAL_BUILD=ON"] if args.with_debug_info else [])
         # put the following options last so they don't get overridden by build_params
         + [

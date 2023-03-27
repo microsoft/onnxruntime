@@ -48,7 +48,7 @@ def get_gemm_bound(
     machine_eps = 2.0 ** -(24 if dtype == "float32" else 11)
 
     # The following implements error bound 5.7 in paper I. C. Ipsen and H. Zhou, “Probabilistic error analysis for
-    # Inner Products,” SIAM Journal on Matrix Analysis and Applications, vol. 41, no. 4, pp. 1726–1741, 2020.
+    # Inner Products,” SIAM Journal on Matrix Analysis and Applications, vol. 41, no. 4, pp. 1726-1741, 2020.
     # NOTE: the bound is not tight for float16 when k is large
     if a_b_positive:
         coeff = 1.0
@@ -93,3 +93,10 @@ def get_gemm_basic_sizes(full=True):
     # ck has various impls to be tested, use the full basic cases will result too many cases to test.
     # So we use a reduced combination here.
     return list(product([1, 4, 127, 133], [3, 16, 128], [3, 129, 1024]))
+
+
+def softmax(x, *, is_log_softmax=False, axis=-1):
+    x = x - np.max(x, axis=axis, keepdims=1)
+    if is_log_softmax:
+        return x - np.log(np.sum(np.exp(x), axis=axis, keepdims=1))
+    return (np.exp(x)) / np.sum(np.exp(x), axis=axis, keepdims=1)

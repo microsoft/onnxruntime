@@ -25,7 +25,7 @@ def parse_args():
     args = parser.parse_args()
 
     if not os.path.isdir(args.ort_root):
-        raise argparse.ArgumentError(root_arg, "{} is not a valid directory".format(args.ort_root))
+        raise argparse.ArgumentError(root_arg, f"{args.ort_root} is not a valid directory")
 
     return args
 
@@ -164,7 +164,6 @@ def get_latest_onnx_op_versions(root_dir):
 
 
 def find_potential_issues(root_dir, op_to_opset):
-
     optimizer_dir = os.path.join(root_dir, "onnxruntime/core/optimizer")
 
     files = glob.glob(optimizer_dir + "/**/*.cc", recursive=True)
@@ -179,7 +178,7 @@ def find_potential_issues(root_dir, op_to_opset):
             args = call.split(",", 2)  # first 2 args are simple, remainder need custom processing
             op = args[1].strip()
             if not op.startswith('"') or not op.endswith('"'):
-                log.error("Symbolic name of '{}' found for op. Please check manually. File:{}".format(op, file))
+                log.error(f"Symbolic name of '{op}' found for op. Please check manually. File:{file}")
                 continue
 
             versions_and_domain_arg = args[2]
@@ -205,7 +204,7 @@ def find_potential_issues(root_dir, op_to_opset):
                         )
                     )
             else:
-                log.error("Failed to find version information for {}. File:{}".format(op, file))
+                log.error(f"Failed to find version information for {op}. File:{file}")
 
 
 if __name__ == "__main__":

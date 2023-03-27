@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/nn/layer_norm_impl.h"
 #include "skip_layer_norm.h"
-#include "skip_layer_norm_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -106,25 +106,29 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
     }
   }
 
-  int sequence_length = static_cast<int>(input_dims[1]);
-  int hidden_size = static_cast<int>(input_dims[2]);
-  int64_t element_count = input_dims[0] * sequence_length * hidden_size;
-  size_t element_size = sizeof(T);
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  int sequence_length = gsl::narrow_cast<int>(input_dims[1]);
+  int hidden_size = gsl::narrow_cast<int>(input_dims[2]);
+  int row_count = gsl::narrow_cast<int>(input_dims[0] * sequence_length);
 
-  return LaunchSkipLayerNormKernel<CudaT, Simplified>(
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  HostApplyLayerNorm<CudaT, float, CudaT, Simplified>(
+      GetDeviceProp(),
       Stream(ctx),
-      reinterpret_cast<CudaT*>(output->MutableData<T>()),
-      skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr,
-      reinterpret_cast<const CudaT*>(input->Data<T>()),
-      reinterpret_cast<const CudaT*>(skip->Data<T>()),
-      reinterpret_cast<const CudaT*>(gamma->Data<T>()),
-      (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,
-      (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
-      epsilon_,
-      hidden_size,
-      static_cast<int>(element_count),
-      element_size);
+      reinterpret_cast<CudaT*>(output->MutableData<T>()),                             // Y_data
+      nullptr,                                                                        // mean_data
+      nullptr,                                                                        // inv_var_data
+      reinterpret_cast<const CudaT*>(input->Data<T>()),                               // X_data
+      row_count,                                                                      // n1
+      hidden_size,                                                                    // n2
+      (double)epsilon_,                                                               // epsilon
+      reinterpret_cast<const CudaT*>(gamma->Data<T>()),                               // gamma
+      (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,  // beta
+      reinterpret_cast<const CudaT*>(skip->Data<T>()),                                // skip or residual to add
+      (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,  // bias to add
+      skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr);
+
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  return Status::OK();
 }
 
 }  // namespace cuda

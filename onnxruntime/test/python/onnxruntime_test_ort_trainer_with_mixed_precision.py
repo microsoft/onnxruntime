@@ -8,7 +8,7 @@ from onnxruntime_test_ort_trainer import runBertTrainingTest
 
 
 class TestOrtTrainer(unittest.TestCase):
-    def testBertTrainingMixedPrecision(self):
+    def testBertTrainingMixedPrecision(self):  # noqa: N802
         expected_losses = [
             11.034248352050781,
             11.125300407409668,
@@ -38,7 +38,7 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="evaluation loss mismatch",
         )
 
-    def testBertTrainingMixedPrecisionInternalLossScale(self):
+    def testBertTrainingMixedPrecisionInternalLossScale(self):  # noqa: N802
         expected_losses = [
             11.034248352050781,
             11.125300407409668,
@@ -67,7 +67,7 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="evaluation loss mismatch",
         )
 
-    def testBertTrainingGradientAccumulationMixedPrecision(self):
+    def testBertTrainingGradientAccumulationMixedPrecision(self):  # noqa: N802
         expected_losses = [
             11.034248352050781,
             11.125300407409668,

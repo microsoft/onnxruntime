@@ -10,7 +10,7 @@
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
-#include "core/optimizer/compute_optimizer/compute_optimizer.h"
+#include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
@@ -56,6 +56,7 @@
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
+#include "orttraining/core/optimizer/lstm_replacement.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
 
@@ -93,6 +94,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NotWhereFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<LSTMReplacement>()));
 
       // Remove duplicate nodes. Must be applied before any recompute transformations.
       if (config.gelu_recompute || config.attn_dropout_recompute || config.transformer_layer_recompute) {
@@ -135,7 +137,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
 
       if (config.enable_compute_optimizer) {
-        transformers.emplace_back(std::make_unique<ComputeOptimizer>(compatible_eps));
+        transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
       }
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
