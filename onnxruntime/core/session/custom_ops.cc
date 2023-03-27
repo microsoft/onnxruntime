@@ -705,7 +705,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
 
       for (size_t i = 0; i < undefined; i++) {
-        def_builder.TypeConstraint(("T" + std::to_string(i), DataTypeImpl::AllTensorTypes());
+        def_builder.TypeConstraint("T" + std::to_string(i), DataTypeImpl::AllTensorTypes());
       }
 
       if (const char* provider_type = op->GetExecutionProviderType(op)) {
