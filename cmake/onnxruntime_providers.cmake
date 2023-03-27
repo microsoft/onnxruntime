@@ -1260,7 +1260,10 @@ if (onnxruntime_USE_MIGRAPHX)
   find_package(hip)
   find_package(migraphx PATHS ${AMD_MIGRAPHX_HOME})
 
-  set(migraphx_libs migraphx::c hip::host)
+  find_package(miopen)
+  find_package(rocblas)
+
+  set(migraphx_libs migraphx::c hip::host MIOpen roc::rocblas)
 
   file(GLOB_RECURSE onnxruntime_providers_migraphx_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.h"
