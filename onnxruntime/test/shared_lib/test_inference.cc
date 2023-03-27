@@ -2788,7 +2788,7 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
 }
 #endif
 
-#if !defined(USE_CUDA) && !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD)
 TEST(CApiTest, single_schema_multi_kernel_custom_op_handler) {
   Ort::CustomOpDomain v2_domain("v2");
   MulTopOpFloat mul_top_f32;

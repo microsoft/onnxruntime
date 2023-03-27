@@ -402,13 +402,12 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
                                     std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
-  using OnnxTypeVec = std::vector<ONNXTensorElementDataType>;
-
   for (const auto& domain : op_domains) {
+#if !defined(ORT_MINIMAL_BUILD)
     std::unordered_map<std::string, ONNX_NAMESPACE::OpSchema> schema_map;
+    using OnnxTypeVec = std::vector<ONNXTensorElementDataType>;
     std::unordered_map<std::string, std::vector<OnnxTypeVec>> type_map;
 
-#if !defined(ORT_MINIMAL_BUILD)
     // Domain is not empty - add it to the DomainToVersion ONNX map
     // If domain is empty, it is assumed to be part of the ONNX domain
     if (!domain->domain_.empty()) {
@@ -680,17 +679,49 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     // For a minimal build, we may not need any of the ONNX schema stuff but we still need to track
     // the type template parameters to be used during the kernel def building step below
     for (const auto* op : domain->custom_ops_) {
-      size_t type_id_counter = 0;
-      auto input_count = op->GetInputTypeCount(op);
+      size_t undefined = 0;
+      size_t input_count = op->GetInputTypeCount(op);
       for (size_t i = 0; i < input_count; i++) {
         auto type = op->GetInputType(op, i);
-        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
-          type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
+        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
+          undefined++;
         }
       }
+
+      KernelDefBuilder def_builder;
+      def_builder.SetName(op->GetName(op))
+          .SetDomain(domain->domain_)
+          .SinceVersion(1);
+
+      // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
+      // to work with newer versions (> 12) of the ORT binary.
+      if (op->version > 12) {
+        auto input_count = op->GetInputTypeCount(op);
+        for (size_t i = 0; i < input_count; i++) {
+          def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
+        }
+      }
+
+      for (size_t i = 0; i < undefined; i++) {
+        def_builder.TypeConstraint("T" + std::to_string(i), DataTypeImpl::AllTensorTypes());
+      }
+
+      if (const char* provider_type = op->GetExecutionProviderType(op)) {
+        def_builder.Provider(provider_type);
+      } else {
+        def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+      }
+
+      KernelCreateFn kernel_create_fn = [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+        out = std::make_unique<CustomOpKernel>(info, *op);
+        return Status::OK();
+      };
+
+      KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
+      ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(create_info));
     }
 #endif
-  }
+  }  // for each domain
 
   return Status::OK();
 }
