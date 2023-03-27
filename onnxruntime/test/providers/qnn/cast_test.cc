@@ -17,8 +17,7 @@ namespace onnxruntime {
 namespace test {
 
 /**
- * Creates a graph with a single reduce operator (e.g., ReduceSum, ReduceMin, etc.). Reduce operators take the
- * axes of reduction as either a node attribute or an optional input (depending on opset).
+ * Creates a graph with a single Cast operator.
  *
  * \param shape The shape of the input and output. Input data is randomly generated with this shape.
  * \param dst_type The destination type as an instance of the DataType enum in TensorProto.
