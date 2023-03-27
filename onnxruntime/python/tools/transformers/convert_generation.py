@@ -396,6 +396,10 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="custom pad_token_id for generating model with existing onnx encoder/decoder",
     )
 
+    beam_parameters_group.add_argument("--input_length", type=int, required=False, default=10, help="Input size")
+
+    beam_parameters_group.add_argument("--batch_size", type=int, required=False, default=4, help="Batch size")
+
     test_group = parser.add_argument_group("Other options for testing parity and performance")
 
     test_group.add_argument(
@@ -472,7 +476,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         # TODO(tianleiwu): Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
         #       Currently logits and past state shall be same data type.
-        arguments.extend(["--op_block_list", "Add", "LayerNormalization", "SkipLayerNormalization", "FastGelu"])
+        # arguments.extend(["--op_block_list", "Add", "LayerNormalization", "SkipLayerNormalization", "FastGelu"])
 
     if args.verbose:
         logger.info(f"arguments for convert_to_onnx:{arguments}")
@@ -2075,11 +2079,8 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
 
     # Use different length sentences to test batching
     if sentences is None:
-        sentences = [
-            "The product is released",
-            "I enjoy walking in the park",
-            "Test best way to invest",
-        ]
+        sentence = "happy " * args.input_length
+        sentences = [sentence[:-1]] * args.batch_size
 
     inputs = tokenizer(sentences, return_tensors="pt", padding=True)
     input_ids = inputs["input_ids"]
@@ -2249,7 +2250,10 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         )
         print("Torch Latency", torch_latency_output)
 
+    print("-"*10)
+    print(f"batch:{args.batch_size}, input_length:{args.input_length}, output_length:{args.max_length - args.input_length}")
     print("ORT", output)
+    print("-"*10)
 
     return output
 
@@ -2481,8 +2485,8 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             logger.info(
                 "The test for gpt2_sampling onnx model is limited to non-custom model with small top_p(e.g <=0.01) value. The result should be the same as gpt2 greedy search."
             )
-            if args.top_p > 0.01 or args.custom or args.seed:
-                return
+            #if args.top_p > 0.01 or args.custom or args.seed:
+            #    return
         else:
             convert_generation_model(args, GenerationType.GREEDYSEARCH)
     else:
