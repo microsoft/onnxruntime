@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from onnxruntime.training.torchdynamo.register_backend import ort, aot_ort
+from onnxruntime.training.torchdynamo.register_backend import aot_ort, ort
 
 
 class TestTorchDynamoOrt(unittest.TestCase):

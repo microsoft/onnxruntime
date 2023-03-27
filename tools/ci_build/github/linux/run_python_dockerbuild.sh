@@ -15,7 +15,6 @@ docker run --rm \
     --volume $BUILD_BINARIESDIRECTORY:/build \
     --volume /data/models:/build/models:ro \
     --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-    -u root \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \

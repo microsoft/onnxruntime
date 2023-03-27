@@ -1,5 +1,5 @@
 import onnx
-from onnx import onnx_pb as onnx_proto
+from onnx import onnx_pb as onnx_proto  # noqa: F401
 
 from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase

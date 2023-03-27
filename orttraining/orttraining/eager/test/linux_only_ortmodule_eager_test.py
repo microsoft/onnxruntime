@@ -1,7 +1,7 @@
-import os
+import os  # noqa: F401
 import unittest
 
-import numpy as np
+import numpy as np  # noqa: F401
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,7 +17,7 @@ def my_loss(x, target):
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNet, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, num_classes)
@@ -31,7 +31,7 @@ class NeuralNet(nn.Module):
 
 class NoOpNet(torch.nn.Module):
     def __init__(self):
-        super(NoOpNet, self).__init__()
+        super().__init__()
         self.dummy_weight = torch.nn.Parameter(torch.ones(128, 128, dtype=torch.float16))
 
     def forward(self, input):
@@ -62,7 +62,7 @@ class OrtModuleEagerTest(unittest.TestCase):
 
         with torch.no_grad():
             data = torch.rand(batch_size, input_size)
-            y = model(data.to(device))
+            model(data.to(device))
         print("Done")
 
     @unittest.skip("Test fails with newest pytorch version.")
