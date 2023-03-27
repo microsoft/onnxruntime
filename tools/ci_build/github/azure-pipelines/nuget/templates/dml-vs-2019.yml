@@ -98,13 +98,13 @@ stages:
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '$(BuildCommand) --build_csharp --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
+          arguments: '$(BuildCommand) --path_to_protoc_exe $(Build.BinariesDirectory)\installed\bin\protoc.exe --build_csharp --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
           workingDirectory: '$(Build.BinariesDirectory)'
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         # Use cross-compiled protoc
         - script: |
-           @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\host_protoc\Release
+           @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\installed\bin
 
       - task: VSBuild@1
         displayName: 'Build'
