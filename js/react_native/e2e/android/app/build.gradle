@@ -219,7 +219,7 @@ dependencies {
 
     implementation project(':onnxruntime-react-native')
     // specify ORT dependency here so it can be found in libs flatDir repository
-    implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.release"
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
     // Mobile build:
     // implementation "com.microsoft.onnxruntime:onnxruntime-mobile:latest.integration@aar"
 }
