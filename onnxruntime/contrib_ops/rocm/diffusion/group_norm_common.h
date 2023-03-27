@@ -10,11 +10,59 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
+static inline int32_t divUp(int32_t m, int32_t n) {
+  return (m + n - 1) / n;
+}
+
+int32_t findMaxDivisor(int32_t n, int32_t maxAllowedDivisor) {
+  int32_t maxDivisor = -1;
+  for (int32_t i = 1; i <= std::sqrt(n); i++) {
+    if (n % i == 0) {
+      int32_t divisor1 = n / i;
+      int32_t divisor2 = i;
+
+      if (divisor1 > maxDivisor && divisor1 < maxAllowedDivisor) {
+        maxDivisor = divisor1;
+      }
+      if (divisor2 > maxDivisor && divisor2 < maxAllowedDivisor) {
+        maxDivisor = divisor2;
+      }
+    }
+  }
+  return maxDivisor;
+}
 template <typename T>
 struct GroupNormNHWCParams : OpParams {
-  GroupNormNHWCParams(RocmTuningContext* tuning_ctx, hipStream_t stream, T* dst, const T* src, const float* gamma,
+  GroupNormNHWCParams(RocmTuningContext* tuning_ctx, hipStream_t stream, T* dst, float* redBuffer, const T* src, const float* gamma,
                       const float* beta, int32_t n, int32_t h, int32_t w, int32_t c, int32_t groups, bool withSwish)
-      : OpParams(tuning_ctx, stream), dst(dst), src(src), gamma(gamma), beta(beta), n(n), h(h), w(w), c(c), groups(groups), withSwish(withSwish) {}
+      : OpParams(tuning_ctx, stream), dst(dst), redBuffer(redBuffer), src(src), gamma(gamma), beta(beta), n(n), h(h), w(w), c(c), groups(groups), withSwish(withSwish) {
+    cPerBlock = 320;
+    int32_t maxBlocksPerHW = 1024;
+    switch (c) {
+      case 960:
+      case 1920:
+        cPerBlock = 480;
+        break;
+      case 512:
+      case 256:
+        cPerBlock = 256;
+        break;
+      case 128:
+        cPerBlock = 128;
+        break;
+      default:
+        cPerBlock = 320;
+    }
+
+    hw = h * w;
+    const int32_t blocksPerHW = findMaxDivisor(hw, maxBlocksPerHW);
+    hwPerBlock = divUp(hw, blocksPerHW);
+    cPerBlock = cPerBlock;
+    cPerGroup = c / groups;
+    hwc = hw * c;
+    invHWC = 1.F / (float)(hw * cPerGroup);
+    groupsPerBlock = cPerBlock / cPerGroup;
+  }
 
   std::string Signature() const override {
     std::string sig = std::to_string(n) + "_" + std::to_string(h) + "_" + std::to_string(w) + "_" + std::to_string(c) + "_" + std::to_string(groups);
