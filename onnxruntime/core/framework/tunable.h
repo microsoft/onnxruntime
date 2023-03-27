@@ -140,7 +140,7 @@ class TunableOp {
       auto op_sig = Signature();
       auto params_sig = params->Signature();
 
-      // Usage is enabled, the we are free to use previous tuning result
+      // Usage is enabled, then we are free to use previous tuning result.
       id = mgr.Lookup(op_sig, params_sig);
       if (id > static_cast<int>(ops_.size())) {
         LOGS_DEFAULT(ERROR) << "Invalid TunableOp kernel id for " << op_sig
