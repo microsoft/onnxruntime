@@ -100,19 +100,19 @@ void groupNormNHWCScale(const GroupNormNHWCParams<T>* params) {
 
   switch (params->cPerBlock) {
     case 320:
-      groupNormNHWCScaleKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->c, params->cPerBlock,
+      groupNormNHWCScaleKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
                                                                             params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
       break;
     case 480:
-      groupNormNHWCScaleKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->c, params->cPerBlock,
+      groupNormNHWCScaleKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
                                                                             params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
       break;
     case 256:
-      groupNormNHWCScaleKernel<T, 128, 2><<<grid, 128, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->c, params->cPerBlock,
+      groupNormNHWCScaleKernel<T, 128, 2><<<grid, 128, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
                                                                             params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
       break;
     case 128:
-      groupNormNHWCScaleKernel<T, 64, 2><<<grid, 64, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->c, params->cPerBlock,
+      groupNormNHWCScaleKernel<T, 64, 2><<<grid, 64, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
                                                                           params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
       break;
     default:
@@ -192,7 +192,7 @@ Status LaunchGroupNormKernel(
   }
 
   GroupNormNHWCParams<T> params(nullptr, stream, output, reinterpret_cast<float*>(workspace), input, gamma, beta,
-                                batch_size, height, width, num_channels, num_groups, use_swish_activation);
+                                batch_size, height, width, num_channels, num_groups, epsilon, use_swish_activation);
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("input", input, batch_size, num_channels, height * width);

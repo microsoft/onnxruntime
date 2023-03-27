@@ -34,8 +34,8 @@ int32_t findMaxDivisor(int32_t n, int32_t maxAllowedDivisor) {
 template <typename T>
 struct GroupNormNHWCParams : OpParams {
   GroupNormNHWCParams(RocmTuningContext* tuning_ctx, hipStream_t stream, T* dst, float* redBuffer, const T* src, const float* gamma,
-                      const float* beta, int32_t n, int32_t h, int32_t w, int32_t c, int32_t groups, bool withSwish)
-      : OpParams(tuning_ctx, stream), dst(dst), redBuffer(redBuffer), src(src), gamma(gamma), beta(beta), n(n), h(h), w(w), c(c), groups(groups), withSwish(withSwish) {
+                      const float* beta, int32_t n, int32_t h, int32_t w, int32_t c, int32_t groups, float epsilon, bool withSwish)
+      : OpParams(tuning_ctx, stream), dst(dst), redBuffer(redBuffer), src(src), gamma(gamma), beta(beta), n(n), h(h), w(w), c(c), groups(groups), epsilon(epsilon), withSwish(withSwish) {
     cPerBlock = 320;
     int32_t maxBlocksPerHW = 1024;
     switch (c) {
@@ -80,6 +80,7 @@ struct GroupNormNHWCParams : OpParams {
   // The temporary buffer to do the global parallel reduction. Size:
   // BLOCKS_PER_BATCH x C x 2.
   float* redBuffer;
+  float epsilon;
 
   // The number of instances in the batch.
   int32_t n;

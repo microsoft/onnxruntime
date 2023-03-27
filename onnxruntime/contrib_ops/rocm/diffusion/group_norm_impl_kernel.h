@@ -156,7 +156,7 @@ __device__ void computeGroupNorm(const T* src, T* dst, int64_t offset, U mean, U
 }
 
 template <typename T, int32_t tTHREADS_PER_BLOCK, int32_t ILP>
-__global__ void groupNormNHWCScaleKernel(T* dst, const T* src, const float* gamma, const float* beta, const float* redBuffer, int32_t c, int32_t cPerBlock,
+__global__ void groupNormNHWCScaleKernel(T* dst, const T* src, const float* gamma, const float* beta, const float* redBuffer, float epsilon, int32_t c, int32_t cPerBlock,
                                          int32_t cPerGroup, int32_t groups, int32_t hwc, float invHWC, int32_t hw, int32_t hwPerBlock, bool withSwish) {
   // The channel loaded by that thread (ILP channels per thread for F16x2).
   int32_t ci = blockIdx.x * cPerBlock + threadIdx.x * ILP;
@@ -187,7 +187,7 @@ __global__ void groupNormNHWCScaleKernel(T* dst, const T* src, const float* gamm
   // Compute the variance.
   float var = sumSq * invHWC - (mean * mean);
   // Compute the inverse of the stddev.
-  float invStdDev = var <= 0.F ? 1.F : rsqrtf(var);
+  float invStdDev = var <= 0.F ? 1.F : rsqrtf(var + epsilon);
 
   // The first activation loaded by that block.
   int32_t hwBegin = blockIdx.y * hwPerBlock;
