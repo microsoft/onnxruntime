@@ -74,6 +74,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
+        ${MLAS_SRC_DIR}/dwconv.cpp
       )
 
       set(mlas_platform_preprocess_srcs
