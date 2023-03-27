@@ -2901,6 +2901,7 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
   test_case(false);
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
 TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2956,6 +2957,7 @@ TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
 
   test_case({1, 12, 37}, -1);
 }
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace test
 }  // namespace onnxruntime
