@@ -277,22 +277,22 @@ jobs:
   # including detox.log/detox.trace.json and test results
 
   - script: |
-      detox build --configuration android.emu.debug
+      detox build --configuration android.emu.release
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Build React Native Detox Android e2e Tests
   
   #- script: |
-  #    detox test --record-logs all  --configuration android.emu.debug
+  #    detox test --record-logs all  --configuration android.emu.release
   #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
   #  displayName: Run React Native Detox Android e2e Tests
 
   - script: |
-      detox build --configuration ios.sim.debug
+      detox build --configuration ios.sim.release
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Build React Native Detox iOS e2e Tests
   
   - script: |
-      detox test --record-logs all --configuration ios.sim.debug
+      detox test --record-logs all --configuration ios.sim.release
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Run React Native Detox iOS e2e Tests
 
