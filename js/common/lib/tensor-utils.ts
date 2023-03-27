@@ -24,7 +24,7 @@ export interface TypedTensorUtils<T extends Tensor.Type> extends Properties, Typ
   /**
    * creates an DataURL instance from tensor
    *
-   * @param tensorFormat - Interface describing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
+   * @param options - Interface describing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
    * 0-255, NHWC
    * @returns An DataURL instance which can be used to draw on canvas
    */
