@@ -704,9 +704,7 @@ namespace Dml
                 if (!IsCpuOnDmlOperator(node) && !IsDmlSequenceOperator(node))
                 {
                     nodeContainsSupportedDataTypes = false;
-                    return;
                 }
-                // Leave nodeContainsSupportedDataTypes alone.
                 return;
             }
 
