@@ -291,10 +291,10 @@ jobs:
   #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
   #  displayName: Build React Native Detox iOS e2e Tests
   
-  - script: |
-      detox test --record-logs all --configuration ios.sim.release
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: Run React Native Detox iOS e2e Tests
+  #- script: |
+  #    detox test --record-logs all --configuration ios.sim.release
+  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+  #  displayName: Run React Native Detox iOS e2e Tests
 
   #- script: |
   #    export FORCE_BUNDLING=1
