@@ -25,7 +25,7 @@ stages:
       timeoutInMinutes: 120
       workspace:
         clean: all
-      pool: Linux-CPU
+      pool: aiinfra-Linux-CPU
 
       strategy:
         matrix:
