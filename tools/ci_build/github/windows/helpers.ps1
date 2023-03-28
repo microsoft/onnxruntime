@@ -408,10 +408,14 @@ function Install-Protobuf {
     }
     cd $protobuf_src_dir
     cd *
-    $git_command_path = (Get-Command -CommandType Application git)[0].Path
-    Write-Host "Git command path:$git_command_path"
-    $git_installation_folder = Split-Path -Path (Split-Path -Path $git_command_path)
-    $patch_path = Join-Path -Path $git_installation_folder "usr\bin\patch.exe"
+	# Search patch.exe
+	$patch_path = 'C:\Program Files\Git\usr\bin\patch.exe'
+	if(-not (Test-Path $patch_path -PathType Leaf)){
+      $git_command_path = (Get-Command -CommandType Application git)[0].Path
+      Write-Host "Git command path:$git_command_path"
+      $git_installation_folder = Split-Path -Path (Split-Path -Path $git_command_path)
+      $patch_path = Join-Path -Path $git_installation_folder "usr\bin\patch.exe"
+	}
     if(Test-Path $patch_path -PathType Leaf){
       Write-Host "Patching protobuf ..."
       Get-Content $src_root\cmake\patches\protobuf\protobuf_cmake.patch | &$patch_path --ignore-whitespace -p1
@@ -419,6 +423,7 @@ function Install-Protobuf {
       Write-Host "Skip patching protobuf since we cannot find patch.exe at $patch_path"
     }
 
+    # Run cmake to generate Visual Studio sln file
     [string[]]$cmake_args = ".", "-Dprotobuf_DISABLE_RTTI=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-DBUILD_SHARED_LIBS=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF"
     $cmake_args += $cmake_extra_args
 
@@ -428,7 +433,6 @@ function Install-Protobuf {
         Write-Host -Object "CMake command failed. Exitcode: $exitCode"
         exit $exitCode
     }
-
 
     $msbuild_args = "-nodeReuse:false", "-nologo", "-nr:false", "-maxcpucount", "-p:UseMultiToolTask=true", "-p:configuration=`"$build_config`""
 
