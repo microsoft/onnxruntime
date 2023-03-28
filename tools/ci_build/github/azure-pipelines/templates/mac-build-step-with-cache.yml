@@ -15,7 +15,6 @@ steps:
       brew install ccache
       echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
       mkdir -p "$(Pipeline.Workspace)/ccache"
-      ls "$(Pipeline.Workspace)"
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
 
   - task: Cache@2
@@ -27,10 +26,14 @@ steps:
     displayName: ccache task
     env:
       CCACHE_DIR: '$(Pipeline.Workspace)/ccache'
+      CCACHE_COMPILERCHECK: content
 
   - ${{ parameters.BuildStep }}
 
   - script: |
+      set -ex
       ccache -s
       ccache -z
+      ls -l $(Pipeline.Workspace)/ccache
+      du -sh $(Pipeline.Workspace)/ccache
     displayName: Show Cache stats and Clear stats.
