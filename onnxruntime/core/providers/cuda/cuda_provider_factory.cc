@@ -52,8 +52,7 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return std::make_unique<CUDAExecutionProvider>(info_);
 }
 
-struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
-  virtual ~ProviderInfo_CUDA_Impl() = default;
+struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
 
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
