@@ -7,10 +7,6 @@
 #include "cuda_fp8.h"
 #endif
 
-#if defined(COMPILED_IN_CAST)
-#error "Check COMPILED_IN_CAST"
-#endif
-
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 #include "core/common/narrow.h"
 #endif
@@ -41,11 +37,6 @@ struct Float8E4M3FN {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E4M3);
 #else
-
-    #if defined(CUDA_VERSION)
-    #error "CUDA should be used."
-    #endif
-
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
 
@@ -102,10 +93,6 @@ struct Float8E4M3FN {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     return __half2float(__nv_cvt_fp8_to_halfraw(val, __NV_E4M3));
 #else
-    #if defined(CUDA_VERSION)
-    #error "CUDA should be used."
-    #endif
-
     uint32_t res;
     if (val == 255) {
       res = 0xffc00000;

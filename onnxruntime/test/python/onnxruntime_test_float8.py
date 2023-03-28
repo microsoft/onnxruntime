@@ -207,4 +207,4 @@ class TestInferenceSession(unittest.TestCase):
 
 if __name__ == "__main__":
     # TestInferenceSession().test_model_cast_cast_cuda()
-    unittest.main()
+    unittest.main(verbosity=2)

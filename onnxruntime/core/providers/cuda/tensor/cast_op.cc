@@ -4,6 +4,7 @@
 #define COMPILED_IN_CAST
 
 #include "cast_op.h"
+#include "cast_op.cuh"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace ONNX_NAMESPACE;
@@ -78,6 +79,18 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
           .TypeConstraint("T2", CastOpTypeConstraints()),         \
       Cast<T>);
 
+#define CASE(TP_TYPE, DstT)                                                                 \
+  case TP_TYPE:                                                                             \
+    std::cout << "Previous cast to_=" << to_ << "\n";                                       \
+    if (count > 0) {                                                                        \
+      Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                           \
+          Stream(context),                                                                  \
+          x_data,                                                                           \
+          reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->MutableData<DstT>()), \
+          count);                                                                           \
+    }                                                                                       \
+    break;
+
 template <typename SrcT>
 Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<SrcT>::MappedType CudaSrcT;
@@ -87,16 +100,7 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<SrcT>());
   size_t count = shape.Size();
 
-#define CASE(TP_TYPE, DstT)                                                                          \
-  case TP_TYPE:                                                                                      \
-    if (count > 0) {                                                                                 \
-      Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                                    \
-          Stream(context),                                                                           \
-          x_data,                                                                                    \
-          reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->MutableData<DstT>()), \
-          count);                                                                                    \
-    }                                                                                                \
-    break;
+  std::cout << "Cast0 to=" << to_ << "\n";
 
   switch (to_) {
     CASE(TensorProto_DataType_FLOAT16, MLFloat16)
@@ -120,6 +124,84 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
     case TensorProto_DataType_UNDEFINED:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cast op must have 'to' argument of type DataType");
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected 'to' argument value: ", to_);
+  }
+  return Status::OK();
+}
+
+template <>
+Status Cast<float>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<float>::MappedType CudaSrcT;
+  const Tensor* X = context->Input<Tensor>(0);
+  const TensorShape& shape = X->Shape();
+  Tensor* Y = context->Output(0, shape);
+  const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<float>());
+  size_t count = shape.Size();
+
+  std::cout << "CastFloat to=" << to_ << "\n";
+
+  switch (to_) {
+    CASE(TensorProto_DataType_FLOAT16, MLFloat16)
+    CASE(TensorProto_DataType_BFLOAT16, BFloat16)
+    CASE(TensorProto_DataType_FLOAT, float)
+    CASE(TensorProto_DataType_DOUBLE, double)
+    CASE(TensorProto_DataType_INT8, int8_t)
+    CASE(TensorProto_DataType_INT16, int16_t)
+    CASE(TensorProto_DataType_INT32, int32_t)
+    CASE(TensorProto_DataType_INT64, int64_t)
+    CASE(TensorProto_DataType_UINT8, uint8_t)
+    CASE(TensorProto_DataType_UINT16, uint16_t)
+    CASE(TensorProto_DataType_UINT32, uint32_t)
+    CASE(TensorProto_DataType_UINT64, uint64_t)
+    CASE(TensorProto_DataType_BOOL, bool)
+    // CASE(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
+    CASE(TensorProto_DataType_FLOAT8E4M3FNUZ, Float8E4M3FNUZ)
+    CASE(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
+    CASE(TensorProto_DataType_FLOAT8E5M2FNUZ, Float8E5M2FNUZ)
+    case TensorProto_DataType_STRING:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
+    case TensorProto_DataType_UNDEFINED:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cast op must have 'to' argument of type DataType");
+    case TensorProto_DataType_FLOAT8E4M3FN:
+      std::cout << "CudaCast to=" << to_ << "\n";
+      if (count > 0) {
+        return CudaCast<Float8E4M3FN, float>(
+            Stream(context),
+            x_data,
+            reinterpret_cast<Float8E4M3FN*>(Y->MutableData<Float8E4M3FN>()),
+            count);
+      }
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected 'to' argument value: ", to_);
+  }
+  return Status::OK();
+}
+
+template <>
+Status Cast<Float8E4M3FN>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<Float8E4M3FN>::MappedType CudaSrcT;
+  const Tensor* X = context->Input<Tensor>(0);
+  const TensorShape& shape = X->Shape();
+  Tensor* Y = context->Output(0, shape);
+  const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<Float8E4M3FN>());
+  size_t count = shape.Size();
+
+  std::cout << "CastFloat8E4M3FN to=" << to_ << "\n";
+
+  switch (to_) {
+    CASE(TensorProto_DataType_FLOAT16, MLFloat16)
+    case TensorProto_DataType_FLOAT:
+      std::cout << "CudaCast2 to=" << to_ << "\n";
+      if (count > 0) {
+        return CudaCast<float, Float8E4M3FN>(
+            Stream(context),
+            x_data,
+            reinterpret_cast<float*>(Y->MutableData<float>()),
+            count);
+      }
+      break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected 'to' argument value: ", to_);
   }
