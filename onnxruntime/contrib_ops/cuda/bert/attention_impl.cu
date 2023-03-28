@@ -785,6 +785,7 @@ Status QkvToContext(
     p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;
     run_memory_efficient_attention(p);
+    std::cout << "use cutlass kernel" << std::endl;
     DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }

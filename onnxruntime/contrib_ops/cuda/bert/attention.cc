@@ -135,7 +135,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             parameters.hidden_size == parameters.v_hidden_size &&
                             FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
                                                                enable_trt_flash_attention_, false);
-
+    use_fused_runner = false;
     if (use_fused_runner) {
       // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
       if (nullptr == fused_fp16_runner_.get()) {
@@ -155,7 +155,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&
-                                        (nullptr == mask_index || is_mask_1d_key_seq_len_start) &&
+                                       // (nullptr == mask_index || is_mask_1d_key_seq_len_start) &&
                                         nullptr == past &&
                                         nullptr == present &&
                                         (nullptr == relative_position_bias || is_good_for_rpb) &&
