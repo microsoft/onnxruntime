@@ -89,7 +89,11 @@ $cmake_command = (Get-Command -CommandType Application cmake)[0]
 $cmake_path = $cmake_command.Path
 $msbuild_path = "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\msbuild.exe"
 if(-not (Test-Path $msbuild_path)){
-  $msbuild_path = vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | select-object -first 1
+  $vshwere_path =  Join-Path -Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+  if(-not (Test-Path $vshwere_path -PathType Leaf)){
+    $vshwere_path =  Join-Path -Path ${env:ProgramFiles} "Microsoft Visual Studio\Installer\vswhere.exe"
+  }
+  $msbuild_path = &$vshwere_path -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | select-object -first 1
 }
 
 Write-Host "$msbuild_path"

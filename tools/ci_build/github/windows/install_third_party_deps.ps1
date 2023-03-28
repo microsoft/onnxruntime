@@ -3,6 +3,8 @@
 
 # This script depends on python.exe, cmake.exe and Visual C++ spectre-mitigated libs.
 # Please setup AGENT_TEMPDIRECTORY env variable before running this script
+# Your PATH must contain a dir that contains python.exe. And cpu arch of the python.exe
+# must match the $cpu_arch passed in to this script.
 
  param (
     [string]$cpu_arch = "x64",
@@ -84,7 +86,12 @@ $cmake_extra_args += "-DCMAKE_EXE_LINKER_FLAGS=`"$linker_flags`""
 # Find the full path of cmake.exe
 $cmake_command = (Get-Command -CommandType Application cmake)[0]
 $cmake_path = $cmake_command.Path
-$msbuild_path = vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | select-object -first 1
+$vshwere_path =  Join-Path -Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+if(-not (Test-Path $vshwere_path -PathType Leaf)){
+  $vshwere_path =  Join-Path -Path ${env:ProgramFiles} "Microsoft Visual Studio\Installer\vswhere.exe"
+}
+
+$msbuild_path = &$vshwere_path -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | select-object -first 1
 
 Install-Pybind -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config  -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
 
