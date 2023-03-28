@@ -289,10 +289,12 @@ function(print_target_properties tgt)
 
 endfunction(print_target_properties)
 
-#message(STATUS "++++++++ Paco START")
+message(STATUS "++++++++ Paco START")
 #print_target_properties(onnxruntime)
-#MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
-#message(STATUS "++++++++ Paco END")
+MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
+MESSAGE( STATUS "CMAKE_C_FLAGS: " ${CMAKE_C_FLAGS} )
+message(STATUS "++++++++ Paco END")
+#message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
 
 # Assemble the Apple static framework (iOS and macOS)
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
@@ -337,3 +339,30 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # link the static library
   add_custom_command(TARGET onnxruntime POST_BUILD COMMAND libtool -static -o ${STATIC_FRAMEWORK_DIR}/onnxruntime *.a WORKING_DIRECTORY ${STATIC_LIB_DIR})
 endif()
+
+# message(STATUS "++++++++ Paco START 2")
+# #print_target_properties(onnxruntime)
+# MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
+# MESSAGE( STATUS "CMAKE_CXX_COMPILER_TARGET: " ${CMAKE_CXX_COMPILER_TARGET} )
+# MESSAGE( STATUS "CMAKE_CXX_COMPILER: " ${CMAKE_CXX_COMPILER} )
+# MESSAGE( STATUS "CMAKE_CXX_FLAGS_RELEASE: " ${CMAKE_CXX_FLAGS_RELEASE} )
+# MESSAGE( STATUS "CMAKE_CXX_FLAGS_RELEASE_INIT: " ${CMAKE_CXX_FLAGS_RELEASE_INIT} )
+# MESSAGE( STATUS "CMAKE_CXX_COMPILER_EXTERNAL_TOOLCHAIN: " ${CMAKE_CXX_COMPILER_EXTERNAL_TOOLCHAIN} )
+
+# message(STATUS "++++++++ Paco START 3")
+# print_target_properties(onnxruntime)
+# MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
+
+# get_cmake_property(_variableNames VARIABLES)
+# list (SORT _variableNames)
+# foreach (_variableName ${_variableNames})
+#     message(STATUS "${_variableName}=${${_variableName}}")
+# endforeach()
+# message(STATUS "++++++++ Paco END 3")
+# #message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
+
+# message(STATUS "++++++++ Paco END 2")
+# #message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
+
+# #set(CMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH NO) #Paco
+# #set(CMAKE_OSX_SYSROOT, "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.0.sdk")

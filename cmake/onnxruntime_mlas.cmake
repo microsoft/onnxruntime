@@ -14,6 +14,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   set(MLAS_AMX_SUPPORTED TRUE)
 endif()
 
+message(STATUS "++++++++ Paco START onnxruntime_mlas.cmake")
+MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
+MESSAGE( STATUS "CMAKE_C_FLAGS: " ${CMAKE_C_FLAGS} )
+message(STATUS "++++++++ Paco END")
+
+#message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
 
 onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/platform.cpp
@@ -541,6 +547,27 @@ if (WIN32)
     target_compile_options(onnxruntime_mlas PRIVATE  "/analyze:stacksize 131072")
   endif()
 endif()
+
+#target_compile_options(onnxruntime_mlas PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CXX_FLAGS}>)
+#target_compile_options(onnxruntime_mlas PRIVATE $<$<COMPILE_LANGUAGE:C>:${CMAKE_C_FLAGS}>)
+#target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS}) #Needed for maccatalyst
+
+# message(STATUS "++++++++ Paco START")
+#print_target_properties(onnxruntime)
+# MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
+# MESSAGE( STATUS "CMAKE_C_FLAGS: " ${CMAKE_C_FLAGS} )
+# MESSAGE( STATUS "PLATFORM: " ${PLATFORM} )
+# message(STATUS "++++++++ Paco END")
+
+if (PLATFORM STREQUAL "MAC_CATALYST_ARM64")
+  target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS}) #Needed for maccatalyst C compilation
+endif()
+
+if (PLATFORM STREQUAL "MAC_CATALYST")
+  target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS}) #Needed for maccatalyst C compilation
+endif()
+
+#message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(TARGETS onnxruntime_mlas
