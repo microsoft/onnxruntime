@@ -85,8 +85,8 @@ jobs:
   - script: |
       ccache -s
       ccache -z
-      ls -l $(CCACHE_DIR)/protobuf
-      du -sh $(CCACHE_DIR)/protobuf
+      ls -l $(Pipeline.Workspace)/ccache/protobuf
+      du -sh $(Pipeline.Workspace)/ccache/protobuf
     displayName: Show Cache stats and Clear protolbuf stats.
     condition: eq(${{ parameters.WithCache }}, true)
 
@@ -128,7 +128,7 @@ jobs:
   - script: |
       ccache -s
       ccache -z
-      ls -l $(CCACHE_DIR)/ort
-      du -sh $(CCACHE_DIR)/ort
+      ls -l $(Pipeline.Workspace)/ccache/ort
+      du -sh $(Pipeline.Workspace)/ccache/ort
     displayName: Show Cache stats
     condition: eq(${{ parameters.WithCache }}, true)
