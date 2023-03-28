@@ -17,7 +17,6 @@ import torch
 from past_helper import PastKeyValuesHelper
 from whisper_encoder import WhisperEncoderInputs
 from transformers import WhisperConfig, file_utils
-from utils import export_helper
 
 from onnxruntime import InferenceSession
 
@@ -120,7 +119,7 @@ class WhisperDecoder(torch.nn.Module):
         if len(past) == 0:
             past_key_values = None
         else:
-            past_key_values = export_helper.back_group_by_layer(past)
+            past_key_values = PastKeyValuesHelper.back_group_by_layer(past)
 
         decoder_out = self.decoder(
             None,
@@ -132,7 +131,7 @@ class WhisperDecoder(torch.nn.Module):
             return_dict=True,
         )
         logits = decoder_out[0]
-        present_self, _ = export_helper.group_by_self_and_cross(decoder_out.past_key_values)
+        present_self, _ = PastKeyValuesHelper.group_by_self_and_cross(decoder_out.past_key_values)
         return logits, present_self
         '''
         past_key_values = PastKeyValuesHelper.group_by_layer(past, self.config.num_layers)

@@ -18,7 +18,6 @@ from past_helper import PastKeyValuesHelper
 from whisper_decoder import WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderInputs
 from transformers import WhisperConfig, file_utils
-from utils import export_helper
 
 from onnxruntime import InferenceSession
 
@@ -58,7 +57,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         decinit_out = self.whisper_decoder_init(
             decoder_input_ids, encoder_attention_mask, encoder_hidden_states
         )
-        present_self, present_cross = export_helper.group_by_self_and_cross(decinit_out[1])
+        present_self, present_cross = PastKeyValuesHelper.group_by_self_and_cross(decinit_out[1])
         present = present_self + present_cross
         return decinit_out[0], encoder_hidden_states, present
 
@@ -135,7 +134,7 @@ class WhisperEncoderDecoderInitHelper:
         out = model(inputs.encoder_input_ids, inputs.encoder_attention_mask, inputs.decoder_input_ids)
         present = out[2]
         #pdb.set_trace()
-        present_names = export_helper.get_input_names(present, encoder=True)
+        present_names = PastKeyValuesHelper.get_input_names(present, encoder=True)
         #present_names = PastKeyValuesHelper.get_past_names(model.config.num_layers, present=True)
 
         output_names = ["logits", "encoder_hidden_states"] + present_names
