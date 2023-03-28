@@ -2846,7 +2846,7 @@ def test_wrap_ortmodule_and_change_device():
         loss.backward()
         with torch.no_grad():
             for param in model.parameters():
-                param -= learning_rate * param.grad
+                param -= learning_rate * param.grad  # noqa: PLW2901
 
     # Checking training finished normally
     assert y_pred is not None and loss is not None

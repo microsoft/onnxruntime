@@ -36,8 +36,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         if batch_idx == args.train_steps:
             break
-        data, target = data.to(device), target.to(device)
-        data = data.reshape(data.shape[0], -1)
+        data, target = data.to(device), target.to(device)  # noqa: PLW2901
+        data = data.reshape(data.shape[0], -1)  # noqa: PLW2901
         optimizer.zero_grad()
         output = model(data)
         loss = my_loss(output, target)
@@ -61,8 +61,8 @@ def test(model, device, test_loader):
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            data = data.reshape(data.shape[0], -1)
+            data, target = data.to(device), target.to(device)  # noqa: PLW2901
+            data = data.reshape(data.shape[0], -1)  # noqa: PLW2901
             output = model(data)
             # Stats
             test_loss += my_loss(output, target, False).item()

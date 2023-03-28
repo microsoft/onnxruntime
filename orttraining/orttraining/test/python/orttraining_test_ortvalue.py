@@ -71,7 +71,7 @@ class TestOrtValue(unittest.TestCase):
         self.assertEqual((1, 0), device)
 
     def testOrtValueDlPack_bool(self):
-        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.bool)
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=bool)
         ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
         self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
         ptr = ortvalue._ortvalue.data_ptr()

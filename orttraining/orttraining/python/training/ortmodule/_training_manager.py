@@ -43,7 +43,7 @@ class TrainingManager(GraphExecutionManager):
         for input in inputs:
             # TODO: Non-contiguous tensor input in execution_session_run_forward, need tensor copy.
             if not input.is_contiguous():
-                input = input.contiguous()
+                input = input.contiguous()  # noqa: PLW2901
             if input.device.type == "ort":
                 forward_inputs.push_back(C.aten_ort_tensor_to_ort_value(input))
             else:
@@ -141,11 +141,11 @@ class TrainingManager(GraphExecutionManager):
                     if grad_output is None:
                         shape, device, dtype = ctx.run_info.output_info[idx]
                         if idx in self._graph_info.output_grad_indices_require_full_shape:
-                            grad_output = torch.zeros(shape, device=device, dtype=dtype)
+                            grad_output = torch.zeros(shape, device=device, dtype=dtype)  # noqa: PLW2901
                         else:
-                            grad_output = torch.tensor(0.0, device=device, dtype=dtype)
+                            grad_output = torch.tensor(0.0, device=device, dtype=dtype)  # noqa: PLW2901
                     elif not grad_output.is_contiguous():
-                        grad_output = grad_output.contiguous()
+                        grad_output = grad_output.contiguous()  # noqa: PLW2901
                     if grad_output.device.type == "ort":
                         backward_inputs.push_back(C.aten_ort_tensor_to_ort_value(grad_output))
                     else:

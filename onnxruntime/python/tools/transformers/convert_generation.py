@@ -1033,7 +1033,7 @@ def update_decoder_subgraph_past_present_share_buffer(subg: GraphProto):
     for i, vi in enumerate(subg.input):
         if i >= input_past_0:
             shape = shape_of(vi)
-            vi = onnx.helper.make_tensor_value_info(
+            vi = onnx.helper.make_tensor_value_info(  # noqa: PLW2901
                 vi.name,
                 elem_type=vi.type.tensor_type.elem_type,
                 shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]],
@@ -1047,7 +1047,7 @@ def update_decoder_subgraph_past_present_share_buffer(subg: GraphProto):
     for i, vi in enumerate(subg.output):
         if i >= output_past_0:
             shape = shape_of(vi)
-            vi = onnx.helper.make_tensor_value_info(
+            vi = onnx.helper.make_tensor_value_info(  # noqa: PLW2901
                 vi.name,
                 elem_type=vi.type.tensor_type.elem_type,
                 shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]],
@@ -1067,7 +1067,7 @@ def update_decoder_subgraph_past_present_share_buffer(subg: GraphProto):
                 nis.extend([""])
             if len(nis) < 7:
                 nis.extend(["past_sequence_length"])
-            node = onnx.helper.make_node("Attention", nis, node.output, name=node.name, **kwargs)
+            node = onnx.helper.make_node("Attention", nis, node.output, name=node.name, **kwargs)  # noqa: PLW2901
         new_nodes.extend([node])
     subg.ClearField("node")
     subg.node.extend(new_nodes)
@@ -1144,7 +1144,9 @@ def update_decoder_subgraph_use_decoder_masked_self_attention(
                     if len(nis) < 9:
                         nis.extend(["cache_indirection"])
 
-                node = onnx.helper.make_node("DecoderMaskedSelfAttention", nis, node.output, name=node.name, **kwargs)
+                node = onnx.helper.make_node(  # noqa: PLW2901
+                    "DecoderMaskedSelfAttention", nis, node.output, name=node.name, **kwargs
+                )
             new_nodes.extend([node])
         subg.ClearField("node")
         subg.node.extend(new_nodes)
@@ -2081,7 +2083,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
     bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
     if args.vocab_mask:
-        logger.debug("bad_words_ids", bad_words_ids)
+        logger.debug("bad_words_ids", bad_words_ids)  # noqa: PLE1205
     else:
         bad_words_ids = []
 
@@ -2163,12 +2165,12 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
         inputs["prefix_vocab_mask"] = prefix_vocab_mask
 
-    logger.debug("ORT inputs", inputs)
+    logger.debug("ORT inputs", inputs)  # noqa: PLE1205
     result = ort_session.run(None, inputs)
 
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
-        logger.debug("test_data_dir", test_data_dir)
+        logger.debug("test_data_dir", test_data_dir)  # noqa: PLE1205
         from bert_test_data import output_test_data
 
         all_inputs = [inputs]
@@ -2294,7 +2296,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     bad_words_ids = tokenizer.encode(bad_words)[:-1]  # exclude the last token (EOS)
     bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
     if args.vocab_mask:
-        logger.debug("bad_words_ids", bad_words_ids)
+        logger.debug("bad_words_ids", bad_words_ids)  # noqa: PLE1205
     else:
         bad_words_ids = []
 
@@ -2366,7 +2368,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
 
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
-        logger.debug("test_data_dir", test_data_dir)
+        logger.debug("test_data_dir", test_data_dir)  # noqa: PLE1205
         from bert_test_data import output_test_data
 
         all_inputs = [inputs]
@@ -2374,7 +2376,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
             dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
             output_test_data(dir, inputs)
 
-    logger.debug("ORT inputs", inputs)
+    logger.debug("ORT inputs", inputs)  # noqa: PLE1205
 
     # Test performance
     latency = []
