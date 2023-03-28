@@ -261,7 +261,7 @@ class ONNXQuantizer:
         for node in self.model.nodes():
             # quantize subgraphes if have
             if self.enable_subgraph_quantization:
-                node = self.quantize_node_with_sub_graph(node)
+                node = self.quantize_node_with_sub_graph(node)  # noqa: PLW2901
 
             number_of_existing_new_nodes = len(self.new_nodes)
             op_quantizer = CreateOpQuantizer(self, node)
