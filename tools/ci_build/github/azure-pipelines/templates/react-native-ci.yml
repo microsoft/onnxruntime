@@ -225,6 +225,11 @@ jobs:
     displayName: Bootstrap Android and iOS e2e tests
 
   - script: |
+      pod install
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+    displayName: Pod install for onnxruntime react native ios e2e tests  
+
+  - script: |
       yarn add "jest@^29" --dev
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: yarn add jest for detox integration in js/react_native/e2e
@@ -233,11 +238,6 @@ jobs:
       yarn add detox --dev
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: install detox js/react_native/e2e
-
-  - script: |
-      pod install
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
-    displayName: Pod install for onnxruntime react native ios e2e tests
 
   #- script: |
   #   keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
