@@ -53,7 +53,7 @@ struct Tensorrt_Provider : Provider {
 
     common::Status status = CreateTensorRTCustomOpDomainList(info);
     if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "Failed to get TRT plugins from TRT plugin registration.";
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
     }
     return std::make_shared<TensorrtProviderFactory>(info);
   }
@@ -89,7 +89,7 @@ struct Tensorrt_Provider : Provider {
 
     common::Status status = CreateTensorRTCustomOpDomainList(info);
     if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "Failed to get TRT plugins from TRT plugin registration.";
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
     }
     
     return std::make_shared<TensorrtProviderFactory>(info);
