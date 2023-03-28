@@ -120,6 +120,14 @@ def parse_arguments():
     parser.set_defaults(use_int64_inputs=False)
 
     parser.add_argument(
+        "--use_multihead_attn_fusion",
+        required=False,
+        action="store_true",
+        help="Apply multihead attention fusion optimizations during model export.",
+    )
+    parser.set_defaults(use_multihead_attn_fusion=False)
+
+    parser.add_argument(
         "--chain_model",
         required=False,
         action="store_true",
@@ -149,7 +157,8 @@ def export_onnx_models(
     merge_encoder_and_decoder_init: bool = True,
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
-    use_int32_inputs: bool = True
+    use_int32_inputs: bool = True,
+    use_multihead_attn_fusion = False
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -202,11 +211,12 @@ def export_onnx_models(
                     onnx_path,
                     output_path,
                     precision == Precision.FLOAT16,
-                    config.num_heads,
-                    config.hidden_size,
+                    config.encoder_attention_heads,
+                    config.d_model,
                     use_external_data_format,
                     auto_mixed_precision=not disable_auto_mixed_precision,
                     use_gpu=use_gpu,
+                    use_multihead_attn_fusion=use_multihead_attn_fusion
                 )
             else:
                 logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
@@ -264,6 +274,7 @@ def main():
         args.overwrite,
         args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
+        args.use_multihead_attn_fusion
     )
 
     if (args.chain_model):
