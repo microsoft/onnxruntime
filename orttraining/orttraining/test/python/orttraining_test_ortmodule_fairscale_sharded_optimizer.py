@@ -96,8 +96,8 @@ def train_step(args, model, device, optimizer, loss_fn, train_loader, epoch):
     for iteration, (data, target) in enumerate(train_loader):
         if iteration == args.train_steps:
             break
-        data, target = data.to(device), target.to(device)
-        data = data.reshape(data.shape[0], -1)
+        data, target = data.to(device), target.to(device)  # noqa: PLW2901
+        data = data.reshape(data.shape[0], -1)  # noqa: PLW2901
 
         optimizer.zero_grad()
         probability = model(data)
@@ -150,8 +150,8 @@ def test(args, model, device, loss_fn, test_loader):
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            data = data.reshape(data.shape[0], -1)
+            data, target = data.to(device), target.to(device)  # noqa: PLW2901
+            data = data.reshape(data.shape[0], -1)  # noqa: PLW2901
             output = model(data)
 
             # Stats

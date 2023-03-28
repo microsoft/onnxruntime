@@ -18,9 +18,9 @@ filename = os.path.join(os.path.dirname(__file__), "torch_gpu_allocator.cc")
 with fileinput.FileInput(filename, inplace=True) as file:
     for line in file:
         if "___gpu_identifier___" in line:
-            line = line.replace("___gpu_identifier___", gpu_identifier)
+            line = line.replace("___gpu_identifier___", gpu_identifier)  # noqa: PLW2901
         if "___gpu_allocator_header___" in line:
-            line = line.replace("___gpu_allocator_header___", gpu_allocator_header)
+            line = line.replace("___gpu_allocator_header___", gpu_allocator_header)  # noqa: PLW2901
         sys.stdout.write(line)
 
 extra_compile_args = {"cxx": ["-O3"]}

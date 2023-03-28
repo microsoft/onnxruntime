@@ -686,6 +686,13 @@ def parse_arguments():
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
+    if not is_windows():
+        parser.add_argument(
+            "--allow_running_as_root",
+            action="store_true",
+            help="Allow build to be run as root user. This is not allowed by default.",
+        )
+
     args = parser.parse_args()
     if args.android_sdk_path:
         args.android_sdk_path = os.path.normpath(args.android_sdk_path)
@@ -2325,6 +2332,15 @@ def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
+
+    if not is_windows():
+        if not args.allow_running_as_root:
+            is_root_user = os.geteuid() == 0
+            if is_root_user:
+                raise BuildError(
+                    "Running as root is not allowed. If you really want to do that, use '--allow_running_as_root'."
+                )
+
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
     cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 

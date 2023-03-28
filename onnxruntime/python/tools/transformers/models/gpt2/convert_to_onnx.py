@@ -508,7 +508,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
         # {"input_ids": [[14698, 257, 1310, 13688, 319, 326]]}
         with open(args.input_test_file) as read_f:
             for _, line in enumerate(read_f):
-                line = line.rstrip()
+                line = line.rstrip()  # noqa: PLW2901
                 data = json.loads(line)
                 input_ids = torch.from_numpy(numpy.asarray(data["input_ids"], dtype=numpy.int64)).to(device)
 
