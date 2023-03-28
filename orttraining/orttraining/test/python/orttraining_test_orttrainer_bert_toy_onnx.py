@@ -17,7 +17,6 @@ from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
 from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
 from onnxruntime.training import amp, optim, orttrainer
-from onnxruntime.training import orttrainer_options as orttrainer_options
 
 ###############################################################################
 # Helper functions ############################################################
