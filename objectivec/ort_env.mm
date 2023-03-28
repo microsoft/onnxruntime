@@ -35,7 +35,8 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (NSString *)getVersionString {
-    return [NSString stringWithUTF8String: Ort::GetVersionString().c_str()];
+    std::string result = OrtGetApiBase()->GetVersionString();
+    return [NSString stringWithUTF8String: result.c_str()];
 }
 
 @end
