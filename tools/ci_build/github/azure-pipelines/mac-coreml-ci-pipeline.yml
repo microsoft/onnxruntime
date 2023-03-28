@@ -28,3 +28,5 @@ jobs:
             --use_cache \
             --use_coreml
           displayName: CoreML EP, Build and Test on macOS
+          env:
+            CCACHE_COMPILERCHECK: content
