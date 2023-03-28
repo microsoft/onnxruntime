@@ -35,8 +35,8 @@ case "$(uname -s)" in
     export CFLAGS
     export CXXFLAGS
     ;;
-    *)
-      exit -1
+   *)
+    exit 1
 esac
 mkdir -p $INSTALL_PREFIX
 echo "Installing protobuf ..."
