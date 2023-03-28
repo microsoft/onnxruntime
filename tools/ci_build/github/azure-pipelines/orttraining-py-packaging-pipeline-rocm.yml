@@ -13,20 +13,12 @@ stages:
   jobs:
   - template: templates/rocm.yml
     parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.2.3'
-  - template: templates/rocm.yml
-    parameters:
       PythonVersion: '3.8'
       RocmVersion: '5.2.3'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
       RocmVersion: '5.2.3'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.3.2'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
@@ -37,10 +29,6 @@ stages:
       RocmVersion: '5.3.2'
   - template: templates/rocm.yml
     parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.4'
-  - template: templates/rocm.yml
-    parameters:
       PythonVersion: '3.8'
       RocmVersion: '5.4'
   - template: templates/rocm.yml
@@ -49,21 +37,12 @@ stages:
       RocmVersion: '5.4'
   - template: templates/rocm.yml
     parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.4.2'
-  - template: templates/rocm.yml
-    parameters:
       PythonVersion: '3.8'
       RocmVersion: '5.4.2'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
       RocmVersion: '5.4.2'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.4.2'
-      BuildConfig: 'RelWithDebInfo'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
