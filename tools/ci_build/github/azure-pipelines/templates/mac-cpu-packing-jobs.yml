@@ -62,11 +62,11 @@ jobs:
 
   - task: Cache@2
     inputs:
-      key: ' "$(TODAY)" | ccache  | onnxruntime | "$(Build.SourceVersion)" '
-      path: $(CCACHE_DIR)/ort
+      key: ' ccache | protobuf | "$(Build.SourcesDirectory)/cmake/deps.txt" '
+      path: $(CCACHE_DIR)/protobuf
       restoreKeys: |
-        "$(TODAY)" | ccache | onnxruntime
-    displayName: ccache MacOS Build
+        ccache | protobuf
+    displayName: ccache protobuf
     condition: eq(${{ parameters.WithCache }}, true)
 
   - script: |
@@ -85,6 +85,15 @@ jobs:
       ccache -s
       ccache -z
     displayName: Show Cache stats and Clear protolbuf stats.
+    condition: eq(${{ parameters.WithCache }}, true)
+
+  - task: Cache@2
+    inputs:
+      key: ' "$(TODAY)" | ccache  | onnxruntime | "$(Build.SourceVersion)" '
+      path: $(CCACHE_DIR)/ort
+      restoreKeys: |
+        "$(TODAY)" | ccache | onnxruntime
+    displayName: ccache MacOS Build
     condition: eq(${{ parameters.WithCache }}, true)
 
   - ${{ if eq(parameters.MacosArch, 'universal2') }}:
