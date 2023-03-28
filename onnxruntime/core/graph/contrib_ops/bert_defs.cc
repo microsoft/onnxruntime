@@ -588,7 +588,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(3,
                "mask_index",
-               "Mask values of shape (batch_size, total_sequence_length)",
+               "Mask values of shape (batch_size, total_sequence_length) or (batch_size, kv_sequence_length)",
                "M",
                OpSchema::Optional)
         .Input(4,
@@ -596,7 +596,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
-        .Input(4,
+        .Input(5,
                "past_key",
                "past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) for self attention"
                "When past_present_share_buffer is set, "
@@ -607,24 +607,26 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`.",
                "T",
                OpSchema::Optional)
-        .Input(5,
+        .Input(6,
                "past_value",
                "past state for value with shape (batch_size, num_heads, past_sequence_length, head_size) for self attention"
                "When past_present_share_buffer is set, "
                "its shape is (batch_size, num_heads, max_sequence_length, head_size). ",
                "T",
                OpSchema::Optional)
-        .Input(6,
-               "past_sequence_length",
-               "When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).",
-               "M")
         .Input(7,
+               "past_sequence_length",
+               "When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0)."
+               "Cross Attention doesn't need this input.",
+               "M",
+               OpSchema::Optional)
+        .Input(8,
                "beam_width",
                "The beam width that is being used while decoding."
                "If not provided, the beam width will be assumed to be 1.",
                "M",
                OpSchema::Optional)
-        .Input(8,
+        .Input(9,
                "cache_indirection",
                "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
                "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",

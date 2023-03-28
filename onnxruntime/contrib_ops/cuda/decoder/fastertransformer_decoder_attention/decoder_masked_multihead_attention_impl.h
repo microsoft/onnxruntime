@@ -12,7 +12,9 @@ namespace cuda {
 
 struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
   int beam_width = 1;
+
   bool is_mha = false;
+  bool is_cross_attention = false;
 
   void* q = nullptr;
   void* q_bias = nullptr;
@@ -22,6 +24,8 @@ struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
 
   void* v = nullptr;
   void* v_bias = nullptr;
+
+  void* relative_attention_bias = nullptr;
 
   void* k_cache = nullptr;
   void* v_cache = nullptr;

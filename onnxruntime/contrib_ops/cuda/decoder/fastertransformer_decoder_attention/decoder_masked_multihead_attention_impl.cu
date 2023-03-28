@@ -143,16 +143,13 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   const size_t bi_max_seq_length = bi * params.max_sequence_length;
 
-  int tlength = params.past_sequence_length;
+  int tlength = params.is_cross_attention ? params.kv_sequence_length - 1 : params.past_sequence_length;
 
   // First QK_VECS_PER_WARP load Q and K + the bias values for the current timestep.
   const bool is_masked = tidx >= QK_VECS_PER_WARP;
 
   // The offset in the Q and K buffer also accounts for the batch.
   int qk_offset = qkv_base_offset + tidx * QK_VEC_SIZE;
-
-  // The offset in the bias buffer.
-  int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
 
   // Trigger the loads from the Q and K buffers.
   Qk_vec_k q;
@@ -163,85 +160,100 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   }
 
   Qk_vec_k k;
-  zero(k);
 
-  if (!is_masked) {
-    k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
+  if (!params.is_cross_attention) {
+    zero(k);
+
+    if (!is_masked) {
+      k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
+    }
   }
 
   // Trigger the loads from the Q and K bias buffers.
   Qk_vec_k q_bias;
-  zero(q_bias);
-
-  if (!is_masked) {
-    q_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q_bias)[qk_bias_offset]));
-  }
-
   Qk_vec_k k_bias;
-  zero(k_bias);
+  if (!params.is_mha) {
+    // The offset in the bias buffer.
+    int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
 
-  if (!is_masked) {
-    k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
+    zero(q_bias);
+
+    if (!is_masked) {
+      q_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q_bias)[qk_bias_offset]));
+    }
+
+    zero(k_bias);
+
+    if (!is_masked) {
+      k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
+    }
+
+    // Computes the Q/K values with bias.
+    q = add_vec(q, q_bias);
+    k = add_vec(k, k_bias);
   }
-
-  // Computes the Q/K values with bias.
-  q = add_vec(q, q_bias);
-  k = add_vec(k, k_bias);
 
   T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
-
-  if (!is_masked) {
-    // Store the Q values to shared memory.
-    *reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
-
-    // Write the K values to the global memory cache.
-    // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
-    // system. We designed it this way as it allows much better memory loads (and there are many
-    // more loads) + the stores are really "write and forget" since we won't need the ack before
-    // the end of the kernel. There's plenty of time for the transactions to complete.
-
-    // The 16B chunk written by the thread.
-    int co = tidx / QK_VECS_IN_16B;
-
-    // The position of the thread in that 16B chunk.
-    int ci = tidx % QK_VECS_IN_16B * QK_VEC_SIZE;
-
-    // Two chunks are separated by L * x elements. A thread write QK_VEC_SIZE elements.
-    int offset = bhi * params.max_sequence_length * head_size + co * params.max_sequence_length * QK_ELTS_IN_16B +
-                 tlength * QK_ELTS_IN_16B + ci;
-
-    // Trigger the stores to global memory.
-    *reinterpret_cast<Qk_vec_m*>(&params_k_cache[offset]) = vec_conversion<Qk_vec_m, Qk_vec_k>(k);
-
-    // Compute \sum_i Q[i] * K^T[i] for the current timestep.
-    using Qk_vec_acum = Qk_vec_k;
-    qk = dot<Qk_vec_acum, Qk_vec_k>(q, k);
-
-    if (QK_VECS_PER_WARP <= WARP_SIZE) {
-#pragma unroll
-      for (int mask = QK_VECS_PER_WARP / 2; mask >= 1; mask /= 2) {
-        qk += __shfl_xor_sync(shfl_mask(QK_VECS_PER_WARP), qk, mask);
-      }
-    }
-  }
-
-  if (QK_VECS_PER_WARP > WARP_SIZE) {
-    constexpr int WARPS_PER_RED = (QK_VECS_PER_WARP + WARP_SIZE - 1) / WARP_SIZE;
-    qk = block_sum<WARPS_PER_RED>(&red_smem[WARPS_PER_RED], qk);
-  }
-
   const float inv_sqrt_dh = params.scale;
 
-  // Store that value in shared memory. Keep the Q*K^T value in register for softmax.
-  if (tidx == 0) {
-    // Normalize qk.
-    qk *= inv_sqrt_dh;
-    qk_max = qk;
-    qk_smem[tlength] = qk;
-  }
+  if (!params.is_cross_attention) {
+    if (!is_masked) {
+      // Store the Q values to shared memory.
+      *reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
 
-  // Make sure the data is in shared memory.
-  __syncthreads();
+      // Write the K values to the global memory cache.
+      // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
+      // system. We designed it this way as it allows much better memory loads (and there are many
+      // more loads) + the stores are really "write and forget" since we won't need the ack before
+      // the end of the kernel. There's plenty of time for the transactions to complete.
+
+      // The 16B chunk written by the thread.
+      int co = tidx / QK_VECS_IN_16B;
+
+      // The position of the thread in that 16B chunk.
+      int ci = tidx % QK_VECS_IN_16B * QK_VEC_SIZE;
+
+      // Two chunks are separated by L * x elements. A thread write QK_VEC_SIZE elements.
+      int offset = bhi * params.max_sequence_length * head_size + co * params.max_sequence_length * QK_ELTS_IN_16B +
+                   tlength * QK_ELTS_IN_16B + ci;
+
+      // Trigger the stores to global memory.
+      *reinterpret_cast<Qk_vec_m*>(&params_k_cache[offset]) = vec_conversion<Qk_vec_m, Qk_vec_k>(k);
+
+      // Compute \sum_i Q[i] * K^T[i] for the current timestep.
+      using Qk_vec_acum = Qk_vec_k;
+      qk = dot<Qk_vec_acum, Qk_vec_k>(q, k);
+
+      if (QK_VECS_PER_WARP <= WARP_SIZE) {
+  #pragma unroll
+        for (int mask = QK_VECS_PER_WARP / 2; mask >= 1; mask /= 2) {
+          qk += __shfl_xor_sync(shfl_mask(QK_VECS_PER_WARP), qk, mask);
+        }
+      }
+    }
+
+    if (QK_VECS_PER_WARP > WARP_SIZE) {
+      constexpr int WARPS_PER_RED = (QK_VECS_PER_WARP + WARP_SIZE - 1) / WARP_SIZE;
+      qk = block_sum<WARPS_PER_RED>(&red_smem[WARPS_PER_RED], qk);
+    }
+
+    // Store that value in shared memory. Keep the Q*K^T value in register for softmax.
+    if (tidx == 0) {
+      // Normalize qk.
+      qk *= inv_sqrt_dh;
+      if (params.relative_attention_bias != nullptr) {
+        qk = add_vec(qk,
+                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length
+                                                                             * params.total_sequence_length
+                                                                          + tlength]);
+      }
+      qk_max = qk;
+      qk_smem[tlength] = qk;
+    }
+
+    // Make sure the data is in shared memory.
+    __syncthreads();
+  }
 
   // The type of queries and keys for the math in the Q*K^T product.
   using K_vec_k = typename K_vec_k_<T, THREADS_PER_KEY>::Type;
@@ -332,6 +344,12 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
+      if (params.relative_attention_bias != nullptr) {
+        qk = add_vec(qk,
+                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length
+                                                                             * params.total_sequence_length
+                                                                          + ti]);
+      }
       qk_max = fmaxf(qk_max, qk);
       qk_smem[ti] = qk;
     }
@@ -418,12 +436,14 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // One group of threads computes the product(s) for the current timestep.
   V_vec_k v_bias;
-  zero(v_bias);
+  if (!params.is_mha) {
+    zero(v_bias);
 
-  T* params_v_bias = reinterpret_cast<T*>(params.v_bias);
+    T* params_v_bias = reinterpret_cast<T*>(params.v_bias);
 
-  if (vo == tlength % V_PER_ITER) {
-    v_bias = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&params_v_bias[hi * head_size + vi]));
+    if (vo == tlength % V_PER_ITER) {
+      v_bias = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&params_v_bias[hi * head_size + vi]));
+    }
   }
 
   // From previous, before values, step
@@ -451,12 +471,14 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   }
 
   // One group of threads computes the product(s) for the current timestep.
-  if (vo == tlength % V_PER_ITER) {
+  if (vo == tlength % V_PER_ITER && !params.is_cross_attention) {
     const auto v_offset = qkv_base_offset + vi;
 
     V_vec_k v;
     v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&reinterpret_cast<T*>(params.v)[v_offset]));
-    v = add_vec(v, v_bias);
+    if (!params.is_mha) {
+      v = add_vec(v, v_bias);
+    }
 
     // Store the values with bias back to global memory in the cache for V.
     *reinterpret_cast<V_vec_m*>(&v_cache[tlength * head_size]) = vec_conversion<V_vec_m, V_vec_k>(v);
@@ -496,6 +518,20 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 }
 
 // Template instantiation(s)
+
+// fp32 + head size = 32
+template void __global__ masked_multihead_attention_kernel<float, 32, 4, 8, 64>(DecoderMaskedMultiHeadAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<float, 32, 2, 8, 128>(DecoderMaskedMultiHeadAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<float, 32, 1, 8, 256>(DecoderMaskedMultiHeadAttentionParams params);
+
+// fp16 + head size = 32
+template void __global__ masked_multihead_attention_kernel<uint16_t, 32, 4, 4, 64>(DecoderMaskedMultiHeadAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, 32, 2, 4, 128>(DecoderMaskedMultiHeadAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, 32, 1, 4, 256>(DecoderMaskedMultiHeadAttentionParams params);
 
 // fp32 + head size = 64
 template void __global__ masked_multihead_attention_kernel<float, 64, 4, 16, 64>(DecoderMaskedMultiHeadAttentionParams params);

@@ -17,10 +17,10 @@ namespace contrib {
 namespace cuda {
 
 // TODO: refactor
-static constexpr int kPastSequenceLengthInputIndex = 6;
-static constexpr int kBeamWidthInputIndex = 7;
-static constexpr int kCacheIndirectionInputIndex = 8;
-static constexpr int kPastInputIndex = 4;
+static constexpr int kPastSequenceLengthInputIndex = 7;
+static constexpr int kBeamWidthInputIndex = 8;
+static constexpr int kCacheIndirectionInputIndex = 9;
+static constexpr int kPastInputIndex = 5;
 static constexpr int kPresentOutputIndex = 1;
 
 #define REGISTER_KERNEL_TYPED(T1, T2)                                         \
@@ -82,9 +82,6 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       past_present_share_buffer_,
                                                                       device_prop.maxThreadsPerBlock));
 
-  // Sanity check
-  ORT_ENFORCE(past_present_share_buffer_);
-
   int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
 
@@ -116,35 +113,56 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
 
   auto cuda_stream = Stream(context);
 
-  auto* present_key_data = present_key->MutableData<T1>();
-  auto* present_value_data = present_value->MutableData<T1>();
-  auto* past_key_data = past_key->Data<T1>();
-  auto* past_value_data = past_value->Data<T1>();
-
-  // No production use-case will incur this copy cost as the implementation of
-  // GreedySearch/BeamSearch is written in such a way that the past and present buffers
-  // will be shared.
-  // This is just to circumvent the OpTester's limitation of not being able to bind a specific
-  // buffer to inputs/outputs.
-  if (present_key_data != past_key_data || present_value_data != past_value_data) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_key_data, past_key_data, past_key->SizeInBytes(),
-                                         cudaMemcpyDeviceToDevice, cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_value_data, past_value_data, past_value->SizeInBytes(),
-                                         cudaMemcpyDeviceToDevice, cuda_stream));
-  }
-
-  // typedef typename ToCudaType<T1>::MappedType CudaT;
-
   parameters.is_mha = true;
 
-  // Update the q, k, and v buffers
+  // Update the q buffers
   parameters.q = const_cast<T1*>(query->Data<T1>());
-  parameters.k = const_cast<T1*>(key->Data<T1>());
-  parameters.v = const_cast<T1*>(value->Data<T1>());
 
-  // Half of the past/present buffer correspond to K - the other half is V.
-  parameters.k_cache = present_key->MutableDataRaw();
-  parameters.v_cache = present_value->MutableData<T1>();
+  // Update the relative position bias for self attention
+  if (relative_position_bias != nullptr) {
+    parameters.relative_attention_bias = const_cast<T1*>(relative_position_bias->Data<T1>());
+  }
+
+  // Decoder cross-attention
+  if (past_key == nullptr && present_key == nullptr) {
+    if (relative_position_bias != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "DecoderMaskedMultiHeadAttention does not support relative position bias for cross-attention");
+    }
+
+    parameters.is_cross_attention = true;
+    parameters.total_sequence_length = parameters.kv_sequence_length;
+    parameters.max_sequence_length = parameters.kv_sequence_length;
+    // parameters.k and paraneters.v are nullptr
+    parameters.k_cache = const_cast<T1*>(key->Data<T1>());
+    parameters.v_cache = const_cast<T1*>(value->Data<T1>());
+  } else {
+    // Sanity check
+    ORT_ENFORCE(past_present_share_buffer_);
+
+    auto* present_key_data = present_key->MutableData<T1>();
+    auto* present_value_data = present_value->MutableData<T1>();
+    auto* past_key_data = past_key->Data<T1>();
+    auto* past_value_data = past_value->Data<T1>();
+
+    // No production use-case will incur this copy cost as the implementation of
+    // GreedySearch/BeamSearch is written in such a way that the past and present buffers
+    // will be shared.
+    // This is just to circumvent the OpTester's limitation of not being able to bind a specific
+    // buffer to inputs/outputs.
+    if (present_key_data != past_key_data || present_value_data != past_value_data) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_key_data, past_key_data, past_key->SizeInBytes(),
+                                           cudaMemcpyDeviceToDevice, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_value_data, past_value_data, past_value->SizeInBytes(),
+                                           cudaMemcpyDeviceToDevice, cuda_stream));
+    }
+
+    parameters.k = const_cast<T1*>(key->Data<T1>());
+    parameters.v = const_cast<T1*>(value->Data<T1>());
+    parameters.k_cache = present_key->MutableDataRaw();
+    parameters.v_cache = present_value->MutableData<T1>();
+  }
+
   parameters.out = output->MutableDataRaw();
 
   // Scale
@@ -175,6 +193,10 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   }
 
   switch (parameters.head_size) {
+    case 32:
+      mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
+      break;
+
     case 64:
       mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
       break;
