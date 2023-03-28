@@ -56,6 +56,8 @@ jobs:
   - script: |
       brew install ccache
       echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
+      mkdir -p $(Pipeline.Workspace)/ccache/protobuf
+      mkdir -p $(Pipeline.Workspace)/ccache/ort
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
     condition: eq(${{ parameters.WithCache }}, true)
 
