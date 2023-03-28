@@ -44,7 +44,7 @@ jobs:
       addToPath: true
       architecture: $(buildArch)
 
-  - template: download-deps.yml
+  - template: templates/download-deps.yml
 
   - task: PythonScript@0
     displayName: 'Update deps.txt'
