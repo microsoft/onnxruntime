@@ -88,7 +88,7 @@ stages:
       additionalBuildFlags: --disable_memleak_checker --use_mimalloc
       msbuildPlatform: x64
       isX86: false
-      stage_name_suffix: x64_mimalloc
+      job_name_suffix: x64_mimalloc
       RunOnnxRuntimeTests: true
       RunStaticCodeAnalysis: false
       isTraining: false
@@ -107,7 +107,7 @@ stages:
       additionalBuildFlags: --cmake_extra_defines onnxruntime_DISABLE_ABSEIL=ON
       msbuildPlatform: x64
       isX86: false
-      stage_name_suffix: x64_no_absl
+      job_name_suffix: x64_no_absl
       RunOnnxRuntimeTests: true
       RunStaticCodeAnalysis: false
       isTraining: false
@@ -127,7 +127,7 @@ stages:
       additionalBuildFlags: --build_shared_lib --minimal_build --disable_exceptions
       msbuildPlatform: x64
       isX86: false
-      stage_name_suffix: x64_minimal_no_exception
+      job_name_suffix: x64_minimal_no_exception
       RunOnnxRuntimeTests: true
       RunStaticCodeAnalysis: false
       isTraining: false
@@ -147,7 +147,7 @@ stages:
       additionalBuildFlags: --build_shared_lib --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON
       msbuildPlatform: x64
       isX86: false
-      stage_name_suffix: x64_debug_node_input_output
+      job_name_suffix: x64_debug_node_input_output
       RunOnnxRuntimeTests: true
       RunStaticCodeAnalysis: false
       isTraining: false
