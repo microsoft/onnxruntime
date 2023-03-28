@@ -10,18 +10,6 @@
 #include "core/platform/ort_mutex.h"
 #include "tensorrt_execution_provider_info.h"
 
-#ifdef _WIN32
-#include <windows.h>
-#define LIBTYPE HINSTANCE
-#define OPENLIB(libname) LoadLibrary(libname)
-#define LIBFUNC(lib, fn) GetProcAddress((lib), (fn))
-#else
-#include <dlfcn.h>
-#define LIBTYPE void*
-#define OPENLIB(libname) dlopen((libname), RTLD_LAZY)
-#define LIBFUNC(lib, fn) dlsym((lib), (fn))
-#endif
-
 namespace onnxruntime {
 
 namespace tensorrt_env_vars {
