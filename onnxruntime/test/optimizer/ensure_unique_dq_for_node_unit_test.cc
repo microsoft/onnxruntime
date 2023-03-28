@@ -198,19 +198,20 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer
 
 TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodes) {
   constexpr auto model_uri = ORT_TSTR("testdata/qdq_with_multi_consumer_dq_nodes.onnx");
-  const auto& logger = DefaultLoggingManager().DefaultLogger();
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logger));
-  Graph& graph = p_model->MainGraph();
 
-  const auto op_count_before = CountOpsInGraph(graph);
+  SessionOptions session_options{};
+  // test interaction with level 1 transformers
+  session_options.graph_optimization_level = TransformerLevel::Level1;
 
-  GraphTransformerManager graph_transformer_mgr{5};
-  ASSERT_STATUS_OK(graph_transformer_mgr.Register(std::make_unique<EnsureUniqueDQForNodeUnit>(),
-                                                  TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
 
-  const auto op_count_after = CountOpsInGraph(graph);
+  ASSERT_STATUS_OK(session.Load(model_uri));
+
+  const auto op_count_before = CountOpsInGraph(session.GetGraph());
+
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto op_count_after = CountOpsInGraph(session.GetGraph());
 
   // there are 3 DQ nodes with 2 consumers (an earlier Conv and later Add)
   // additionally the last one also provides a graph output
