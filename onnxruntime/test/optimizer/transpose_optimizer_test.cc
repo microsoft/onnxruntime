@@ -7,12 +7,17 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#include "graph_transform_test_builder.h"
-
 #include "core/graph/graph.h"
-#include "qdq_test_utils.h"
+#include "core/framework/op_node_proto_helper.h"
+#include "core/framework/utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+
 #include "test/test_environment.h"
+#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/optimizer/qdq_test_utils.h"
+#include "test/providers/internal_testing/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 namespace onnxruntime {
 namespace test {
@@ -1270,7 +1275,7 @@ TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsFalse) {
     auto& transpose_2 = builder.AddNode("Transpose", {reducemax_1_out_0}, {transpose_2_out_0});
     transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 0});
   };
-  
+
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
     EXPECT_EQ(transpose_cost, 0);
@@ -3853,9 +3858,9 @@ TEST(TransposeOptimizerTests, TestSimpleReshapeAsTranspose) {
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 0);
-    ASSERT_TRUE(op_to_count["Reshape"] == 0);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
   };
 
   TransformerTester(build_test_case,
@@ -3884,9 +3889,9 @@ TEST(TransposeOptimizerTests, TestReshapeAsTransposeGraphOutput) {
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 0);
-    ASSERT_TRUE(op_to_count["Reshape"] == 0);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
   };
 
   TransformerTester(build_test_case,
@@ -3894,6 +3899,195 @@ TEST(TransposeOptimizerTests, TestReshapeAsTransposeGraphOutput) {
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ {15, 18});
+}
+
+enum class TransposeReshapeResult {
+  kUnchanged,  // nodes cannot be merged or removed
+  kMerge,      // merge Transpose and Reshape into single Transpose
+  kCancel      // Transpose and Reshape cancel each other and both can be dropped
+};
+
+static void TestTransposeReshape(const std::vector<int64_t>& input_shape,    // model and Transpose input shape
+                                 const std::vector<int64_t>& perms,          // perms for Transpose node
+                                 const std::vector<int64_t>& reshape_shape,  // shape for Reshape node
+                                 TransposeReshapeResult expected_result,
+                                 const std::vector<int64_t>& merged_perms = {},  // expected perms num_transpose == 1
+                                 bool allow_zero = false) {                      // Reshape 'allowzero' value
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, 0.0, 1.0);
+    auto* mul_arg1 = builder.MakeInput<float>({1}, 0.0, 1.0);
+    auto* reshape_shape_value = builder.MakeInitializer<int64_t>({int64_t(reshape_shape.size())}, reshape_shape);
+
+    auto* mul_out_0 = builder.MakeOutput();
+    auto* transpose_out_0 = builder.MakeIntermediate();
+    auto* reshape_out_0 = builder.MakeIntermediate();
+    auto* identity_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input_arg, mul_arg1}, {mul_out_0});  // node so Transpose isn't consuming graph input
+
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_out_0}, {transpose_out_0});
+    transpose_1.AddAttribute("perm", perms);
+
+    auto& reshape = builder.AddNode("Reshape", {transpose_out_0, reshape_shape_value}, {reshape_out_0});
+    if (allow_zero) {
+      reshape.AddAttribute("allowzero", int64_t(1));
+    }
+
+    builder.AddNode("Identity", {reshape_out_0}, {identity_out_0});  // node so Reshape isn't graph output
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const auto& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+    if (expected_result == TransposeReshapeResult::kCancel) {
+      ASSERT_EQ(op_to_count["Transpose"], 0);
+      ASSERT_EQ(op_to_count["Reshape"], 0);
+    } else if (expected_result == TransposeReshapeResult::kMerge) {
+      ASSERT_EQ(op_to_count["Transpose"], 1);
+      ASSERT_EQ(op_to_count["Reshape"], 0);
+
+      // find Transpose node and check perms
+      const auto& nodes = graph.Nodes();
+      const Node& transpose = *std::find_if(nodes.begin(), nodes.end(),
+                                            [](const auto& node) { return node.OpType() == "Transpose"; });
+
+      ProtoHelperNodeContext proto_helper_ctx(transpose);
+      OpNodeProtoHelper<ProtoHelperNodeContext> proto_helper(&proto_helper_ctx);
+      std::vector<int64_t> actual_perms;
+      ASSERT_STATUS_OK(proto_helper.GetAttrs<int64_t>("perm", actual_perms));
+      ASSERT_THAT(actual_perms, testing::ContainerEq(merged_perms));
+    } else {
+      ASSERT_EQ(op_to_count["Transpose"], 1);
+      ASSERT_EQ(op_to_count["Reshape"], 1);
+    }
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+// Transpose -> Reshape can be merged if the Reshape could also be expressed as a Transpose due to not changing the
+// order or size of dims with value > 1.
+TEST(TransposeOptimizerTests, TestReshapeCanMerge) {
+  // 3D
+  TestTransposeReshape({4, 1, 3}, {2, 0, 1},  // transpose input shape and perms. output shape {3, 4, 1}
+                       {1, 3, 4},             // reshape 'shape'
+                       TransposeReshapeResult::kMerge,
+                       {1, 2, 0});  // perms required to merge
+
+  // essentially the same test but with the 2 non-1 dims having the same value
+  TestTransposeReshape({4, 1, 4}, {2, 0, 1},  // transpose input shape and perms. output shape {4, 4, 1}
+                       {1, 4, 4},             // reshape 'shape'
+                       TransposeReshapeResult::kMerge,
+                       {1, 2, 0});  // perms required to merge
+
+  // 4D - various combinations to exercise different paths in the perms calculation
+  TestTransposeReshape({1, 6, 1, 5}, {3, 0, 1, 2},  // transpose input shape and perms. output shape {5, 1, 6, 1}
+                       {1, 1, 5, 6},                // reshape 'shape'. equiv. transpose perms == 1,3,0,2
+                       TransposeReshapeResult::kMerge,
+                       {0, 2, 3, 1});  // merged perms of 3,0,1,2 followed by 1,3,0,2
+
+  TestTransposeReshape({1, 6, 1, 5}, {2, 3, 1, 0},  // transpose input shape and perms. output shape {1, 5, 6, 1}
+                       {5, 6, 1, 1},                // reshape 'shape'. equiv. transpose perms == 1,2,0,3
+                       TransposeReshapeResult::kMerge,
+                       {3, 1, 2, 0});  // merged perms of 2,3,1,0 followed by 1,2,0,3
+
+  TestTransposeReshape({1, 6, 1, 5}, {3, 0, 2, 1},  // transpose input shape and perms. output shape {5, 1, 1, 6}
+                       {1, 5, 6, 1},                // reshape 'shape'. equiv. transpose perms == 1,0,3,1
+                       TransposeReshapeResult::kMerge,
+                       {0, 3, 1, 2});  // merged perms of 3,0,2,1 followed by 1,0,3,1
+
+  TestTransposeReshape({1, 6, 1, 5}, {2, 3, 0, 1},  // transpose input shape and perms. output shape {1, 5, 1, 6}
+                       {5, 1, 6, 1},                // reshape 'shape'. equiv. transpose perms == 1,0,3,2
+                       TransposeReshapeResult::kMerge,
+                       {3, 2, 1, 0});  // merged perms of 2,3,0,1 followed by 1,0,3,2
+}
+
+// Transpose -> Reshape cancel each other out if Reshape can be expressed as a Transpose due to not changing the
+// order or size of dims with value > 1, and the Transpose input shape is equal to the Reshape output shape.
+TEST(TransposeOptimizerTests, TestReshapeCancelsTranspose) {
+  // 2D
+  TestTransposeReshape({1, 8}, {1, 0},  // transpose input shape and perms. output shape {8, 1}
+                       {1, 8},          // reshape 'shape'
+                       TransposeReshapeResult::kCancel);
+  // 3D
+  TestTransposeReshape({2, 1, 4}, {1, 0, 2},  // transpose input shape and perms. output shape {1, 2, 4}
+                       {2, 1, 4},             // reshape 'shape'
+                       TransposeReshapeResult::kCancel);
+
+  // 4D
+  TestTransposeReshape({1, 2, 1, 3}, {0, 2, 1, 3},  // transpose input shape and perms. output shape {1, 1, 2, 3}
+                       {1, 2, 1, 3},                // reshape 'shape'
+                       TransposeReshapeResult::kCancel);
+}
+
+// test some Reshape combinations that cannot be treated as a Transpose
+TEST(TransposeOptimizerTests, TestReshapeCantMerge) {
+  // rank mismatch
+  TestTransposeReshape({2, 1, 4}, {1, 0, 2},  // transpose input shape and perms. output shape {1, 2, 4}
+                       {2, 4},                // reshape 'shape'
+                       TransposeReshapeResult::kUnchanged);
+
+  // reshape can't be treated as a Transpose as a dim size changes
+  TestTransposeReshape({1, 4, 4, 5}, {0, 3, 1, 2},  // transpose input shape and perms. output shape {1, 5, 4, 4}
+                       {1, 5, 2, 8},                // reshape 'shape'
+                       TransposeReshapeResult::kUnchanged);
+
+  // reshape can't be treated as a Transpose as the order of dims with value > 1 changes
+  TestTransposeReshape({1, 4, 8, 3}, {0, 3, 1, 2},  // transpose input shape and perms. output shape {1, 3, 4, 8}
+                       {1, 3, 8, 4},                // reshape 'shape'
+                       TransposeReshapeResult::kUnchanged);
+}
+
+// test Reshape with allow zero.
+// If allow_zero is false, the dim value is inferred from the matching input dim.
+// If allow_zero is true, a zero is maintained as-is (resulting in an output of empty data)
+TEST(TransposeOptimizerTests, TestReshapeWithZero) {
+  // First 2 tests have a 0 in the Reshape `shape` input. One can be merged, one can't.
+  TestTransposeReshape({1, 5, 7, 1}, {0, 3, 2, 1},  // transpose input shape and perms. output shape {1, 1, 7, 5}
+                       {1, 7, 1, 0},                // reshape 'shape'. the '0' should == 5 from the transpose output.
+                                                    // equiv. transpose perms == 0,2,1,3
+                       TransposeReshapeResult::kMerge,
+                       {0, 2, 3, 1},  // result should be {1, 7, 1, 5}. merged perms of 0,3,2,1 followed by 0,2,1,3
+                       false);        // allow_zero
+
+  TestTransposeReshape({1, 4, 8, 3}, {0, 3, 1, 2},  // transpose input shape and perms. output shape {1, 3, 4, 8}
+                       {1, 0, 8, 4},                // reshape 'shape'. '3' is inferred but last 2 dims swap
+                       TransposeReshapeResult::kUnchanged,
+                       {},
+                       false);
+
+  // Next test has a 0 in the Reshape `shape` input.
+  TestTransposeReshape({1, 5, 7, 0}, {0, 2, 1, 3},  // transpose input shape and perms. output shape {1, 7, 5, 0}
+                       {7, 5, 1, 0},                // reshape 'shape'. the '0' should be kept. we can't merge as a
+                       TransposeReshapeResult::kMerge,
+                       {2, 1, 0, 3},  // result should be {7, 5, 1, 0}. merged perms of 0,2,1,3 followed by 1,2,0,3
+                       true);         // allow_zero
+
+  TestTransposeReshape({1, 5, 7, 0}, {0, 2, 1, 3},  // transpose input shape and perms. output shape {1, 7, 5, 0}
+                       {0, 7, 5, 1},                // reshape 'shape'. the '0' should be kept.
+                       TransposeReshapeResult::kUnchanged,
+                       {},
+                       true);  // allow_zero
+}
+
+// test Reshape with an inferred dim due to value of -1
+// test valid (inferred dim is 1:1 with existing) and invalid (inferred size differs)
+TEST(TransposeOptimizerTests, TestReshapeWithMinusOne) {
+  TestTransposeReshape({1, 5, 7, 1}, {0, 3, 2, 1},  // transpose input shape and perms. output shape {1, 1, 7, 5}
+                       {1, 7, 1, -1},               // reshape 'shape'. -1 -> 5
+                                                    // equiv. transpose perms == 0,2,1,3
+                       TransposeReshapeResult::kMerge,
+                       {0, 2, 3, 1});  // result should be {1, 7, 1, 5}. merged perms of 0,3,2,1 followed by 0,2,1,3
+
+  // -1 dim changes size
+  TestTransposeReshape({1, 8, 4, 1}, {0, 3, 2, 1},  // transpose input shape and perms. output shape {1, 1, 4, 8}
+                       {1, -1, 2, 8},               // reshape 'shape'. -1 -> 2 which is incompatible
+                       TransposeReshapeResult::kUnchanged);
 }
 
 TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
@@ -3915,9 +4109,9 @@ TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 0);
-    ASSERT_TRUE(op_to_count["Reshape"] == 0);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
   };
 
   TransformerTester(build_test_case,
@@ -3927,7 +4121,7 @@ TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
                     /*opset_version*/ {15, 18});
 }
 
-TEST(TransposeOptimizerTests, TestNonCancelingReshape) {
+TEST(TransposeOptimizerTests, TestNonCancelingReshapeDueToNonConstShape) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({1, 1, 1, 3}, 0.0, 1.0);
     auto* input1_arg = builder.MakeInput<float>({1, 3}, 0.0, 1.0);
@@ -3948,9 +4142,9 @@ TEST(TransposeOptimizerTests, TestNonCancelingReshape) {
     // Transpose on mul output cannot be removed since reshape's shape input
     // is not const
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 1);
-    ASSERT_TRUE(op_to_count["Reshape"] == 1);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 1);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
 
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
     EXPECT_EQ(transpose_cost, 1);
@@ -4121,8 +4315,7 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
       auto* init = builder.MakeInitializer<int64_t>({1}, {1});
       auto& reducemax_1 = builder.AddNode("ReduceMax", {transpose_1_out_0, init}, {reducemax_1_out_0});
       reducemax_1.AddAttribute("keepdims", (int64_t)0);
-    }
-    else {
+    } else {
       auto& reducemax_1 = builder.AddNode("ReduceMax", {transpose_1_out_0}, {reducemax_1_out_0});
       reducemax_1.AddAttribute("axes", std::vector<int64_t>{1});
       reducemax_1.AddAttribute("keepdims", (int64_t)0);
@@ -4207,6 +4400,106 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
 
   ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
+// Test a Transpose node followed by a Reshape that is logically equivalent to an Transpose can be merged.
+// The test graph was extracted from a model we were trying to use with the QNN EP.
+TEST(TransposeOptimizerTests, QnnTransposeReshape) {
+  // test uses internal testing EP with static kernels which requires a full build,
+  // and the NHWC Conv with requires contrib ops
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.onnx");
+
+  SessionOptions so;
+
+  // enable dumping graph so one test validates that infrastructure works. we don't want to do that in multiple
+  // tests as the filenames for the debug output are hardcoded.
+  // check the build output directory for files called `post_layout_transform_step_<step#>.onnx` to see how the graph
+  // changes during the layout transformation process.
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  // if we merge the Transpose -> Reshape the resulting Transpose node can be pushed down and will cancel out
+  // all downstream Transpose nodes.
+  // if the merge fails those two nodes remain, and the Transpose is blocked from being pushed down.
+  // additionally, running the L1 transformers after the layout transform should constant fold the Transpose node that
+  // gets inserted on the weights used by the Add node.
+  // end result of everything working as expected is a single Transpose of the input data to NHWC as that can't be
+  // avoided.
+  ASSERT_EQ(op_to_count["Transpose"], 1) << "All layout transform Transpose ops should have been handled "
+                                            "with the exception of the initial node prior to the Conv";
+
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                                << "' was not assigned to the internal testing EP.";
+  }
+#endif
+}
+
+TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
+  // test uses internal testing EP with static kernels which requires a full build,
+  // and the NHWC Conv with requires contrib ops
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.qdq.onnx");
+
+  SessionOptions so;
+
+  // enable dumping graph so one test validates that infrastructure works. we don't want to do that in multiple
+  // tests as the filenames for the debug output are hardcoded.
+  // check the build output directory for files called `post_layout_transform_step_<step#>.onnx` to see how the graph
+  // changes during the layout transformation process.
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  // if we merge the Transpose -> Reshape the resulting Transpose node can be pushed down and will cancel out
+  // all downstream Transpose nodes.
+  // if the merge fails those two nodes remain, and the Transpose is blocked from being pushed down.
+  // additionally, running the L1 transformers after the layout transform should constant fold the Transpose node that
+  // gets inserted on the weights used by the Add node.
+  // end result of everything working as expected is a single Transpose of the input data to NHWC as that can't be
+  // avoided.
+  ASSERT_EQ(op_to_count["Transpose"], 1) << "All layout transform Transpose ops should have been handled "
+                                            "with the exception of the initial node prior to the Conv";
+
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                                << "' was not assigned to the internal testing EP.";
+  }
+#endif
 }
 }  // namespace test
 }  // namespace onnxruntime

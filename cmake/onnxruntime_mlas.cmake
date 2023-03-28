@@ -25,6 +25,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
 endif()
 
 
+#
+# All hardware agnostic source files here
+# hardware specific files would cause trouble in
+# multi-target build
+#
 onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/platform.cpp
   ${MLAS_SRC_DIR}/threading.cpp
@@ -62,6 +67,16 @@ set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
 #TODO: set MASM flags properly
 function(setup_mlas_source_for_windows)
+
+  #
+  # Sources common for all platforms.
+  #
+  target_sources(onnxruntime_mlas PRIVATE
+    ${MLAS_SRC_DIR}/activate_fp16.cpp
+    ${MLAS_SRC_DIR}/dwconv.cpp
+    ${MLAS_SRC_DIR}/pooling_fp16.cpp
+  )
+
   #The onnxruntime_target_platform variable was added by Windows AI team in onnxruntime_common.cmake
   #Don't use it for other platforms.
   if((onnxruntime_target_platform STREQUAL "ARM64") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
@@ -332,6 +347,7 @@ else()
           ${MLAS_SRC_DIR}/activate_fp16.cpp
           ${MLAS_SRC_DIR}/dwconv.cpp
           ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/pooling_fp16.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
@@ -339,6 +355,7 @@ else()
         set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
         set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
         set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+        set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
             onnxruntime_add_static_library(onnxruntime_mlas_arm64 ${mlas_platform_srcs})
@@ -517,7 +534,10 @@ else()
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
 
         set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/activate_fp16.cpp
+          ${MLAS_SRC_DIR}/dwconv.cpp
           ${MLAS_SRC_DIR}/dgemm.cpp
+          ${MLAS_SRC_DIR}/pooling_fp16.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}

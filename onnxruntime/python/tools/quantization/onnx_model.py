@@ -255,7 +255,9 @@ class ONNXModel:
                     else:
                         kv = attribute_to_kwarg(attr)
                     kwargs.update(kv)
-                node = onnx_helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
+                node = onnx_helper.make_node(  # noqa: PLW2901
+                    node.op_type, node.input, node.output, name=node.name, **kwargs
+                )
 
             if node.op_type == "Gemm":
                 alpha = 1.0
