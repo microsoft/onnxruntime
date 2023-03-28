@@ -155,7 +155,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&
-                                       // (nullptr == mask_index || is_mask_1d_key_seq_len_start) &&
+                                        (true || nullptr == mask_index || is_mask_1d_key_seq_len_start) &&
                                         nullptr == past &&
                                         nullptr == present &&
                                         (nullptr == relative_position_bias || is_good_for_rpb) &&
