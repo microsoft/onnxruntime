@@ -279,8 +279,8 @@ void addOrtValueMethods(pybind11::module& m) {
 #endif
         return obj;
       })
-      .def("to_torch", [](OrtValue& ort_value) {
-        return ToTorch(ort_value);
+      .def("to_torch", [](OrtValue* ort_value) {
+        return py::reinterpret_steal<py::object>(ToTorch(*ort_value));
       }, "Returns a pytorch tensor from ortvalue. The ownership is transferred to torch.")
       .def("from_torch", [](at::Tensor data) {
         return FromTorch(data);
