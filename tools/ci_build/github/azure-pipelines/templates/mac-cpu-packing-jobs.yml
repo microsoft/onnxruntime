@@ -34,7 +34,6 @@ jobs:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
-    CCACHE_DIR_PROTO: $(Pipeline.Workspace)/ccache_proto
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool:
     vmImage: 'macOS-12'
@@ -58,15 +57,13 @@ jobs:
   - script: |
       brew install ccache
       echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
-      mkdir -p $(CCACHE_DIR)
-      mkdir -p $(CCACHE_DIR_PROTO)
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
     condition: eq(${{ parameters.WithCache }}, true)
 
   - task: Cache@2
     inputs:
       key: ' ccache | protobuf | $(Build.SourcesDirectory)/cmake/deps.txt '
-      path: $(CCACHE_DIR_PROTO)
+      path: $(CCACHE_DIR)
       restoreKeys: |
         ccache | protobuf
     displayName: ccache protobuf
@@ -87,6 +84,7 @@ jobs:
   - script: |
       ccache -s
       ccache -z
+      ls -l $(CCACHE_DIR)
     displayName: Show Cache stats and Clear protolbuf stats.
     condition: eq(${{ parameters.WithCache }}, true)
 
