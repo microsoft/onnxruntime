@@ -18,6 +18,7 @@ steps:
   - script: |
       brew install ccache
       echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
+      mkdir -p "${{parameters.CCACHE_DIR}}"
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
 
   - task: Cache@2
