@@ -31,7 +31,6 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/sgemm.cpp
   ${MLAS_SRC_DIR}/halfgemm.cpp
   ${MLAS_SRC_DIR}/qgemm.cpp
-  ${MLAS_SRC_DIR}/dwconv.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
   ${MLAS_SRC_DIR}/convsym.cpp
@@ -75,6 +74,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
+        ${MLAS_SRC_DIR}/dwconv.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -330,6 +330,7 @@ else()
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdot.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdotLd64.S
           ${MLAS_SRC_DIR}/activate_fp16.cpp
+          ${MLAS_SRC_DIR}/dwconv.cpp
           ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp

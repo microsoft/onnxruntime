@@ -65,9 +65,11 @@ jobs:
     displayName: Install python modules
 
   - script: |
+      set -e -x
+      $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -d $(Build.SourcesDirectory)/cmake/deps.txt -p $(Build.BinariesDirectory)/installed      
       python3 $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_ios_framework.py \
         --config ${{parameters.BuildConfig}} \
-        --build_dir $(Build.BinariesDirectory)/ios_framework \
+        --build_dir $(Build.BinariesDirectory)/ios_framework --path_to_protoc_exe $(Build.BinariesDirectory)/installed/bin/protoc \
         $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
       cd $(Build.BinariesDirectory)/ios_framework/framework_out
       zip -r onnxruntime-c.zip .
