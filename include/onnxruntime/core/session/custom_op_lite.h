@@ -84,6 +84,54 @@ using TensorPtr = std::unique_ptr<Custom2::Tensor>;
 
 ///////////////////////////// CreateInputTuple ///////////////////////////////
 
+// delaration
+
+template <size_t ith_input, size_t ith_output, typename... Ts>
+typename std::enable_if<sizeof...(Ts) == 0, std::tuple<>>::type
+CreateInputTuple(OrtKernelContext*, std::vector<TensorPtr>&);
+
+template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+typename std::enable_if<std::is_same<T, OrtKernelContext*>::value, std::tuple<T, Ts...>>::type
+CreateInputTuple(OrtKernelContext*, std::vector<TensorPtr>&);
+
+// tensor inputs
+template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+typename std::enable_if<std::is_same<T, const Custom2::TensorT<float>&>::value, std::tuple<T, Ts...>>::type
+CreateInputTuple(OrtKernelContext*, std::vector<TensorPtr>&);
+
+template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+typename std::enable_if<std::is_same<T, const Custom2::TensorT<int32_t>&>::value, std::tuple<T, Ts...>>::type
+CreateInputTuple(OrtKernelContext*, std::vector<TensorPtr>&);
+
+// span inputs
+template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+typename std::enable_if<std::is_same<T, const Custom2::Span<float>&>::value, std::tuple<T, Ts...>>::type
+CreateInputTuple(OrtKernelContext*, std::vector<TensorPtr>&);
+
+template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+typename std::enable_if<std::is_same<T, const Custom2::Span<int32_t>&>::value, std::tuple<T, Ts...>>::type
+CreateInputTuple(OrtKernelContext*, std::vector<TensorPtr>&);
+
+//scalar inputs
+template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+typename std::enable_if<std::is_same<T, float>::value, std::tuple<T, Ts...>>::type
+CreateInputTuple(OrtKernelContext*, std::vector<TensorPtr>&);
+
+template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+typename std::enable_if<std::is_same<T, int32_t>::value, std::tuple<T, Ts...>>::type
+CreateInputTuple(OrtKernelContext*, std::vector<TensorPtr>&);
+
+// tensor outputs
+template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+typename std::enable_if<std::is_same<T, Custom2::TensorT<float>&>::value, std::tuple<T, Ts...>>::type
+CreateInputTuple(OrtKernelContext*, std::vector<TensorPtr>&);
+
+template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+typename std::enable_if<std::is_same<T, Custom2::TensorT<int32_t>&>::value, std::tuple<T, Ts...>>::type
+CreateInputTuple(OrtKernelContext*, std::vector<TensorPtr>&);
+
+// implementation
+
 template <size_t ith_input, size_t ith_output, typename... Ts>
 typename std::enable_if<sizeof...(Ts) == 0, std::tuple<>>::type
 CreateInputTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors) {
@@ -176,6 +224,50 @@ CreateInputTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors) {
 
 /////////////////////////////  parse args ///////////////////////////////
 
+//delaration
+
+template <typename T, typename... Ts>
+typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, OrtKernelContext*>::value>::type
+ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&);
+
+// tensor inputs
+template <typename T, typename... Ts>
+typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const Custom2::TensorT<float>&>::value>::type
+ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&);
+
+template <typename T, typename... Ts>
+typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const Custom2::TensorT<int32_t>&>::value>::type
+ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&);
+
+// span inputs
+template <typename T, typename... Ts>
+typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const Custom2::Span<float>&>::value>::type
+ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&);
+
+template <typename T, typename... Ts>
+typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const Custom2::Span<int32_t>&>::value>::type
+ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&);
+
+//scalar inputs
+template <typename T, typename... Ts>
+typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, float>::value>::type
+ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&);
+
+template <typename T, typename... Ts>
+typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, int32_t>::value>::type
+ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&);
+
+// outputs
+template <typename T, typename... Ts>
+typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, Custom2::TensorT<float>&>::value>::type
+ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&);
+
+template <typename T, typename... Ts>
+typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, Custom2::TensorT<int32_t>&>::value>::type
+ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&);
+
+//implementation
+
 template <typename... Ts>
 typename std::enable_if<0 == sizeof...(Ts)>::type
 ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&) {
@@ -250,6 +342,7 @@ ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXT
 //////////////////////////// OrtCustomOpBase ////////////////////////////////
 
 struct OrtCustomOpBase : public OrtCustomOp {
+
   OrtCustomOpBase(const char* op_name,
                   const char* execution_provider) : op_name_(op_name),
                                                     execution_provider_(execution_provider) {
