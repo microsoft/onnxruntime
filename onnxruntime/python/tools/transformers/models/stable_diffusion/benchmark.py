@@ -568,7 +568,7 @@ def main():
     args = parse_arguments()
     print(args)
 
-    enable_mem_measure = True if args.provider == "cuda" else False
+    enable_mem_measure = args.provider == "cuda"
 
     start_memory = measure_gpu_memory(None) if enable_mem_measure else -1
     print("GPU memory used before loading models:", start_memory)
