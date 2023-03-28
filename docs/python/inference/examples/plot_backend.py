@@ -34,8 +34,8 @@ rep = backend.prepare(model, device)
 x = np.array([[-1.0, -2.0]], dtype=np.float32)
 try:
     label, proba = rep.run(x)
-    print("label={}".format(label))
-    print("probabilities={}".format(proba))
+    print(f"label={label}")
+    print(f"probabilities={proba}")
 except (RuntimeError, InvalidArgument) as e:
     print(e)
 
@@ -47,8 +47,8 @@ rep = backend.prepare(name, device)
 x = np.array([[-1.0, -2.0]], dtype=np.float32)
 try:
     label, proba = rep.run(x)
-    print("label={}".format(label))
-    print("probabilities={}".format(proba))
+    print(f"label={label}")
+    print(f"probabilities={proba}")
 except (RuntimeError, InvalidArgument) as e:
     print(e)
 

@@ -48,7 +48,7 @@ def get_gemm_bound(
     machine_eps = 2.0 ** -(24 if dtype == "float32" else 11)
 
     # The following implements error bound 5.7 in paper I. C. Ipsen and H. Zhou, “Probabilistic error analysis for
-    # Inner Products,” SIAM Journal on Matrix Analysis and Applications, vol. 41, no. 4, pp. 1726–1741, 2020.
+    # Inner Products,” SIAM Journal on Matrix Analysis and Applications, vol. 41, no. 4, pp. 1726-1741, 2020.
     # NOTE: the bound is not tight for float16 when k is large
     if a_b_positive:
         coeff = 1.0

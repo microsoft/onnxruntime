@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -11,13 +10,8 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import (
-    TestDataFeeds,
-    check_model_correctness,
-    check_op_nodes,
-    check_op_type_count,
-    check_qtype_by_node_type,
-)
+from op_test_utils import check_op_nodes  # noqa: F401
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
@@ -25,7 +19,7 @@ from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 class TestOpAveragePool(unittest.TestCase):
     def input_feeds(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
@@ -76,7 +70,7 @@ class TestOpAveragePool(unittest.TestCase):
         model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, output_model_path)
 
-    def quantize_avgpool_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_avgpool_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "avgpool_fp32.onnx"
         self.construct_model_conv_avgpool(
@@ -92,8 +86,8 @@ class TestOpAveragePool(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_q8_path = "avgpool_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_q8_qdq_path = "avgpool_qdq_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_q8_path = f"avgpool_{activation_type_str}{weight_type_str}.onnx"
+        model_q8_qdq_path = f"avgpool_qdq_{activation_type_str}{weight_type_str}.onnx"
 
         # Verify QOperator mode
         data_reader.rewind()

@@ -23,12 +23,12 @@ class TestDataFeeds(CalibrationDataReader):
         self.iter_next = iter(self.data_feeds)
 
 
-def InputFeedsNegOneZeroOne(n, name2shape):
+def InputFeedsNegOneZeroOne(n, name2shape):  # noqa: N802
     """
     randomize n feed according to shape, its values are from -1, 0, and 1
     """
     input_data_list = []
-    for i in range(n):
+    for _i in range(n):
         inputs = {}
         for name, shape in name2shape.items():
             inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
@@ -48,7 +48,7 @@ def check_op_type_order(testcase, model_to_check, ops):
         testcase.assertEqual(
             ops[node_idx],
             node.op_type,
-            "op {} is not in order. Expected: {}, Actual: {}".format(node_idx, ops[node_idx], node.op_type),
+            f"op {node_idx} is not in order. Expected: {ops[node_idx]}, Actual: {node.op_type}",
         )
 
 
@@ -64,7 +64,7 @@ def check_op_type_count(testcase, model_path, **kwargs):
         testcase.assertEqual(
             kwargs[op_type],
             optype2count[op_type],
-            "op_type {} count not same".format(op_type),
+            f"op_type {op_type} count not same",
         )
 
 

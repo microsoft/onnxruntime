@@ -1,25 +1,24 @@
-## This code is from https://github.com/pytorch/examples/blob/master/mnist/main.py
-## with modification to do training using onnxruntime as backend on cuda device.
-## A private PyTorch build from https://aiinfra.visualstudio.com/Lotus/_git/pytorch (ORTTraining branch) is needed to run the demo.
+# This code is from https://github.com/pytorch/examples/blob/master/mnist/main.py
+# with modification to do training using onnxruntime as backend on cuda device.
+# A private PyTorch build from https://aiinfra.visualstudio.com/Lotus/_git/pytorch (ORTTraining branch) is needed to run the demo.
 
-## Model testing is not complete.
+# Model testing is not complete.
 
-from __future__ import print_function
 import argparse
+
 import torch
-from onnxruntime.training import ORTModule
-from onnxruntime.capi import _pybind_state as torch_ort_eager
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-import numpy as np
-import os
+
+from onnxruntime.capi import _pybind_state as torch_ort_eager
+from onnxruntime.training import ORTModule
 
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNet, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, num_classes)
@@ -38,7 +37,7 @@ def my_loss(x, target):
 def train_with_eager(args, model, optimizer, device, train_loader, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         data_cpu = data.reshape(data.shape[0], -1)
-        data = data_cpu.to(device)
+        data = data_cpu.to(device)  # noqa: PLW2901
 
         x = model(data)
         loss = my_loss(x.cpu(), target)
@@ -82,7 +81,7 @@ def main():
     )
 
     args = parser.parse_args()
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
+    not args.no_cuda and torch.cuda.is_available()
 
     torch.manual_seed(args.seed)
 
@@ -98,7 +97,7 @@ def main():
         shuffle=True,
         **kwargs,
     )
-    test_loader = torch.utils.data.DataLoader(
+    torch.utils.data.DataLoader(
         datasets.MNIST(
             "./data",
             train=False,

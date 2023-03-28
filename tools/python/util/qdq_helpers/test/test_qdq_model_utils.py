@@ -17,7 +17,7 @@ ort_root = script_dir.parents[4]
 
 
 class TestQDQUtils(unittest.TestCase):
-    def test_fix_DQ_with_multiple_consumers(self):
+    def test_fix_DQ_with_multiple_consumers(self):  # noqa: N802
         """ """
         model_path = ort_root / "onnxruntime" / "test" / "testdata" / "qdq_with_multi_consumer_dq_nodes.onnx"
         model = onnx.load(str(model_path))

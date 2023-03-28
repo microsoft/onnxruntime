@@ -10,12 +10,12 @@
 import argparse
 import logging
 import os
-import re
+import re  # noqa: F401
 import sys
 import tempfile
-from collections import deque
+from collections import deque  # noqa: F401
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path  # noqa: F401
 from typing import List
 
 import numpy as np
@@ -73,7 +73,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         """
         Returns a list of shape input names of Reshape nodes.
         """
-        output_name_to_node = self.output_name_to_node()
+        self.output_name_to_node()
 
         shape_inputs = []
         for node in self.model.graph.node:
@@ -107,7 +107,6 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         names_to_evaluate = []
         output_names = [output.name for output in self.model.graph.output]
         for name in extra_outputs:
-
             if self.get_initializer(name) is not None:  # already a constant
                 continue
             names_to_evaluate.append(name)
@@ -272,13 +271,13 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
     def validate_input(self, input: str):
         if not self.find_graph_input(input):
             valid_names = [input.name for input in self.model.graph.input]
-            raise Exception("Input {} does not exist in the graph inputs: {}".format(input, valid_names))
+            raise Exception(f"Input {input} does not exist in the graph inputs: {valid_names}")
 
     def validate_outputs(self, output_names: List[str]):
         valid_names = [output.name for output in self.model.graph.output]
         for name in output_names:
             if name not in valid_names:
-                raise Exception("Output {} does not exist in the graph outputs: {}".format(name, valid_names))
+                raise Exception(f"Output {name} does not exist in the graph outputs: {valid_names}")
 
     def optimize(
         self,

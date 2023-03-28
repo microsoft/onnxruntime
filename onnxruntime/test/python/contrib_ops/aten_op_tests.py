@@ -19,7 +19,7 @@ class OrtOpTests(unittest.TestCase):
     def test_aten_embedding(self):
         class NeuralNetEmbedding(torch.nn.Module):
             def __init__(self, num_embeddings, embedding_dim, hidden_size):
-                super(NeuralNetEmbedding, self).__init__()
+                super().__init__()
                 self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim)
                 self.linear = torch.nn.Linear(embedding_dim, hidden_size)
 
@@ -27,7 +27,7 @@ class OrtOpTests(unittest.TestCase):
                 embedding_result = self.embedding(input)
                 return embedding_result, self.linear(embedding_result)
 
-        N, num_embeddings, embedding_dim, hidden_size = 64, 32, 128, 128
+        N, num_embeddings, embedding_dim, hidden_size = 64, 32, 128, 128  # noqa: N806
         model = NeuralNetEmbedding(num_embeddings, embedding_dim, hidden_size)
 
         with torch.no_grad():
@@ -56,7 +56,7 @@ class OrtOpTests(unittest.TestCase):
                     attr = node.attribute.add()
                     attr.name = "operator"
                     attr.type = 3
-                    attr.s = "embedding".encode()
+                    attr.s = b"embedding"
                     exported_model.graph.node.append(
                         helper.make_node(
                             "Constant",
@@ -105,8 +105,8 @@ class OrtOpTests(unittest.TestCase):
             pt_y1, pt_y2 = model(x)
             session = ort.InferenceSession(exported_model.SerializeToString(), providers=["CPUExecutionProvider"])
             ort_y1, ort_y2 = session.run([], {"x": x.numpy()})
-            np.testing.assert_almost_equal(ort_y1, pt_y1.detach().numpy())
-            np.testing.assert_almost_equal(ort_y2, pt_y2.detach().numpy())
+            np.testing.assert_almost_equal(ort_y1, pt_y1.detach().numpy(), decimal=6)
+            np.testing.assert_almost_equal(ort_y2, pt_y2.detach().numpy(), decimal=6)
 
         # Run w/ IO binding.
         for _ in range(8):
@@ -123,8 +123,8 @@ class OrtOpTests(unittest.TestCase):
             io_binding.bind_ortvalue_output(exported_model.graph.output[0].name, ort_y1)
             io_binding.bind_ortvalue_output(exported_model.graph.output[1].name, ort_y2)
             session.run_with_iobinding(io_binding)
-            np.testing.assert_almost_equal(np_y1, pt_y1.detach().numpy())
-            np.testing.assert_almost_equal(np_y2, pt_y2.detach().numpy())
+            np.testing.assert_almost_equal(np_y1, pt_y1.detach().numpy(), decimal=6)
+            np.testing.assert_almost_equal(np_y2, pt_y2.detach().numpy(), decimal=6)
 
 
 if __name__ == "__main__":

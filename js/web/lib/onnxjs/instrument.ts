@@ -275,7 +275,7 @@ class Event implements Profiler.Event {
       public category: Profiler.EventCategory, public name: string, public startTime: number,
       private endCallback: (e: Event) => void|Promise<void>, public timer?: WebGLQuery, public ctx?: WebGLContext) {}
 
-  end() {
+  async end() {
     return this.endCallback(this);
   }
 
