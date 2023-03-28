@@ -21,19 +21,19 @@ parameters:
   default: 'NPM_packages'
 
 jobs:
-- template: android-java-api-aar.yml
-  parameters:
-    buildConfig: '${{parameters.BuildConfig}}'
-    # Mobile build:
-    #  buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_mobile_aar_build_settings.json'
-    #  includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
-    #  artifactName: 'onnxruntime-android-mobile-aar'
-    #  packageName: 'onnxruntime-mobile'
-    buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
-    artifactName: 'onnxruntime-android-full-aar'
-    job_name_suffix: 'For_React_Native'
-    pool_name: '${{parameters.PoolName}}'
-    packageName: 'onnxruntime-android'
+#- template: android-java-api-aar.yml
+#  parameters:
+#    buildConfig: '${{parameters.BuildConfig}}'
+#    # Mobile build:
+#    #  buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_mobile_aar_build_settings.json'
+#    #  includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
+#    #  artifactName: 'onnxruntime-android-mobile-aar'
+#    #  packageName: 'onnxruntime-mobile'
+#    buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
+#    artifactName: 'onnxruntime-android-full-aar'
+#    job_name_suffix: 'For_React_Native'
+#    pool_name: '${{parameters.PoolName}}'
+#    packageName: 'onnxruntime-android'
 
 - job: ReactNative_CI
   pool:
@@ -101,25 +101,25 @@ jobs:
 
     displayName: Build iOS package
 
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      buildType: 'current'
-      # Mobile build:
-      #  artifactName: 'onnxruntime-android-mobile-aar'
-      #  targetPath: '$(Build.BinariesDirectory)/android-mobile-aar'
-      artifactName: 'onnxruntime-android-full-aar'
-      targetPath: '$(Build.BinariesDirectory)/android-full-aar'
-    displayName: Download Android AAR artifacts
+  #- task: DownloadPipelineArtifact@2
+  #  inputs:
+  #    buildType: 'current'
+  #    # Mobile build:
+  #    #  artifactName: 'onnxruntime-android-mobile-aar'
+  #    #  targetPath: '$(Build.BinariesDirectory)/android-mobile-aar'
+  #    artifactName: 'onnxruntime-android-full-aar'
+  #    targetPath: '$(Build.BinariesDirectory)/android-full-aar'
+  #  displayName: Download Android AAR artifacts
 
-  - task: CopyFiles@2
-    inputs:
-      # Mobile build:
-      #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
-      #  contents: onnxruntime-mobile-*.aar
-      sourceFolder: $(Build.BinariesDirectory)/android-full-aar
-      contents: onnxruntime-android-*.aar
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
-    displayName: Copy Android package to React Native directory
+  #- task: CopyFiles@2
+  #  inputs:
+  #    # Mobile build:
+  #    #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
+  #    #  contents: onnxruntime-mobile-*.aar
+  #    sourceFolder: $(Build.BinariesDirectory)/android-full-aar
+  #    contents: onnxruntime-android-*.aar
+  #    targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
+  #  displayName: Copy Android package to React Native directory
 
   - task: CopyFiles@2
     inputs:
@@ -145,36 +145,36 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
     displayName: yarn js/react_native
 
-  - script: |
-      python3 tools/python/run_android_emulator.py \
-        --android-sdk-root $(ANDROID_SDK_ROOT) \
-        --create-avd --system-image "system-images;android-30;default;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Start Android Emulator
+  #- script: |
+  #    python3 tools/python/run_android_emulator.py \
+  #      --android-sdk-root $(ANDROID_SDK_ROOT) \
+  #      --create-avd --system-image "system-images;android-30;default;x86_64" \
+  #      --start --emulator-extra-args="-partition-size 4096" \
+  #      --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+  #  displayName: Start Android Emulator
 
   - script: |
       xcrun simctl create iPhoneRNTest com.apple.CoreSimulator.SimDeviceType.iPhone-13
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Start iOS Simulator
 
-  - template: android-dump-logs-from-steps.yml
-    parameters:
-      steps:
-      - task: Gradle@3
-        inputs:
-          gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/android/gradlew'
-          workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
-          options: '--stacktrace'
-          tasks: 'connectedDebugAndroidTest'
-          publishJUnitResults: true
-          testResultsFiles: '**/TEST-*.xml'
-          testRunTitle: 'React Native Android Instrumented Test results'
-          javaHomeOption: 'path'
-          jdkDirectory: '$(JAVA_HOME_11_X64)'
-          sonarQubeRunAnalysis: false
-          spotBugsAnalysis: false
-        displayName: Run React Native Android Instrumented Tests
+  #- template: android-dump-logs-from-steps.yml
+  #  parameters:
+  #    steps:
+  #    - task: Gradle@3
+  #      inputs:
+  #        gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/android/gradlew'
+  #        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
+  #        options: '--stacktrace'
+  #        tasks: 'connectedDebugAndroidTest'
+  #        publishJUnitResults: true
+  #        testResultsFiles: '**/TEST-*.xml'
+  #        testRunTitle: 'React Native Android Instrumented Test results'
+  #        javaHomeOption: 'path'
+  #        jdkDirectory: '$(JAVA_HOME_11_X64)'
+  #        sonarQubeRunAnalysis: false
+  #        spotBugsAnalysis: false
+  #      displayName: Run React Native Android Instrumented Tests
 
   - script: |
       pod install
@@ -239,21 +239,21 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Pod install for onnxruntime react native ios e2e tests
 
-  - script: |
-     keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
-       -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-    displayName: Generate a debug keystore
+  #- script: |
+  #   keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
+  #     -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+  #  displayName: Generate a debug keystore
 
-  - task: CopyFiles@2
-    inputs:
-      # Mobile build:
-      #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
-      #  contents: onnxruntime-mobile-*.aar
-     sourceFolder: $(Build.BinariesDirectory)/android-full-aar
-     contents: onnxruntime-*.aar
-     targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
-    displayName: Copy Android package to Android e2e test directory
+  #- task: CopyFiles@2
+  #  inputs:
+  #    # Mobile build:
+  #    #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
+  #    #  contents: onnxruntime-mobile-*.aar
+  #   sourceFolder: $(Build.BinariesDirectory)/android-full-aar
+  #   contents: onnxruntime-*.aar
+  #   targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
+  #  displayName: Copy Android package to Android e2e test directory
 
   #- template: android-dump-logs-from-steps.yml
   #  parameters:
@@ -276,15 +276,15 @@ jobs:
   # TODO: Dump the recorded logs from artifacts/ folder:
   # including detox.log/detox.trace.json and test results
 
-  - script: |
-      detox build --configuration android.emu.release
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: Build React Native Detox Android e2e Tests
+  #- script: |
+  #    detox build --configuration android.emu.release
+  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+  #  displayName: Build React Native Detox Android e2e Tests
   
-  - script: |
-      detox test --record-logs all  --configuration android.emu.release
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: Run React Native Detox Android e2e Tests
+  #- script: |
+  #    detox test --record-logs all  --configuration android.emu.release
+  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+  #  displayName: Run React Native Detox Android e2e Tests
 
   - script: |
       detox build --configuration ios.sim.release
@@ -315,19 +315,19 @@ jobs:
   #  condition: succeededOrFailed()
   #  displayName: Publish React Native iOS e2e Test Results
 
-  - script: |
-      python3 tools/python/run_android_emulator.py \
-        --android-sdk-root $(ANDROID_SDK_ROOT) \
-        --stop \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Stop Android Emulator
-    condition: always()
-
   #- script: |
-  #    xcrun simctl delete iPhoneRNTest
-  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
-  #  displayName: Stop iOS Simulator
+  #    python3 tools/python/run_android_emulator.py \
+  #      --android-sdk-root $(ANDROID_SDK_ROOT) \
+  #      --stop \
+  #      --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+  #  displayName: Stop Android Emulator
   #  condition: always()
+
+  - script: |
+      xcrun simctl delete iPhoneRNTest
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+    displayName: Stop iOS Simulator
+    condition: always()
 
   - script: |
       git restore .
