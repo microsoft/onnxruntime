@@ -1786,35 +1786,35 @@ class SymbolicShapeInference:
                     new_sympy_shape[i] = self._new_symbolic_dim_from_output(node, 0, i)
         else:
             for i, s, e, t in zip(axes, starts, ends, steps):
-                e = handle_negative_index(e, new_sympy_shape[i])
+                e = handle_negative_index(e, new_sympy_shape[i])  # noqa: PLW2901
                 if is_literal(e):
                     if e >= self.int_max_:
-                        e = new_sympy_shape[i]
+                        e = new_sympy_shape[i]  # noqa: PLW2901
                     elif e <= -self.int_max_:
-                        e = 0 if s > 0 else -1
+                        e = 0 if s > 0 else -1  # noqa: PLW2901
                     elif is_literal(new_sympy_shape[i]):
                         if e < 0:
-                            e = max(0, e + new_sympy_shape[i])
-                        e = min(e, new_sympy_shape[i])
+                            e = max(0, e + new_sympy_shape[i])  # noqa: PLW2901
+                        e = min(e, new_sympy_shape[i])  # noqa: PLW2901
                     else:
                         if e > 0:
-                            e = (
+                            e = (  # noqa: PLW2901
                                 sympy.Min(e, new_sympy_shape[i]) if e > 1 else e
                             )  # special case for slicing first to make computation easier
                 else:
                     if is_literal(new_sympy_shape[i]):
-                        e = sympy.Min(e, new_sympy_shape[i])
+                        e = sympy.Min(e, new_sympy_shape[i])  # noqa: PLW2901
                     else:
                         try:
                             if not less_equal(e, new_sympy_shape[i]):
-                                e = new_sympy_shape[i]
+                                e = new_sympy_shape[i]  # noqa: PLW2901
                         except Exception:
                             logger.warning(f"Unable to determine if {e} <= {new_sympy_shape[i]}, treat as equal")
-                            e = new_sympy_shape[i]
+                            e = new_sympy_shape[i]  # noqa: PLW2901
 
-                s = handle_negative_index(s, new_sympy_shape[i])
+                s = handle_negative_index(s, new_sympy_shape[i])  # noqa: PLW2901
                 if is_literal(new_sympy_shape[i]) and is_literal(s):
-                    s = max(0, min(s, new_sympy_shape[i]))
+                    s = max(0, min(s, new_sympy_shape[i]))  # noqa: PLW2901
 
                 new_sympy_shape[i] = sympy.simplify((e - s + t + (-1 if t > 0 else 1)) // t)
 

@@ -567,8 +567,8 @@ class HistogramCollector(CalibrationDataCollector):
         Collect histogram on absolute value
         """
         for tensor, data_arr in name_to_arr.items():
-            data_arr = np.asarray(data_arr)
-            data_arr = data_arr.flatten()
+            data_arr = np.asarray(data_arr)  # noqa: PLW2901
+            data_arr = data_arr.flatten()  # noqa: PLW2901
             if data_arr.size > 0:
                 min_value = np.min(data_arr)
                 max_value = np.max(data_arr)
@@ -576,7 +576,7 @@ class HistogramCollector(CalibrationDataCollector):
                 min_value = 0
                 max_value = 0
 
-            data_arr = np.absolute(data_arr)  # only consider absolute value
+            data_arr = np.absolute(data_arr)  # only consider absolute value  # noqa: PLW2901
 
             if tensor not in self.histogram_dict:
                 # first time it uses num_bins to compute histogram.
@@ -604,8 +604,8 @@ class HistogramCollector(CalibrationDataCollector):
         Collect histogram on real value
         """
         for tensor, data_arr in name_to_arr.items():
-            data_arr = np.asarray(data_arr)
-            data_arr = data_arr.flatten()
+            data_arr = np.asarray(data_arr)  # noqa: PLW2901
+            data_arr = data_arr.flatten()  # noqa: PLW2901
 
             if data_arr.size > 0:
                 min_value = np.min(data_arr)
