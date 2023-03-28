@@ -49,9 +49,9 @@ common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& i
   // extra_plugin_lib_paths has the format of "path_1;path_2....;path_n"
   if (!extra_plugin_lib_paths.empty()) {
     std::stringstream extra_plugin_libs(extra_plugin_lib_paths);
-    std::string lib;
+    onnxruntime::PathString lib;
     while (std::getline(extra_plugin_libs, lib, ';')) {
-      auto status = LoadDynamicLibrary(lib.c_str());
+      auto status = LoadDynamicLibrary(lib);
       if (status == Status::OK()) {
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully load " << lib; 
       } else {
