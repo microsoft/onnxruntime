@@ -46,16 +46,16 @@ common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& i
     }
   }
 
-  // extra_plugin_lib_paths has the format of "path1;path2....;pathn"
+  // extra_plugin_lib_paths has the format of "path_1;path_2....;path_n"
   if (!extra_plugin_lib_paths.empty()) {
     std::stringstream extra_plugin_libs(extra_plugin_lib_paths);
     std::string lib;
     while (std::getline(extra_plugin_libs, lib, ';')) {
-      LIBTYPE handle = OPENLIB(lib.c_str());
-      if (handle) {
+      auto status = LoadDynamicLibrary(lib.c_str());
+      if (status == Status::OK()) {
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully load " << lib; 
       } else {
-        LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't load " << lib << ", please make sure the path is correct."; 
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP]" << status.ToString();
       }
     }
   }

@@ -12,7 +12,7 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-//common::Status CreateTensorRTCustomOpDomainList(std::string extra_plugin_lib_paths, std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list);
+common::Status LoadDynamicLibrary(onnxruntime::PathString library_name);
 common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& info);
 void ReleaseTensorRTCustomOpDomain(OrtProviderCustomOpDomain* domain);
 void ReleaseTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list);

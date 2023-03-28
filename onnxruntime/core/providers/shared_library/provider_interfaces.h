@@ -893,6 +893,10 @@ struct ProviderHost {
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  virtual Status LoadDynamicLibrary(onnxruntime::PathString library_name) = 0;
+#endif
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)
