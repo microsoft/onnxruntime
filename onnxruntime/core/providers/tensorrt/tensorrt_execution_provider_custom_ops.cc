@@ -49,7 +49,11 @@ common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& i
   // extra_plugin_lib_paths has the format of "path_1;path_2....;path_n"
   if (!extra_plugin_lib_paths.empty()) {
     std::stringstream extra_plugin_libs(extra_plugin_lib_paths);
-    onnxruntime::PathString lib;
+#ifdef _WIN32
+    std::wstring lib;
+#else
+    std::string lib;
+#endif
     while (std::getline(extra_plugin_libs, lib, ';')) {
       auto status = LoadDynamicLibrary(lib);
       if (status == Status::OK()) {
