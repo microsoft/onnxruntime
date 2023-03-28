@@ -31,7 +31,9 @@ struct FuseImpl {
 struct FuseOp {
   FuseOp(const OrtApi* ort_api, const OrtKernelInfo* info) {
     int64_t fuse_algo;
-    ort_api->KernelInfoGetAttribute_int64(info, "fuse_algo", &fuse_algo);
+    auto status = ort_api->KernelInfoGetAttribute_int64(info, "fuse_algo", &fuse_algo);
+    //todo - check status
+    ort_api->ReleaseStatus(status);
     fuse_impl_ = std::make_unique<FuseImpl<float>>((FuseImpl<float>::FuseAlgo)fuse_algo);
   }
 
