@@ -69,7 +69,7 @@ class ONNXOp:
 
         for i in self.inputs:
             if isinstance(i, ONNXOp):
-                i = i.eval(ctx)
+                i = i.eval(ctx)  # noqa: PLW2901
             evaluated_inputs.append(i)
 
         self.inputs = evaluated_inputs
@@ -343,9 +343,9 @@ class ORTGen:
             if isinstance(op_input, Outputs):
                 if op_input.count != 1:
                     raise FunctionGenerationError(cpp_func, "multiple outputs not supported")
-                op_input = f"{op_input}[0]"
+                op_input = f"{op_input}[0]"  # noqa: PLW2901
             else:
-                op_input = f"ort_input_{onnx_op_index}_{op_input}"
+                op_input = f"ort_input_{onnx_op_index}_{op_input}"  # noqa: PLW2901
             writer.writeline(f"std::move({op_input}),")
         writer.pop_indent()
         writer.write(f"}}, {onnx_op.outputs}, {attrs_arg_ptr}")
