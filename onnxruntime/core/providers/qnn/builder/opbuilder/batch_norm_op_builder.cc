@@ -50,25 +50,25 @@ Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0");
     const size_t input_rank = input_shape.size();
 
-    ORT_RETURN_IF_NOT(input_rank <= 2 || input_rank > 4, 
+    ORT_RETURN_IF(input_rank <= 2 || input_rank > 4, 
                       "QNN BatchNorm only supports input ranks of size 3 or 4.");
 
     const uint32_t num_channels = input_shape[1];
 
     std::vector<uint32_t> scale_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[1].node_arg, scale_shape), "Cannot get shape of input 1 (scale)");
-    ORT_RETURN_IF_NOT(scale_shape.size() != 1 || scale_shape[0] != num_channels,
-                      "QNN BatchNorm input 1 (scale) must have 1D shape [channel].");
+    ORT_RETURN_IF(scale_shape.size() != 1 || scale_shape[0] != num_channels,
+                  "QNN BatchNorm input 1 (scale) must have 1D shape [channel].");
 
     std::vector<uint32_t> bias_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[2].node_arg, bias_shape), "Cannot get shape of input 2 (bias)");
-    ORT_RETURN_IF_NOT(bias_shape.size() != 1 || bias_shape[0] != num_channels,
-                      "QNN BatchNorm input 2 (bias) must have 1D shape [channel].");
+    ORT_RETURN_IF(bias_shape.size() != 1 || bias_shape[0] != num_channels,
+                  "QNN BatchNorm input 2 (bias) must have 1D shape [channel].");
 
     std::vector<uint32_t> mean_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[3].node_arg, mean_shape), "Cannot get shape of input 3 (mean)");
-    ORT_RETURN_IF_NOT(mean_shape.size() != 1 || mean_shape[0] != num_channels,
-                      "QNN BatchNorm input 3 (mean) must have 1D shape [channel].");
+    ORT_RETURN_IF(mean_shape.size() != 1 || mean_shape[0] != num_channels,
+                  "QNN BatchNorm input 3 (mean) must have 1D shape [channel].");
 
     std::vector<uint32_t> var_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[4].node_arg, var_shape), "Cannot get shape of input 4 (var)");
