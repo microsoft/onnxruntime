@@ -594,7 +594,7 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
 endif()
 
 if(onnxruntime_USE_QNN)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/qnn/*)
+  list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_qnn)

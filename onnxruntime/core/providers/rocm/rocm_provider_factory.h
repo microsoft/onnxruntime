@@ -29,8 +29,8 @@ struct ProviderInfo_ROCM {
   virtual void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
+  virtual void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
 
   virtual void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) = 0;
   virtual void rocmMemcpy_HostToDevice(void* dst, const void* src, size_t count) = 0;

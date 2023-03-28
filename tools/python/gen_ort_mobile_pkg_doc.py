@@ -25,7 +25,7 @@ def generate_docs(output_file, required_ops, op_type_impl_filter):
         assert op_type_impl_filter.__class__ is GloballyAllowedTypesOpTypeImplFilter
         global_types = op_type_impl_filter.global_type_list()
         for type in sorted(global_types):
-            out.write("  - {}\n".format(type))
+            out.write(f"  - {type}\n")
         out.write("\n")
         out.write("NOTE: Operators used to manipulate dimensions and indices will support int32 and int64.\n\n")
 
@@ -36,7 +36,7 @@ def generate_docs(output_file, required_ops, op_type_impl_filter):
             for opset in sorted(required_ops[domain].keys()):
                 str_opset = str(opset)
                 for op in required_ops[domain][opset]:
-                    op_with_domain = "{}:{}".format(domain, op)
+                    op_with_domain = f"{domain}:{op}"
                     if op_with_domain not in op_opsets:
                         op_opsets[op_with_domain] = []
 
@@ -46,7 +46,7 @@ def generate_docs(output_file, required_ops, op_type_impl_filter):
         out.write("|Operator|Opsets|\n")
         out.write("|--------|------|\n")
         for domain, op_opsets in domain_op_opsets:
-            out.write("|**{}**||\n".format(domain))
+            out.write(f"|**{domain}**||\n")
             for op in sorted(op_opsets.keys()):
                 out.write("|{}|{}|\n".format(op, ", ".join(op_opsets[op])))
             out.write("|||\n")

@@ -18,7 +18,7 @@ from onnxruntime.capi import _pybind_state as C
 
 class SimpleNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(SimpleNet, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -36,7 +36,7 @@ class SimpleNet(torch.nn.Module):
 
 class SimpleModelWithMSELoss(onnxblock.Model):
     def __init__(self):
-        super(SimpleModelWithMSELoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.MSELoss()
 
     def build(self, output_name):
@@ -45,7 +45,7 @@ class SimpleModelWithMSELoss(onnxblock.Model):
 
 class SimpleModelWithCrossEntropyLoss(onnxblock.Model):
     def __init__(self):
-        super(SimpleModelWithCrossEntropyLoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.CrossEntropyLoss()
 
     def build(self, output_name):
@@ -54,7 +54,7 @@ class SimpleModelWithCrossEntropyLoss(onnxblock.Model):
 
 class SimpleTrainingModelWithMSELoss(onnxblock.TrainingModel):
     def __init__(self):
-        super(SimpleTrainingModelWithMSELoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.MSELoss()
 
     def build(self, output_name):
@@ -63,7 +63,7 @@ class SimpleTrainingModelWithMSELoss(onnxblock.TrainingModel):
 
 class SimpleTrainingModelWithCrossEntropyLoss(onnxblock.TrainingModel):
     def __init__(self):
-        super(SimpleTrainingModelWithCrossEntropyLoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.CrossEntropyLoss()
 
     def build(self, output_name):
@@ -72,7 +72,7 @@ class SimpleTrainingModelWithCrossEntropyLoss(onnxblock.TrainingModel):
 
 class SimpleModelWithBCEWithLogitsLoss(onnxblock.Model):
     def __init__(self):
-        super(SimpleModelWithBCEWithLogitsLoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.BCEWithLogitsLoss()
 
     def build(self, output_name):
@@ -81,7 +81,7 @@ class SimpleModelWithBCEWithLogitsLoss(onnxblock.Model):
 
 class SimpleTrainingModelWithBCEWithLogitsLoss(onnxblock.TrainingModel):
     def __init__(self):
-        super(SimpleTrainingModelWithBCEWithLogitsLoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.BCEWithLogitsLoss()
 
     def build(self, output_name):
@@ -642,7 +642,7 @@ def test_weighted_average_model_composition(model_type):
     # Given
     class TwoOutputNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(TwoOutputNet, self).__init__()
+            super().__init__()
 
             self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
             self.relu1 = torch.nn.ReLU()
@@ -659,7 +659,7 @@ def test_weighted_average_model_composition(model_type):
 
     class WeightedAvg(model_type):
         def __init__(self, w1, w2):
-            super(WeightedAvg, self).__init__()
+            super().__init__()
 
             self.loss1 = onnxblock.loss.CrossEntropyLoss()
             self.loss2 = onnxblock.loss.CrossEntropyLoss()
