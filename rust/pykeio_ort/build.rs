@@ -449,7 +449,11 @@ fn prepare_libort_dir() -> (PathBuf, bool) {
 		"compile" => {
 			(prepare_libort_dir_compiled(), false)
 		}
-		_ => panic!("[ort] unknown strategy: {} (valid options are `download` or `system`)", strategy.unwrap_or_else(|_| "unknown".to_string()))
+		"no_link" => {
+			// Useful if the library will be tested in other places, e.g. XCode
+			return (PathBuf::from(env::var("OUT_DIR").unwrap()), false);
+		}
+		_ => panic!("[ort] unknown strategy: {} (valid options are `download`, `system`, `compile` or `no_link`)", strategy.unwrap_or_else(|_| "unknown".to_string()))
 	}
 }
 
