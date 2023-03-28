@@ -45,7 +45,7 @@ jobs:
       architecture: $(buildArch)
      
   - task: PowerShell@2
-    displayName: 'Install ONNX'
+    displayName: 'Install Protoc for ARM64'
     inputs:
       filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_protoc.ps1'
       workingDirectory: '$(Build.BinariesDirectory)'
