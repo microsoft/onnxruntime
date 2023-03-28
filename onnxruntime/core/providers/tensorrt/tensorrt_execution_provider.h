@@ -91,7 +91,7 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
-  std::unordered_map<std::string, std::unordered_map<size_t, std::vector<int64_t>>> input_shape_profiles;//slx
+  std::unordered_map<std::string, std::unordered_map<size_t, std::vector<int64_t>>> input_shape_profiles;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable;
   bool int8_enable;
@@ -177,8 +177,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
   int (*engine_encryption_)(const char*, char*, size_t);
-  bool multiple_profiles_enable_ = true;//slx
-  //nvinfer1::IOptimizationProfile* trt_profile_ = nullptr;//slx										 
+  bool multiple_profiles_enable_ = true;
+  //nvinfer1::IOptimizationProfile* trt_profile_ = nullptr;									 
   size_t nbBindings_;
   size_t endBindingIndex_;
 

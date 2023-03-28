@@ -195,7 +195,7 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
   }
 }
 
-//slx
+
 bool ReadProfile(const std::string file_name, std::vector<std::pair<std::string, std::vector<int>>>& profiles) {
   std::ifstream infile(file_name, std::ios::binary | std::ios::in);
   if (!infile) {
