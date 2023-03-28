@@ -615,13 +615,16 @@ class GraphImpl implements Graph, Graph.Transformer {
     // Updating this._allData according to the new this._nodes
     for (let i = 0; i < this._allData.length; i++) {
       const currentData = this._allData[i];
-      if (currentData._from !== undefined) {
+      if (currentData._from !== undefined && currentData._from !== -1 && currentData._from !== -2) {
         currentData._from = newIndices[currentData._from];
       }
 
       for (let j = 0; j < currentData._to.length; j++) {
-        // need to see if this._allData[i]._to[i] has special value (-1,-2)
-        currentData._to[j] = newIndices[currentData._to[j]];
+        if(currentData._to[j]>=0){
+          currentData._to[j] = newIndices[currentData._to[j]];
+        }else{
+          throw new Error('Trying to update a removed node');
+        }
       }
     }
 
@@ -692,12 +695,14 @@ class GraphImpl implements Graph, Graph.Transformer {
     const nodesConsumingOutput = this._allData[outputValueIndex].to;
 
     // remove this node from the to property of the input Value
-    const delIndex = this._allData[inputValueIndex].to.indexOf(nodeIndex);
-    // should not happen
-    if (delIndex === -1) {
-      throw new Error('The Value object doesn\'t have the current Node in it\'s \'to\' property ');
+    for (let i = 0; i < node.inputs.length; i++) {
+      const delIndex = this._allData[node.inputs[i]].to.indexOf(nodeIndex);
+      // should not happen
+      if (delIndex === -1) {
+        throw new Error('The Value object doesn\'t have the current Node in it\'s \'to\' property ');
+      }
+      this._allData[node.inputs[i]].to.splice(delIndex, 1);
     }
-    this._allData[inputValueIndex].to.splice(delIndex, 1);
 
     // clear node indices consuming this output Value
     this._allData[outputValueIndex]._to = [];
