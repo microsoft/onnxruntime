@@ -9,7 +9,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import numpy
 import onnx
@@ -17,15 +17,13 @@ import torch
 from past_helper import PastKeyValuesHelper
 from whisper_decoder import WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderInputs
-from transformers import WhisperConfig, file_utils
+from transformers import WhisperConfig
 
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from onnx_model import OnnxModel  # noqa: E402
 from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
-
-import pdb
 
 logger = logging.getLogger(__name__)
 

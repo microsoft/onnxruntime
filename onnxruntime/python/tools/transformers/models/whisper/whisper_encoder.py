@@ -6,11 +6,10 @@
 
 import logging
 import os
-import random
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Union
+from typing import List
 
 import numpy
 import onnx
@@ -148,7 +147,6 @@ class WhisperEncoderHelper:
         inputs = WhisperEncoderInputs.create_dummy(
             batch_size=4,
             sequence_length=11,
-            vocab_size=model.config.vocab_size,
             device=device,
             use_int32_inputs=use_int32_inputs,
         )

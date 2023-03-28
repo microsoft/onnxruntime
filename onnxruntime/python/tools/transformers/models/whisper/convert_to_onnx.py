@@ -267,7 +267,7 @@ def main():
     )
 
     if (args.chain_model):
-        logger.info(f"Chaining model ... :")
+        logger.info("Chaining model ... :")
         args.beam_model_output_dir = WhisperHelper.get_onnx_path(
             output_dir,
             args.model_name_or_path,

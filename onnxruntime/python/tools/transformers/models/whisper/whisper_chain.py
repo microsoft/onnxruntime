@@ -1,18 +1,7 @@
-import os
-
-import re
-
 import onnx
-import pdb
 from onnx import TensorProto, helper
 
 from transformers import WhisperConfig
-
-import argparse
-import logging
-import sys
-
-import copy
 
 def add_attention_mask(model):
     # Add attention mask - required by BeamSearch but unused in Pytorch
@@ -49,7 +38,7 @@ def chain_model(args):
     ]
     beam_outputs = ["sequences"]
 
-    node = helper.make_node("BeamSearch", inputs=beam_inputs, outputs=beam_outputs, name=f"BeamSearch_zcode")
+    node = helper.make_node("BeamSearch", inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
     node.domain = "com.microsoft"
     node.attribute.extend(
         [
