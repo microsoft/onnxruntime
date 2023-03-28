@@ -34,6 +34,7 @@ jobs:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    CCACHE_DIR_PROTO: $(Pipeline.Workspace)/ccache_proto
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool:
     vmImage: 'macOS-12'
@@ -63,7 +64,7 @@ jobs:
   - task: Cache@2
     inputs:
       key: ' ccache | protobuf | $(Build.SourcesDirectory)/cmake/deps.txt '
-      path: $(CCACHE_DIR)/protobuf
+      path: $(CCACHE_DIR_PROTO)
       restoreKeys: |
         ccache | protobuf
     displayName: ccache protobuf
@@ -90,7 +91,7 @@ jobs:
   - task: Cache@2
     inputs:
       key: ' "$(TODAY)" | ccache  | onnxruntime | "$(Build.SourceVersion)" '
-      path: $(CCACHE_DIR)/ort
+      path: $(CCACHE_DIR)
       restoreKeys: |
         "$(TODAY)" | ccache | onnxruntime
     displayName: ccache MacOS Build
