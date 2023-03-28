@@ -3,7 +3,7 @@
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct __BindgenBitfieldUnit<Storage> {
-	storage: Storage,
+	storage: Storage
 }
 impl<Storage> __BindgenBitfieldUnit<Storage> {
 	#[inline]
@@ -13,7 +13,7 @@ impl<Storage> __BindgenBitfieldUnit<Storage> {
 }
 impl<Storage> __BindgenBitfieldUnit<Storage>
 where
-	Storage: AsRef<[u8]> + AsMut<[u8]>,
+	Storage: AsRef<[u8]> + AsMut<[u8]>
 {
 	#[inline]
 	pub fn get_bit(&self, index: usize) -> bool {
@@ -285,6 +285,7 @@ pub const __DRIVERKIT_20_0: u32 = 200000;
 pub const __DRIVERKIT_21_0: u32 = 210000;
 pub const __IPHONE_OS_VERSION_MAX_ALLOWED: u32 = 160100;
 pub const __ENABLE_LEGACY_IPHONE_AVAILABILITY: u32 = 1;
+pub const __ENABLE_LEGACY_MAC_AVAILABILITY: u32 = 1;
 pub const __DARWIN_ONLY_64_BIT_INO_T: u32 = 0;
 pub const __DARWIN_ONLY_UNIX_CONFORMANCE: u32 = 1;
 pub const __DARWIN_ONLY_VERS_1050: u32 = 0;
@@ -586,7 +587,7 @@ pub const EXIT_SUCCESS: u32 = 0;
 pub const RAND_MAX: u32 = 2147483647;
 pub const _USE_FORTIFY_LEVEL: u32 = 2;
 pub const __HAS_FIXED_CHK_PROTOTYPES: u32 = 1;
-pub const ORT_API_VERSION: u32 = 15;
+pub const ORT_API_VERSION: u32 = 14;
 pub type __int8_t = ::std::os::raw::c_schar;
 pub type __uint8_t = ::std::os::raw::c_uchar;
 pub type __int16_t = ::std::os::raw::c_short;
@@ -602,7 +603,7 @@ pub type __darwin_ct_rune_t = ::std::os::raw::c_int;
 #[derive(Copy, Clone)]
 pub union __mbstate_t {
 	pub __mbstate8: [::std::os::raw::c_char; 128usize],
-	pub _mbstateL: ::std::os::raw::c_longlong,
+	pub _mbstateL: ::std::os::raw::c_longlong
 }
 #[test]
 fn bindgen_test_layout___mbstate_t() {
@@ -657,7 +658,7 @@ pub type __darwin_uuid_string_t = [::std::os::raw::c_char; 37usize];
 pub struct __darwin_pthread_handler_rec {
 	pub __routine: ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>,
 	pub __arg: *mut ::std::os::raw::c_void,
-	pub __next: *mut __darwin_pthread_handler_rec,
+	pub __next: *mut __darwin_pthread_handler_rec
 }
 #[test]
 fn bindgen_test_layout___darwin_pthread_handler_rec() {
@@ -685,7 +686,7 @@ fn bindgen_test_layout___darwin_pthread_handler_rec() {
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_attr_t {
 	pub __sig: ::std::os::raw::c_long,
-	pub __opaque: [::std::os::raw::c_char; 56usize],
+	pub __opaque: [::std::os::raw::c_char; 56usize]
 }
 #[test]
 fn bindgen_test_layout__opaque_pthread_attr_t() {
@@ -708,7 +709,7 @@ fn bindgen_test_layout__opaque_pthread_attr_t() {
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_cond_t {
 	pub __sig: ::std::os::raw::c_long,
-	pub __opaque: [::std::os::raw::c_char; 40usize],
+	pub __opaque: [::std::os::raw::c_char; 40usize]
 }
 #[test]
 fn bindgen_test_layout__opaque_pthread_cond_t() {
@@ -731,7 +732,7 @@ fn bindgen_test_layout__opaque_pthread_cond_t() {
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_condattr_t {
 	pub __sig: ::std::os::raw::c_long,
-	pub __opaque: [::std::os::raw::c_char; 8usize],
+	pub __opaque: [::std::os::raw::c_char; 8usize]
 }
 #[test]
 fn bindgen_test_layout__opaque_pthread_condattr_t() {
@@ -754,7 +755,7 @@ fn bindgen_test_layout__opaque_pthread_condattr_t() {
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_mutex_t {
 	pub __sig: ::std::os::raw::c_long,
-	pub __opaque: [::std::os::raw::c_char; 56usize],
+	pub __opaque: [::std::os::raw::c_char; 56usize]
 }
 #[test]
 fn bindgen_test_layout__opaque_pthread_mutex_t() {
@@ -777,7 +778,7 @@ fn bindgen_test_layout__opaque_pthread_mutex_t() {
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_mutexattr_t {
 	pub __sig: ::std::os::raw::c_long,
-	pub __opaque: [::std::os::raw::c_char; 8usize],
+	pub __opaque: [::std::os::raw::c_char; 8usize]
 }
 #[test]
 fn bindgen_test_layout__opaque_pthread_mutexattr_t() {
@@ -800,7 +801,7 @@ fn bindgen_test_layout__opaque_pthread_mutexattr_t() {
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_once_t {
 	pub __sig: ::std::os::raw::c_long,
-	pub __opaque: [::std::os::raw::c_char; 8usize],
+	pub __opaque: [::std::os::raw::c_char; 8usize]
 }
 #[test]
 fn bindgen_test_layout__opaque_pthread_once_t() {
@@ -823,7 +824,7 @@ fn bindgen_test_layout__opaque_pthread_once_t() {
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_rwlock_t {
 	pub __sig: ::std::os::raw::c_long,
-	pub __opaque: [::std::os::raw::c_char; 192usize],
+	pub __opaque: [::std::os::raw::c_char; 192usize]
 }
 #[test]
 fn bindgen_test_layout__opaque_pthread_rwlock_t() {
@@ -846,7 +847,7 @@ fn bindgen_test_layout__opaque_pthread_rwlock_t() {
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_rwlockattr_t {
 	pub __sig: ::std::os::raw::c_long,
-	pub __opaque: [::std::os::raw::c_char; 16usize],
+	pub __opaque: [::std::os::raw::c_char; 16usize]
 }
 #[test]
 fn bindgen_test_layout__opaque_pthread_rwlockattr_t() {
@@ -870,7 +871,7 @@ fn bindgen_test_layout__opaque_pthread_rwlockattr_t() {
 pub struct _opaque_pthread_t {
 	pub __sig: ::std::os::raw::c_long,
 	pub __cleanup_stack: *mut __darwin_pthread_handler_rec,
-	pub __opaque: [::std::os::raw::c_char; 8176usize],
+	pub __opaque: [::std::os::raw::c_char; 8176usize]
 }
 #[test]
 fn bindgen_test_layout__opaque_pthread_t() {
@@ -945,7 +946,7 @@ pub struct __darwin_i386_thread_state {
 	pub __ds: ::std::os::raw::c_uint,
 	pub __es: ::std::os::raw::c_uint,
 	pub __fs: ::std::os::raw::c_uint,
-	pub __gs: ::std::os::raw::c_uint,
+	pub __gs: ::std::os::raw::c_uint
 }
 #[test]
 fn bindgen_test_layout___darwin_i386_thread_state() {
@@ -1039,7 +1040,7 @@ fn bindgen_test_layout___darwin_i386_thread_state() {
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_fp_control {
 	pub _bitfield_align_1: [u8; 0],
-	pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>,
+	pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>
 }
 #[test]
 fn bindgen_test_layout___darwin_fp_control() {
@@ -1144,7 +1145,7 @@ impl __darwin_fp_control {
 		__undfl: ::std::os::raw::c_ushort,
 		__precis: ::std::os::raw::c_ushort,
 		__pc: ::std::os::raw::c_ushort,
-		__rc: ::std::os::raw::c_ushort,
+		__rc: ::std::os::raw::c_ushort
 	) -> __BindgenBitfieldUnit<[u8; 2usize]> {
 		let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 2usize]> = Default::default();
 		__bindgen_bitfield_unit.set(0usize, 1u8, {
@@ -1188,7 +1189,7 @@ pub type __darwin_fp_control_t = __darwin_fp_control;
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_fp_status {
 	pub _bitfield_align_1: [u8; 0],
-	pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>,
+	pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>
 }
 #[test]
 fn bindgen_test_layout___darwin_fp_status() {
@@ -1365,7 +1366,7 @@ impl __darwin_fp_status {
 		__c2: ::std::os::raw::c_ushort,
 		__tos: ::std::os::raw::c_ushort,
 		__c3: ::std::os::raw::c_ushort,
-		__busy: ::std::os::raw::c_ushort,
+		__busy: ::std::os::raw::c_ushort
 	) -> __BindgenBitfieldUnit<[u8; 2usize]> {
 		let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 2usize]> = Default::default();
 		__bindgen_bitfield_unit.set(0usize, 1u8, {
@@ -1432,7 +1433,7 @@ pub type __darwin_fp_status_t = __darwin_fp_status;
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_mmst_reg {
 	pub __mmst_reg: [::std::os::raw::c_char; 10usize],
-	pub __mmst_rsrv: [::std::os::raw::c_char; 6usize],
+	pub __mmst_rsrv: [::std::os::raw::c_char; 6usize]
 }
 #[test]
 fn bindgen_test_layout___darwin_mmst_reg() {
@@ -1454,7 +1455,7 @@ fn bindgen_test_layout___darwin_mmst_reg() {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_xmm_reg {
-	pub __xmm_reg: [::std::os::raw::c_char; 16usize],
+	pub __xmm_reg: [::std::os::raw::c_char; 16usize]
 }
 #[test]
 fn bindgen_test_layout___darwin_xmm_reg() {
@@ -1471,7 +1472,7 @@ fn bindgen_test_layout___darwin_xmm_reg() {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_ymm_reg {
-	pub __ymm_reg: [::std::os::raw::c_char; 32usize],
+	pub __ymm_reg: [::std::os::raw::c_char; 32usize]
 }
 #[test]
 fn bindgen_test_layout___darwin_ymm_reg() {
@@ -1488,7 +1489,7 @@ fn bindgen_test_layout___darwin_ymm_reg() {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_zmm_reg {
-	pub __zmm_reg: [::std::os::raw::c_char; 64usize],
+	pub __zmm_reg: [::std::os::raw::c_char; 64usize]
 }
 #[test]
 fn bindgen_test_layout___darwin_zmm_reg() {
@@ -1505,7 +1506,7 @@ fn bindgen_test_layout___darwin_zmm_reg() {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_opmask_reg {
-	pub __opmask_reg: [::std::os::raw::c_char; 8usize],
+	pub __opmask_reg: [::std::os::raw::c_char; 8usize]
 }
 #[test]
 fn bindgen_test_layout___darwin_opmask_reg() {
@@ -1553,7 +1554,7 @@ pub struct __darwin_i386_float_state {
 	pub __fpu_xmm6: __darwin_xmm_reg,
 	pub __fpu_xmm7: __darwin_xmm_reg,
 	pub __fpu_rsrv4: [::std::os::raw::c_char; 224usize],
-	pub __fpu_reserved1: ::std::os::raw::c_int,
+	pub __fpu_reserved1: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout___darwin_i386_float_state() {
@@ -1765,7 +1766,7 @@ pub struct __darwin_i386_avx_state {
 	pub __fpu_ymmh4: __darwin_xmm_reg,
 	pub __fpu_ymmh5: __darwin_xmm_reg,
 	pub __fpu_ymmh6: __darwin_xmm_reg,
-	pub __fpu_ymmh7: __darwin_xmm_reg,
+	pub __fpu_ymmh7: __darwin_xmm_reg
 }
 #[test]
 fn bindgen_test_layout___darwin_i386_avx_state() {
@@ -2038,7 +2039,7 @@ pub struct __darwin_i386_avx512_state {
 	pub __fpu_zmmh4: __darwin_ymm_reg,
 	pub __fpu_zmmh5: __darwin_ymm_reg,
 	pub __fpu_zmmh6: __darwin_ymm_reg,
-	pub __fpu_zmmh7: __darwin_ymm_reg,
+	pub __fpu_zmmh7: __darwin_ymm_reg
 }
 #[test]
 fn bindgen_test_layout___darwin_i386_avx512_state() {
@@ -2338,7 +2339,7 @@ pub struct __darwin_i386_exception_state {
 	pub __trapno: __uint16_t,
 	pub __cpu: __uint16_t,
 	pub __err: __uint32_t,
-	pub __faultvaddr: __uint32_t,
+	pub __faultvaddr: __uint32_t
 }
 #[test]
 fn bindgen_test_layout___darwin_i386_exception_state() {
@@ -2377,7 +2378,7 @@ pub struct __darwin_x86_debug_state32 {
 	pub __dr4: ::std::os::raw::c_uint,
 	pub __dr5: ::std::os::raw::c_uint,
 	pub __dr6: ::std::os::raw::c_uint,
-	pub __dr7: ::std::os::raw::c_uint,
+	pub __dr7: ::std::os::raw::c_uint
 }
 #[test]
 fn bindgen_test_layout___darwin_x86_debug_state32() {
@@ -2433,7 +2434,7 @@ pub struct __x86_instruction_state {
 	pub __insn_offset: ::std::os::raw::c_int,
 	pub __out_of_synch: ::std::os::raw::c_int,
 	pub __insn_bytes: [__uint8_t; 2380usize],
-	pub __insn_cacheline: [__uint8_t; 64usize],
+	pub __insn_cacheline: [__uint8_t; 64usize]
 }
 #[test]
 fn bindgen_test_layout___x86_instruction_state() {
@@ -2474,7 +2475,7 @@ pub struct __last_branch_record {
 	pub __to_ip: __uint64_t,
 	pub _bitfield_align_1: [u16; 0],
 	pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
-	pub __bindgen_padding_0: u32,
+	pub __bindgen_padding_0: u32
 }
 #[test]
 fn bindgen_test_layout___last_branch_record() {
@@ -2555,7 +2556,7 @@ impl __last_branch_record {
 		__tsx_abort: __uint32_t,
 		__in_tsx: __uint32_t,
 		__cycle_count: __uint32_t,
-		__reserved: __uint32_t,
+		__reserved: __uint32_t
 	) -> __BindgenBitfieldUnit<[u8; 4usize]> {
 		let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
 		__bindgen_bitfield_unit.set(0usize, 1u8, {
@@ -2587,7 +2588,7 @@ pub struct __last_branch_state {
 	pub __lbr_count: ::std::os::raw::c_int,
 	pub _bitfield_align_1: [u32; 0],
 	pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
-	pub __lbrs: [__last_branch_record; 32usize],
+	pub __lbrs: [__last_branch_record; 32usize]
 }
 #[test]
 fn bindgen_test_layout___last_branch_state() {
@@ -2644,7 +2645,7 @@ impl __last_branch_state {
 	pub fn new_bitfield_1(
 		__lbr_supported_tsx: __uint32_t,
 		__lbr_supported_cycle_count: __uint32_t,
-		__reserved: __uint32_t,
+		__reserved: __uint32_t
 	) -> __BindgenBitfieldUnit<[u8; 4usize]> {
 		let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
 		__bindgen_bitfield_unit.set(0usize, 1u8, {
@@ -2665,7 +2666,7 @@ impl __last_branch_state {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __x86_pagein_state {
-	pub __pagein_error: ::std::os::raw::c_int,
+	pub __pagein_error: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout___x86_pagein_state() {
@@ -2702,7 +2703,7 @@ pub struct __darwin_x86_thread_state64 {
 	pub __rflags: __uint64_t,
 	pub __cs: __uint64_t,
 	pub __fs: __uint64_t,
-	pub __gs: __uint64_t,
+	pub __gs: __uint64_t
 }
 #[test]
 fn bindgen_test_layout___darwin_x86_thread_state64() {
@@ -2823,7 +2824,7 @@ pub struct __darwin_x86_thread_full_state64 {
 	pub __ds: __uint64_t,
 	pub __es: __uint64_t,
 	pub __ss: __uint64_t,
-	pub __gsbase: __uint64_t,
+	pub __gsbase: __uint64_t
 }
 #[test]
 fn bindgen_test_layout___darwin_x86_thread_full_state64() {
@@ -2899,7 +2900,7 @@ pub struct __darwin_x86_float_state64 {
 	pub __fpu_xmm14: __darwin_xmm_reg,
 	pub __fpu_xmm15: __darwin_xmm_reg,
 	pub __fpu_rsrv4: [::std::os::raw::c_char; 96usize],
-	pub __fpu_reserved1: ::std::os::raw::c_int,
+	pub __fpu_reserved1: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout___darwin_x86_float_state64() {
@@ -3167,7 +3168,7 @@ pub struct __darwin_x86_avx_state64 {
 	pub __fpu_ymmh12: __darwin_xmm_reg,
 	pub __fpu_ymmh13: __darwin_xmm_reg,
 	pub __fpu_ymmh14: __darwin_xmm_reg,
-	pub __fpu_ymmh15: __darwin_xmm_reg,
+	pub __fpu_ymmh15: __darwin_xmm_reg
 }
 #[test]
 fn bindgen_test_layout___darwin_x86_avx_state64() {
@@ -3560,7 +3561,7 @@ pub struct __darwin_x86_avx512_state64 {
 	pub __fpu_zmm28: __darwin_zmm_reg,
 	pub __fpu_zmm29: __darwin_zmm_reg,
 	pub __fpu_zmm30: __darwin_zmm_reg,
-	pub __fpu_zmm31: __darwin_zmm_reg,
+	pub __fpu_zmm31: __darwin_zmm_reg
 }
 #[test]
 fn bindgen_test_layout___darwin_x86_avx512_state64() {
@@ -4060,7 +4061,7 @@ pub struct __darwin_x86_exception_state64 {
 	pub __trapno: __uint16_t,
 	pub __cpu: __uint16_t,
 	pub __err: __uint32_t,
-	pub __faultvaddr: __uint64_t,
+	pub __faultvaddr: __uint64_t
 }
 #[test]
 fn bindgen_test_layout___darwin_x86_exception_state64() {
@@ -4099,7 +4100,7 @@ pub struct __darwin_x86_debug_state64 {
 	pub __dr4: __uint64_t,
 	pub __dr5: __uint64_t,
 	pub __dr6: __uint64_t,
-	pub __dr7: __uint64_t,
+	pub __dr7: __uint64_t
 }
 #[test]
 fn bindgen_test_layout___darwin_x86_debug_state64() {
@@ -4151,7 +4152,7 @@ fn bindgen_test_layout___darwin_x86_debug_state64() {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_x86_cpmu_state64 {
-	pub __ctrs: [__uint64_t; 16usize],
+	pub __ctrs: [__uint64_t; 16usize]
 }
 #[test]
 fn bindgen_test_layout___darwin_x86_cpmu_state64() {
@@ -4170,7 +4171,7 @@ fn bindgen_test_layout___darwin_x86_cpmu_state64() {
 pub struct __darwin_mcontext32 {
 	pub __es: __darwin_i386_exception_state,
 	pub __ss: __darwin_i386_thread_state,
-	pub __fs: __darwin_i386_float_state,
+	pub __fs: __darwin_i386_float_state
 }
 #[test]
 fn bindgen_test_layout___darwin_mcontext32() {
@@ -4199,7 +4200,7 @@ fn bindgen_test_layout___darwin_mcontext32() {
 pub struct __darwin_mcontext_avx32 {
 	pub __es: __darwin_i386_exception_state,
 	pub __ss: __darwin_i386_thread_state,
-	pub __fs: __darwin_i386_avx_state,
+	pub __fs: __darwin_i386_avx_state
 }
 #[test]
 fn bindgen_test_layout___darwin_mcontext_avx32() {
@@ -4228,7 +4229,7 @@ fn bindgen_test_layout___darwin_mcontext_avx32() {
 pub struct __darwin_mcontext_avx512_32 {
 	pub __es: __darwin_i386_exception_state,
 	pub __ss: __darwin_i386_thread_state,
-	pub __fs: __darwin_i386_avx512_state,
+	pub __fs: __darwin_i386_avx512_state
 }
 #[test]
 fn bindgen_test_layout___darwin_mcontext_avx512_32() {
@@ -4257,7 +4258,7 @@ fn bindgen_test_layout___darwin_mcontext_avx512_32() {
 pub struct __darwin_mcontext64 {
 	pub __es: __darwin_x86_exception_state64,
 	pub __ss: __darwin_x86_thread_state64,
-	pub __fs: __darwin_x86_float_state64,
+	pub __fs: __darwin_x86_float_state64
 }
 #[test]
 fn bindgen_test_layout___darwin_mcontext64() {
@@ -4286,7 +4287,7 @@ fn bindgen_test_layout___darwin_mcontext64() {
 pub struct __darwin_mcontext64_full {
 	pub __es: __darwin_x86_exception_state64,
 	pub __ss: __darwin_x86_thread_full_state64,
-	pub __fs: __darwin_x86_float_state64,
+	pub __fs: __darwin_x86_float_state64
 }
 #[test]
 fn bindgen_test_layout___darwin_mcontext64_full() {
@@ -4315,7 +4316,7 @@ fn bindgen_test_layout___darwin_mcontext64_full() {
 pub struct __darwin_mcontext_avx64 {
 	pub __es: __darwin_x86_exception_state64,
 	pub __ss: __darwin_x86_thread_state64,
-	pub __fs: __darwin_x86_avx_state64,
+	pub __fs: __darwin_x86_avx_state64
 }
 #[test]
 fn bindgen_test_layout___darwin_mcontext_avx64() {
@@ -4344,7 +4345,7 @@ fn bindgen_test_layout___darwin_mcontext_avx64() {
 pub struct __darwin_mcontext_avx64_full {
 	pub __es: __darwin_x86_exception_state64,
 	pub __ss: __darwin_x86_thread_full_state64,
-	pub __fs: __darwin_x86_avx_state64,
+	pub __fs: __darwin_x86_avx_state64
 }
 #[test]
 fn bindgen_test_layout___darwin_mcontext_avx64_full() {
@@ -4373,7 +4374,7 @@ fn bindgen_test_layout___darwin_mcontext_avx64_full() {
 pub struct __darwin_mcontext_avx512_64 {
 	pub __es: __darwin_x86_exception_state64,
 	pub __ss: __darwin_x86_thread_state64,
-	pub __fs: __darwin_x86_avx512_state64,
+	pub __fs: __darwin_x86_avx512_state64
 }
 #[test]
 fn bindgen_test_layout___darwin_mcontext_avx512_64() {
@@ -4402,7 +4403,7 @@ fn bindgen_test_layout___darwin_mcontext_avx512_64() {
 pub struct __darwin_mcontext_avx512_64_full {
 	pub __es: __darwin_x86_exception_state64,
 	pub __ss: __darwin_x86_thread_full_state64,
-	pub __fs: __darwin_x86_avx512_state64,
+	pub __fs: __darwin_x86_avx512_state64
 }
 #[test]
 fn bindgen_test_layout___darwin_mcontext_avx512_64_full() {
@@ -4433,7 +4434,7 @@ pub type pthread_attr_t = __darwin_pthread_attr_t;
 pub struct __darwin_sigaltstack {
 	pub ss_sp: *mut ::std::os::raw::c_void,
 	pub ss_size: __darwin_size_t,
-	pub ss_flags: ::std::os::raw::c_int,
+	pub ss_flags: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout___darwin_sigaltstack() {
@@ -4466,7 +4467,7 @@ pub struct __darwin_ucontext {
 	pub uc_stack: __darwin_sigaltstack,
 	pub uc_link: *mut __darwin_ucontext,
 	pub uc_mcsize: __darwin_size_t,
-	pub uc_mcontext: *mut __darwin_mcontext64,
+	pub uc_mcontext: *mut __darwin_mcontext64
 }
 #[test]
 fn bindgen_test_layout___darwin_ucontext() {
@@ -4512,7 +4513,7 @@ pub type uid_t = __darwin_uid_t;
 #[derive(Copy, Clone)]
 pub union sigval {
 	pub sival_int: ::std::os::raw::c_int,
-	pub sival_ptr: *mut ::std::os::raw::c_void,
+	pub sival_ptr: *mut ::std::os::raw::c_void
 }
 #[test]
 fn bindgen_test_layout_sigval() {
@@ -4538,7 +4539,7 @@ pub struct sigevent {
 	pub sigev_signo: ::std::os::raw::c_int,
 	pub sigev_value: sigval,
 	pub sigev_notify_function: ::std::option::Option<unsafe extern "C" fn(arg1: sigval)>,
-	pub sigev_notify_attributes: *mut pthread_attr_t,
+	pub sigev_notify_attributes: *mut pthread_attr_t
 }
 #[test]
 fn bindgen_test_layout_sigevent() {
@@ -4584,7 +4585,7 @@ pub struct __siginfo {
 	pub si_addr: *mut ::std::os::raw::c_void,
 	pub si_value: sigval,
 	pub si_band: ::std::os::raw::c_long,
-	pub __pad: [::std::os::raw::c_ulong; 7usize],
+	pub __pad: [::std::os::raw::c_ulong; 7usize]
 }
 #[test]
 fn bindgen_test_layout___siginfo() {
@@ -4648,7 +4649,7 @@ pub type siginfo_t = __siginfo;
 #[derive(Copy, Clone)]
 pub union __sigaction_u {
 	pub __sa_handler: ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>,
-	pub __sa_sigaction: ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int, arg2: *mut __siginfo, arg3: *mut ::std::os::raw::c_void)>,
+	pub __sa_sigaction: ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int, arg2: *mut __siginfo, arg3: *mut ::std::os::raw::c_void)>
 }
 #[test]
 fn bindgen_test_layout___sigaction_u() {
@@ -4677,11 +4678,11 @@ pub struct __sigaction {
 			arg2: ::std::os::raw::c_int,
 			arg3: ::std::os::raw::c_int,
 			arg4: *mut siginfo_t,
-			arg5: *mut ::std::os::raw::c_void,
-		),
+			arg5: *mut ::std::os::raw::c_void
+		)
 	>,
 	pub sa_mask: sigset_t,
-	pub sa_flags: ::std::os::raw::c_int,
+	pub sa_flags: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout___sigaction() {
@@ -4715,7 +4716,7 @@ fn bindgen_test_layout___sigaction() {
 pub struct sigaction {
 	pub __sigaction_u: __sigaction_u,
 	pub sa_mask: sigset_t,
-	pub sa_flags: ::std::os::raw::c_int,
+	pub sa_flags: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout_sigaction() {
@@ -4745,7 +4746,7 @@ pub type sig_t = ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw
 pub struct sigvec {
 	pub sv_handler: ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>,
 	pub sv_mask: ::std::os::raw::c_int,
-	pub sv_flags: ::std::os::raw::c_int,
+	pub sv_flags: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout_sigvec() {
@@ -4773,7 +4774,7 @@ fn bindgen_test_layout_sigvec() {
 #[derive(Debug, Copy, Clone)]
 pub struct sigstack {
 	pub ss_sp: *mut ::std::os::raw::c_char,
-	pub ss_onstack: ::std::os::raw::c_int,
+	pub ss_onstack: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout_sigstack() {
@@ -4795,7 +4796,7 @@ fn bindgen_test_layout_sigstack() {
 extern "C" {
 	pub fn signal(
 		arg1: ::std::os::raw::c_int,
-		arg2: ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>,
+		arg2: ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>
 	) -> ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int, arg2: ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>)>;
 }
 pub type int_least8_t = i8;
@@ -4820,7 +4821,7 @@ pub type uintmax_t = ::std::os::raw::c_ulong;
 #[derive(Debug, Copy, Clone)]
 pub struct timeval {
 	pub tv_sec: __darwin_time_t,
-	pub tv_usec: __darwin_suseconds_t,
+	pub tv_usec: __darwin_suseconds_t
 }
 #[test]
 fn bindgen_test_layout_timeval() {
@@ -4858,7 +4859,7 @@ pub struct rusage {
 	pub ru_msgrcv: ::std::os::raw::c_long,
 	pub ru_nsignals: ::std::os::raw::c_long,
 	pub ru_nvcsw: ::std::os::raw::c_long,
-	pub ru_nivcsw: ::std::os::raw::c_long,
+	pub ru_nivcsw: ::std::os::raw::c_long
 }
 #[test]
 fn bindgen_test_layout_rusage() {
@@ -4961,7 +4962,7 @@ pub struct rusage_info_v0 {
 	pub ri_resident_size: u64,
 	pub ri_phys_footprint: u64,
 	pub ri_proc_start_abstime: u64,
-	pub ri_proc_exit_abstime: u64,
+	pub ri_proc_exit_abstime: u64
 }
 #[test]
 fn bindgen_test_layout_rusage_info_v0() {
@@ -5044,7 +5045,7 @@ pub struct rusage_info_v1 {
 	pub ri_child_pkg_idle_wkups: u64,
 	pub ri_child_interrupt_wkups: u64,
 	pub ri_child_pageins: u64,
-	pub ri_child_elapsed_abstime: u64,
+	pub ri_child_elapsed_abstime: u64
 }
 #[test]
 fn bindgen_test_layout_rusage_info_v1() {
@@ -5159,7 +5160,7 @@ pub struct rusage_info_v2 {
 	pub ri_child_pageins: u64,
 	pub ri_child_elapsed_abstime: u64,
 	pub ri_diskio_bytesread: u64,
-	pub ri_diskio_byteswritten: u64,
+	pub ri_diskio_byteswritten: u64
 }
 #[test]
 fn bindgen_test_layout_rusage_info_v2() {
@@ -5293,7 +5294,7 @@ pub struct rusage_info_v3 {
 	pub ri_cpu_time_qos_user_initiated: u64,
 	pub ri_cpu_time_qos_user_interactive: u64,
 	pub ri_billed_system_time: u64,
-	pub ri_serviced_system_time: u64,
+	pub ri_serviced_system_time: u64
 }
 #[test]
 fn bindgen_test_layout_rusage_info_v3() {
@@ -5480,7 +5481,7 @@ pub struct rusage_info_v4 {
 	pub ri_billed_energy: u64,
 	pub ri_serviced_energy: u64,
 	pub ri_interval_max_phys_footprint: u64,
-	pub ri_runnable_time: u64,
+	pub ri_runnable_time: u64
 }
 #[test]
 fn bindgen_test_layout_rusage_info_v4() {
@@ -5708,7 +5709,7 @@ pub struct rusage_info_v5 {
 	pub ri_serviced_energy: u64,
 	pub ri_interval_max_phys_footprint: u64,
 	pub ri_runnable_time: u64,
-	pub ri_flags: u64,
+	pub ri_flags: u64
 }
 #[test]
 fn bindgen_test_layout_rusage_info_v5() {
@@ -5948,7 +5949,7 @@ pub struct rusage_info_v6 {
 	pub ri_pcycles: u64,
 	pub ri_energy_nj: u64,
 	pub ri_penergy_nj: u64,
-	pub ri_reserved: [u64; 14usize],
+	pub ri_reserved: [u64; 14usize]
 }
 #[test]
 fn bindgen_test_layout_rusage_info_v6() {
@@ -6182,7 +6183,7 @@ pub type rusage_info_current = rusage_info_v6;
 #[derive(Debug, Copy, Clone)]
 pub struct rlimit {
 	pub rlim_cur: rlim_t,
-	pub rlim_max: rlim_t,
+	pub rlim_max: rlim_t
 }
 #[test]
 fn bindgen_test_layout_rlimit() {
@@ -6205,7 +6206,7 @@ fn bindgen_test_layout_rlimit() {
 #[derive(Debug, Copy, Clone)]
 pub struct proc_rlimit_control_wakeupmon {
 	pub wm_flags: u32,
-	pub wm_rate: i32,
+	pub wm_rate: i32
 }
 #[test]
 fn bindgen_test_layout_proc_rlimit_control_wakeupmon() {
@@ -6250,14 +6251,14 @@ extern "C" {
 pub union wait {
 	pub w_status: ::std::os::raw::c_int,
 	pub w_T: wait__bindgen_ty_1,
-	pub w_S: wait__bindgen_ty_2,
+	pub w_S: wait__bindgen_ty_2
 }
 #[repr(C)]
 #[repr(align(4))]
 #[derive(Debug, Copy, Clone)]
 pub struct wait__bindgen_ty_1 {
 	pub _bitfield_align_1: [u16; 0],
-	pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+	pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>
 }
 #[test]
 fn bindgen_test_layout_wait__bindgen_ty_1() {
@@ -6314,7 +6315,7 @@ impl wait__bindgen_ty_1 {
 		w_Termsig: ::std::os::raw::c_uint,
 		w_Coredump: ::std::os::raw::c_uint,
 		w_Retcode: ::std::os::raw::c_uint,
-		w_Filler: ::std::os::raw::c_uint,
+		w_Filler: ::std::os::raw::c_uint
 	) -> __BindgenBitfieldUnit<[u8; 4usize]> {
 		let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
 		__bindgen_bitfield_unit.set(0usize, 7u8, {
@@ -6341,7 +6342,7 @@ impl wait__bindgen_ty_1 {
 #[derive(Debug, Copy, Clone)]
 pub struct wait__bindgen_ty_2 {
 	pub _bitfield_align_1: [u16; 0],
-	pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+	pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>
 }
 #[test]
 fn bindgen_test_layout_wait__bindgen_ty_2() {
@@ -6386,7 +6387,7 @@ impl wait__bindgen_ty_2 {
 	pub fn new_bitfield_1(
 		w_Stopval: ::std::os::raw::c_uint,
 		w_Stopsig: ::std::os::raw::c_uint,
-		w_Filler: ::std::os::raw::c_uint,
+		w_Filler: ::std::os::raw::c_uint
 	) -> __BindgenBitfieldUnit<[u8; 4usize]> {
 		let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
 		__bindgen_bitfield_unit.set(0usize, 8u8, {
@@ -6451,7 +6452,7 @@ pub type wchar_t = __darwin_wchar_t;
 #[derive(Debug, Copy, Clone)]
 pub struct div_t {
 	pub quot: ::std::os::raw::c_int,
-	pub rem: ::std::os::raw::c_int,
+	pub rem: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout_div_t() {
@@ -6474,7 +6475,7 @@ fn bindgen_test_layout_div_t() {
 #[derive(Debug, Copy, Clone)]
 pub struct ldiv_t {
 	pub quot: ::std::os::raw::c_long,
-	pub rem: ::std::os::raw::c_long,
+	pub rem: ::std::os::raw::c_long
 }
 #[test]
 fn bindgen_test_layout_ldiv_t() {
@@ -6497,7 +6498,7 @@ fn bindgen_test_layout_ldiv_t() {
 #[derive(Debug, Copy, Clone)]
 pub struct lldiv_t {
 	pub quot: ::std::os::raw::c_longlong,
-	pub rem: ::std::os::raw::c_longlong,
+	pub rem: ::std::os::raw::c_longlong
 }
 #[test]
 fn bindgen_test_layout_lldiv_t() {
@@ -6568,8 +6569,8 @@ extern "C" {
 		__nel: usize,
 		__width: usize,
 		__compar: ::std::option::Option<
-			unsafe extern "C" fn(arg1: *const ::std::os::raw::c_void, arg2: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int,
-		>,
+			unsafe extern "C" fn(arg1: *const ::std::os::raw::c_void, arg2: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int
+		>
 	) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -6608,8 +6609,8 @@ extern "C" {
 		__nel: usize,
 		__width: usize,
 		__compar: ::std::option::Option<
-			unsafe extern "C" fn(arg1: *const ::std::os::raw::c_void, arg2: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int,
-		>,
+			unsafe extern "C" fn(arg1: *const ::std::os::raw::c_void, arg2: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int
+		>
 	);
 }
 extern "C" {
@@ -6634,7 +6635,7 @@ extern "C" {
 	pub fn strtoll(
 		__str: *const ::std::os::raw::c_char,
 		__endptr: *mut *mut ::std::os::raw::c_char,
-		__base: ::std::os::raw::c_int,
+		__base: ::std::os::raw::c_int
 	) -> ::std::os::raw::c_longlong;
 }
 extern "C" {
@@ -6644,7 +6645,7 @@ extern "C" {
 	pub fn strtoull(
 		__str: *const ::std::os::raw::c_char,
 		__endptr: *mut *mut ::std::os::raw::c_char,
-		__base: ::std::os::raw::c_int,
+		__base: ::std::os::raw::c_int
 	) -> ::std::os::raw::c_ulonglong;
 }
 extern "C" {
@@ -6681,7 +6682,7 @@ extern "C" {
 	pub fn getsubopt(
 		arg1: *mut *mut ::std::os::raw::c_char,
 		arg2: *const *mut ::std::os::raw::c_char,
-		arg3: *mut *mut ::std::os::raw::c_char,
+		arg3: *mut *mut ::std::os::raw::c_char
 	) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -6786,7 +6787,7 @@ extern "C" {
 		__base: *const ::std::os::raw::c_void,
 		__nel: usize,
 		__width: usize,
-		__compar: *mut ::std::os::raw::c_void,
+		__compar: *mut ::std::os::raw::c_void
 	) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -6799,7 +6800,7 @@ extern "C" {
 	pub fn cgetent(
 		arg1: *mut *mut ::std::os::raw::c_char,
 		arg2: *mut *mut ::std::os::raw::c_char,
-		arg3: *const ::std::os::raw::c_char,
+		arg3: *const ::std::os::raw::c_char
 	) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -6851,8 +6852,8 @@ extern "C" {
 		__nel: usize,
 		__width: usize,
 		__compar: ::std::option::Option<
-			unsafe extern "C" fn(arg1: *const ::std::os::raw::c_void, arg2: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int,
-		>,
+			unsafe extern "C" fn(arg1: *const ::std::os::raw::c_void, arg2: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int
+		>
 	) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -6864,8 +6865,8 @@ extern "C" {
 		__nel: usize,
 		__width: usize,
 		__compar: ::std::option::Option<
-			unsafe extern "C" fn(arg1: *const ::std::os::raw::c_void, arg2: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int,
-		>,
+			unsafe extern "C" fn(arg1: *const ::std::os::raw::c_void, arg2: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int
+		>
 	) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -6877,8 +6878,8 @@ extern "C" {
 		__nel: usize,
 		__width: usize,
 		__compar: ::std::option::Option<
-			unsafe extern "C" fn(arg1: *const ::std::os::raw::c_void, arg2: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int,
-		>,
+			unsafe extern "C" fn(arg1: *const ::std::os::raw::c_void, arg2: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int
+		>
 	);
 }
 extern "C" {
@@ -6894,9 +6895,9 @@ extern "C" {
 			unsafe extern "C" fn(
 				arg1: *mut ::std::os::raw::c_void,
 				arg2: *const ::std::os::raw::c_void,
-				arg3: *const ::std::os::raw::c_void,
-			) -> ::std::os::raw::c_int,
-		>,
+				arg3: *const ::std::os::raw::c_void
+			) -> ::std::os::raw::c_int
+		>
 	);
 }
 extern "C" {
@@ -6912,9 +6913,9 @@ extern "C" {
 			unsafe extern "C" fn(
 				arg1: *mut ::std::os::raw::c_void,
 				arg2: *const ::std::os::raw::c_void,
-				arg3: *const ::std::os::raw::c_void,
-			) -> ::std::os::raw::c_int,
-		>,
+				arg3: *const ::std::os::raw::c_void
+			) -> ::std::os::raw::c_int
+		>
 	);
 }
 extern "C" {
@@ -6922,7 +6923,7 @@ extern "C" {
 		__base: *mut *const ::std::os::raw::c_uchar,
 		__nel: ::std::os::raw::c_int,
 		__table: *const ::std::os::raw::c_uchar,
-		__endbyte: ::std::os::raw::c_uint,
+		__endbyte: ::std::os::raw::c_uint
 	) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -6933,7 +6934,7 @@ extern "C" {
 		__base: *mut *const ::std::os::raw::c_uchar,
 		__nel: ::std::os::raw::c_int,
 		__table: *const ::std::os::raw::c_uchar,
-		__endbyte: ::std::os::raw::c_uint,
+		__endbyte: ::std::os::raw::c_uint
 	) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -6950,21 +6951,21 @@ extern "C" {
 		__numstr: *const ::std::os::raw::c_char,
 		__minval: ::std::os::raw::c_longlong,
 		__maxval: ::std::os::raw::c_longlong,
-		__errstrp: *mut *const ::std::os::raw::c_char,
+		__errstrp: *mut *const ::std::os::raw::c_char
 	) -> ::std::os::raw::c_longlong;
 }
 extern "C" {
 	pub fn strtoq(
 		__str: *const ::std::os::raw::c_char,
 		__endptr: *mut *mut ::std::os::raw::c_char,
-		__base: ::std::os::raw::c_int,
+		__base: ::std::os::raw::c_int
 	) -> ::std::os::raw::c_longlong;
 }
 extern "C" {
 	pub fn strtouq(
 		__str: *const ::std::os::raw::c_char,
 		__endptr: *mut *mut ::std::os::raw::c_char,
-		__base: ::std::os::raw::c_int,
+		__base: ::std::os::raw::c_int
 	) -> ::std::os::raw::c_ulonglong;
 }
 extern "C" {
@@ -7040,7 +7041,7 @@ extern "C" {
 	pub fn strtok_r(
 		__str: *mut ::std::os::raw::c_char,
 		__sep: *const ::std::os::raw::c_char,
-		__lasts: *mut *mut ::std::os::raw::c_char,
+		__lasts: *mut *mut ::std::os::raw::c_char
 	) -> *mut ::std::os::raw::c_char;
 }
 extern "C" {
@@ -7054,7 +7055,7 @@ extern "C" {
 		__dst: *mut ::std::os::raw::c_void,
 		__src: *const ::std::os::raw::c_void,
 		__c: ::std::os::raw::c_int,
-		__n: ::std::os::raw::c_ulong,
+		__n: ::std::os::raw::c_ulong
 	) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -7082,7 +7083,7 @@ extern "C" {
 		__big: *const ::std::os::raw::c_void,
 		__big_len: usize,
 		__little: *const ::std::os::raw::c_void,
-		__little_len: usize,
+		__little_len: usize
 	) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -7233,122 +7234,117 @@ pub type OrtOpAttrType = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtEnv {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtStatus {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtMemoryInfo {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtIoBinding {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtSession {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtValue {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtRunOptions {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtTypeInfo {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtTensorTypeAndShapeInfo {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtSessionOptions {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtCustomOpDomain {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtMapTypeInfo {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtSequenceTypeInfo {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtModelMetadata {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtThreadPoolParams {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtThreadingOptions {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtArenaCfg {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtPrepackedWeightsContainer {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtTensorRTProviderOptionsV2 {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtCUDAProviderOptionsV2 {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtCANNProviderOptions {
-	_unused: [u8; 0],
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct OrtDnnlProviderOptions {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtOp {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtOpAttr {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 pub type OrtStatusPtr = *mut OrtStatus;
 #[doc = " \\brief Memory allocation interface\n\n Structure of function pointers that defines a memory allocator. This can be created and filled in by the user for custom allocators.\n\n When an allocator is passed to any function, be sure that the allocator object is not destroyed until the last allocated object using it is freed."]
@@ -7362,7 +7358,7 @@ pub struct OrtAllocator {
 	#[doc = "< Free a block of memory previously allocated with OrtAllocator::Alloc"]
 	pub Free: ::std::option::Option<unsafe extern "C" fn(this_: *mut OrtAllocator, p: *mut ::std::os::raw::c_void)>,
 	#[doc = "< Return a pointer to an ::OrtMemoryInfo that describes this allocator"]
-	pub Info: ::std::option::Option<unsafe extern "C" fn(this_: *const OrtAllocator) -> *const OrtMemoryInfo>,
+	pub Info: ::std::option::Option<unsafe extern "C" fn(this_: *const OrtAllocator) -> *const OrtMemoryInfo>
 }
 #[test]
 fn bindgen_test_layout_OrtAllocator() {
@@ -7398,8 +7394,8 @@ pub type OrtLoggingFunction = ::std::option::Option<
 		category: *const ::std::os::raw::c_char,
 		logid: *const ::std::os::raw::c_char,
 		code_location: *const ::std::os::raw::c_char,
-		message: *const ::std::os::raw::c_char,
-	),
+		message: *const ::std::os::raw::c_char
+	)
 >;
 pub const GraphOptimizationLevel_ORT_DISABLE_ALL: GraphOptimizationLevel = 0;
 pub const GraphOptimizationLevel_ORT_ENABLE_BASIC: GraphOptimizationLevel = 1;
@@ -7422,12 +7418,12 @@ pub type OrtLanguageProjection = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtKernelInfo {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtKernelContext {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 pub const OrtAllocatorType_OrtInvalidAllocator: OrtAllocatorType = -1;
 pub const OrtAllocatorType_OrtDeviceAllocator: OrtAllocatorType = 0;
@@ -7474,7 +7470,7 @@ pub struct OrtCUDAProviderOptions {
 	#[doc = " \\brief CUDA memory arena configuration parameters"]
 	pub default_memory_arena_cfg: *mut OrtArenaCfg,
 	#[doc = " \\brief Enable TunableOp.\n   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.\n   This option can be superseded by environment variable ORT_CUDA_TUNABLE_OP_ENABLED."]
-	pub tunable_op_enabled: ::std::os::raw::c_int,
+	pub tunable_op_enabled: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout_OrtCUDAProviderOptions() {
@@ -7549,7 +7545,7 @@ pub struct OrtROCMProviderOptions {
 	#[doc = " \\brief ROCM memory arena configuration parameters"]
 	pub default_memory_arena_cfg: *mut OrtArenaCfg,
 	#[doc = " \\brief Enable TunableOp.\n   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.\n   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_ENABLED."]
-	pub tunable_op_enabled: ::std::os::raw::c_int,
+	pub tunable_op_enabled: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout_OrtROCMProviderOptions() {
@@ -7625,7 +7621,7 @@ pub struct OrtTensorRTProviderOptions {
 	pub trt_engine_cache_path: *const ::std::os::raw::c_char,
 	pub trt_engine_decryption_enable: ::std::os::raw::c_int,
 	pub trt_engine_decryption_lib_path: *const ::std::os::raw::c_char,
-	pub trt_force_sequential_engine_build: ::std::os::raw::c_int,
+	pub trt_force_sequential_engine_build: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout_OrtTensorRTProviderOptions() {
@@ -7730,7 +7726,7 @@ fn bindgen_test_layout_OrtTensorRTProviderOptions() {
 pub struct OrtMIGraphXProviderOptions {
 	pub device_id: ::std::os::raw::c_int,
 	pub migraphx_fp16_enable: ::std::os::raw::c_int,
-	pub migraphx_int8_enable: ::std::os::raw::c_int,
+	pub migraphx_int8_enable: ::std::os::raw::c_int
 }
 #[test]
 fn bindgen_test_layout_OrtMIGraphXProviderOptions() {
@@ -7770,7 +7766,7 @@ pub struct OrtOpenVINOProviderOptions {
 	#[doc = "< 0 = disabled, nonzero = enabled"]
 	pub enable_opencl_throttling: ::std::os::raw::c_uchar,
 	#[doc = "< 0 = disabled, nonzero = enabled"]
-	pub enable_dynamic_shapes: ::std::os::raw::c_uchar,
+	pub enable_dynamic_shapes: ::std::os::raw::c_uchar
 }
 #[test]
 fn bindgen_test_layout_OrtOpenVINOProviderOptions() {
@@ -7822,7 +7818,7 @@ fn bindgen_test_layout_OrtOpenVINOProviderOptions() {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtTrainingApi {
-	_unused: [u8; 0],
+	_unused: [u8; 0]
 }
 #[doc = " \\brief The helper interface to get the right version of OrtApi\n\n Get a pointer to this structure through ::OrtGetApiBase"]
 #[repr(C)]
@@ -7831,7 +7827,7 @@ pub struct OrtApiBase {
 	#[doc = " \\brief Get a pointer to the requested version of the ::OrtApi\n\n \\param[in] version Must be ::ORT_API_VERSION\n \\return The ::OrtApi for the version requested, nullptr will be returned if this version is unsupported, for example when using a runtime\n   older than the version created with this header file."]
 	pub GetApi: ::std::option::Option<unsafe extern "C" fn(version: u32) -> *const OrtApi>,
 	#[doc = "< Returns a null terminated string of the version of the Onnxruntime library (eg: \"1.8.1\")"]
-	pub GetVersionString: ::std::option::Option<unsafe extern "C" fn() -> *const ::std::os::raw::c_char>,
+	pub GetVersionString: ::std::option::Option<unsafe extern "C" fn() -> *const ::std::os::raw::c_char>
 }
 #[test]
 fn bindgen_test_layout_OrtApiBase() {
@@ -7859,7 +7855,7 @@ pub type OrtThreadWorkerFn = ::std::option::Option<unsafe extern "C" fn(ort_work
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OrtCustomHandleType {
-	pub __place_holder: ::std::os::raw::c_char,
+	pub __place_holder: ::std::os::raw::c_char
 }
 #[test]
 fn bindgen_test_layout_OrtCustomHandleType() {
@@ -7879,8 +7875,8 @@ pub type OrtCustomCreateThreadFn = ::std::option::Option<
 	unsafe extern "C" fn(
 		ort_custom_thread_creation_options: *mut ::std::os::raw::c_void,
 		ort_thread_worker_fn: OrtThreadWorkerFn,
-		ort_worker_fn_param: *mut ::std::os::raw::c_void,
-	) -> OrtCustomThreadHandle,
+		ort_worker_fn_param: *mut ::std::os::raw::c_void
+	) -> OrtCustomThreadHandle
 >;
 #[doc = " \\brief Custom thread join function\n\n Onnxruntime thread pool destructor will call the function to join a custom thread.\n Argument ort_custom_thread_handle is the value returned by OrtCustomCreateThreadFn"]
 pub type OrtCustomJoinThreadFn = ::std::option::Option<unsafe extern "C" fn(ort_custom_thread_handle: OrtCustomThreadHandle)>;
@@ -7896,7 +7892,7 @@ pub struct OrtApi {
 	#[doc = " \\brief Get error string from OrtStatus\n\n \\param[in] status\n \\return The error message inside the `status`. Do not free the returned value."]
 	pub GetErrorMessage: ::std::option::Option<unsafe extern "C" fn(status: *const OrtStatus) -> *const ::std::os::raw::c_char>,
 	pub CreateEnv: ::std::option::Option<
-		unsafe extern "C" fn(log_severity_level: OrtLoggingLevel, logid: *const ::std::os::raw::c_char, out: *mut *mut OrtEnv) -> OrtStatusPtr,
+		unsafe extern "C" fn(log_severity_level: OrtLoggingLevel, logid: *const ::std::os::raw::c_char, out: *mut *mut OrtEnv) -> OrtStatusPtr
 	>,
 	pub CreateEnvWithCustomLogger: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -7904,8 +7900,8 @@ pub struct OrtApi {
 			logger_param: *mut ::std::os::raw::c_void,
 			log_severity_level: OrtLoggingLevel,
 			logid: *const ::std::os::raw::c_char,
-			out: *mut *mut OrtEnv,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtEnv
+		) -> OrtStatusPtr
 	>,
 	pub EnableTelemetryEvents: ::std::option::Option<unsafe extern "C" fn(env: *const OrtEnv) -> OrtStatusPtr>,
 	pub DisableTelemetryEvents: ::std::option::Option<unsafe extern "C" fn(env: *const OrtEnv) -> OrtStatusPtr>,
@@ -7914,8 +7910,8 @@ pub struct OrtApi {
 			env: *const OrtEnv,
 			model_path: *const ::std::os::raw::c_char,
 			options: *const OrtSessionOptions,
-			out: *mut *mut OrtSession,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtSession
+		) -> OrtStatusPtr
 	>,
 	pub CreateSessionFromArray: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -7923,8 +7919,8 @@ pub struct OrtApi {
 			model_data: *const ::std::os::raw::c_void,
 			model_data_length: usize,
 			options: *const OrtSessionOptions,
-			out: *mut *mut OrtSession,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtSession
+		) -> OrtStatusPtr
 	>,
 	pub Run: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -7935,8 +7931,8 @@ pub struct OrtApi {
 			input_len: usize,
 			output_names: *const *const ::std::os::raw::c_char,
 			output_names_len: usize,
-			outputs: *mut *mut OrtValue,
-		) -> OrtStatusPtr,
+			outputs: *mut *mut OrtValue
+		) -> OrtStatusPtr
 	>,
 	pub CreateSessionOptions: ::std::option::Option<unsafe extern "C" fn(options: *mut *mut OrtSessionOptions) -> OrtStatusPtr>,
 	pub SetOptimizedModelFilePath:
@@ -7971,8 +7967,8 @@ pub struct OrtApi {
 		unsafe extern "C" fn(
 			options: *mut OrtSessionOptions,
 			library_path: *const ::std::os::raw::c_char,
-			library_handle: *mut *mut ::std::os::raw::c_void,
-		) -> OrtStatusPtr,
+			library_handle: *mut *mut ::std::os::raw::c_void
+		) -> OrtStatusPtr
 	>,
 	pub SessionGetInputCount: ::std::option::Option<unsafe extern "C" fn(session: *const OrtSession, out: *mut usize) -> OrtStatusPtr>,
 	pub SessionGetOutputCount: ::std::option::Option<unsafe extern "C" fn(session: *const OrtSession, out: *mut usize) -> OrtStatusPtr>,
@@ -7984,13 +7980,13 @@ pub struct OrtApi {
 	pub SessionGetOverridableInitializerTypeInfo:
 		::std::option::Option<unsafe extern "C" fn(session: *const OrtSession, index: usize, type_info: *mut *mut OrtTypeInfo) -> OrtStatusPtr>,
 	pub SessionGetInputName: ::std::option::Option<
-		unsafe extern "C" fn(session: *const OrtSession, index: usize, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
+		unsafe extern "C" fn(session: *const OrtSession, index: usize, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr
 	>,
 	pub SessionGetOutputName: ::std::option::Option<
-		unsafe extern "C" fn(session: *const OrtSession, index: usize, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
+		unsafe extern "C" fn(session: *const OrtSession, index: usize, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr
 	>,
 	pub SessionGetOverridableInitializerName: ::std::option::Option<
-		unsafe extern "C" fn(session: *const OrtSession, index: usize, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
+		unsafe extern "C" fn(session: *const OrtSession, index: usize, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr
 	>,
 	pub CreateRunOptions: ::std::option::Option<unsafe extern "C" fn(out: *mut *mut OrtRunOptions) -> OrtStatusPtr>,
 	pub RunOptionsSetRunLogVerbosityLevel:
@@ -8012,8 +8008,8 @@ pub struct OrtApi {
 			shape: *const i64,
 			shape_len: usize,
 			type_: ONNXTensorElementDataType,
-			out: *mut *mut OrtValue,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtValue
+		) -> OrtStatusPtr
 	>,
 	pub CreateTensorWithDataAsOrtValue: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8023,8 +8019,8 @@ pub struct OrtApi {
 			shape: *const i64,
 			shape_len: usize,
 			type_: ONNXTensorElementDataType,
-			out: *mut *mut OrtValue,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtValue
+		) -> OrtStatusPtr
 	>,
 	pub IsTensor: ::std::option::Option<unsafe extern "C" fn(value: *const OrtValue, out: *mut ::std::os::raw::c_int) -> OrtStatusPtr>,
 	pub GetTensorMutableData: ::std::option::Option<unsafe extern "C" fn(value: *mut OrtValue, out: *mut *mut ::std::os::raw::c_void) -> OrtStatusPtr>,
@@ -8032,7 +8028,7 @@ pub struct OrtApi {
 		::std::option::Option<unsafe extern "C" fn(value: *mut OrtValue, s: *const *const ::std::os::raw::c_char, s_len: usize) -> OrtStatusPtr>,
 	pub GetStringTensorDataLength: ::std::option::Option<unsafe extern "C" fn(value: *const OrtValue, len: *mut usize) -> OrtStatusPtr>,
 	pub GetStringTensorContent: ::std::option::Option<
-		unsafe extern "C" fn(value: *const OrtValue, s: *mut ::std::os::raw::c_void, s_len: usize, offsets: *mut usize, offsets_len: usize) -> OrtStatusPtr,
+		unsafe extern "C" fn(value: *const OrtValue, s: *mut ::std::os::raw::c_void, s_len: usize, offsets: *mut usize, offsets_len: usize) -> OrtStatusPtr
 	>,
 	pub CastTypeInfoToTensorInfo:
 		::std::option::Option<unsafe extern "C" fn(type_info: *const OrtTypeInfo, out: *mut *const OrtTensorTypeAndShapeInfo) -> OrtStatusPtr>,
@@ -8048,7 +8044,7 @@ pub struct OrtApi {
 	pub GetDimensions:
 		::std::option::Option<unsafe extern "C" fn(info: *const OrtTensorTypeAndShapeInfo, dim_values: *mut i64, dim_values_length: usize) -> OrtStatusPtr>,
 	pub GetSymbolicDimensions: ::std::option::Option<
-		unsafe extern "C" fn(info: *const OrtTensorTypeAndShapeInfo, dim_params: *mut *const ::std::os::raw::c_char, dim_params_length: usize) -> OrtStatusPtr,
+		unsafe extern "C" fn(info: *const OrtTensorTypeAndShapeInfo, dim_params: *mut *const ::std::os::raw::c_char, dim_params_length: usize) -> OrtStatusPtr
 	>,
 	pub GetTensorShapeElementCount: ::std::option::Option<unsafe extern "C" fn(info: *const OrtTensorTypeAndShapeInfo, out: *mut usize) -> OrtStatusPtr>,
 	pub GetTensorTypeAndShape: ::std::option::Option<unsafe extern "C" fn(value: *const OrtValue, out: *mut *mut OrtTensorTypeAndShapeInfo) -> OrtStatusPtr>,
@@ -8060,8 +8056,8 @@ pub struct OrtApi {
 			type_: OrtAllocatorType,
 			id: ::std::os::raw::c_int,
 			mem_type: OrtMemType,
-			out: *mut *mut OrtMemoryInfo,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtMemoryInfo
+		) -> OrtStatusPtr
 	>,
 	pub CreateCpuMemoryInfo:
 		::std::option::Option<unsafe extern "C" fn(type_: OrtAllocatorType, mem_type: OrtMemType, out: *mut *mut OrtMemoryInfo) -> OrtStatusPtr>,
@@ -8077,14 +8073,14 @@ pub struct OrtApi {
 	pub AllocatorGetInfo: ::std::option::Option<unsafe extern "C" fn(ort_allocator: *const OrtAllocator, out: *mut *const OrtMemoryInfo) -> OrtStatusPtr>,
 	pub GetAllocatorWithDefaultOptions: ::std::option::Option<unsafe extern "C" fn(out: *mut *mut OrtAllocator) -> OrtStatusPtr>,
 	pub AddFreeDimensionOverride: ::std::option::Option<
-		unsafe extern "C" fn(options: *mut OrtSessionOptions, dim_denotation: *const ::std::os::raw::c_char, dim_value: i64) -> OrtStatusPtr,
+		unsafe extern "C" fn(options: *mut OrtSessionOptions, dim_denotation: *const ::std::os::raw::c_char, dim_value: i64) -> OrtStatusPtr
 	>,
 	pub GetValue: ::std::option::Option<
-		unsafe extern "C" fn(value: *const OrtValue, index: ::std::os::raw::c_int, allocator: *mut OrtAllocator, out: *mut *mut OrtValue) -> OrtStatusPtr,
+		unsafe extern "C" fn(value: *const OrtValue, index: ::std::os::raw::c_int, allocator: *mut OrtAllocator, out: *mut *mut OrtValue) -> OrtStatusPtr
 	>,
 	pub GetValueCount: ::std::option::Option<unsafe extern "C" fn(value: *const OrtValue, out: *mut usize) -> OrtStatusPtr>,
 	pub CreateValue: ::std::option::Option<
-		unsafe extern "C" fn(in_: *const *const OrtValue, num_values: usize, value_type: ONNXType, out: *mut *mut OrtValue) -> OrtStatusPtr,
+		unsafe extern "C" fn(in_: *const *const OrtValue, num_values: usize, value_type: ONNXType, out: *mut *mut OrtValue) -> OrtStatusPtr
 	>,
 	pub CreateOpaqueValue: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8092,8 +8088,8 @@ pub struct OrtApi {
 			type_name: *const ::std::os::raw::c_char,
 			data_container: *const ::std::os::raw::c_void,
 			data_container_size: usize,
-			out: *mut *mut OrtValue,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtValue
+		) -> OrtStatusPtr
 	>,
 	pub GetOpaqueValue: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8101,8 +8097,8 @@ pub struct OrtApi {
 			type_name: *const ::std::os::raw::c_char,
 			in_: *const OrtValue,
 			data_container: *mut ::std::os::raw::c_void,
-			data_container_size: usize,
-		) -> OrtStatusPtr,
+			data_container_size: usize
+		) -> OrtStatusPtr
 	>,
 	pub KernelInfoGetAttribute_float:
 		::std::option::Option<unsafe extern "C" fn(info: *const OrtKernelInfo, name: *const ::std::os::raw::c_char, out: *mut f32) -> OrtStatusPtr>,
@@ -8113,15 +8109,15 @@ pub struct OrtApi {
 			info: *const OrtKernelInfo,
 			name: *const ::std::os::raw::c_char,
 			out: *mut ::std::os::raw::c_char,
-			size: *mut usize,
-		) -> OrtStatusPtr,
+			size: *mut usize
+		) -> OrtStatusPtr
 	>,
 	pub KernelContext_GetInputCount: ::std::option::Option<unsafe extern "C" fn(context: *const OrtKernelContext, out: *mut usize) -> OrtStatusPtr>,
 	pub KernelContext_GetOutputCount: ::std::option::Option<unsafe extern "C" fn(context: *const OrtKernelContext, out: *mut usize) -> OrtStatusPtr>,
 	pub KernelContext_GetInput:
 		::std::option::Option<unsafe extern "C" fn(context: *const OrtKernelContext, index: usize, out: *mut *const OrtValue) -> OrtStatusPtr>,
 	pub KernelContext_GetOutput: ::std::option::Option<
-		unsafe extern "C" fn(context: *mut OrtKernelContext, index: usize, dim_values: *const i64, dim_count: usize, out: *mut *mut OrtValue) -> OrtStatusPtr,
+		unsafe extern "C" fn(context: *mut OrtKernelContext, index: usize, dim_values: *const i64, dim_count: usize, out: *mut *mut OrtValue) -> OrtStatusPtr
 	>,
 	pub ReleaseEnv: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtEnv)>,
 	pub ReleaseStatus: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtStatus)>,
@@ -8134,7 +8130,7 @@ pub struct OrtApi {
 	pub ReleaseSessionOptions: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtSessionOptions)>,
 	pub ReleaseCustomOpDomain: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtCustomOpDomain)>,
 	pub GetDenotationFromTypeInfo: ::std::option::Option<
-		unsafe extern "C" fn(type_info: *const OrtTypeInfo, denotation: *mut *const ::std::os::raw::c_char, len: *mut usize) -> OrtStatusPtr,
+		unsafe extern "C" fn(type_info: *const OrtTypeInfo, denotation: *mut *const ::std::os::raw::c_char, len: *mut usize) -> OrtStatusPtr
 	>,
 	pub CastTypeInfoToMapTypeInfo: ::std::option::Option<unsafe extern "C" fn(type_info: *const OrtTypeInfo, out: *mut *const OrtMapTypeInfo) -> OrtStatusPtr>,
 	pub CastTypeInfoToSequenceTypeInfo:
@@ -8146,28 +8142,28 @@ pub struct OrtApi {
 	pub ReleaseMapTypeInfo: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtMapTypeInfo)>,
 	pub ReleaseSequenceTypeInfo: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtSequenceTypeInfo)>,
 	pub SessionEndProfiling: ::std::option::Option<
-		unsafe extern "C" fn(session: *mut OrtSession, allocator: *mut OrtAllocator, out: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
+		unsafe extern "C" fn(session: *mut OrtSession, allocator: *mut OrtAllocator, out: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr
 	>,
 	pub SessionGetModelMetadata: ::std::option::Option<unsafe extern "C" fn(session: *const OrtSession, out: *mut *mut OrtModelMetadata) -> OrtStatusPtr>,
 	pub ModelMetadataGetProducerName: ::std::option::Option<
-		unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
+		unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr
 	>,
 	pub ModelMetadataGetGraphName: ::std::option::Option<
-		unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
+		unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr
 	>,
 	pub ModelMetadataGetDomain: ::std::option::Option<
-		unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
+		unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr
 	>,
 	pub ModelMetadataGetDescription: ::std::option::Option<
-		unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
+		unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr
 	>,
 	pub ModelMetadataLookupCustomMetadataMap: ::std::option::Option<
 		unsafe extern "C" fn(
 			model_metadata: *const OrtModelMetadata,
 			allocator: *mut OrtAllocator,
 			key: *const ::std::os::raw::c_char,
-			value: *mut *mut ::std::os::raw::c_char,
-		) -> OrtStatusPtr,
+			value: *mut *mut ::std::os::raw::c_char
+		) -> OrtStatusPtr
 	>,
 	pub ModelMetadataGetVersion: ::std::option::Option<unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, value: *mut i64) -> OrtStatusPtr>,
 	pub ReleaseModelMetadata: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtModelMetadata)>,
@@ -8176,8 +8172,8 @@ pub struct OrtApi {
 			log_severity_level: OrtLoggingLevel,
 			logid: *const ::std::os::raw::c_char,
 			tp_options: *const OrtThreadingOptions,
-			out: *mut *mut OrtEnv,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtEnv
+		) -> OrtStatusPtr
 	>,
 	pub DisablePerSessionThreads: ::std::option::Option<unsafe extern "C" fn(options: *mut OrtSessionOptions) -> OrtStatusPtr>,
 	pub CreateThreadingOptions: ::std::option::Option<unsafe extern "C" fn(out: *mut *mut OrtThreadingOptions) -> OrtStatusPtr>,
@@ -8187,13 +8183,13 @@ pub struct OrtApi {
 			model_metadata: *const OrtModelMetadata,
 			allocator: *mut OrtAllocator,
 			keys: *mut *mut *mut ::std::os::raw::c_char,
-			num_keys: *mut i64,
-		) -> OrtStatusPtr,
+			num_keys: *mut i64
+		) -> OrtStatusPtr
 	>,
 	pub AddFreeDimensionOverrideByName:
 		::std::option::Option<unsafe extern "C" fn(options: *mut OrtSessionOptions, dim_name: *const ::std::os::raw::c_char, dim_value: i64) -> OrtStatusPtr>,
 	pub GetAvailableProviders: ::std::option::Option<
-		unsafe extern "C" fn(out_ptr: *mut *mut *mut ::std::os::raw::c_char, provider_length: *mut ::std::os::raw::c_int) -> OrtStatusPtr,
+		unsafe extern "C" fn(out_ptr: *mut *mut *mut ::std::os::raw::c_char, provider_length: *mut ::std::os::raw::c_int) -> OrtStatusPtr
 	>,
 	pub ReleaseAvailableProviders:
 		::std::option::Option<unsafe extern "C" fn(ptr: *mut *mut ::std::os::raw::c_char, providers_length: ::std::os::raw::c_int) -> OrtStatusPtr>,
@@ -8206,25 +8202,25 @@ pub struct OrtApi {
 		unsafe extern "C" fn(
 			options: *mut OrtSessionOptions,
 			config_key: *const ::std::os::raw::c_char,
-			config_value: *const ::std::os::raw::c_char,
-		) -> OrtStatusPtr,
+			config_value: *const ::std::os::raw::c_char
+		) -> OrtStatusPtr
 	>,
 	pub CreateAllocator:
 		::std::option::Option<unsafe extern "C" fn(session: *const OrtSession, mem_info: *const OrtMemoryInfo, out: *mut *mut OrtAllocator) -> OrtStatusPtr>,
 	pub ReleaseAllocator: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtAllocator)>,
 	pub RunWithBinding: ::std::option::Option<
-		unsafe extern "C" fn(session: *mut OrtSession, run_options: *const OrtRunOptions, binding_ptr: *const OrtIoBinding) -> OrtStatusPtr,
+		unsafe extern "C" fn(session: *mut OrtSession, run_options: *const OrtRunOptions, binding_ptr: *const OrtIoBinding) -> OrtStatusPtr
 	>,
 	pub CreateIoBinding: ::std::option::Option<unsafe extern "C" fn(session: *mut OrtSession, out: *mut *mut OrtIoBinding) -> OrtStatusPtr>,
 	pub ReleaseIoBinding: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtIoBinding)>,
 	pub BindInput: ::std::option::Option<
-		unsafe extern "C" fn(binding_ptr: *mut OrtIoBinding, name: *const ::std::os::raw::c_char, val_ptr: *const OrtValue) -> OrtStatusPtr,
+		unsafe extern "C" fn(binding_ptr: *mut OrtIoBinding, name: *const ::std::os::raw::c_char, val_ptr: *const OrtValue) -> OrtStatusPtr
 	>,
 	pub BindOutput: ::std::option::Option<
-		unsafe extern "C" fn(binding_ptr: *mut OrtIoBinding, name: *const ::std::os::raw::c_char, val_ptr: *const OrtValue) -> OrtStatusPtr,
+		unsafe extern "C" fn(binding_ptr: *mut OrtIoBinding, name: *const ::std::os::raw::c_char, val_ptr: *const OrtValue) -> OrtStatusPtr
 	>,
 	pub BindOutputToDevice: ::std::option::Option<
-		unsafe extern "C" fn(binding_ptr: *mut OrtIoBinding, name: *const ::std::os::raw::c_char, mem_info_ptr: *const OrtMemoryInfo) -> OrtStatusPtr,
+		unsafe extern "C" fn(binding_ptr: *mut OrtIoBinding, name: *const ::std::os::raw::c_char, mem_info_ptr: *const OrtMemoryInfo) -> OrtStatusPtr
 	>,
 	pub GetBoundOutputNames: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8232,16 +8228,16 @@ pub struct OrtApi {
 			allocator: *mut OrtAllocator,
 			buffer: *mut *mut ::std::os::raw::c_char,
 			lengths: *mut *mut usize,
-			count: *mut usize,
-		) -> OrtStatusPtr,
+			count: *mut usize
+		) -> OrtStatusPtr
 	>,
 	pub GetBoundOutputValues: ::std::option::Option<
 		unsafe extern "C" fn(
 			binding_ptr: *const OrtIoBinding,
 			allocator: *mut OrtAllocator,
 			output: *mut *mut *mut OrtValue,
-			output_count: *mut usize,
-		) -> OrtStatusPtr,
+			output_count: *mut usize
+		) -> OrtStatusPtr
 	>,
 	#[doc = " \\brief Clears any previously set Inputs for an ::OrtIoBinding"]
 	pub ClearBoundInputs: ::std::option::Option<unsafe extern "C" fn(binding_ptr: *mut OrtIoBinding)>,
@@ -8252,8 +8248,8 @@ pub struct OrtApi {
 			value: *mut OrtValue,
 			location_values: *const i64,
 			location_values_count: usize,
-			out: *mut *mut ::std::os::raw::c_void,
-		) -> OrtStatusPtr,
+			out: *mut *mut ::std::os::raw::c_void
+		) -> OrtStatusPtr
 	>,
 	pub CreateAndRegisterAllocator:
 		::std::option::Option<unsafe extern "C" fn(env: *mut OrtEnv, mem_info: *const OrtMemoryInfo, arena_cfg: *const OrtArenaCfg) -> OrtStatusPtr>,
@@ -8274,8 +8270,8 @@ pub struct OrtApi {
 			log_severity_level: OrtLoggingLevel,
 			logid: *const ::std::os::raw::c_char,
 			tp_options: *const OrtThreadingOptions,
-			out: *mut *mut OrtEnv,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtEnv
+		) -> OrtStatusPtr
 	>,
 	pub SessionOptionsAppendExecutionProvider_CUDA:
 		::std::option::Option<unsafe extern "C" fn(options: *mut OrtSessionOptions, cuda_options: *const OrtCUDAProviderOptions) -> OrtStatusPtr>,
@@ -8290,37 +8286,37 @@ pub struct OrtApi {
 			arena_extend_strategy: ::std::os::raw::c_int,
 			initial_chunk_size_bytes: ::std::os::raw::c_int,
 			max_dead_bytes_per_chunk: ::std::os::raw::c_int,
-			out: *mut *mut OrtArenaCfg,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtArenaCfg
+		) -> OrtStatusPtr
 	>,
 	pub ReleaseArenaCfg: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtArenaCfg)>,
 	pub ModelMetadataGetGraphDescription: ::std::option::Option<
-		unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
+		unsafe extern "C" fn(model_metadata: *const OrtModelMetadata, allocator: *mut OrtAllocator, value: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr
 	>,
 	pub SessionOptionsAppendExecutionProvider_TensorRT:
 		::std::option::Option<unsafe extern "C" fn(options: *mut OrtSessionOptions, tensorrt_options: *const OrtTensorRTProviderOptions) -> OrtStatusPtr>,
 	pub SetCurrentGpuDeviceId: ::std::option::Option<unsafe extern "C" fn(device_id: ::std::os::raw::c_int) -> OrtStatusPtr>,
 	pub GetCurrentGpuDeviceId: ::std::option::Option<unsafe extern "C" fn(device_id: *mut ::std::os::raw::c_int) -> OrtStatusPtr>,
 	pub KernelInfoGetAttributeArray_float: ::std::option::Option<
-		unsafe extern "C" fn(info: *const OrtKernelInfo, name: *const ::std::os::raw::c_char, out: *mut f32, size: *mut usize) -> OrtStatusPtr,
+		unsafe extern "C" fn(info: *const OrtKernelInfo, name: *const ::std::os::raw::c_char, out: *mut f32, size: *mut usize) -> OrtStatusPtr
 	>,
 	pub KernelInfoGetAttributeArray_int64: ::std::option::Option<
-		unsafe extern "C" fn(info: *const OrtKernelInfo, name: *const ::std::os::raw::c_char, out: *mut i64, size: *mut usize) -> OrtStatusPtr,
+		unsafe extern "C" fn(info: *const OrtKernelInfo, name: *const ::std::os::raw::c_char, out: *mut i64, size: *mut usize) -> OrtStatusPtr
 	>,
 	pub CreateArenaCfgV2: ::std::option::Option<
 		unsafe extern "C" fn(
 			arena_config_keys: *const *const ::std::os::raw::c_char,
 			arena_config_values: *const usize,
 			num_keys: usize,
-			out: *mut *mut OrtArenaCfg,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtArenaCfg
+		) -> OrtStatusPtr
 	>,
 	pub AddRunConfigEntry: ::std::option::Option<
 		unsafe extern "C" fn(
 			options: *mut OrtRunOptions,
 			config_key: *const ::std::os::raw::c_char,
-			config_value: *const ::std::os::raw::c_char,
-		) -> OrtStatusPtr,
+			config_value: *const ::std::os::raw::c_char
+		) -> OrtStatusPtr
 	>,
 	pub CreatePrepackedWeightsContainer: ::std::option::Option<unsafe extern "C" fn(out: *mut *mut OrtPrepackedWeightsContainer) -> OrtStatusPtr>,
 	pub ReleasePrepackedWeightsContainer: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtPrepackedWeightsContainer)>,
@@ -8330,8 +8326,8 @@ pub struct OrtApi {
 			model_path: *const ::std::os::raw::c_char,
 			options: *const OrtSessionOptions,
 			prepacked_weights_container: *mut OrtPrepackedWeightsContainer,
-			out: *mut *mut OrtSession,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtSession
+		) -> OrtStatusPtr
 	>,
 	pub CreateSessionFromArrayWithPrepackedWeightsContainer: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8340,8 +8336,8 @@ pub struct OrtApi {
 			model_data_length: usize,
 			options: *const OrtSessionOptions,
 			prepacked_weights_container: *mut OrtPrepackedWeightsContainer,
-			out: *mut *mut OrtSession,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtSession
+		) -> OrtStatusPtr
 	>,
 	pub SessionOptionsAppendExecutionProvider_TensorRT_V2:
 		::std::option::Option<unsafe extern "C" fn(options: *mut OrtSessionOptions, tensorrt_options: *const OrtTensorRTProviderOptionsV2) -> OrtStatusPtr>,
@@ -8351,15 +8347,15 @@ pub struct OrtApi {
 			tensorrt_options: *mut OrtTensorRTProviderOptionsV2,
 			provider_options_keys: *const *const ::std::os::raw::c_char,
 			provider_options_values: *const *const ::std::os::raw::c_char,
-			num_keys: usize,
-		) -> OrtStatusPtr,
+			num_keys: usize
+		) -> OrtStatusPtr
 	>,
 	pub GetTensorRTProviderOptionsAsString: ::std::option::Option<
 		unsafe extern "C" fn(
 			tensorrt_options: *const OrtTensorRTProviderOptionsV2,
 			allocator: *mut OrtAllocator,
-			ptr: *mut *mut ::std::os::raw::c_char,
-		) -> OrtStatusPtr,
+			ptr: *mut *mut ::std::os::raw::c_char
+		) -> OrtStatusPtr
 	>,
 	#[doc = " \\brief Release an ::OrtTensorRTProviderOptionsV2\n\n \\note This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does"]
 	pub ReleaseTensorRTProviderOptions: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtTensorRTProviderOptionsV2)>,
@@ -8373,8 +8369,8 @@ pub struct OrtApi {
 			dense_shape: *const i64,
 			dense_shape_len: usize,
 			type_: ONNXTensorElementDataType,
-			out: *mut *mut OrtValue,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtValue
+		) -> OrtStatusPtr
 	>,
 	pub FillSparseTensorCoo: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8384,8 +8380,8 @@ pub struct OrtApi {
 			values_shape_len: usize,
 			values: *const ::std::os::raw::c_void,
 			indices_data: *const i64,
-			indices_num: usize,
-		) -> OrtStatusPtr,
+			indices_num: usize
+		) -> OrtStatusPtr
 	>,
 	pub FillSparseTensorCsr: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8397,8 +8393,8 @@ pub struct OrtApi {
 			inner_indices_data: *const i64,
 			inner_indices_num: usize,
 			outer_indices_data: *const i64,
-			outer_indices_num: usize,
-		) -> OrtStatusPtr,
+			outer_indices_num: usize
+		) -> OrtStatusPtr
 	>,
 	pub FillSparseTensorBlockSparse: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8409,8 +8405,8 @@ pub struct OrtApi {
 			values: *const ::std::os::raw::c_void,
 			indices_shape_data: *const i64,
 			indices_shape_len: usize,
-			indices_data: *const i32,
-		) -> OrtStatusPtr,
+			indices_data: *const i32
+		) -> OrtStatusPtr
 	>,
 	pub CreateSparseTensorWithValuesAsOrtValue: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8421,49 +8417,49 @@ pub struct OrtApi {
 			values_shape: *const i64,
 			values_shape_len: usize,
 			type_: ONNXTensorElementDataType,
-			out: *mut *mut OrtValue,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtValue
+		) -> OrtStatusPtr
 	>,
 	pub UseCooIndices: ::std::option::Option<unsafe extern "C" fn(ort_value: *mut OrtValue, indices_data: *mut i64, indices_num: usize) -> OrtStatusPtr>,
 	pub UseCsrIndices: ::std::option::Option<
-		unsafe extern "C" fn(ort_value: *mut OrtValue, inner_data: *mut i64, inner_num: usize, outer_data: *mut i64, outer_num: usize) -> OrtStatusPtr,
+		unsafe extern "C" fn(ort_value: *mut OrtValue, inner_data: *mut i64, inner_num: usize, outer_data: *mut i64, outer_num: usize) -> OrtStatusPtr
 	>,
 	pub UseBlockSparseIndices: ::std::option::Option<
-		unsafe extern "C" fn(ort_value: *mut OrtValue, indices_shape: *const i64, indices_shape_len: usize, indices_data: *mut i32) -> OrtStatusPtr,
+		unsafe extern "C" fn(ort_value: *mut OrtValue, indices_shape: *const i64, indices_shape_len: usize, indices_data: *mut i32) -> OrtStatusPtr
 	>,
 	pub GetSparseTensorFormat: ::std::option::Option<unsafe extern "C" fn(ort_value: *const OrtValue, out: *mut OrtSparseFormat) -> OrtStatusPtr>,
 	pub GetSparseTensorValuesTypeAndShape:
 		::std::option::Option<unsafe extern "C" fn(ort_value: *const OrtValue, out: *mut *mut OrtTensorTypeAndShapeInfo) -> OrtStatusPtr>,
 	pub GetSparseTensorValues: ::std::option::Option<unsafe extern "C" fn(ort_value: *const OrtValue, out: *mut *const ::std::os::raw::c_void) -> OrtStatusPtr>,
 	pub GetSparseTensorIndicesTypeShape: ::std::option::Option<
-		unsafe extern "C" fn(ort_value: *const OrtValue, indices_format: OrtSparseIndicesFormat, out: *mut *mut OrtTensorTypeAndShapeInfo) -> OrtStatusPtr,
+		unsafe extern "C" fn(ort_value: *const OrtValue, indices_format: OrtSparseIndicesFormat, out: *mut *mut OrtTensorTypeAndShapeInfo) -> OrtStatusPtr
 	>,
 	pub GetSparseTensorIndices: ::std::option::Option<
 		unsafe extern "C" fn(
 			ort_value: *const OrtValue,
 			indices_format: OrtSparseIndicesFormat,
 			num_indices: *mut usize,
-			indices: *mut *const ::std::os::raw::c_void,
-		) -> OrtStatusPtr,
+			indices: *mut *const ::std::os::raw::c_void
+		) -> OrtStatusPtr
 	>,
 	pub HasValue: ::std::option::Option<unsafe extern "C" fn(value: *const OrtValue, out: *mut ::std::os::raw::c_int) -> OrtStatusPtr>,
 	pub KernelContext_GetGPUComputeStream:
 		::std::option::Option<unsafe extern "C" fn(context: *const OrtKernelContext, out: *mut *mut ::std::os::raw::c_void) -> OrtStatusPtr>,
 	pub GetTensorMemoryInfo: ::std::option::Option<unsafe extern "C" fn(value: *const OrtValue, mem_info: *mut *const OrtMemoryInfo) -> OrtStatusPtr>,
 	pub GetExecutionProviderApi: ::std::option::Option<
-		unsafe extern "C" fn(provider_name: *const ::std::os::raw::c_char, version: u32, provider_api: *mut *const ::std::os::raw::c_void) -> OrtStatusPtr,
+		unsafe extern "C" fn(provider_name: *const ::std::os::raw::c_char, version: u32, provider_api: *mut *const ::std::os::raw::c_void) -> OrtStatusPtr
 	>,
 	pub SessionOptionsSetCustomCreateThreadFn:
 		::std::option::Option<unsafe extern "C" fn(options: *mut OrtSessionOptions, ort_custom_create_thread_fn: OrtCustomCreateThreadFn) -> OrtStatusPtr>,
 	pub SessionOptionsSetCustomThreadCreationOptions: ::std::option::Option<
-		unsafe extern "C" fn(options: *mut OrtSessionOptions, ort_custom_thread_creation_options: *mut ::std::os::raw::c_void) -> OrtStatusPtr,
+		unsafe extern "C" fn(options: *mut OrtSessionOptions, ort_custom_thread_creation_options: *mut ::std::os::raw::c_void) -> OrtStatusPtr
 	>,
 	pub SessionOptionsSetCustomJoinThreadFn:
 		::std::option::Option<unsafe extern "C" fn(options: *mut OrtSessionOptions, ort_custom_join_thread_fn: OrtCustomJoinThreadFn) -> OrtStatusPtr>,
 	pub SetGlobalCustomCreateThreadFn:
 		::std::option::Option<unsafe extern "C" fn(tp_options: *mut OrtThreadingOptions, ort_custom_create_thread_fn: OrtCustomCreateThreadFn) -> OrtStatusPtr>,
 	pub SetGlobalCustomThreadCreationOptions: ::std::option::Option<
-		unsafe extern "C" fn(tp_options: *mut OrtThreadingOptions, ort_custom_thread_creation_options: *mut ::std::os::raw::c_void) -> OrtStatusPtr,
+		unsafe extern "C" fn(tp_options: *mut OrtThreadingOptions, ort_custom_thread_creation_options: *mut ::std::os::raw::c_void) -> OrtStatusPtr
 	>,
 	pub SetGlobalCustomJoinThreadFn:
 		::std::option::Option<unsafe extern "C" fn(tp_options: *mut OrtThreadingOptions, ort_custom_join_thread_fn: OrtCustomJoinThreadFn) -> OrtStatusPtr>,
@@ -8477,15 +8473,15 @@ pub struct OrtApi {
 			cuda_options: *mut OrtCUDAProviderOptionsV2,
 			provider_options_keys: *const *const ::std::os::raw::c_char,
 			provider_options_values: *const *const ::std::os::raw::c_char,
-			num_keys: usize,
-		) -> OrtStatusPtr,
+			num_keys: usize
+		) -> OrtStatusPtr
 	>,
 	pub GetCUDAProviderOptionsAsString: ::std::option::Option<
 		unsafe extern "C" fn(
 			cuda_options: *const OrtCUDAProviderOptionsV2,
 			allocator: *mut OrtAllocator,
-			ptr: *mut *mut ::std::os::raw::c_char,
-		) -> OrtStatusPtr,
+			ptr: *mut *mut ::std::os::raw::c_char
+		) -> OrtStatusPtr
 	>,
 	#[doc = " \\brief Release an ::OrtCUDAProviderOptionsV2\n\n \\note This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does\n\n \\since Version 1.11."]
 	pub ReleaseCUDAProviderOptions: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtCUDAProviderOptionsV2)>,
@@ -8496,8 +8492,8 @@ pub struct OrtApi {
 			options: *mut OrtSessionOptions,
 			initializer_names: *const *const ::std::os::raw::c_char,
 			initializers: *const *const OrtValue,
-			initializers_num: usize,
-		) -> OrtStatusPtr,
+			initializers_num: usize
+		) -> OrtStatusPtr
 	>,
 	pub CreateOpAttr: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8505,8 +8501,8 @@ pub struct OrtApi {
 			data: *const ::std::os::raw::c_void,
 			len: ::std::os::raw::c_int,
 			type_: OrtOpAttrType,
-			op_attr: *mut *mut OrtOpAttr,
-		) -> OrtStatusPtr,
+			op_attr: *mut *mut OrtOpAttr
+		) -> OrtStatusPtr
 	>,
 	pub ReleaseOpAttr: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtOpAttr)>,
 	pub CreateOp: ::std::option::Option<
@@ -8522,8 +8518,8 @@ pub struct OrtApi {
 			attr_count: ::std::os::raw::c_int,
 			input_count: ::std::os::raw::c_int,
 			output_count: ::std::os::raw::c_int,
-			ort_op: *mut *mut OrtOp,
-		) -> OrtStatusPtr,
+			ort_op: *mut *mut OrtOp
+		) -> OrtStatusPtr
 	>,
 	pub InvokeOp: ::std::option::Option<
 		unsafe extern "C" fn(
@@ -8532,8 +8528,8 @@ pub struct OrtApi {
 			input_values: *const *const OrtValue,
 			input_count: ::std::os::raw::c_int,
 			output_values: *const *mut OrtValue,
-			output_count: ::std::os::raw::c_int,
-		) -> OrtStatusPtr,
+			output_count: ::std::os::raw::c_int
+		) -> OrtStatusPtr
 	>,
 	pub ReleaseOp: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtOp)>,
 	pub SessionOptionsAppendExecutionProvider: ::std::option::Option<
@@ -8542,8 +8538,8 @@ pub struct OrtApi {
 			provider_name: *const ::std::os::raw::c_char,
 			provider_options_keys: *const *const ::std::os::raw::c_char,
 			provider_options_values: *const *const ::std::os::raw::c_char,
-			num_keys: usize,
-		) -> OrtStatusPtr,
+			num_keys: usize
+		) -> OrtStatusPtr
 	>,
 	pub CopyKernelInfo: ::std::option::Option<unsafe extern "C" fn(info: *const OrtKernelInfo, info_copy: *mut *mut OrtKernelInfo) -> OrtStatusPtr>,
 	pub ReleaseKernelInfo: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtKernelInfo)>,
@@ -8556,11 +8552,11 @@ pub struct OrtApi {
 			cann_options: *mut OrtCANNProviderOptions,
 			provider_options_keys: *const *const ::std::os::raw::c_char,
 			provider_options_values: *const *const ::std::os::raw::c_char,
-			num_keys: usize,
-		) -> OrtStatusPtr,
+			num_keys: usize
+		) -> OrtStatusPtr
 	>,
 	pub GetCANNProviderOptionsAsString: ::std::option::Option<
-		unsafe extern "C" fn(cann_options: *const OrtCANNProviderOptions, allocator: *mut OrtAllocator, ptr: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
+		unsafe extern "C" fn(cann_options: *const OrtCANNProviderOptions, allocator: *mut OrtAllocator, ptr: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr
 	>,
 	#[doc = " \\brief Release an OrtCANNProviderOptions\n\n \\param[in] the pointer of OrtCANNProviderOptions which will been deleted\n\n \\since Version 1.13."]
 	pub ReleaseCANNProviderOptions: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtCANNProviderOptions)>,
@@ -8575,10 +8571,10 @@ pub struct OrtApi {
 	pub KernelInfo_GetInputCount: ::std::option::Option<unsafe extern "C" fn(info: *const OrtKernelInfo, out: *mut usize) -> OrtStatusPtr>,
 	pub KernelInfo_GetOutputCount: ::std::option::Option<unsafe extern "C" fn(info: *const OrtKernelInfo, out: *mut usize) -> OrtStatusPtr>,
 	pub KernelInfo_GetInputName: ::std::option::Option<
-		unsafe extern "C" fn(info: *const OrtKernelInfo, index: usize, out: *mut ::std::os::raw::c_char, size: *mut usize) -> OrtStatusPtr,
+		unsafe extern "C" fn(info: *const OrtKernelInfo, index: usize, out: *mut ::std::os::raw::c_char, size: *mut usize) -> OrtStatusPtr
 	>,
 	pub KernelInfo_GetOutputName: ::std::option::Option<
-		unsafe extern "C" fn(info: *const OrtKernelInfo, index: usize, out: *mut ::std::os::raw::c_char, size: *mut usize) -> OrtStatusPtr,
+		unsafe extern "C" fn(info: *const OrtKernelInfo, index: usize, out: *mut ::std::os::raw::c_char, size: *mut usize) -> OrtStatusPtr
 	>,
 	pub KernelInfo_GetInputTypeInfo:
 		::std::option::Option<unsafe extern "C" fn(info: *const OrtKernelInfo, index: usize, type_info: *mut *mut OrtTypeInfo) -> OrtStatusPtr>,
@@ -8589,42 +8585,26 @@ pub struct OrtApi {
 			info: *const OrtKernelInfo,
 			name: *const ::std::os::raw::c_char,
 			allocator: *mut OrtAllocator,
-			out: *mut *mut OrtValue,
-		) -> OrtStatusPtr,
+			out: *mut *mut OrtValue
+		) -> OrtStatusPtr
 	>,
 	pub HasSessionConfigEntry: ::std::option::Option<
-		unsafe extern "C" fn(options: *const OrtSessionOptions, config_key: *const ::std::os::raw::c_char, out: *mut ::std::os::raw::c_int) -> OrtStatusPtr,
+		unsafe extern "C" fn(options: *const OrtSessionOptions, config_key: *const ::std::os::raw::c_char, out: *mut ::std::os::raw::c_int) -> OrtStatusPtr
 	>,
 	pub GetSessionConfigEntry: ::std::option::Option<
 		unsafe extern "C" fn(
 			options: *const OrtSessionOptions,
 			config_key: *const ::std::os::raw::c_char,
 			config_value: *mut ::std::os::raw::c_char,
-			size: *mut usize,
-		) -> OrtStatusPtr,
-	>,
-	pub SessionOptionsAppendExecutionProvider_Dnnl:
-		::std::option::Option<unsafe extern "C" fn(options: *mut OrtSessionOptions, dnnl_options: *const OrtDnnlProviderOptions) -> OrtStatusPtr>,
-	pub CreateDnnlProviderOptions: ::std::option::Option<unsafe extern "C" fn(out: *mut *mut OrtDnnlProviderOptions) -> OrtStatusPtr>,
-	pub UpdateDnnlProviderOptions: ::std::option::Option<
-		unsafe extern "C" fn(
-			dnnl_options: *mut OrtDnnlProviderOptions,
-			provider_options_keys: *const *const ::std::os::raw::c_char,
-			provider_options_values: *const *const ::std::os::raw::c_char,
-			num_keys: usize,
-		) -> OrtStatusPtr,
-	>,
-	pub GetDnnlProviderOptionsAsString: ::std::option::Option<
-		unsafe extern "C" fn(dnnl_options: *const OrtDnnlProviderOptions, allocator: *mut OrtAllocator, ptr: *mut *mut ::std::os::raw::c_char) -> OrtStatusPtr,
-	>,
-	#[doc = " \\brief Release an ::OrtDnnlProviderOptions\n\n \\since Version 1.15."]
-	pub ReleaseDnnlProviderOptions: ::std::option::Option<unsafe extern "C" fn(input: *mut OrtDnnlProviderOptions)>,
+			size: *mut usize
+		) -> OrtStatusPtr
+	>
 }
 #[test]
 fn bindgen_test_layout_OrtApi() {
 	const UNINIT: ::std::mem::MaybeUninit<OrtApi> = ::std::mem::MaybeUninit::uninit();
 	let ptr = UNINIT.as_ptr();
-	assert_eq!(::std::mem::size_of::<OrtApi>(), 1952usize, concat!("Size of: ", stringify!(OrtApi)));
+	assert_eq!(::std::mem::size_of::<OrtApi>(), 1912usize, concat!("Size of: ", stringify!(OrtApi)));
 	assert_eq!(::std::mem::align_of::<OrtApi>(), 8usize, concat!("Alignment of ", stringify!(OrtApi)));
 	assert_eq!(
 		unsafe { ::std::ptr::addr_of!((*ptr).CreateStatus) as usize - ptr as usize },
@@ -9821,31 +9801,6 @@ fn bindgen_test_layout_OrtApi() {
 		1904usize,
 		concat!("Offset of field: ", stringify!(OrtApi), "::", stringify!(GetSessionConfigEntry))
 	);
-	assert_eq!(
-		unsafe { ::std::ptr::addr_of!((*ptr).SessionOptionsAppendExecutionProvider_Dnnl) as usize - ptr as usize },
-		1912usize,
-		concat!("Offset of field: ", stringify!(OrtApi), "::", stringify!(SessionOptionsAppendExecutionProvider_Dnnl))
-	);
-	assert_eq!(
-		unsafe { ::std::ptr::addr_of!((*ptr).CreateDnnlProviderOptions) as usize - ptr as usize },
-		1920usize,
-		concat!("Offset of field: ", stringify!(OrtApi), "::", stringify!(CreateDnnlProviderOptions))
-	);
-	assert_eq!(
-		unsafe { ::std::ptr::addr_of!((*ptr).UpdateDnnlProviderOptions) as usize - ptr as usize },
-		1928usize,
-		concat!("Offset of field: ", stringify!(OrtApi), "::", stringify!(UpdateDnnlProviderOptions))
-	);
-	assert_eq!(
-		unsafe { ::std::ptr::addr_of!((*ptr).GetDnnlProviderOptionsAsString) as usize - ptr as usize },
-		1936usize,
-		concat!("Offset of field: ", stringify!(OrtApi), "::", stringify!(GetDnnlProviderOptionsAsString))
-	);
-	assert_eq!(
-		unsafe { ::std::ptr::addr_of!((*ptr).ReleaseDnnlProviderOptions) as usize - ptr as usize },
-		1944usize,
-		concat!("Offset of field: ", stringify!(OrtApi), "::", stringify!(ReleaseDnnlProviderOptions))
-	);
 }
 pub const OrtCustomOpInputOutputCharacteristic_INPUT_OUTPUT_REQUIRED: OrtCustomOpInputOutputCharacteristic = 0;
 pub const OrtCustomOpInputOutputCharacteristic_INPUT_OUTPUT_OPTIONAL: OrtCustomOpInputOutputCharacteristic = 1;
@@ -9871,7 +9826,7 @@ pub struct OrtCustomOp {
 	pub GetVariadicInputMinArity: ::std::option::Option<unsafe extern "C" fn(op: *const OrtCustomOp) -> ::std::os::raw::c_int>,
 	pub GetVariadicInputHomogeneity: ::std::option::Option<unsafe extern "C" fn(op: *const OrtCustomOp) -> ::std::os::raw::c_int>,
 	pub GetVariadicOutputMinArity: ::std::option::Option<unsafe extern "C" fn(op: *const OrtCustomOp) -> ::std::os::raw::c_int>,
-	pub GetVariadicOutputHomogeneity: ::std::option::Option<unsafe extern "C" fn(op: *const OrtCustomOp) -> ::std::os::raw::c_int>,
+	pub GetVariadicOutputHomogeneity: ::std::option::Option<unsafe extern "C" fn(op: *const OrtCustomOp) -> ::std::os::raw::c_int>
 }
 #[test]
 fn bindgen_test_layout_OrtCustomOp() {
@@ -9971,9 +9926,6 @@ extern "C" {
 extern "C" {
 	pub fn OrtSessionOptionsAppendExecutionProvider_MIGraphX(options: *mut OrtSessionOptions, device_id: ::std::os::raw::c_int) -> OrtStatusPtr;
 }
-extern "C" {
-	pub fn OrtSessionOptionsAppendExecutionProvider_Dnnl(options: *mut OrtSessionOptions, use_arena: ::std::os::raw::c_int) -> OrtStatusPtr;
-}
 pub type __builtin_va_list = [__va_list_tag; 1usize];
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -9981,7 +9933,7 @@ pub struct __va_list_tag {
 	pub gp_offset: ::std::os::raw::c_uint,
 	pub fp_offset: ::std::os::raw::c_uint,
 	pub overflow_arg_area: *mut ::std::os::raw::c_void,
-	pub reg_save_area: *mut ::std::os::raw::c_void,
+	pub reg_save_area: *mut ::std::os::raw::c_void
 }
 #[test]
 fn bindgen_test_layout___va_list_tag() {

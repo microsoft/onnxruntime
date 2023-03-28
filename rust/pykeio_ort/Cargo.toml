@@ -94,3 +94,6 @@ tar = "0.4"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 vswhom = "0.1"
+
+[lib]
+doctest = false

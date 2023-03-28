@@ -45,8 +45,25 @@ fn main() {
     println!("Lib directory: {:?}", lib_dir);
 
     // Tell cargo to tell rustc to link onnxruntime shared library.
-    println!("cargo:rustc-link-lib=onnxruntime");
+    // println!("cargo:rustc-link-lib=onnxruntime");
+    // std::process::exit(-1);
+
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
+
+    for lib in &["common", "flatbuffers", "framework", "graph", "mlas", "optimizer", "providers", "session", "util"] {
+		println!("{0}", lib_dir.display());
+		let lib_path = lib_dir.join(if cfg!(target_os = "windows") {
+			format!("onnxruntime_{lib}.lib")
+		} else {
+			format!("libonnxruntime_{lib}.a")
+		});
+		// sanity check, just make sure the library exists before we try to link to it
+		if lib_path.exists() {
+			println!("cargo:rustc-link-lib=static=onnxruntime_{lib}");
+		} else {
+			panic!("[ort] unable to find ONNX Runtime library: {}", lib_path.display());
+		}
+	}
 
     println!("cargo:rerun-if-env-changed={}", ORT_RUST_ENV_STRATEGY);
     println!("cargo:rerun-if-env-changed={}", ORT_RUST_ENV_GPU);

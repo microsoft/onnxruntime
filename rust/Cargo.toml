@@ -1,4 +1,5 @@
 [workspace]
 members = [
-    "pykeio_ort",
+    "onnxruntime-sys",
+    "onnxruntime",
 ]
