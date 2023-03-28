@@ -36,11 +36,11 @@ class CastOpBuilder : public BaseOpBuilder {
 };
 
 Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                                      const NodeUnit& node_unit,
-                                      const logging::Logger& logger,
-                                      bool is_quantized_model,
-                                      std::vector<std::string>& input_names,
-                                      bool do_op_validation) const {
+                                    const NodeUnit& node_unit,
+                                    const logging::Logger& logger,
+                                    bool is_quantized_model,
+                                    std::vector<std::string>& input_names,
+                                    bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
   ORT_UNUSED_PARAMETER(is_quantized_model);  // Ignore in all backends. Cast should use same QNN types across backends.
 
