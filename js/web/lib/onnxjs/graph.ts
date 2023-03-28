@@ -620,9 +620,9 @@ class GraphImpl implements Graph, Graph.Transformer {
       }
 
       for (let j = 0; j < currentData._to.length; j++) {
-        if(currentData._to[j]>=0){
+        if (currentData._to[j] >= 0) {
           currentData._to[j] = newIndices[currentData._to[j]];
-        }else{
+        } else {
           throw new Error('Trying to update a removed node');
         }
       }
