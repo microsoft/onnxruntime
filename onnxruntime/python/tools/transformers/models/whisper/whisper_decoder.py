@@ -18,8 +18,6 @@ from past_helper import PastKeyValuesHelper
 from whisper_encoder import WhisperEncoderInputs
 from transformers import WhisperConfig, file_utils
 from utils import export_helper
-#from transformers import whisper
-import pdb
 
 from onnxruntime import InferenceSession
 
@@ -61,7 +59,7 @@ class WhisperDecoderInit(torch.nn.Module):
         encoder_outputs["last_hidden_state"] = encoder_hidden_states
         encoder_outputs["hidden_states"] = None
         encoder_outputs["attentions"] = None
-        #pdb.set_trace()
+
         out = self.decoder.model(
             None,
             encoder_outputs=encoder_outputs,
@@ -124,7 +122,6 @@ class WhisperDecoder(torch.nn.Module):
         else:
             past_key_values = export_helper.back_group_by_layer(past)
 
-        pdb.set_trace()
         decoder_out = self.decoder(
             None,
             encoder_outputs=encoder_outputs,
@@ -250,7 +247,6 @@ class WhisperDecoderInputs:
         else:
             past = None
 
-        pdb.set_trace()
         encoder_attention_mask = torch.zeros((encoder_inputs.input_ids.shape[0], 1, encoder_inputs.input_ids.shape[1], encoder_inputs.input_ids.shape[1])).type(torch.int8)
         return WhisperDecoderInputs(decoder_input_ids, encoder_attention_mask, past)
 
@@ -368,7 +364,6 @@ class WhisperDecoderHelper:
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             temp_onnx_model_path = os.path.join(tmp_dir_name, "decoder.onnx")
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-            pdb.set_trace()
             torch_onnx_export(
                 decoder,
                 args=tuple(input_list),

@@ -12,6 +12,7 @@ import sys
 
 import torch
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
+from whisper_chain import chain_model
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
@@ -117,6 +118,18 @@ def parse_arguments():
         help="Use int64 instead of int32 for input_ids, position_ids and attention_mask.",
     )
     parser.set_defaults(use_int64_inputs=False)
+
+    parser.add_argument(
+        "--chain_model",
+        required=False,
+        action="store_true",
+        help="Produce beam search model with chained encdecinit and decoder.",
+    )
+    parser.set_defaults(chain_model=True)
+
+    parser.add_argument("--beam_output_model", type=str, default="whisper_beamsearch.onnx", help="default name is whisper_beamsearch.onnx.")
+
+    parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
 
     args = parser.parse_args()
 
@@ -252,6 +265,22 @@ def main():
         args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
     )
+
+    if (args.chain_model):
+        logger.info(f"Chaining model ... :")
+        args.beam_model_output_dir = WhisperHelper.get_onnx_path(
+            output_dir,
+            args.model_name_or_path,
+            suffix="_beamsearch",
+            new_folder=False,
+        )
+        for path in output_paths:
+            if ("encoder_decoder" in path):
+                args.encoder_path = path
+            elif ("decoder" in path):
+                args.decoder_path = path
+        chain_model(args)
+        output_paths.append(args.beam_model_output_dir)
 
     logger.info(f"Done! Outputs: {output_paths}")
 

@@ -12,13 +12,12 @@ import argparse
 import logging
 import sys
 
+import copy
+
 def add_attention_mask(model):
     # Add attention mask - required by BeamSearch but unused in Pytorch
     mask = helper.make_tensor_value_info('encoder_attention_mask', TensorProto.INT32, shape=['batch', 'feature_size', 'sequence'])
     model.graph.input.insert(1, mask)
-
-
-
 
 def chain_model(args):
 
@@ -31,7 +30,7 @@ def chain_model(args):
     decoder_model.graph.name = "decoder subgraph"
     add_attention_mask(decoder_model)
 
-    config = WhisperConfig.from_pretrained(args.model)
+    config = WhisperConfig.from_pretrained(args.model_name_or_path)
     eos_token_id = config.eos_token_id
     pad_token_id = config.pad_token_id
     decoder_start_token_id = config.decoder_start_token_id
@@ -104,62 +103,5 @@ def chain_model(args):
         beam_graph, producer_name="pytorch", opset_imports=opset_import
     )
 
-    final_path = os.path.join(args.output_dir, args.output_model)
-    onnx.save(beam_model, final_path, save_as_external_data=True, all_tensors_to_one_file=False, convert_attribute=True)
-    onnx.checker.check_model(final_path, full_check=True)
-
-def print_args(args):
-    logger = logging.getLogger("generate")
-    for arg in vars(args):
-        logger.info(f"{arg}: {getattr(args, arg)}")
-
-
-def user_command():
-
-    parent_parser = argparse.ArgumentParser(add_help=False)
-    parent_parser.add_argument("--max_length", type=int, default=20, help="default to 20")
-    parent_parser.add_argument("--min_length", type=int, default=0, help="default to 0")
-    parent_parser.add_argument("-o", "--output_dir", type=str, default="beamsearch_model", help="default name is beamsearch_model.")
-    parent_parser.add_argument("--output_model", type=str, default="whisper_beamsearch.onnx", help="default name is whisper_beamsearch.onnx.")
-
-    parent_parser.add_argument("-b", "--num_beams", type=int, default=5, help="default to 5")
-    parent_parser.add_argument("--repetition_penalty", type=float, default=1.0, help="default to 1.0")
-    parent_parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
-
-
-    required_args = parent_parser.add_argument_group("required input arguments")
-    required_args.add_argument(
-        "-e",
-        "--encoder_path",
-        type=str,
-        required=True,
-        help="Path to encoder subgraph",
-    )
-    required_args.add_argument(
-        "-d",
-        "--decoder_path",
-        type=str,
-        required=True,
-        help="Path to decoder subgraph",
-    )
-    required_args.add_argument(
-        "-m",
-        "--model",
-        type=str,
-        required=True,
-        help="Model being exported (e.g. openai/whisper-large) for scraping config values",
-    )
-
-    print_args(parent_parser.parse_args())
-    return parent_parser.parse_args()
-
-
-if __name__ == "__main__":
-
-    args = user_command()
-
-    isExist = os.path.exists(args.output_dir)
-    if not isExist:
-        os.makedirs(args.output_dir)
-
-    chain_model(args)
+    onnx.save(beam_model, args.beam_model_output_dir, save_as_external_data=True, all_tensors_to_one_file=True, convert_attribute=True)
+    onnx.checker.check_model(args.beam_model_output_dir, full_check=True)
