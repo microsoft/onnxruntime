@@ -194,4 +194,73 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
     fs::remove(entry);
   }
 }
+
+//slx
+bool ReadProfile(const std::string file_name, std::vector<std::pair<std::string, std::vector<int>>>& profiles) {
+  std::ifstream infile(file_name, std::ios::binary | std::ios::in);
+  if (!infile) {
+    return false;
+  }
+
+  // multiple profiles
+  // file: 
+  /*
+Profiles
+input_id:[32,1],[32,20],[32,40]
+attention_mask:[32,1],[32,20],[32,40]
+input_id:[32,41],[32,60],[32,80]
+attention_mask:[32,41],[32,60],[32,80]
+input_id:[32,81],[32,100],[32,120]
+attention_mask:[32,81],[32,100],[32,120]
+input_id:[32,121],[32,140],[32,160]
+attention_mask:[32,121],[32,140],[32,160]
+input_id:[32,161],[32,180],[32,200]
+attention_mask:[32,161],[32,180],[32,200]
+  */
+  // profiles: [{input_id : [32, 1, 32, 20, 32, 40], attention_mask : [32, 1, 32, 20, 32, 40]}, {input_id : [32, 41, 32, 60, 32, 80], attention_mask : [32, 41, 32, 60, 32, 80]}, ...]
+  std::string line;
+  char delim = ':';
+  if (std::getline(infile, line)) {
+    std::istringstream first_line(line);
+    std::string version;
+    std::getline(first_line, version, delim);
+    std::size_t found = version.find("Profiles");
+    if (found != std::string::npos) {
+      while (std::getline(infile, line)) {
+        std::istringstream in_line(line);
+        std::string str;
+        //std::getline(in_line, str, delim);// Profile index
+        //int profile_idx = std::stoi(str);
+        std::getline(in_line, str, delim);// Input name
+        std::string input_name = str;
+		std::cout << "input_name: " << input_name << std::endl;
+        std::getline(in_line, str, delim);// Shapes
+		std::vector<int> dims; // min [...], opt[...], max[...]
+        int32_t dim = 0;
+		bool has_number = false;
+        for (size_t i = 0; i < str.size(); ++i) {
+          if (std::isdigit(str[i])) {
+            dim = dim * 10 + (str[i] - '0');
+            has_number = true;
+          } else {
+            if (has_number) {
+              dims.push_back(dim);
+			  std::cout << "dim: " << dim << std::endl;
+              has_number = false;
+              dim = 0;
+            }
+		  }
+        }
+        if (has_number) {
+          dims.push_back(dim);
+        }		
+        profiles.push_back(std::make_pair(input_name, dims));
+        //profiles.push_back(std::make_pair(input_name, dims));
+      }
+    } else {
+      throw std::runtime_error("This is not a profile table " + file_name);
+    }
+  }
+  return true;
+}
 }
