@@ -381,16 +381,16 @@ function Install-Protobuf {
     }
     cd $protobuf_src_dir
     cd *
-	$git_command_path = (Get-Command -CommandType Application git)[0].Path
+    $git_command_path = (Get-Command -CommandType Application git)[0].Path
     Write-Host "Git command path:$git_command_path"
     $git_installation_folder = Split-Path -Path (Split-Path -Path $git_command_path)
     $patch_path = Join-Path -Path $git_installation_folder "usr\bin\patch.exe"
-	if(Test-Path $patch_path -PathType Leaf){
-	  Write-Host "Patching protobuf ..."
+    if(Test-Path $patch_path -PathType Leaf){
+      Write-Host "Patching protobuf ..."
       Get-Content $src_root\cmake\patches\protobuf\protobuf_cmake.patch | &$patch_path --ignore-whitespace -p1
-	} else {
-	  Write-Host "Skip patching protobuf since we cannot find patch.exe at $patch_path"
-	}
+    } else {
+      Write-Host "Skip patching protobuf since we cannot find patch.exe at $patch_path"
+    }
 
     [string[]]$cmake_args = ".", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-DBUILD_SHARED_LIBS=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF"
     $cmake_args += $cmake_extra_args
