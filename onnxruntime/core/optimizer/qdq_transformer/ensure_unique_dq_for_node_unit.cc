@@ -88,11 +88,15 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
 
   auto dq_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(dq_node, 0);
 
-  // Check for common case where we don't need to do anything: DQ has exactly one output edge and no graph output.
+  // Check for common cases where we don't need to do anything:
+  // 1. DQ has no output edges.
+  // It may have a graph output. Either way, there is no same-graph consumer node input to consider.
+  // 2. DQ has exactly one output edge and no graph output.
   // If the output edge is to an implicit input, there are only consumer nodes in a subgraph which we can ignore.
   // Otherwise, the output edge is to an explicit input of the only same-graph consumer node so the DQ is already
   // unique.
-  if (dq_output_edges.size() == 1 && !produces_graph_output) {
+  if (dq_output_edges.empty() ||
+      (dq_output_edges.size() == 1 && !produces_graph_output)) {
     return Status::OK();
   }
 

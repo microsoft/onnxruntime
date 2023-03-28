@@ -196,7 +196,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer
   RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 11);
 }
 
-TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodesModel) {
+TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodes) {
   constexpr auto model_uri = ORT_TSTR("testdata/qdq_with_multi_consumer_dq_nodes.onnx");
   const auto& logger = DefaultLoggingManager().DefaultLogger();
   std::shared_ptr<Model> p_model;

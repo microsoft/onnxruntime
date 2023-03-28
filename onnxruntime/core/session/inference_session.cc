@@ -886,8 +886,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
   // ensure potential QDQ node units have unique DQ nodes
-  {
-    // TODO should it only run if session option session.disable_quant_qdq == 0?
+  if (const bool disable_quant_qdq =
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+      !disable_quant_qdq) {
     EnsureUniqueDQForNodeUnit ensure_unique_dq_for_node_unit{};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(ensure_unique_dq_for_node_unit, *session_logger_, graph));
   }
