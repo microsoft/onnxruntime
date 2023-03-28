@@ -1,5 +1,5 @@
 stages:
-- stage: normal
+- stage: linux
   dependsOn: [ ]
   jobs:
   - template: templates/c-api-linux-cpu.yml
@@ -21,79 +21,62 @@ stages:
       OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
       OnnxruntimeNodejsBindingArch: 'arm64'
       PoolName: 'aiinfra-linux-ARM64-CPU-2019'
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: true
+    DoEsrp: false
+    job_name_suffix: CPU_x86_default
+    EnvSetupScript: setup_env_x86.bat
+    buildArch: x86
+    msbuildPlatform: Win32
+    packageName: x86
+    buildparameter: --use_extensions --enable_onnx_tests
+    runTests: true
+    buildJava: false
+    buildNodejs: false
 
-  - template: templates/win-ci.yml
-    parameters:
-      DoCompliance: true
-      DoEsrp: false
-      job_name_suffix: CPU_x86_default
-      EnvSetupScript: setup_env_x86.bat
-      buildArch: x86
-      msbuildPlatform: Win32
-      packageName: x86
-      buildparameter: --use_extensions --enable_onnx_tests
-      runTests: true
-      buildJava: false
-      buildNodejs: false
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: true
+    DoEsrp: false
+    job_name_suffix: CPU_arm_default
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildPlatform: arm
+    packageName: arm
+    buildparameter: --arm --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
 
-  - template: templates/win-ci.yml
-    parameters:
-      DoCompliance: true
-      DoEsrp: false
-      job_name_suffix: CPU_arm_default
-      EnvSetupScript: setup_env.bat
-      buildArch: x64
-      msbuildPlatform: arm
-      packageName: arm
-      buildparameter: --arm --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-      runTests: false
-      buildJava: false
-      buildNodejs: false
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: true
+    DoEsrp: false
+    job_name_suffix: CPU_arm64_default
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildPlatform: arm64
+    packageName: arm64
+    buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: true
 
-  - template: templates/win-ci.yml
-    parameters:
-      DoCompliance: true
-      DoEsrp: false
-      job_name_suffix: CPU_arm64_default
-      EnvSetupScript: setup_env.bat
-      buildArch: x64
-      msbuildPlatform: arm64
-      packageName: arm64
-      buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-      runTests: false
-      buildJava: false
-      buildNodejs: true
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: true
+    DoEsrp: false
+    job_name_suffix: CPU_x64_default
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: x64
+    buildparameter: --build_java --build_nodejs --use_extensions  --enable_onnx_tests
+    runTests: true
+    buildJava: true
+    buildNodejs: true
 
-  - template: templates/win-ci.yml
-    parameters:
-      DoCompliance: true
-      DoEsrp: false
-      job_name_suffix: CPU_x64_default
-      EnvSetupScript: setup_env.bat
-      buildArch: x64
-      msbuildPlatform: x64
-      packageName: x64
-      buildparameter: --build_java --build_nodejs --use_extensions  --enable_onnx_tests
-      runTests: true
-      buildJava: true
-      buildNodejs: true
-
-  - template: templates/win-ci-vs-2019.yml
-    parameters:
-      BuildConfig: 'Debug'
-      EnvSetupScript: setup_env.bat
-      buildArch: x64
-      additionalBuildFlags: --disable_memleak_checker --use_mimalloc
-      msbuildPlatform: x64
-      isX86: false
-      job_name_suffix: x64_mimalloc
-      RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
-      isTraining: false
-      ORT_EP_NAME: CPU
-      GenerateDocumentation: false
-      EnablePython: false
-      MachinePool: 'Win-CPU-2021'
 - stage: Mimalloc
   dependsOn: [ ]
   jobs:
