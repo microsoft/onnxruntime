@@ -27,7 +27,7 @@ Status SoftMaxComputeHelper(
   auto Y_data = reinterpret_cast<CudaT_OUT*>(Y);
   auto X_data = reinterpret_cast<const CudaT_IN*>(X);
 
-  if (D <= 1024 && D * sizeof(T) <= 4096) {
+  if (D <= 2048 && D * sizeof(T) <= 4096) {
     return dispatch_warpwise_softmax_forward<
         CudaT_IN, CudaT_OUT, AccumulationType_t<CudaT_ACCUM>, is_log_softmax>(
         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));

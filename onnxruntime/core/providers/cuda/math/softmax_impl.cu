@@ -41,60 +41,66 @@ Status dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, con
     int warp_size = (next_power_of_two < GPU_WARP_SIZE_HOST) ? next_power_of_two : GPU_WARP_SIZE_HOST;
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
-    int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
+    int batches_per_warp = 1;
 
     // use 128 threads per block to maximimize gpu utilization
-    constexpr int threads_per_block = 128;
+    constexpr int threads_per_block = 32; // one block only has 1 warp
 
     int warps_per_block = (threads_per_block / warp_size);
     int batches_per_block = warps_per_block * batches_per_warp;
     int blocks = (batch_count + batches_per_block - 1) / batches_per_block;
+    // use shared memory to contain one row of elements
+    int shared_memory_size = next_power_of_two * sizeof(input_t);
     dim3 threads(warp_size, warps_per_block, 1);
     // Launch code would be more elegant if C++ supported FOR CONSTEXPR
     switch (log2_elements) {
       case 0:  // 1
         softmax_warp_forward<input_t, output_t, acc_t, 0, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 1:  // 2
         softmax_warp_forward<input_t, output_t, acc_t, 1, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 2:  // 4
         softmax_warp_forward<input_t, output_t, acc_t, 2, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 3:  // 8
         softmax_warp_forward<input_t, output_t, acc_t, 3, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 4:  // 16
         softmax_warp_forward<input_t, output_t, acc_t, 4, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 5:  // 32
         softmax_warp_forward<input_t, output_t, acc_t, 5, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 6:  // 64
         softmax_warp_forward<input_t, output_t, acc_t, 6, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 7:  // 128
         softmax_warp_forward<input_t, output_t, acc_t, 7, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 8:  // 256
         softmax_warp_forward<input_t, output_t, acc_t, 8, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 9:  // 512
         softmax_warp_forward<input_t, output_t, acc_t, 9, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 10:  // 1024
         softmax_warp_forward<input_t, output_t, acc_t, 10, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        break;
+      case 11:  // 2048
+        softmax_warp_forward<input_t, output_t, acc_t, 11, is_log_softmax>
+            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       default:
         break;
