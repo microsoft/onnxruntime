@@ -84,10 +84,11 @@ $cmake_extra_args += "-DCMAKE_EXE_LINKER_FLAGS=`"$linker_flags`""
 # Find the full path of cmake.exe
 $cmake_command = (Get-Command -CommandType Application cmake)[0]
 $cmake_path = $cmake_command.Path
+$msbuild_path = vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | select-object -first 1
 
-Install-Pybind -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config  -cmake_extra_args $cmake_extra_args
+Install-Pybind -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config  -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
 
-Install-Protobuf -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args
+Install-Protobuf -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
 
 # This is the python Protobuf version, which is different than the C++ version that is in deps.txt
 $protobuf_version="4.21.12"
