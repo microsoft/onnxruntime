@@ -7,6 +7,7 @@ jobs:
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    CCACHE_DIR: '$(Pipeline.Workspace)/ccache'
   timeoutInMinutes: 120
   steps:
   - script: brew install coreutils ninja
@@ -16,6 +17,7 @@ jobs:
     parameters:
       TODAY: $(TODAY)
       AdditionalKey: coreml
+      CCACHE_DIR: $(CCACHE_DIR)
       BuildStep:
         - script: |
             python3 tools/ci_build/build.py \

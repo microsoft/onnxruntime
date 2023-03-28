@@ -10,6 +10,9 @@ parameters:
 - name: AdditionalKey
   type: string
 
+- name: CCACHE_DIR
+  type: string
+
 steps:
   - script: |
       brew install ccache
@@ -25,8 +28,7 @@ steps:
         "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}}
     displayName: ccache task
     env:
-      CCACHE_DIR: '$(Pipeline.Workspace)/ccache'
-      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{parameters.CCACHE_DIR}}
 
   - ${{ parameters.BuildStep }}
 
