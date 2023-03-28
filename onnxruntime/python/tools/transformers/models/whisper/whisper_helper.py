@@ -236,17 +236,18 @@ class WhisperHelper:
         if (use_multihead_attn_fusion):
             if (optimization_options is None):
                 optimization_options = FusionOptions("bart")
-            optimization_options.use_multihead_attn_fusion = True
+            optimization_options.use_multi_head_attention = True
 
+        pdb.set_trace
         m = optimize_model(
             onnx_model_path,
             model_type="bart",
             num_heads=num_attention_heads,
             hidden_size=hidden_size,
-            opt_level=2 if not use_external_data_format else 0,
+            opt_level=2 if not use_external_data_format else None,
             optimization_options=optimization_options,
             use_gpu=False,
-            only_onnxruntime=not use_gpu,
+            only_onnxruntime=False,
         )
 
         if is_float16:
