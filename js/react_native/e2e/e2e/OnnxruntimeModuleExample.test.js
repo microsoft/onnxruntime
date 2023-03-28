@@ -17,6 +17,11 @@ describe('OnnxruntimeModuleExample', () => {
   });
 
   it('OnnxruntimeModuleExampleE2ETest CheckInferenceResultValueIsCorrect', async () => {
-    await expect(element(by.label('output'))).toHaveText('Result: 3');
+    if (device.getPlatform() === 'ios') {
+      await expect(element(by.label('output')).atIndex(1)).toHaveText('Result: 3');
+    }
+    if (device.getPlatform() === 'android') {
+      await expect(element(by.label('output'))).toHaveText('Result: 3');
+    }
   });
 });
