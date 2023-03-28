@@ -7,8 +7,8 @@
 #define FUSION_FILTER L"..\\..\\fusion_filter_2.onnx"
 #define SIMPLE_CUSTOM_OP_LIB L"simple_custom_op.dll"
 #else
-#define FUSION_FILTER "..\\..\\fusion_filter_2.onnx"
-#define SIMPLE_CUSTOM_OP_LIB "simple_custom_op.dll"
+#define FUSION_FILTER "../fusion_filter_2.onnx"
+#define SIMPLE_CUSTOM_OP_LIB "./libsimple_custom_op.so"
 #endif
 
 void TestNew() {
