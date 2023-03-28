@@ -62,11 +62,11 @@ jobs:
 
   - task: Cache@2
     inputs:
-      key: ' ccache | protobuf | $(Build.SourcesDirectory)/cmake/deps.txt '
+      key: ' mac | protobuf | $(Build.SourcesDirectory)/cmake/deps.txt '
       path: $(CCACHE_DIR)
       restoreKeys: |
-        ccache | protobuf
-    displayName: ccache protobuf
+        mac | protobuf
+    displayName: mac protobuf
     condition: eq(${{ parameters.WithCache }}, true)
 
   - script: |
