@@ -68,7 +68,7 @@ if($cpu_arch -eq 'x86'){
 
 Write-Host $compile_flags
 
-cmake_extra_args += "-DCMAKE_CXX_STANDARD=17", "`"-DCMAKE_CXX_FLAGS=$compile_flags /EHsc`""
+$cmake_extra_args += "-DCMAKE_CXX_STANDARD=17", "`"-DCMAKE_CXX_FLAGS=$compile_flags /EHsc`""
 
 if ($use_cache) {
   if ($build_config -eq 'RelWithDebInfo') {
