@@ -46,23 +46,21 @@ void groupNormNHWCSum(const GroupNormNHWCParams<T>* params) {
   // The number of instances.
   grid.z = params->n;
 
+#define LAUNCH_GROUPNORM_SUM(TPB, ILP)                                                                                              \
+  groupNormNHWCSumKernel<T, TPB, ILP><<<grid, TPB, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock,          \
+                                                                        params->hwPerBlock, params->hw, params->hwc, params->c,     \
+                                                                        params->cPerGroup, params->groups, params->groupsPerBlock); \
+  break;
+
   switch (params->cPerBlock) {
     case 320:
-      groupNormNHWCSumKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
-                                                                          params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
-      break;
+      LAUNCH_GROUPNORM_SUM(256, 2)
     case 480:
-      groupNormNHWCSumKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
-                                                                          params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
-      break;
+      LAUNCH_GROUPNORM_SUM(256, 2)
     case 256:
-      groupNormNHWCSumKernel<T, 128, 2><<<grid, 128, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
-                                                                          params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
-      break;
+      LAUNCH_GROUPNORM_SUM(128, 2)
     case 128:
-      groupNormNHWCSumKernel<T, 64, 2><<<grid, 64, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
-                                                                        params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
-      break;
+      LAUNCH_GROUPNORM_SUM(64, 2)
     default:
       ORT_NOT_IMPLEMENTED("Not implemented");
   }
@@ -98,23 +96,22 @@ void groupNormNHWCScale(const GroupNormNHWCParams<T>* params) {
   // The number of instances.
   grid.z = params->n;
 
+#define LAUNCH_GROUPNORM_SCALE(TPB, ILP)                                                                                                    \
+  groupNormNHWCScaleKernel<T, TPB, ILP><<<grid, TPB, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta,            \
+                                                                          params->redBuffer, params->epsilon, params->c, params->cPerBlock, \
+                                                                          params->cPerGroup, params->groups, params->hwc, params->invHWC,   \
+                                                                          params->hw, params->hwPerBlock, params->withSwish);               \
+  break;
+
   switch (params->cPerBlock) {
     case 320:
-      groupNormNHWCScaleKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
-                                                                            params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
-      break;
+      LAUNCH_GROUPNORM_SCALE(256, 2)
     case 480:
-      groupNormNHWCScaleKernel<T, 256, 2><<<grid, 256, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
-                                                                            params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
-      break;
+      LAUNCH_GROUPNORM_SCALE(256, 2)
     case 256:
-      groupNormNHWCScaleKernel<T, 128, 2><<<grid, 128, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
-                                                                            params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
-      break;
+      LAUNCH_GROUPNORM_SCALE(128, 2)
     case 128:
-      groupNormNHWCScaleKernel<T, 64, 2><<<grid, 64, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
-                                                                          params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
-      break;
+      LAUNCH_GROUPNORM_SCALE(64, 2)
     default:
       ORT_NOT_IMPLEMENTED("Not implemented");
   }
