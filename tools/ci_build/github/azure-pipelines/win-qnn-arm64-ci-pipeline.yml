@@ -55,10 +55,10 @@ jobs:
       
   - task: PowerShell@2
     displayName: 'Install ONNX'
-      inputs:
-        filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_protoc.ps1'
-        workingDirectory: '$(Build.BinariesDirectory)'
-        arguments: -cpu_arch arm64 -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
+    inputs:
+      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_protoc.ps1'
+      workingDirectory: '$(Build.BinariesDirectory)'
+      arguments: -cpu_arch arm64 -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
 
   - task: PythonScript@0
     displayName: 'Generate cmake config'
