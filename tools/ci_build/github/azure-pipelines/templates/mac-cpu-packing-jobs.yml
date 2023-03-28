@@ -62,7 +62,7 @@ jobs:
 
   - task: Cache@2
     inputs:
-      key: ' ccache | protobuf | "$(Build.SourcesDirectory)/cmake/deps.txt" '
+      key: ' ccache | protobuf | $(Build.SourcesDirectory)/cmake/deps.txt '
       path: $(CCACHE_DIR)/protobuf
       restoreKeys: |
         ccache | protobuf
