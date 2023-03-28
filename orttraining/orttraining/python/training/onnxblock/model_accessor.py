@@ -12,14 +12,14 @@ class ModelAccessor:
     """This class stores the onnx model that is manipulated by the onnx blocks.
 
     Attributes:
-        model (onnx.ModelProto): The onnx model that is manipulated by the onnx blocks.
+        model: The onnx model that is manipulated by the onnx blocks.
     """
 
-    def __init__(self, model):
+    def __init__(self, model: onnx.ModelProto):
         self._model = model
 
     @property
-    def model(self):
+    def model(self) -> onnx.ModelProto:
         """ModelAccessor property that gets the modified model."""
 
         if self._model is None:
@@ -36,7 +36,7 @@ _GLOBAL_ACCESSOR = None
 
 
 @contextmanager
-def base(model):
+def base(model: onnx.ModelProto):
     """Registers the base model to be manipulated by the onnx blocks.
 
     Example:
@@ -49,7 +49,7 @@ def base(model):
     In this example, base will register the given input model to be manipulated by the onnx blocks.
 
     Args:
-        model (onnx.ModelProto): The base model to be manipulated by the onnx blocks.
+        model: The base model to be manipulated by the onnx blocks.
 
     Returns:
         ModelAccessor: The model accessor that contains the modified model.
@@ -62,8 +62,8 @@ def base(model):
 
     if model_clone is None:
         raise RuntimeError(
-            "Base onnx model cannot be None. Please use onnxblock.empty_base if you would like to build a \
-                model from scratch."
+            "Base onnx model cannot be None. Please use onnxblock.empty_base if you would like to build a "
+            "model from scratch."
         )
 
     _GLOBAL_ACCESSOR = ModelAccessor(model_clone)

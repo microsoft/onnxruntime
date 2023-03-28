@@ -22,7 +22,6 @@ class MSELoss(blocks.Block):
     """
 
     def __init__(self, reduction: str = "mean"):
-        """ """
         super().__init__()
 
         if reduction not in ["mean", "sum", "none"]:

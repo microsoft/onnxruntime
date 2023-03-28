@@ -26,15 +26,15 @@ def get_input_from_input_name(onnx_model: onnx.ModelProto, input_name: str) -> o
     raise LookupError(f"The provided output name {input_name} is not a graph input.")
 
 
-_TOKEN = 0
+_GRAPH_TOKEN = 0
 
 
 def _get_token() -> int:
     """Return a token that is one more than the previous token retrieved by calling this function."""
 
-    global _TOKEN  # pylint: disable=global-statement
-    _TOKEN += 1
-    return _TOKEN
+    global _GRAPH_TOKEN  # pylint: disable=global-statement
+    _GRAPH_TOKEN += 1
+    return _GRAPH_TOKEN
 
 
 def generate_graph_name(token: str) -> str:

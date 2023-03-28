@@ -13,7 +13,12 @@ from onnxruntime.capi._pybind_state import save_checkpoint as _internal_save_che
 def save_checkpoint(
     parameters: Tuple[List[onnx.TensorProto], List[onnx.TensorProto]], path_to_checkpoint: Union[str, os.PathLike]
 ) -> None:
-    """Saves the parameters to the checkpoint directory path_to_checkpoint."""
+    """Saves the parameters to the checkpoint directory path_to_checkpoint.
+
+    Args:
+        parameters tuple(trainable_params, non_trainable_params): The parameters to save to the checkpoint file.
+        path_to_checkpoint (str): The path to the checkpoint directory.
+    """
 
     if parameters is None:
         raise RuntimeError("No checkpoint parameters provided.")
@@ -24,7 +29,14 @@ def save_checkpoint(
     _internal_save_checkpoint(trainable_params, non_trainable_params, path_to_checkpoint)
 
 
-def load_checkpoint_to_model(path_to_checkpoint: Union[str, os.PathLike], model: onnx.ModelProto) -> None:
-    """Loads the checkpoint to an onnx inference model."""
+def load_checkpoint_to_model(path_to_checkpoint: Union[str, os.PathLike], model: onnx.ModelProto,
+                             strict: bool = False) -> None:
+    """Loads the checkpoint to an onnx inference model.
 
-    model.ParseFromString(_internal_load_checkpoint_to_model(path_to_checkpoint, model.SerializeToString()))
+    Args:
+        path_to_checkpoint (str): The path to the checkpoint directory.
+        model (onnx.ModelProto): The model to load the checkpoint to.
+        strict (bool): Whether to strictly enforce that the keys in the checkpoint match the keys returned by the model.
+    """
+
+    model.ParseFromString(_internal_load_checkpoint_to_model(path_to_checkpoint, model.SerializeToString(), strict))

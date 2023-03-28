@@ -3,6 +3,7 @@
 
 import logging
 import os
+import pathlib
 from enum import Enum
 from typing import List, Optional, Union
 
@@ -37,22 +38,30 @@ def generate_artifacts(
     requires_grad: Optional[List[str]] = None,
     loss: Optional[Union[LossType, onnxblock.Block]] = None,
     optimizer: Optional[OptimType] = None,
-    artifact_directory: Optional[Union[str, os.PathLike]] = None,
+    artifact_directory: Optional[Union[str, bytes, os.PathLike]] = None,
     **extra_options,
 ) -> None:
     """Generates artifacts required for training with ORT training api.
 
+    This function generates the following artifacts:
+        1. Training model (onnx.ModelProto): Contains the base model graph, loss sub graph and the gradient graph.
+        2. Eval model (onnx.ModelProto):  Contains the base model graph and the loss sub graph
+        3. Checkpoint: Contains the model parameters.
+        4. Optimizer model (onnx.ModelProto): Model containing the optimizer graph.
+
     Args:
         model: The base model to be used for gradient graph generation.
-        requires_grad: List of model parameter names that require gradient computation.
+        requires_grad: List of names of model parameters that require gradient computation
         loss: The loss function enum to be used for training. If None, no loss node is added to the graph.
         optimizer: The optimizer enum to be used for training. If None, no optimizer model is generated.
-        artifact_directory: The directory to save the generated artifacts. If None, the current working directory is used.
+        artifact_directory: The directory to save the generated artifacts.
+                                          If None, the current working directory is used.
         **extra_options: Additional keyword arguments for artifact generation.
             prefix: The prefix to be used for the generated artifacts. If not specified, no prefix is used.
 
     Raises:
         RuntimeError: If the loss provided is not one of the supported losses or an instance of onnxblock.Block.
+        RuntimeError: If the optimizer provided is not one of the supported optimizers.
     """
 
     loss_blocks = {
@@ -70,10 +79,10 @@ def generate_artifacts(
         loss_block = loss_blocks[loss]()
         logging.info("Loss function enum provided: %s", loss.name)
     else:
-        # If the user provided their own custom implementation of loss,
-        # accept it and allow them to control creation of the loss node
+        # If a custom implementation of the loss was provided, then it should be
+        # accepted and the custom implementation must control the creation of the loss node
         # in the training model.
-        # To do this, user will need to provide an instance of onnxblock.Block
+        # To do this, user must provide an instance of onnxblock.Block.
         if not isinstance(loss, onnxblock.Block):
             raise RuntimeError(
                 f"Unknown loss provided {type(loss)}. Expected loss to be either one of"
@@ -105,23 +114,38 @@ def generate_artifacts(
         model_params = training_block.parameters()
 
     if artifact_directory is None:
-        artifact_directory = os.getcwd()
+        artifact_directory = pathlib.Path.cwd()
     prefix = ""
     if "prefix" in extra_options:
         prefix = extra_options["prefix"]
         logging.info("Using prefix %s for generated artifacts.", prefix)
-    onnx.save(training_model, os.path.join(artifact_directory, f"{prefix}training_model.onnx"))
-    logging.info("Saved training model to %s", os.path.join(artifact_directory, f"{prefix}training_model.onnx"))
-    onnx.save(eval_model, os.path.join(artifact_directory, f"{prefix}eval_model.onnx"))
-    logging.info("Saved eval model to %s", os.path.join(artifact_directory, f"{prefix}eval_model.onnx"))
-    onnxblock.save_checkpoint(training_block.parameters(), os.path.join(artifact_directory, f"{prefix}checkpoint"))
-    logging.info("Saved checkpoint to %s", os.path.join(artifact_directory, f"{prefix}checkpoint"))
+
+    artifact_directory = pathlib.Path(artifact_directory)
+
+    training_model_path = artifact_directory / f"{prefix}training_model.onnx"
+    if os.path.exists(training_model_path):
+        logging.info("Training model path %s already exists. Overwriting.", training_model_path)
+    onnx.save(training_model, training_model_path)
+    logging.info("Saved training model to %s", training_model_path)
+
+    eval_model_path = artifact_directory / f"{prefix}eval_model.onnx"
+    if os.path.exists(eval_model_path):
+        logging.info("Eval model path %s already exists. Overwriting.", eval_model_path)
+    onnx.save(eval_model, eval_model_path)
+    logging.info("Saved eval model to %s", eval_model_path)
+
+    checkpoint_path = artifact_directory / f"{prefix}checkpoint"
+    if os.path.exists(checkpoint_path):
+        logging.info("Checkpoint path %s already exists. Overwriting.", checkpoint_path)
+    onnxblock.save_checkpoint(training_block.parameters(), str(checkpoint_path))
+    logging.info("Saved checkpoint to %s", checkpoint_path)
 
     # If optimizer is not specified, skip creating the optimizer model
     if optimizer is None:
         logging.info("No optimizer enum provided. Skipping optimizer model generation.")
         return
-    elif not isinstance(optimizer, OptimType):
+
+    if not isinstance(optimizer, OptimType):
         raise RuntimeError(
             f"Unknown optimizer provided {type(optimizer)}. Expected optimizer to be of type "
             "onnxruntime.training.artifacts.OptimType."
@@ -136,5 +160,6 @@ def generate_artifacts(
         _ = optim_block(model_params)
         optim_model = optim_block.to_model_proto()
 
-    onnx.save(optim_model, os.path.join(artifact_directory, f"{prefix}optimizer_model.onnx"))
-    logging.info("Saved optimizer model to %s", os.path.join(artifact_directory, f"{prefix}optimizer_model.onnx"))
+    optimizer_model_path = artifact_directory / f"{prefix}optimizer_model.onnx"
+    onnx.save(optim_model, optimizer_model_path)
+    logging.info("Saved optimizer model to %s", optimizer_model_path)

@@ -17,7 +17,7 @@ class Block(ABC):
     """Base class for all building blocks that can be stacked on top of each other.
 
     All blocks that want to manipulate the model must subclass this class. The subclass's
-    implementation of the build method must return the name of the intermediate output from
+    implementation of the build method must return the names of the intermediate outputs from
     the block.
 
     The subclass's implementation of the build method must manipulate the base model as it deems fit,
@@ -337,7 +337,7 @@ class InputLike(Block):
         """Create an input like the graph input/output associated with the given name
 
         Args:
-            like (str): The name of the graph input/output to copy the type and shape from
+            like (str): The name of the graph input/output to clone the type and shape from
         """
         super().__init__()
 
@@ -346,10 +346,12 @@ class InputLike(Block):
     def build(self, input_name: Optional[str] = None):
         cloned_input = None
         with contextlib.suppress(LookupError):
+            # Supress LookupError because we want to try to get the input from the output if it's not found in the inputs
             cloned_input = copy.deepcopy(_graph_utils.get_input_from_input_name(self.base, self._like))
 
         if cloned_input is None:
             with contextlib.suppress(LookupError):
+                # Supress LookupError because we deal with the case where no input or output was found later.
                 cloned_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, self._like))
 
         if cloned_input is None:

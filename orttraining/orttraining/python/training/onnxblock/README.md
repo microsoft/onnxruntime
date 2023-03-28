@@ -13,21 +13,34 @@ The offline tooling helps generating the above files. Read along to know how.
 
 ### Generating the artifacts
 
-Let's assume that an inference only onnx model has already been generated. Here, we require that the user's onnx model is generated with the parameters embedded inside the exported model, i.e. with the parameters `export_params=True` and `training=torch.onnx.TrainingMode.TRAINING`.
+The starting point to generating the training artifacts is to have a forward only onnx model available. This model will be used as the base model for creating the training model. If the user is converting from PyTorch, it is suggested that the user use the following arguments while exporting the model:
+1. export_params: True
+2. training: torch.onnx.TrainingMode.TRAINING
+3. do_constant_folding: False
+
+An example command for exporting the model can be:
+
+```py
+torch.onnx.export(model, sample_inputs, "base_model.onnx",
+                  export_params=True, training=torch.onnx.TrainingMode.TRAINING,
+                  do_constant_folding=False)
+```
+
+Now, onto generating the training artifacts. Let's assume that a forward only onnx model has already been generated. Here, we require that the user's onnx model is generated with the parameters embedded inside the exported model, i.e. with the parameters `export_params=True` and `training=torch.onnx.TrainingMode.TRAINING`.
 
 ```py
 from onnxruntime.training import artifacts
 
 
 # Load the onnx model
-inference_model_path = "model.onnx"
-base_model = onnx.load(inference_model_path)
+model_path = "model.onnx"
+base_model = onnx.load(model_path)
 
 # Define the parameters that need their gradient computed
 requires_grad = ["weight1", "bias1", "weight2", "bias2"]
 
 # Generate the training artifacts
-artifacts.generate_artifacts(inference_model_path, requires_grad = requires_grad,
+artifacts.generate_artifacts(base_model, requires_grad = requires_grad,
                              loss = artifacts.LossType.CrossEntropyLoss,
                              optimizer = artifacts.OptimType.AdamW)
 
@@ -82,14 +95,14 @@ class WeightedAverageLoss(onnxblock.Block):
 my_custom_loss = WeightedAverageLoss()
 
 # Load the onnx model
-inference_model_path = "model.onnx"
-base_model = onnx.load(inference_model_path)
+model_path = "model.onnx"
+base_model = onnx.load(model_path)
 
 # Define the parameters that need their gradient computed
 requires_grad = ["weight1", "bias1", "weight2", "bias2"]
 
 # Now, we can invoke generate_artifacts with this custom loss function
-artifacts.generate_artifacts(inference_model_path, requires_grad = requires_grad,
+artifacts.generate_artifacts(base_model, requires_grad = requires_grad,
                              loss = my_custom_loss, optimizer = artifacts.OptimType.AdamW)
 
 # Successful completion of the above call will generate 4 files in the current working directory,
