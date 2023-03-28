@@ -2,7 +2,7 @@ import onnx
 from onnx import TensorProto, helper
 
 
-def GenerateModel(model_name):
+def generate_model(model_name):
     nodes = [
         helper.make_node(
             "DisentangledAttention_TRT",
@@ -33,4 +33,4 @@ def GenerateModel(model_name):
 
 
 if __name__ == "__main__":
-    GenerateModel("trt_plugin_custom_op_test.onnx")
+    generate_model("trt_plugin_custom_op_test.onnx")
