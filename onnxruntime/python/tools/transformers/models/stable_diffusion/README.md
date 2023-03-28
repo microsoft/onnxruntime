@@ -82,7 +82,12 @@ pip uninstall onnxruntime-gpu
 pip install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
 ```
 
-The diffusers need a patch to work with ort-nightly-gpu: add `"ort-nightly-gpu",` below [this line](https://github.com/huggingface/diffusers/blob/1586186eea36e6a9b6f16c90ee32921c316c4b57/src/diffusers/utils/import_utils.py#L155).
+Need install diffusers from source until v0.15 is released.
+```
+git clone https://github.com/huggingface/diffusers
+cd diffusers
+pip install -e .
+```
 
 ### Export ONNX pipeline
 
@@ -133,7 +138,7 @@ Let's create a new environment to run PyTorch 2.0:
 ```
 conda create -n pt2 python=3.10
 conda activate pt2
-pip3 install numpy --pre torch --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cu117
+pip install torch --index-url https://download.pytorch.org/whl/cu117
 pip install -r requirements.txt
 python benchmark.py -e torch -b 1 --enable_torch_compile
 ```
@@ -225,9 +230,9 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 
 ### Credits
 
-Some CUDA kernels (Flash Attention, GroupNorm, SplitGelu and BiasAdd etc.) were originally implemented in TensorRT by Nvidia.
-Memory efficient attention was developed by Meta xFormers.
-The ONNX export script and pipeline was developed by Huggingface diffusers library.
+Some CUDA kernels (Flash Attention, GroupNorm, SplitGelu and BiasAdd etc.) were originally implemented in [TensorRT](https://github.com/nviDIA/TensorRT) by Nvidia.
+We use Memory efficient attention from [CUTLASS](https://github.com/NVIDIA/cutlass). The kernels were developed by Meta xFormers.
+The ONNX export script and pipeline for stable diffusion was developed by Huggingface [diffusers](https://github.com/huggingface/diffusers) library.
 
 ### Future Works
 
@@ -237,8 +242,8 @@ There are other optimizations might improve the performance or reduce memory foo
 * Use CUDA graph to speed up inference.
 * Export the whole pipeline into a single ONNX model. Currently, there are multiple ONNX models (CLIP, VAE and U-Net etc). Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator. The end result is more efficient and less memory footprint.
 * For Stable Diffusion 2.1, we force Attention in fp32 to avoid black image. That slows down the inference significantly. We could potentially change attention kernel (like fp32 accumulation) to avoid the issue.
-* Reduce GPU memory footprint by actively deleting buffers for intermediate results
-* Reduce GPU memory footprint by CPU RAM Offloading
+* Reduce GPU memory footprint by actively deleting buffers for intermediate results.
+* Reduce GPU memory footprint by providing options for CPU RAM Offloading.
 * Attention fusion in CLIP
 * Safety Checker Optimization
 * Leverage FP8 in latest GPU
