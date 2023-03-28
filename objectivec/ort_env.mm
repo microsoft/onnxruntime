@@ -34,6 +34,10 @@ NS_ASSUME_NONNULL_BEGIN
   return *_env;
 }
 
+- (NSString *)getVersionString {
+    return [NSString stringWithUTF8String: Ort::GetVersionString().c_str()];
+}
+
 @end
 
 NS_ASSUME_NONNULL_END

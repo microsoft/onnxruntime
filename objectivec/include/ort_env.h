@@ -23,7 +23,7 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (nullable instancetype)initWithLoggingLevel:(ORTLoggingLevel)loggingLevel
                                         error:(NSError**)error NS_DESIGNATED_INITIALIZER;
-
+- (NSString *)getVersionString;
 @end
 
 NS_ASSUME_NONNULL_END

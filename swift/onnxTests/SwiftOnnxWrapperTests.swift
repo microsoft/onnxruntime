@@ -8,7 +8,17 @@ import Foundation
 final class SwiftOnnxWrapperTests: XCTestCase {
     let modelPath: String = Bundle.module.url(forResource: "single_add.basic", withExtension: "ort")!.path
     
-    func testExample() throws {
+    func testGetVersionString() throws {
+        do {
+            let env = try ORTEnv(loggingLevel: ORTLoggingLevel.verbose)
+            let version = env.getVersionString()
+            XCTAssertNotNil(version)
+        } catch let error {
+            XCTFail(error.localizedDescription)
+        }
+    }
+
+    func testCreateSession() throws {
         do {
             let env = try ORTEnv(loggingLevel: ORTLoggingLevel.verbose)
             let options = try ORTSessionOptions()
