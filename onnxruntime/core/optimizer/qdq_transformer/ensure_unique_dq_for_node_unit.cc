@@ -120,14 +120,16 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
   }
 
   // If the original DQ produces a graph output or has a subgraph consumer node, we preserve any of those output
-  // relationships and duplicate new unique DQ's for each of the same-graph consumer nodes.
+  // relationships and duplicate new unique DQ's for each of the same-graph consumer nodes. It is important that the
+  // original DQ node does not become part of a QDQ node unit as it has an additional consumer.
+  //
   // Otherwise, where the original DQ has only same-graph consumer nodes, we can reuse the original DQ as the unique
   // DQ for the first same-graph consumer node and duplicate new unique DQ's for the rest of them.
-  const bool can_reuse_original_dq = !has_subgraph_consumer && !produces_graph_output;
+  const bool must_preserve_original_dq_outside_of_node_unit = produces_graph_output || has_subgraph_consumer;
 
   auto edge_to_process = dq_output_edges.begin();
-  if (can_reuse_original_dq && edge_to_process != dq_output_edges.end()) {
-    // start duplicating from the next edge
+  if (!must_preserve_original_dq_outside_of_node_unit && edge_to_process != dq_output_edges.end()) {
+    // reuse original DQ for the first edge, start duplicating from the next edge
     ++edge_to_process;
   }
 
