@@ -225,6 +225,7 @@ class TunableOp {
   static bool IsSupported(Op<ParamsT>& op, const ParamsT* param) {
     Status status = op.IsSupported(param);
     if (status.Category() == common::StatusCategory::NONE && status.Code() == common::StatusCode::INVALID_ARGUMENT) {
+      LOGS_DEFAULT(VERBOSE) << "unsupported reason: " << status.ErrorMessage();
       return false;
     }
     ORT_THROW_IF_ERROR(status);
