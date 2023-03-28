@@ -150,7 +150,7 @@ def test(model, validation_dataloader, device, args):
     # Evaluate data for one epoch
     for batch in validation_dataloader:
         # Add batch to GPU
-        batch = tuple(t.to(device) for t in batch)
+        batch = tuple(t.to(device) for t in batch)  # noqa: PLW2901
 
         # Unpack the inputs from our dataloader
         b_input_ids, b_input_mask, b_labels = batch

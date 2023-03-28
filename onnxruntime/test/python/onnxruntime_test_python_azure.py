@@ -95,12 +95,12 @@ class TestAmlEndpoint(unittest.TestCase):
         run_opt.add_run_config_entry("use_azure", "1")
         run_opt.add_run_config_entry("azure.auth_key", "fdCZuuoHEimRb4ukWZhtLhbcwzyKYgUu")
 
-        x = np.array([True, False]).astype(np.bool)
-        y = np.array([True, True]).astype(np.bool)
+        x = np.array([True, False]).astype(bool)
+        y = np.array([True, True]).astype(bool)
 
         z = sess.run(None, {"X": x, "Y": y}, run_opt)[0]
 
-        expected_z = np.array([True, False]).astype(np.bool)
+        expected_z = np.array([True, False]).astype(bool)
         np.testing.assert_allclose(z, expected_z, rtol=1e-05, atol=1e-08)
 
 
