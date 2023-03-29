@@ -234,7 +234,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     case TransformerLevel::Level2: {
       const bool enable_quant_qdq_cleanup =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
-#ifndef DISABLE_CONTRIB_OPS
+#if !defined(DISABLE_CONTRIB_OPS)
       const bool qdq_is_int8_allowed =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed,
                                                             QDQIsInt8Allowed() ? "1" : "0") == "1";
@@ -316,7 +316,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 #endif
 
-#endif
+#endif // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
       // fusions might be prevented if this one removes a Q/DQ node too early.
       transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
