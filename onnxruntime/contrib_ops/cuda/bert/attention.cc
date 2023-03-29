@@ -209,8 +209,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.query = nullptr;
   data.key = nullptr;
   data.value = nullptr;
-  data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
-  data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
+  //data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
+  //data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
+  data.mask_index = nullptr;
+  data.mask_index_dims = gsl::span<const int64_t>();
   data.past = (nullptr == past) ? nullptr : reinterpret_cast<const CudaT*>(past->Data<T>());
   data.past_key = nullptr;
   data.past_value = nullptr;
