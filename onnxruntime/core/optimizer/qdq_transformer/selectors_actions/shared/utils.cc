@@ -208,6 +208,30 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
   return qdq_selections;
 }
 
+Status ValidateNodeGroupDQNodes(const GraphViewer& graph_viewer,
+                                const Node& target_node,
+                                gsl::span<const Node* const> dq_nodes) {
+  // Within a QDQ node group, a target node input is the only consumer of each DQ.
+  // This should have been ensured by the EnsureUniqueDQForNodeUnit graph transformer, but other graph modifications
+  // may have happened since. Verify that this is still true.
+  for (const auto* dq_node : dq_nodes) {
+    const bool dq_produces_graph_output = graph_viewer.NodeProducesGraphOutput(*dq_node);
+    ORT_RETURN_IF(dq_produces_graph_output,
+                  "QDQ node group cannot have DQ node that produces a graph output. DQ node: ", dq_node->Name(),
+                  ", target node: ", target_node.Name());
+
+    const bool dq_has_single_output_edge_to_target =
+        dq_node->GetOutputEdgesCount() == 1 &&
+        dq_node->OutputEdgesBegin()->GetNode().Index() == target_node.Index();
+    ORT_RETURN_IF_NOT(dq_has_single_output_edge_to_target,
+                      "QDQ node group cannot have DQ that doesn't have a single output edge to the target node. "
+                      "DQ node: ",
+                      dq_node->Name(), ", target node: ", target_node.Name());
+  }
+
+  return Status::OK();
+}
+
 }  // namespace QDQ
 }  // namespace onnxruntime
 
