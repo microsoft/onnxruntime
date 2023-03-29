@@ -712,5 +712,9 @@ Status LoadDynamicLibrary(onnxruntime::PathString library_name) {
 std::string ToUTF8String(const std::wstring& s) {
   return g_host->ToUTF8String(s);
 }
+
+std::wstring ToWideString(const std::string& s) {
+  return g_host->ToWideString(s); 
+}
 #endif
 }  // namespace onnxruntime
