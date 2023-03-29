@@ -548,10 +548,10 @@ class SymbolicShapeInference:
         self.symbolic_dims_.update(new_dims)
         return symbolic_shape_inference
 
-    def _get_int_values(self, node, broadcast=False, loose_int_with_decimal_part=False):
-        def loose_int(value, keep_decimal_part):
+    def _get_int_or_float_values(self, node, broadcast=False, allow_float_values=False):
+        def int_or_float(value, allow_float_values):
            # If casting into int has precision loss: keep float output
-            if keep_decimal_part and value % 1 != 0:
+            if allow_float_values and value % 1 != 0:
                 return value
             return int(value)
 
@@ -564,10 +564,10 @@ class SymbolicShapeInference:
                 if len(v.shape) > 1:
                     new_v = None  # ignore value for rank > 1
                 elif len(v.shape) == 0:
-                    new_v = loose_int(v.item(), loose_int_with_decimal_part)
+                    new_v = int_or_float(v.item(), allow_float_values)
                 else:
                     assert len(v.shape) == 1
-                    new_v = [loose_int(vv, loose_int_with_decimal_part) for vv in v]
+                    new_v = [int_or_float(vv, allow_float_values) for vv in v]
                 values[i] = new_v
         values_len = [len(v) if type(v) == list else 0 for v in values]
         max_len = max(values_len)
@@ -592,9 +592,9 @@ class SymbolicShapeInference:
         # cast inputs into interger might lose decimal part and reduce precision
         # keep them as float, finish the operation, then cast the result into integer
         if node.op_type in ['Mul', 'Div']:
-            values = self._get_int_values(node, broadcast=True, loose_int_with_decimal_part=True)
+            values = self._get_int_or_float_values(node, broadcast=True, allow_float_values=True)
         else:
-            values = self._get_int_values(node, broadcast=True)
+            values = self._get_int_or_float_values(node, broadcast=True)
 
         if all([v is not None for v in values]):
             is_list = [type(v) == list for v in values]
@@ -795,7 +795,7 @@ class SymbolicShapeInference:
     def _infer_symbolic_compute_ops(self, node):
         funcs = {
             "Add": lambda l: l[0] + l[1],  # noqa: E741
-            "Div": lambda l: l[0] // l[1] if isinstance(l[0] // l[1], int) else int(l[0] // l[1]),  # integer div in sympy  # noqa: E741
+            "Div": lambda l: int(l[0] // l[1]) if isinstance(l[0] // l[1], float) else l[0] // l[1],  # integer div in sympy  # noqa: E741
             "Equal": lambda l: l[0] == l[1],  # noqa: E741
             "Floor": lambda l: sympy.floor(l[0]),  # noqa: E741
             "Max": lambda l: l[1]  # noqa: E741
@@ -804,7 +804,7 @@ class SymbolicShapeInference:
             "Min": lambda l: l[1]  # noqa: E741
             if is_literal(l[0]) and int(l[0]) > self.int_max_
             else (l[0] if is_literal(l[1]) and int(l[1]) > self.int_max_ else sympy.Min(l[0], l[1])),
-            "Mul": lambda l: l[0] * l[1] if isinstance(l[0] * l[1], int) else int(l[0] * l[1]),  # noqa: E741
+            "Mul": lambda l: int(l[0] * l[1]) if isinstance(l[0] * l[1], float) else l[0] * l[1],  # noqa: E741
             "Sub": lambda l: l[0] - l[1],  # noqa: E741
             "Where": lambda l: l[1] if l[0] else l[2],  # noqa: E741
             "Neg": lambda l: -l[0],  # noqa: E741
@@ -846,7 +846,7 @@ class SymbolicShapeInference:
 
     def _infer_Concat(self, node):  # noqa: N802
         if any([i in self.sympy_data_ or i in self.initializers_ for i in node.input]):
-            values = self._get_int_values(node)
+            values = self._get_int_or_float_values(node)
             if all([v is not None for v in values]):
                 assert get_attribute(node, "axis") == 0
                 self.sympy_data_[node.output[0]] = []
@@ -909,7 +909,7 @@ class SymbolicShapeInference:
         self.sympy_data_[node.output[0]] = numpy_helper.to_array(t)
 
     def _infer_ConstantOfShape(self, node):  # noqa: N802
-        sympy_shape = self._get_int_values(node)[0]
+        sympy_shape = self._get_int_or_float_values(node)[0]
         vi = self.known_vi_[node.output[0]]
         if sympy_shape is not None:
             if type(sympy_shape) != list:
@@ -1456,7 +1456,7 @@ class SymbolicShapeInference:
 
     def _infer_Range(self, node):  # noqa: N802
         vi = self.known_vi_[node.output[0]]
-        input_data = self._get_int_values(node)
+        input_data = self._get_int_or_float_values(node)
         if all([i is not None for i in input_data]):
             start = as_scalar(input_data[0])
             limit = as_scalar(input_data[1])
@@ -1510,7 +1510,7 @@ class SymbolicShapeInference:
         axes = get_attribute(node, "axes")
         keep_dims = get_attribute(node, "keepdims", 1)
         if keep_dims == 0 and axes == [0]:
-            data = self._get_int_values(node)[0]
+            data = self._get_int_or_float_values(node)[0]
             if data is not None:
                 self.sympy_data_[node.output[0]] = sympy_reduce_product(data)
 
@@ -1978,7 +1978,7 @@ class SymbolicShapeInference:
         if get_opset(self.out_mp_) <= 9:
             k = get_attribute(node, "k")
         else:
-            k = self._get_int_values(node)[1]
+            k = self._get_int_or_float_values(node)[1]
 
         if k is None:
             k = self._new_symbolic_dim_from_output(node)
