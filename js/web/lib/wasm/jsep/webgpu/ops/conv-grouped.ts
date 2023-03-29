@@ -17,7 +17,8 @@ const createGroupedConvProgramMetadata = (hasBias: boolean, cacheHint: string): 
 });
 
 const createGroupedConvProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvAttributes): ProgramInfo => {
+    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvAttributes,
+     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
       const hasBias = inputs.length > 2;
       const processBias = hasBias ? 'value += b[output_channel];' : '';
       const xShape = inputs[0].dims;
@@ -109,14 +110,26 @@ const createGroupedConvProgramInfo =
   }`;
       return {
         ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+        outputs: [{
+          dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+          dataType: inputs[0].dataType,
+          gpuDataType: GpuDataType.default
+        }],
         shaderSource,
         dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
       };
     };
 
+/**
+ * naive grouped conv implementation, supports 1d/2d conv
+ * @param squeezeOutputShapeFunction - an optional function to squeeze the output shape, only used in conv1d
+ */
 export const createGroupedConvProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: ConvAttributes): ProgramInfoLoader => {
+    (inputs: readonly TensorView[], attributes: ConvAttributes,
+     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfoLoader => {
       const metadata = createGroupedConvProgramMetadata(inputs.length > 2, attributes.cacheKey);
-      return {...metadata, get: () => createGroupedConvProgramInfo(inputs, metadata, attributes)};
+      return {
+        ...metadata,
+        get: () => createGroupedConvProgramInfo(inputs, metadata, attributes, squeezeOutputShapeFunction)
+      };
     };

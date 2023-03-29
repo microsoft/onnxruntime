@@ -56,12 +56,16 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvAttribute
   }
 
   // TODO : Need to add support for multi-dimensional conv
-  if (inputs[0].dims.length !== 4 || inputs[1].dims.length !== 4) {
-    throw new Error('currently only support 2-dimensional conv');
+  if (inputs[0].dims.length !== 4 && inputs[0].dims.length !== 3) {
+    throw new Error('currently only support conv 1D and 2D');
+  }
+
+  if (inputs[0].dims.length !== inputs[1].dims.length) {
+    throw new Error('filter does not have same dimension as input');
   }
 
   // FILTER_IN_CHANNEL should be equal to DATA_CHANNEL
-  const dataChannel = inputs[0].dims[attributes.format === 'NHWC' ? 3 : 1];
+  const dataChannel = inputs[0].dims[attributes.format === 'NHWC' ? inputs[0].dims.length - 1 : 1];
   const filterInChannel = inputs[1].dims[1] * attributes.group;
   if (dataChannel !== filterInChannel) {
     throw new Error('FILTER_IN_CHANNEL should be equal to DATA_CHANNEL');
@@ -139,24 +143,24 @@ export const parseConvAttributes = (attributes: Record<string, unknown>): ConvAt
       {autoPad, format, dilations, group, kernelShape, pads, strides, wIsConst, ...activationAttributes});
 };
 
-const conv2d = (context: ComputeContext, attributes: ConvAttributes): number => {
-  const adjustedAttributes = getAdjustedConvAttributes(attributes, context.inputs);
+const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvAttributes): number => {
+  const adjustedAttributes = getAdjustedConvAttributes(attributes, inputs);
 
   // check attributes
 
-  const hasBias = context.inputs.length === 3;
+  const hasBias = inputs.length === 3;
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
   const isChannelsLast = attributes.format === 'NHWC';
 
   // const batchSize = context.inputs[0].dims[0];
-  const inputHeight = context.inputs[0].dims[isChannelsLast ? 1 : 2];
-  const inputWidth = context.inputs[0].dims[isChannelsLast ? 2 : 3];
-  const inputChannels = context.inputs[0].dims[isChannelsLast ? 3 : 1];
-  const weightHeight = context.inputs[1].dims[2];
-  const weightWidth = context.inputs[1].dims[3];
+  const inputHeight = inputs[0].dims[isChannelsLast ? 1 : 2];
+  const inputWidth = inputs[0].dims[isChannelsLast ? 2 : 3];
+  const inputChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
+  const weightHeight = inputs[1].dims[2];
+  const weightWidth = inputs[1].dims[3];
 
   const outputShape = calculateOutputShape(
-      context.inputs[0].dims, context.inputs[1].dims, attributes.dilations, adjustedAttributes.pads, attributes.strides,
+      inputs[0].dims, inputs[1].dims, attributes.dilations, adjustedAttributes.pads, attributes.strides,
       isChannelsLast);
   const outHeight = outputShape[isChannelsLast ? 1 : 2];
   const outWidth = outputShape[isChannelsLast ? 2 : 3];
@@ -170,12 +174,12 @@ const conv2d = (context: ComputeContext, attributes: ConvAttributes): number => 
        (attributes.autoPad === 'SAME_UPPER' || attributes.autoPad === 'SAME_LOWER' ||
         attributes.autoPad === 'VALID'))) {
     // return conv2dByMatMul({x, filter, convInfo, backend, bias, activation, preluActivationWeights, leakyreluAlpha});
-    context.compute(createGroupedConvProgramInfoLoader(context.inputs, adjustedAttributes));
+    context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
     return 0;
   }
 
   if (!isChannelsLast || attributes.group !== 1) {
-    context.compute(createGroupedConvProgramInfoLoader(context.inputs, adjustedAttributes));
+    context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
     return 0;
   }
 
@@ -208,29 +212,58 @@ const conv2d = (context: ComputeContext, attributes: ConvAttributes): number => 
           {
             ...transposeProgramMetadata,
             cacheHint: weightTransposeAttribute.cacheKey,
-            get: () => createTransposeProgramInfo(context.inputs[1], weightTransposeAttribute.perm)
+            get: () => createTransposeProgramInfo(inputs[1], weightTransposeAttribute.perm)
           },
           {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
   if (attributes.wIsConst && !context.customData.wT) {
     context.customData.wT = transposedWeight;
   }
 
-  const inputs = [context.inputs[0], transposedWeight];
+  const convInputs = [inputs[0], transposedWeight];
   if (hasBias) {
-    if (!isChannelsLast && context.inputs[2].dims.length === 1) {
-      inputs.push(context.inputs[2].reshape([context.inputs[2].dims[0], 1, 1]));
+    if (!isChannelsLast && inputs[2].dims.length === 1) {
+      convInputs.push(inputs[2].reshape([inputs[2].dims[0], 1, 1]));
     } else {
-      inputs.push(context.inputs[2]);
+      convInputs.push(inputs[2]);
     }
   }
   context.compute(
       createConv2DMatMulProgramInfoLoader(
-          inputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias, sequentialAccessByThreads),
-      {inputs});
+          convInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
+          sequentialAccessByThreads),
+      {inputs: convInputs});
+  return 0;
+};
+
+const conv1d = (context: ComputeContext, attributes: ConvAttributes): number => {
+  // extend the input to 2D by adding H dimension
+  const isChannelLast = attributes.format === 'NHWC';
+  const inputs = [
+    context.inputs[0].reshape(
+        isChannelLast ?
+            // [N, W, C] -> [N, H=1, W, C]
+            [context.inputs[0].dims[0], 1, context.inputs[0].dims[1], context.inputs[0].dims[2]] :
+            // [N, C, W] -> [N, C, H=1, W]
+            [context.inputs[0].dims[0], context.inputs[0].dims[1], 1, context.inputs[0].dims[2]]),
+    //[FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, kW] -> [FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, kH=1, kW]
+    context.inputs[1].reshape([context.inputs[1].dims[0], context.inputs[1].dims[1], 1, context.inputs[1].dims[2]])
+  ];
+  if (context.inputs.length === 3) {
+    inputs.push(context.inputs[2]);
+  }
+  const pads = [0, attributes.pads[0], 0, attributes.pads[1]];
+  const strides = [1].concat(attributes.strides);
+  const dilations = [1].concat(attributes.dilations);
+  const kernelShape = [1].concat(attributes.kernelShape);
+  const adjustedAttributes = getAdjustedConvAttributes({...attributes, pads, strides, dilations, kernelShape}, inputs);
+  context.compute(createGroupedConvProgramInfoLoader(
+      inputs, adjustedAttributes,
+      outputShape => isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : []));
   return 0;
 };
 
 export const conv = (context: ComputeContext, attributes: ConvAttributes): number => {
-  validateInputs(context.inputs, attributes);  // currently will fail if not conv2D
-  return conv2d(context, attributes);
+  validateInputs(context.inputs, attributes);  // currently will fail if not conv1D/2D
+  return context.inputs[0].dims.length === 3 ? conv1d(context, attributes) :
+                                               conv2d(context, context.inputs, attributes);
 };
