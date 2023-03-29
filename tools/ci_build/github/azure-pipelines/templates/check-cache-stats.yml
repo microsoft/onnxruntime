@@ -12,4 +12,4 @@ steps:
       du -sh $(CacheDir)
     displayName: Show Cache stats
     env:
-      CCACHE_DIR: $(CacheDir)
+      CCACHE_DIR: ${{ parameters.CacheDir }}
