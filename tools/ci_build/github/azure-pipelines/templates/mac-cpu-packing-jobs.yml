@@ -90,8 +90,6 @@ jobs:
   - script: |
       ccache -s
       ccache -z
-      ls -l $(PROTO_CACHE_DIR)
-      du -sh $(PROTO_CACHE_DIR)
     displayName: Show Cache stats and Clear protolbuf stats.
     condition: eq(${{ parameters.WithCache }}, true)
 
