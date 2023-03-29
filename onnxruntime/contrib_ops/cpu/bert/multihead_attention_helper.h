@@ -25,7 +25,7 @@ Status CheckInputs(const T* query,
                    float mask_filter_value,
                    float scale,
                    int max_threads_per_block) {
-  //     key_padding_mask (K/V)     : (B) or (B, L) or None
+  //     key_padding_mask (K/V)     : (B) or (2*B + 1) or (B, L) or None
   //     relative_position_bias     : (B, 1, S, L)
   //     past_key                   : (B, N, S*, H)
   //     past_value                 : (B, N, S*, H)
@@ -188,8 +188,12 @@ Status CheckInputs(const T* query,
   if (key_padding_mask != nullptr) {
     mask_type = AttentionMaskType::MASK_UNKNOWN;
     const auto& mask_dims = key_padding_mask->Shape().GetDims();
-    if (mask_dims.size() == 1 && mask_dims[0] == static_cast<int64_t>(batch_size)) {
-      mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+    if (mask_dims.size() == 1) {
+      if (mask_dims[0] == static_cast<int64_t>(batch_size)) {
+        mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+      } else if (mask_dims[0] == static_cast<int64_t>(3 * batch_size + 2)) {
+        mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
+      }
     } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
     }

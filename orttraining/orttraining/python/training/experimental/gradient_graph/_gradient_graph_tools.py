@@ -1,10 +1,11 @@
 import io
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Union  # noqa: F401
 
 import torch
-from onnxruntime.capi._pybind_state import GradientGraphBuilder
 from torch.onnx import TrainingMode
+
+from onnxruntime.capi._pybind_state import GradientGraphBuilder
 
 from ...ortmodule._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 
@@ -67,7 +68,7 @@ def export_gradient_graph(
     args = (example_input, example_labels, *tuple(model.parameters()))
     model_param_names = tuple(name for name, _ in model.named_parameters())
     input_names = ["input", "labels", *model_param_names]
-    nodes_needing_gradients = set(name for name, param in model.named_parameters() if param.requires_grad)
+    nodes_needing_gradients = {name for name, param in model.named_parameters() if param.requires_grad}
 
     f = io.BytesIO()
     torch.onnx.export(

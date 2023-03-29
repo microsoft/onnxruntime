@@ -162,7 +162,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
       new_input_dims[prev] *= new_input_dims[curr];
       new_input_dims[curr] = 1;
       for (auto j = static_cast<int32_t>(curr + 1); j < new_rank; j++) {
-        new_input_dims[j - 1] = new_input_dims[j];
+        new_input_dims[static_cast<ptrdiff_t>(j) - 1] = new_input_dims[j];
       }
       new_input_dims[new_rank - 1] = 1;
 

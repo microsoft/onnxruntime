@@ -14,6 +14,7 @@
 
 import argparse
 import csv
+import json
 import multiprocessing
 import os
 import random
@@ -22,6 +23,7 @@ import timeit
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import psutil
@@ -51,9 +53,19 @@ class ModelSetting:
     segment_ids_name: str
     input_mask_name: str
     opt_level: int
+    input_tuning_results: Optional[str]
+    output_tuning_results: Optional[str]
 
 
-def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_optimization_level=None, log_severity=2):
+def create_session(
+    model_path,
+    use_gpu,
+    provider,
+    intra_op_num_threads,
+    graph_optimization_level=None,
+    log_severity=2,
+    tuning_results_path=None,
+):
     import onnxruntime
 
     onnxruntime.set_default_logger_severity(log_severity)
@@ -127,6 +139,10 @@ def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_op
     else:
         assert "CPUExecutionProvider" in session.get_providers()
 
+    if tuning_results_path is not None:
+        with open(tuning_results_path) as f:
+            session.set_tuning_results(json.load(f))
+
     return session
 
 
@@ -173,7 +189,7 @@ def onnxruntime_inference_with_io_binding(session, all_inputs, output_names, tes
     results = []
     latency_list = []
     device = "cuda" if test_setting.use_gpu else "cpu"
-    for test_case_id, inputs in enumerate(all_inputs):
+    for _test_case_id, inputs in enumerate(all_inputs):
         result = session.run(output_names, inputs)
         results.append(result)
         outputs = {}
@@ -201,7 +217,7 @@ def onnxruntime_inference(session, all_inputs, output_names):
 
     results = []
     latency_list = []
-    for test_case_id, inputs in enumerate(all_inputs):
+    for _test_case_id, inputs in enumerate(all_inputs):
         start_time = timeit.default_timer()
         result = session.run(output_names, inputs)
         latency = timeit.default_timer() - start_time
@@ -212,7 +228,7 @@ def onnxruntime_inference(session, all_inputs, output_names):
 
 def to_string(model_path, session, test_setting):
     sess_options = session.get_session_options()
-    option = "model={},".format(os.path.basename(model_path))
+    option = f"model={os.path.basename(model_path)},"
     option += "graph_optimization_level={},intra_op_num_threads={},".format(
         sess_options.graph_optimization_level, sess_options.intra_op_num_threads
     ).replace("GraphOptimizationLevel.ORT_", "")
@@ -228,6 +244,7 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
         intra_op_num_threads,
         model_setting.opt_level,
         log_severity=test_setting.log_severity,
+        tuning_results_path=model_setting.input_tuning_results,
     )
     output_names = [output.name for output in session.get_outputs()]
 
@@ -240,13 +257,13 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
 
     all_latency_list = []
     if test_setting.use_io_binding:
-        for i in range(test_setting.test_times):
+        for _i in range(test_setting.test_times):
             results, latency_list = onnxruntime_inference_with_io_binding(
                 session, all_inputs, output_names, test_setting
             )
             all_latency_list.extend(latency_list)
     else:
-        for i in range(test_setting.test_times):
+        for _i in range(test_setting.test_times):
             results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
             all_latency_list.extend(latency_list)
 
@@ -274,6 +291,18 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
     print(
         "Average latency = {} ms, Throughput = {} QPS".format(format(average_latency, ".2f"), format(throughput, ".2f"))
     )
+
+    if model_setting.output_tuning_results:
+        output_path = os.path.abspath(model_setting.output_tuning_results)
+        if os.path.exists(output_path):
+            old_output_path = output_path
+            output_path = f"""{output_path.rsplit(".json", 1)[0]}.{datetime.now().timestamp()}.json"""
+            print("WARNING:", old_output_path, "exists, will write to", output_path, "instead.")
+
+        trs = session.get_tuning_results()
+        with open(output_path, "w") as f:
+            json.dump(trs, f)
+        print("Tuning results is saved to", output_path)
 
 
 def launch_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads):
@@ -305,7 +334,7 @@ def run_perf_tests(model_setting, test_setting, perf_results, all_inputs):
     cpu_count = psutil.cpu_count(logical=False)
     logical_cores = psutil.cpu_count(logical=True)
 
-    candidate_threads = list(set([logical_cores, cpu_count]))
+    candidate_threads = list({logical_cores, cpu_count})
     for i in range(1, min(16, logical_cores)):
         if i not in candidate_threads:
             candidate_threads.append(i)
@@ -459,6 +488,19 @@ def parse_arguments():
         help="input name for attention mask",
     )
 
+    parser.add_argument(
+        "--input_tuning_results",
+        default=None,
+        type=str,
+        help="tuning results (json) to be loaded before benchmark",
+    )
+    parser.add_argument(
+        "--output_tuning_results",
+        default=None,
+        type=str,
+        help="tuning results (json) to be saved after benchmark",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -482,6 +524,8 @@ def main():
         args.segment_ids_name,
         args.input_mask_name,
         args.opt_level,
+        args.input_tuning_results,
+        args.output_tuning_results,
     )
 
     for batch_size in batch_size_set:
@@ -517,7 +561,7 @@ def main():
     with open(summary_file, "w+", newline="") as tsv_file:
         tsv_writer = csv.writer(tsv_file, delimiter="\t", lineterminator="\n")
         headers = None
-        for (key, perf_result) in sorted_results:
+        for key, perf_result in sorted_results:
             params = key.split(",")
             if headers is None:
                 headers = [

@@ -264,7 +264,7 @@ function loadFiltersRegex(): Array<{opset?: RegExp | undefined; name: RegExp}> {
   const filters: Array<string|[string, string]> = ['(FLOAT16)'];
   filters.push(...BACKEND_TEST_SERIES_FILTERS.current_failing_tests);
 
-  if (process.arch === 'x32') {
+  if (process.arch === 'ia32') {
     filters.push(...BACKEND_TEST_SERIES_FILTERS.current_failing_tests_x86);
   }
 

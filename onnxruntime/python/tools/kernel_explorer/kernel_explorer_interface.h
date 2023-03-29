@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <pybind11/pybind11.h>
+
 #include "core/providers/shared_library/provider_api.h"
 #ifdef USE_CUDA
 #include <cuda_runtime_api.h>
@@ -32,6 +34,8 @@ using TuningContextT = onnxruntime::rocm::tunable::RocmTuningContext;
 #error "kernel explorer only supports CUDA or ROCM"
 #endif
 
+namespace onnxruntime {
+
 /// Wrapping around Op and TunableOp
 class IKernelExplorer {
  public:
@@ -58,19 +62,42 @@ class IKernelExplorer {
   virtual ~IKernelExplorer() = default;
 
  protected:
-  TuningContextT* TuningContext() {
-    if (ep_ == nullptr) {
+  ExecutionProvider* GetEp() {
+    std::call_once(ep_create_once_, [this]() {
       ExecutionProviderInfo info{};
-      ep_ = std::make_unique<ExecutionProvider>(info);
-    }
+      this->ep_ = std::make_unique<ExecutionProvider>(info);
+    });
+    return ep_.get();
+  }
 
-    return static_cast<TuningContextT*>(ep_->GetTuningContext());
+  TuningContextT* TuningContext() {
+    return static_cast<TuningContextT*>(GetEp()->GetTuningContext());
   }
 
   StreamT Stream() { return stream_; }
 
  private:
+  std::once_flag ep_create_once_;
   std::unique_ptr<ExecutionProvider> ep_{};
   StreamT stream_{0};
   int repeats_{100};
 };
+
+pybind11::module GetKernelExplorerModule();
+
+class KernelExplorerInit {
+ public:
+  explicit KernelExplorerInit(void (*init_func)(pybind11::module module)) {
+    init_func(GetKernelExplorerModule());
+  }
+};
+
+#define KE_REGISTER_IMPL(unique_id, module_name)                                    \
+  static void KeInitFunc##unique_id(pybind11::module module_name);                  \
+  static const KernelExplorerInit kKeInitializer##unique_id{KeInitFunc##unique_id}; \
+  void KeInitFunc##unique_id(pybind11::module module_name)
+
+#define KE_REGISTER_(unique_id, module_name) KE_REGISTER_IMPL(unique_id, module_name)
+#define KE_REGISTER(module_name) KE_REGISTER_(__COUNTER__, module_name)
+
+}  // namespace onnxruntime

@@ -7,8 +7,8 @@ import random
 
 import onnx
 
-from onnxruntime.capi._pybind_state import GradientGraphBuilder, get_optimized_model
 import onnxruntime.training.onnxblock._qat_utils as qat_utils
+from onnxruntime.capi._pybind_state import GradientGraphBuilder, get_optimized_model
 
 
 def get_output_from_output_name(onnx_model, output_name):
