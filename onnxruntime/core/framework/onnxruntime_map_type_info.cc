@@ -6,8 +6,11 @@
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
 
-OrtMapTypeInfo::OrtMapTypeInfo(ONNXTensorElementDataType map_key_type, OrtTypeInfo* map_value_type) noexcept : map_key_type_(map_key_type), map_value_type_(map_value_type, &OrtApis::ReleaseTypeInfo) {  
+OrtMapTypeInfo::OrtMapTypeInfo(ONNXTensorElementDataType map_key_type, std::unique_ptr<OrtTypeInfo> map_value_type) noexcept 
+  : map_key_type_(map_key_type), map_value_type_(std::move(map_value_type)) {
 }
+
+OrtMapTypeInfo::~OrtMapTypeInfo() = default;
 
 static ONNXTensorElementDataType
 ToONNXTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType data_type) {
@@ -35,36 +38,26 @@ ToONNXTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType data_type) {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26409)
 #endif
-OrtStatus* OrtMapTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* type_proto, OrtMapTypeInfo** out) {
-  auto value_case = type_proto->value_case();
-  if (value_case != ONNX_NAMESPACE::TypeProto::kMapType)
-  {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "type_proto is not of type map!");;
+OrtMapTypeInfo::Ptr OrtMapTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto& type_proto) {
+
+  auto value_case = type_proto.value_case();
+  if (value_case != ONNX_NAMESPACE::TypeProto::kMapType) {
+    ORT_THROW("type_proto is not of type map!");
   }
 
   // Get the key type of the map
-  auto type_proto_map = type_proto->map_type();
-  auto map_key_type = ToONNXTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType(type_proto_map.key_type()));
+  const auto& type_proto_map = type_proto.map_type();
+  const auto map_key_type = ToONNXTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType(type_proto_map.key_type()));
 
   // Get the value type of the map
-  OrtTypeInfo* map_value_type_info = nullptr;
-  if (auto status = OrtTypeInfo::FromTypeProto(&type_proto_map.value_type(), &map_value_type_info))
-  {
-    return status;
-  }
+  auto map_value_type_info = OrtTypeInfo::FromTypeProto(type_proto_map.value_type());
 
-  *out = new OrtMapTypeInfo(map_key_type, map_value_type_info);
-  return nullptr;
+  return std::make_unique<OrtMapTypeInfo>(map_key_type, std::move(map_value_type_info));
 }
 
-OrtStatus* OrtMapTypeInfo::Clone(OrtMapTypeInfo** out) {
-  OrtTypeInfo* map_value_type_copy = nullptr;
-  if (auto status = map_value_type_->Clone(&map_value_type_copy))
-  {
-    return status;
-  }
-  *out = new OrtMapTypeInfo(map_key_type_, map_value_type_copy);
-  return nullptr;
+OrtMapTypeInfo::Ptr OrtMapTypeInfo::Clone() const {
+  auto map_value_type_copy = map_value_type_->Clone();
+  return std::make_unique<OrtMapTypeInfo>(map_key_type_, std::move(map_value_type_copy));
 }
 
 // OrtMapTypeInfo Accessors
@@ -78,10 +71,12 @@ ORT_API_STATUS_IMPL(OrtApis::GetMapKeyType, _In_ const OrtMapTypeInfo* map_type_
 
 ORT_API_STATUS_IMPL(OrtApis::GetMapValueType, _In_ const OrtMapTypeInfo* map_type_info, _Outptr_ OrtTypeInfo** out) {
   API_IMPL_BEGIN
-  return map_type_info->map_value_type_->Clone(out);
+  auto clone = map_type_info->map_value_type_->Clone();
+  *out = clone.release();
+  return nullptr;
   API_IMPL_END
 }
 
 ORT_API(void, OrtApis::ReleaseMapTypeInfo, _Frees_ptr_opt_ OrtMapTypeInfo* ptr) {
-  delete ptr;
+  OrtMapTypeInfo::Ptr p(ptr);
 }

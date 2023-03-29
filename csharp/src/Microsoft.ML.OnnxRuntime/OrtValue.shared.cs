@@ -20,6 +20,7 @@ namespace Microsoft.ML.OnnxRuntime
         ONNX_TYPE_MAP = 3,  // It's a map
         ONNX_TYPE_OPAQUE = 4, // It's an experimental Opaque object
         ONNX_TYPE_SPARSETENSOR = 5, // It's a Sparse Tensor
+        ONNX_TYPE_OPTIONAL = 6, // It's an optional type that designates anything above (but unknown)
     }
 
     /// <summary>

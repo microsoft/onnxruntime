@@ -773,8 +773,8 @@ namespace Microsoft.ML.OnnxRuntime
 
             if (prepackedWeightsContainer == null)
             {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
-                    options.Handle, out session));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
+                options.Handle, out session));
             }
 
             else
@@ -979,32 +979,115 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOnnxTypeFromTypeInfo(typeInfo, out valType));
                 valueType = (OnnxValueType)valType;
             }
-            if (valueType != OnnxValueType.ONNX_TYPE_TENSOR && valueType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
+
+            switch (valueType)
             {
-                return new NodeMetadata(valueType, new int[] { }, new string[] { }, typeof(NamedOnnxValue));
+                case OnnxValueType.ONNX_TYPE_TENSOR:
+                case OnnxValueType.ONNX_TYPE_SPARSETENSOR:
+                    return GetTensorNodeMetadata(valueType, typeInfo);
+                case OnnxValueType.ONNX_TYPE_SEQUENCE:
+                    return GetSequenceMetadataFromTypeInfo(typeInfo);
+                case OnnxValueType.ONNX_TYPE_MAP:
+                    return GetMapMetadataFromTypeInfo(typeInfo);
+                case OnnxValueType.ONNX_TYPE_OPTIONAL:
+                    return GetOptionalMetadataFromTypeInfo(typeInfo);
             }
 
-            // This should not be released
+            throw new NotImplementedException("Value type not supported in this code");
+        }
+
+        internal static NodeMetadata GetSequenceMetadataFromTypeInfo(IntPtr typeInfo)
+        {
+            IntPtr sequenceTypeInfo;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToSequenceTypeInfo(typeInfo, out sequenceTypeInfo));
+            // Casts API are broken. Always return success, but may return null for the result.
+            if (sequenceTypeInfo == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("TypeInfo cast to SequenceTypeInfo failed. The object does not represent a sequence");
+            }
+
+            IntPtr elementType;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetSequenceElementType(sequenceTypeInfo, out elementType));
+            try
+            {
+                var elementMeta = GetMetadataFromTypeInfo(elementType);
+                var seqMeta = new SequenceMetadata(elementMeta);
+                return new NodeMetadata(seqMeta);
+            }
+            finally
+            {
+                NativeMethods.OrtReleaseTypeInfo(elementType);
+            }
+        }
+
+        internal static NodeMetadata GetMapMetadataFromTypeInfo(IntPtr typeInfo)
+        {
+            IntPtr mapTypeInfo;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToMapTypeInfo(typeInfo, out mapTypeInfo));
+            // Casts API are broken. Always return success, but may return null for the result.
+            if (mapTypeInfo == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("TypeInfo cast to MapTypeInfo failed. The object does not represent a map");
+            }
+
+            IntPtr keyType;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMapKeyType(mapTypeInfo, out keyType));
+
+            IntPtr valueTypeInfo;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMapValueType(mapTypeInfo, out valueTypeInfo));
+            try
+            {
+                var valueMetadata = GetMetadataFromTypeInfo(valueTypeInfo);
+                var mapMeta = new MapMetadata((TensorElementType)keyType, valueMetadata);
+                return new NodeMetadata(mapMeta);
+            }
+            finally
+            {
+                NativeMethods.OrtReleaseTypeInfo(valueTypeInfo);
+            }
+        }
+
+        internal static NodeMetadata GetOptionalMetadataFromTypeInfo(IntPtr typeInfo)
+        {
+            // This should not be destroyed
+            IntPtr optTypeInfo;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToOptionalTypeInfo(typeInfo, out optTypeInfo));
+            // Casts API are broken. Always return success, but may return null for the result.
+            if (optTypeInfo == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("TypeInfo cast to OptionalTypeInfo failed. The object does not represent a optional value");
+            }
+
+            IntPtr elementTypeInfo;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOptionalContainedTypeInfo(optTypeInfo, out elementTypeInfo));
+            try
+            {
+                var elementMetadata = GetMetadataFromTypeInfo(elementTypeInfo);
+                var optMetadata = new OptionalMetadata(elementMetadata);
+                return new NodeMetadata(optMetadata);
+            }
+            finally
+            {
+                NativeMethods.OrtReleaseTypeInfo(elementTypeInfo);
+            }
+        }
+
+        internal static NodeMetadata GetTensorNodeMetadata(OnnxValueType valueType, IntPtr typeInfo)
+        {
+            // Fetch tensor type and shape from the TypeInfo
             IntPtr tensorInfo;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToTensorInfo(typeInfo, out tensorInfo)); //(IntPtr)(int)(uint)
-            // Convert the newly introduced OrtTypeInfo* to the older OrtTypeAndShapeInfo*
-
+            // Casts API are broken. Always return success, but may return null for the result.
             if (tensorInfo == IntPtr.Zero)
-                return null;
+            {
+                throw new InvalidOperationException("TypeInfo cast to TensorTypeInfo failed. The object does not represent a tensor");
+            }
 
             TensorElementType type;
             {
                 IntPtr el_type;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(tensorInfo, out el_type));
                 type = (TensorElementType)el_type;
-            }
-
-            Type dotnetType = null;
-            int width = 0;
-            if (!TensorElementTypeConverter.GetTypeAndWidth(type, out dotnetType, out width))
-            {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                    "Unable to query type information for data type: " + type.ToString());
             }
 
             UIntPtr numDimensions;
@@ -1028,7 +1111,8 @@ namespace Microsoft.ML.OnnxRuntime
                 symbolicDimensions[i] = NativeOnnxValueHelper.StringFromNativeUtf8(dimensionNamePtrs[i]);
             }
 
-            return new NodeMetadata(valueType, intDimensions, symbolicDimensions, dotnetType);
+            var tensorTypeAndShape = new TensorTypeAndShape(type, intDimensions, symbolicDimensions);
+            return new NodeMetadata(valueType, tensorTypeAndShape);
         }
 
         /// <summary>
@@ -1105,23 +1189,27 @@ namespace Microsoft.ML.OnnxRuntime
 
 
     /// <summary>
-    /// Resembles type and shape information of session-graph nodes, used for communicating the shape/type of input/output nodes
+    /// Represents tensor element type and its shapes
     /// </summary>
-    public class NodeMetadata
+    public class TensorTypeAndShape
     {
-        internal NodeMetadata(OnnxValueType onnxValueType, int[] dimensions, string[] symbolicDimensions, Type type)
+        internal TensorTypeAndShape(TensorElementType elementType, int[] dimensions, string[] symbolicDimensions)
         {
-            OnnxValueType = onnxValueType;
+            ElementTypeInfo = TensorBase.GetElementTypeInfo(elementType);
+            if (ElementTypeInfo == null)
+            {
+                throw new ArgumentException("Unregistered TensorElementType value of: " + elementType.ToString());
+            }
+            ElementDataType = elementType;
             Dimensions = dimensions;
             SymbolicDimensions = symbolicDimensions;
-            ElementType = type;
         }
 
         /// <summary>
-        /// Type value of the node
+        /// Tensor Element type
         /// </summary>
-        /// <value>A value of OnnxValueType enum</value>
-        public OnnxValueType OnnxValueType { get; }
+        /// <value>TensorElementType enum</value>
+        public TensorElementType ElementDataType { get; }
 
         /// <summary>
         /// Shape
@@ -1136,10 +1224,247 @@ namespace Microsoft.ML.OnnxRuntime
         public string[] SymbolicDimensions { get; }
 
         /// <summary>
-        /// .NET type that corresponds to this Node.
+        /// Tensor element metadata
+        /// </summary>
+        public TensorElementTypeInfo ElementTypeInfo { get; }
+    }
+
+    /// <summary>
+    /// Represents sequnce metdata
+    /// </summary>
+    public class SequenceMetadata
+    {
+        /// <summary>
+        /// __ctor
+        /// </summary>
+        /// <param name="elementData"></param>
+        internal SequenceMetadata(NodeMetadata elementData)
+        {
+            ElementMeta = elementData;
+        }
+        /// <summary>
+        /// Element Metatada, recursive definition with a Tensor being a base case
+        /// may contain maps, tensors and other sequences
+        /// </summary>
+        public NodeMetadata ElementMeta { get; }
+    }
+
+    /// <summary>
+    /// The class contains metadata for an optional input/output
+    /// </summary>
+    public class OptionalMetadata
+    {
+        /// <summary>
+        /// __ctor
+        /// </summary>
+        /// <param name="elementData"></param>
+        internal OptionalMetadata(NodeMetadata elementData)
+        {
+            ElementMeta = elementData;
+        }
+
+        /// <summary>
+        /// Element Metatada, recursive definition with a Tensor being a base case
+        /// may contain maps, tensors and sequences
+        /// </summary>
+        public NodeMetadata ElementMeta { get; }
+    }
+
+    /// <summary>
+    /// Represents Map MetaData.
+    /// Key is always a tensor denoted by an element type
+    /// with value type being a recursive structure that may
+    /// contain other maps, sequences or tensors.
+    /// </summary>
+    public class MapMetadata
+    {
+        internal MapMetadata(TensorElementType keyDataType, NodeMetadata valueMetadata)
+        {
+            KeyDataType = keyDataType;
+            ValueMetadata = valueMetadata;
+        }
+
+        /// <summary>
+        /// Key tensor data type
+        /// </summary>
+        /// <value>A value of TensorElementType enum</value>
+        public TensorElementType KeyDataType { get; }
+
+        /// <summary>
+        /// Value metadata
+        /// </summary>
+        /// /// <value>Instance of Nodemetadata for the value of the map</value>
+        public NodeMetadata ValueMetadata { get; }
+    }
+
+    /// <summary>
+    /// Resembles type and shape information of session-graph nodes, used for communicating the shape/type of input/output nodes
+    /// </summary>
+    public class NodeMetadata
+    {
+        private readonly Object _metadata;
+        /// <summary>
+        /// Constructs NodeMetadata for tensor
+        /// </summary>
+        /// <param name="onnxValueType">either ONNX_TYPE_TENSOR or ONNX_TYPE_SPARSETENSOR</param>
+        /// <param name="typeAndShape">Tensor type and shape information</param>
+        internal NodeMetadata(OnnxValueType onnxValueType, TensorTypeAndShape typeAndShape)
+        {
+            OnnxValueType = onnxValueType;
+            CheckTensor();
+            _metadata = typeAndShape;
+        }
+
+        /// <summary>
+        /// __ctor for map metadata
+        /// </summary>
+        /// <param name="mapMetadata"></param>
+        internal NodeMetadata(MapMetadata mapMetadata)
+        {
+            OnnxValueType = OnnxValueType.ONNX_TYPE_MAP;
+            _metadata = mapMetadata;
+        }
+
+        /// <summary>
+        /// __ctor for sequence metadata
+        /// </summary>
+        /// <param name="sequenceMetadata"></param>
+        internal NodeMetadata(SequenceMetadata sequenceMetadata)
+        {
+            OnnxValueType = OnnxValueType.ONNX_TYPE_SEQUENCE;
+            _metadata = sequenceMetadata;
+        }
+
+        /// <summary>
+        /// __ctor
+        /// </summary>
+        /// <param name="optMetadata"></param>
+        internal NodeMetadata(OptionalMetadata optMetadata)
+        {
+            OnnxValueType = OnnxValueType.ONNX_TYPE_OPTIONAL;
+            _metadata = optMetadata;
+        }
+
+        private void CheckTensor()
+        {
+            if (!IsTensor)
+            {
+                throw new InvalidOperationException("OnnxValueType must either be a tensor or sparse tensor");
+            }
+        }
+
+        /// <summary>
+        /// Retrieves MapMetadata, valid only if this node represents a Map.
+        /// </summary>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException">when the instance does not contain map metadata</exception>
+        public MapMetadata AsMapMetadata()
+        {
+            if (OnnxValueType != OnnxValueType.ONNX_TYPE_MAP)
+            {
+                throw new InvalidOperationException("Instance does not contain Map metadata");
+            }
+            return _metadata as MapMetadata;
+        }
+
+        /// <summary>
+        /// Retrieves SequenceMetadata, valid only if this node represents a Sequence
+        /// </summary>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException">when the instance does not contain sequence metadata</exception>
+        public SequenceMetadata AsSequenceMetadata()
+        {
+            if (OnnxValueType != OnnxValueType.ONNX_TYPE_SEQUENCE)
+            {
+                throw new InvalidOperationException("Instance does not contain Sequence metadata");
+            }
+            return _metadata as SequenceMetadata;
+        }
+
+        /// <summary>
+        /// Retrieves Optional type metadata, valid if this node is optional
+        /// Optional metadata is nothing more than just a container for all the usual
+        /// element types.
+        /// </summary>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException"></exception>
+        public OptionalMetadata AsOptionalMetadata()
+        {
+            if (OnnxValueType != OnnxValueType.ONNX_TYPE_OPTIONAL)
+            {
+                throw new InvalidOperationException("Instance does not contain Optional metadata");
+            }
+            return _metadata as OptionalMetadata;
+        }
+
+        /// <summary>
+        /// Type value of the node
+        /// </summary>
+        /// <value>A value of OnnxValueType enum</value>
+        public OnnxValueType OnnxValueType { get; }
+
+        /// <summary>
+        /// Tensor shape valid only if this is a Tensor.
+        /// Preserved for API compatibility
+        /// </summary>
+        /// <value>Array of dimensions</value>
+        public int[] Dimensions
+        {
+            get
+            {
+                CheckTensor();
+                return (_metadata as TensorTypeAndShape).Dimensions;
+            }
+        }
+
+        /// <summary>
+        /// Symbolic dimensions valid only if this is a Tensor.
+        /// Preserved for API compatibility
+        /// </summary>
+        /// <value>Array of symbolic dimensions if present.</value>
+        public string[] SymbolicDimensions
+        {
+            get
+            {
+                CheckTensor();
+                return (_metadata as TensorTypeAndShape).SymbolicDimensions;
+            }
+        }
+
+        /// <summary>
+        /// .NET type that corresponds to the primitive Tensor data type.
+        /// Valid only if this is a Tensor.
         /// </summary>
         /// <value>System.Type</value>
-        public System.Type ElementType { get; }
+        public System.Type ElementType
+        {
+            get
+            {
+                CheckTensor();
+                return (_metadata as TensorTypeAndShape).ElementTypeInfo.TensorType;
+            }
+        }
+
+        /// <summary>
+        /// Tensor Element Type. Valid if tensor
+        /// </summary>
+        public TensorElementType ElementDataType
+        {
+            get
+            {
+                CheckTensor();
+                return (_metadata as TensorTypeAndShape).ElementDataType;
+            }
+        }
+
+        public bool IsString
+        {
+            get
+            {
+                CheckTensor();
+                return (_metadata as TensorTypeAndShape).ElementTypeInfo.IsString;
+            }
+        }
 
         /// <summary>
         /// Whether it is a Tensor
@@ -1149,7 +1474,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                return true; // currently only Tensor nodes are supported
+                return (OnnxValueType == OnnxValueType.ONNX_TYPE_TENSOR) || (OnnxValueType == OnnxValueType.ONNX_TYPE_SPARSETENSOR);
             }
         }
     }

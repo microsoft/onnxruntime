@@ -43,7 +43,7 @@ namespace Microsoft.ML.OnnxRuntime
         // No need for the finalizer
         // If this is not disposed timely GC can't help us
         #endregion
-   }
+    }
 
     /// <summary>
     /// This helper class contains methods to create native OrtValue from a managed value object
@@ -58,8 +58,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>UTF-8 encoded equivalent</returns>
         internal static byte[] StringToZeroTerminatedUtf8(string s)
         {
-            byte[] utf8Bytes = UTF8Encoding.UTF8.GetBytes(s);
-            Array.Resize(ref utf8Bytes, utf8Bytes.Length + 1);
+            int arraySize = UTF8Encoding.UTF8.GetByteCount(s);
+            byte[] utf8Bytes = new byte[arraySize + 1];
+            if (arraySize != UTF8Encoding.UTF8.GetBytes(s, 0, s.Length, utf8Bytes, 0))
+            {
+                throw new OnnxRuntimeException(ErrorCode.RuntimeException, "Failed to convert to UTF8");
+            }
             utf8Bytes[utf8Bytes.Length - 1] = 0;
             return utf8Bytes;
         }
@@ -72,12 +76,20 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns></returns>
         internal static string StringFromNativeUtf8(IntPtr nativeUtf8)
         {
-            // .NET 5.0 has Marshal.PtrToStringUTF8 that does the below
+            // .NET 8.0 has Marshal.PtrToStringUTF8 that does the below
             int len = 0;
             while (Marshal.ReadByte(nativeUtf8, len) != 0) ++len;
             byte[] buffer = new byte[len];
             Marshal.Copy(nativeUtf8, buffer, 0, len);
             return Encoding.UTF8.GetString(buffer, 0, buffer.Length);
+        }
+
+        internal static string StringFromUtf8Span(ReadOnlySpan<byte> utf8Span)
+        {
+            // For now we have to copy into byte[], this produces a copy
+            // Converting from span is available in later versions
+            var utf8Bytes = utf8Span.ToArray();
+            return Encoding.UTF8.GetString(utf8Bytes, 0, utf8Bytes.Length);
         }
 
         /// <summary>
@@ -126,7 +138,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             bool result = true;
             TensorElementTypeInfo typeInfo = TensorBase.GetElementTypeInfo(elemType);
-            if(typeInfo != null)
+            if (typeInfo != null)
             {
                 type = typeInfo.TensorType;
                 width = typeInfo.TypeSize;

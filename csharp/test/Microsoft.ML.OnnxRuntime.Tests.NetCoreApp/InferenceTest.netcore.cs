@@ -8,27 +8,27 @@ using Xunit;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
-  /// <summary>
-  /// This is compensate for the absence of string.Contains() in .NET Standard 2.0
-  /// Contains(String, StringComparison)
-  /// </summary>
-  public static class StringExtensions
-  {
-    public static bool Contains(this String str, String substring,
-                                StringComparison comp)
+    /// <summary>
+    /// This is compensate for the absence of string.Contains() in .NET Standard 2.0
+    /// Contains(String, StringComparison)
+    /// </summary>
+    public static class StringExtensions
     {
-      if (substring == null)
-        throw new ArgumentNullException("substring",
-                                     "substring cannot be null.");
-      else if (!Enum.IsDefined(typeof(StringComparison), comp))
-        throw new ArgumentException("comp is not a member of StringComparison",
-                                 "comp");
+        public static bool Contains(this String str, String substring,
+                                    StringComparison comp)
+        {
+            if (substring == null)
+                throw new ArgumentNullException("substring",
+                                             "substring cannot be null.");
+            else if (!Enum.IsDefined(typeof(StringComparison), comp))
+                throw new ArgumentException("comp is not a member of StringComparison",
+                                         "comp");
 
-      return str.IndexOf(substring, comp) >= 0;
+            return str.IndexOf(substring, comp) >= 0;
+        }
     }
-  }
-  public partial class InferenceTest
-  {
+    public partial class InferenceTest
+    {
         private const string module = "onnxruntime.dll";
         private const string propertiesFile = "Properties.txt";
 
@@ -256,21 +256,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose" },
                 { "coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name" },
                 { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
-                { "test_strnormalizer_export_monday_casesensintive_lower", "ElementType not currently supported"},
                 { "test_max_float64", "node test error"},
                 { "test_min_uint8", "node test error"},
                 { "test_mod_mixed_sign_float64", "node test error"},
                 { "test_momentum", "node test error"},
                 { "test_max_uint16", "node test error"},
                 { "test_resize_downsample_scales_linear_align_corners", "node test error"},
-                { "test_strnormalizer_nostopwords_nochangecase", "node test error"},
                 { "test_adagrad_multiple", "node test error"},
                 { "test_einsum_inner_prod", "node test error"},
                 { "test_sequence_insert_at_back", "node test error"},
                 { "test_mod_mixed_sign_int8", "node test error"},
                 { "test_maxunpool_export_with_output_shape", "node test error"},
-                { "test_strnormalizer_export_monday_empty_output", "node test error"},
-                { "test_strnormalizer_export_monday_insensintive_upper_twodim", "ElementType not currently supported"},
                 { "test_min_int16", "node test error"},
                 { "test_adagrad", "node test error"},
                 { "test_min_float64", "node test error"},
@@ -283,19 +279,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_clip_default_int8_inbounds", "node test error"},
                 { "test_eyelike_with_dtype", "node test error"},
                 { "test_cast_STRING_to_FLOAT", "node test error"},
-                { "test_cast_FLOAT16_to_DOUBLE", "node test error"},
                 { "test_cast_FLOAT_to_DOUBLE", "node test error"},
                 { "test_cast_BFLOAT16_to_FLOAT", "node test error"},
                 { "test_cast_FLOAT_to_BFLOAT16", "node test error"},
-                { "test_cast_FLOAT_to_STRING", "node test error"},
+                { "test_cast_FLOAT_to_STRING", "Output strings can not be compared exactly"},
                 { "test_castlike_STRING_to_FLOAT", "node test error"},
                 { "test_castlike_STRING_to_FLOAT_expanded", "node test error"},
                 { "test_castlike_FLOAT16_to_DOUBLE", "node test error"},
                 { "test_castlike_FLOAT16_to_DOUBLE_expanded", "node test error"},
                 { "test_castlike_FLOAT_to_DOUBLE", "node test error"},
                 { "test_castlike_FLOAT_to_DOUBLE_expanded", "node test error"},
-                { "test_castlike_BFLOAT16_to_FLOAT", "node test error"},
-                { "test_castlike_BFLOAT16_to_FLOAT_expanded", "node test error"},
+                { "test_castlike_BFLOAT16_to_FLOAT", "Length is expected to be equal to Count (metadata and expected data mismatch) "},
+                { "test_castlike_BFLOAT16_to_FLOAT_expanded", "Length is expected to be equal to Count metadata and expected data mismatch"},
                 { "test_castlike_FLOAT_to_BFLOAT16", "node test error"},
                 { "test_castlike_FLOAT_to_BFLOAT16_expanded", "node test error"},
                 { "test_castlike_FLOAT_to_STRING", "node test error"},
@@ -304,14 +299,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_bitshift_left_uint16", "node test error"},
                 { "test_pow_types_float32_uint64", "node test error"},
                 { "test_max_uint8", "node test error"},
-                { "test_strnormalizer_export_monday_casesensintive_nochangecase", "ElementType not currently supported"},
                 { "test_momentum_multiple", "node test error"},
                 { "test_pow_types_float32_uint32", "node test error"},
                 { "test_if_seq", "sequence type is not supported in test infra."},
                 { "test_resize_downsample_scales_cubic_align_corners", "node test error"},
                 { "test_einsum_batch_matmul", "node test error"},
                 { "test_nesterov_momentum", "node test error"},
-                { "test_strnormalizer_export_monday_casesensintive_upper", "node test error"},
                 { "test_min_uint16", "node test error"},
                 { "test_adam_multiple", "node test error"},
                 { "test_loop13_seq", "sequence type is not supported in test infra." },
@@ -538,68 +531,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                 {
                                     outputValue = outputContainer.First(); // in case the output data file does not contain the name
                                 }
-                                if (outputMeta.IsTensor)
+                                if (outputMeta.OnnxValueType == OnnxValueType.ONNX_TYPE_TENSOR) // Only Dense tensors now
                                 {
-                                    if (outputMeta.ElementType == typeof(float))
-                                    {
-                                        Assert.Equal(result.AsTensor<float>(), outputValue.AsTensor<float>(), new FloatComparer());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(double))
-                                    {
-                                        Assert.Equal(result.AsTensor<double>(), outputValue.AsTensor<double>(), new DoubleComparer());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(int))
-                                    {
-                                        Assert.Equal(result.AsTensor<int>(), outputValue.AsTensor<int>(), new ExactComparer<int>());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(uint))
-                                    {
-                                        Assert.Equal(result.AsTensor<uint>(), outputValue.AsTensor<uint>(), new ExactComparer<uint>());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(short))
-                                    {
-                                        Assert.Equal(result.AsTensor<short>(), outputValue.AsTensor<short>(), new ExactComparer<short>());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(ushort))
-                                    {
-                                        Assert.Equal(result.AsTensor<ushort>(), outputValue.AsTensor<ushort>(), new ExactComparer<ushort>());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(long))
-                                    {
-                                        Assert.Equal(result.AsTensor<long>(), outputValue.AsTensor<long>(), new ExactComparer<long>());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(ulong))
-                                    {
-                                        Assert.Equal(result.AsTensor<ulong>(), outputValue.AsTensor<ulong>(), new ExactComparer<ulong>());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(byte))
-                                    {
-                                        Assert.Equal(result.AsTensor<byte>(), outputValue.AsTensor<byte>(), new ExactComparer<byte>());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(sbyte))
-                                    {
-                                        Assert.Equal(result.AsTensor<sbyte>(), outputValue.AsTensor<sbyte>(), new ExactComparer<sbyte>());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(bool))
-                                    {
-                                        Assert.Equal(result.AsTensor<bool>(), outputValue.AsTensor<bool>(), new ExactComparer<bool>());
-                                    }
-                                    else if (outputMeta.ElementType == typeof(Float16))
-                                    {
-                                        Assert.Equal(result.AsTensor<Float16>(), outputValue.AsTensor<Float16>(), new Float16Comparer { tolerance = 2 });
-                                    }
-                                    else if (outputMeta.ElementType == typeof(BFloat16))
-                                    {
-                                        Assert.Equal(result.AsTensor<BFloat16>(), outputValue.AsTensor<BFloat16>(), new BFloat16Comparer { tolerance = 2 });
-                                    }
-                                    else
-                                    {
-                                        Assert.True(false, $"{nameof(TestPreTrainedModels)} does not yet support output of type {outputMeta.ElementType}");
-                                    }
+                                    VerifyTensorResults(outputMeta.ElementDataType, result, outputValue);
                                 }
                                 else
                                 {
-                                    Assert.True(false, $"{nameof(TestPreTrainedModels)} cannot handle non-tensor outputs yet");
+                                    Assert.True(false, "TestPreTrainedModels cannot handle Onnxtype: " + outputMeta.OnnxValueType.ToString());
                                 }
                             }
                         }
@@ -621,6 +559,58 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     throw new Exception(msg + "\n" + ex.StackTrace);
                 }
+            }
+        }
+
+        private void VerifyTensorResults(TensorElementType elementType, DisposableNamedOnnxValue result, NamedOnnxValue outputValue)
+        {
+            switch (elementType)
+            {
+                case TensorElementType.Float:
+                    Assert.Equal(result.AsTensor<float>(), outputValue.AsTensor<float>(), new FloatComparer());
+                    break;
+                case TensorElementType.Double:
+                    Assert.Equal(result.AsTensor<double>(), outputValue.AsTensor<double>(), new DoubleComparer());
+                    break;
+                case TensorElementType.Int32:
+                    Assert.Equal(result.AsTensor<int>(), outputValue.AsTensor<int>(), new ExactComparer<int>());
+                    break;
+                case TensorElementType.UInt32:
+                    Assert.Equal(result.AsTensor<uint>(), outputValue.AsTensor<uint>(), new ExactComparer<uint>());
+                    break;
+                case TensorElementType.Int16:
+                    Assert.Equal(result.AsTensor<short>(), outputValue.AsTensor<short>(), new ExactComparer<short>());
+                    break;
+                case TensorElementType.UInt16:
+                    Assert.Equal(result.AsTensor<ushort>(), outputValue.AsTensor<ushort>(), new ExactComparer<ushort>());
+                    break;
+                case TensorElementType.Int64:
+                    Assert.Equal(result.AsTensor<long>(), outputValue.AsTensor<long>(), new ExactComparer<long>());
+                    break;
+                case TensorElementType.UInt64:
+                    Assert.Equal(result.AsTensor<ulong>(), outputValue.AsTensor<ulong>(), new ExactComparer<ulong>());
+                    break;
+                case TensorElementType.UInt8:
+                    Assert.Equal(result.AsTensor<byte>(), outputValue.AsTensor<byte>(), new ExactComparer<byte>());
+                    break;
+                case TensorElementType.Int8:
+                    Assert.Equal(result.AsTensor<sbyte>(), outputValue.AsTensor<sbyte>(), new ExactComparer<sbyte>());
+                    break;
+                case TensorElementType.Bool:
+                    Assert.Equal(result.AsTensor<bool>(), outputValue.AsTensor<bool>(), new ExactComparer<bool>());
+                    break;
+                case TensorElementType.Float16:
+                    Assert.Equal(result.AsTensor<Float16>(), outputValue.AsTensor<Float16>(), new Float16Comparer { tolerance = 2 });
+                    break;
+                case TensorElementType.BFloat16:
+                    Assert.Equal(result.AsTensor<BFloat16>(), outputValue.AsTensor<BFloat16>(), new BFloat16Comparer { tolerance = 2 });
+                    break;
+                case TensorElementType.String:
+                    Assert.Equal(result.AsTensor<string>(), outputValue.AsTensor<string>(), new ExactComparer<string>());
+                    break;
+                default:
+                    Assert.True(false, "TestPreTrainedModels does not yet support output of type: " + elementType.ToString());
+                    break;
             }
         }
 
@@ -669,7 +659,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 var ortEnvInstance = OrtEnv.Instance();
                 string[] providers = ortEnvInstance.GetAvailableProviders();
-                if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider")) {
+                if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider"))
+                {
                     option.AppendExecutionProvider_CUDA(0);
                 }
 
