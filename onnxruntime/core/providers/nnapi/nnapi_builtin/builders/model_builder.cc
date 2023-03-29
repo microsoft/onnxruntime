@@ -553,7 +553,9 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "The model cannot run using the current set of target devices, ",
                                GetDevicesDescription(nnapi_target_devices_));
-    } else if (target_device_option_ != TargetDeviceOption::ALL_DEVICES) {
+    }
+    
+    if (target_device_option_ != TargetDeviceOption::ALL_DEVICES) {
       // Workaround bugs in NNAPI drives on some phones
       // where ops are passed checking by 'ANeuralNetworksModel_getSupportedOperationsForDevices'
       // but failed at compilation.
