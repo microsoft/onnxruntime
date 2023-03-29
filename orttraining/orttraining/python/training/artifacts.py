@@ -36,6 +36,7 @@ class OptimType(Enum):
 def generate_artifacts(
     model: onnx.ModelProto,
     requires_grad: Optional[List[str]] = None,
+    frozen_params: Optional[List[str]] = None,
     loss: Optional[Union[LossType, onnxblock.Block]] = None,
     optimizer: Optional[OptimType] = None,
     artifact_directory: Optional[Union[str, bytes, os.PathLike]] = None,
@@ -52,6 +53,7 @@ def generate_artifacts(
     Args:
         model: The base model to be used for gradient graph generation.
         requires_grad: List of names of model parameters that require gradient computation
+        frozen_params: List of names of model parameters that should be frozen.
         loss: The loss function enum to be used for training. If None, no loss node is added to the graph.
         optimizer: The optimizer enum to be used for training. If None, no optimizer model is generated.
         artifact_directory: The directory to save the generated artifacts.
@@ -104,6 +106,10 @@ def generate_artifacts(
     if requires_grad is not None:
         for arg in requires_grad:
             training_block.requires_grad(arg)
+
+    if frozen_params is not None:
+        for arg in frozen_params:
+            training_block.requires_grad(arg, False)
 
     training_model = None
     eval_model = None

@@ -53,7 +53,7 @@ def _gradient_model_for(
 
 
 def build_gradient_graph(
-    model: onnx.ModelProto, requires_grad: Set[str], output_names: Union[List[str], str]
+    model: onnx.ModelProto, requires_grad: Set[str], frozen_params: Set[str], output_names: Union[List[str], str]
 ) -> Tuple[onnx.ModelProto, onnx.ModelProto]:
     """Prepare the training model and the eval model.
 
@@ -67,6 +67,7 @@ def build_gradient_graph(
     Args:
         model: The forward only model.
         requires_grad: The set of model parameter names that require gradient.
+        frozen_params: The set of model parameter names that are frozen.
         output_names: The list of user output names.
 
     Returns:
@@ -76,7 +77,7 @@ def build_gradient_graph(
     if isinstance(output_names, str):
         output_names = [output_names]
 
-    _move_initializers_to_inputs(model, requires_grad)
+    _move_initializers_to_inputs(model, requires_grad.union(frozen_params))
 
     # At this point, eval model and training model diverge.
     eval_model = copy.deepcopy(model)
@@ -132,7 +133,6 @@ def build_gradient_accumulation_graph(grad_model: onnx.ModelProto, requires_grad
             graph_outputs.append(graph_output)
             continue
 
-        # gradient accumulation node inputs and output names
         grad_name = graph_output.name
         grad_accumulation_buffer_name = f"{grad_name}.{gradient_accumulation_name}.{gradient_buffer_name_suffix}"
         grad_accumulation_output_name = f"{grad_name}.{gradient_accumulation_name}.{gradient_output_name_suffix}"
@@ -148,12 +148,12 @@ def build_gradient_accumulation_graph(grad_model: onnx.ModelProto, requires_grad
 
         graph_nodes.append(acc_node)
 
-        # grad buffer is also a graph input
+        # Grad buffer is also a graph input
         grad_accumulation_buffer_input = copy.deepcopy(graph_output)
         grad_accumulation_buffer_input.name = grad_accumulation_buffer_name
         graph_inputs.append(grad_accumulation_buffer_input)
 
-        # accumulated gradient update flag is also a graph output
+        # Accumulated gradient update flag is also a graph output
         grad_accumulation_output = onnx.helper.make_tensor_value_info(
             grad_accumulation_output_name, onnx.TensorProto.BOOL, [1]
         )
@@ -167,7 +167,7 @@ def build_gradient_accumulation_graph(grad_model: onnx.ModelProto, requires_grad
 
 
 def get_model_parameters(
-    model: onnx.ModelProto, requires_grad: Set[str]
+    model: onnx.ModelProto, requires_grad: Set[str], frozen_params: Set[str]
 ) -> Tuple[List[onnx.TensorProto], List[onnx.TensorProto]]:
     """Returns trainable and non trainable onnx model parameters.
 
@@ -184,6 +184,7 @@ def get_model_parameters(
     Args:
         model: The onnx model.
         requires_grad: The set of model parameter names that require gradient.
+        frozen_params: The set of model parameter names that are frozen.
 
     Returns:
         A tuple of (trainable parameters, non trainable parameters).
@@ -194,5 +195,7 @@ def get_model_parameters(
     for initializer in model.graph.initializer:
         if initializer.name in requires_grad:
             trainable_params.append(initializer)
+        elif initializer.name in frozen_params:
+            non_trainable_params.append(initializer)
 
     return trainable_params, non_trainable_params

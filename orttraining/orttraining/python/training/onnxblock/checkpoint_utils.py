@@ -29,15 +29,12 @@ def save_checkpoint(
     _internal_save_checkpoint(trainable_params, non_trainable_params, path_to_checkpoint)
 
 
-def load_checkpoint_to_model(
-    path_to_checkpoint: Union[str, os.PathLike], model: onnx.ModelProto, strict: bool = False
-) -> None:
+def load_checkpoint_to_model(path_to_checkpoint: Union[str, os.PathLike], model: onnx.ModelProto) -> None:
     """Loads the checkpoint to an onnx inference model.
 
     Args:
         path_to_checkpoint (str): The path to the checkpoint directory.
         model (onnx.ModelProto): The model to load the checkpoint to.
-        strict (bool): Whether to strictly enforce that the keys in the checkpoint match the keys returned by the model.
     """
 
-    model.ParseFromString(_internal_load_checkpoint_to_model(path_to_checkpoint, model.SerializeToString(), strict))
+    model.ParseFromString(_internal_load_checkpoint_to_model(path_to_checkpoint, model.SerializeToString()))

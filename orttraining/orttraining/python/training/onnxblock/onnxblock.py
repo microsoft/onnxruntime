@@ -101,6 +101,7 @@ class TrainingBlock(blocks.Block):
     def __init__(self):
         super().__init__()
         self._requires_grad = set()
+        self._frozen_params = set()
         self._parameters = None
         self._training_model = None
         self._eval_model = None
@@ -127,9 +128,12 @@ class TrainingBlock(blocks.Block):
         """
         if value is True:
             self._requires_grad.add(argument_name)
+            if argument_name in self._frozen_params:
+                self._frozen_params.remove(argument_name)
         else:
             if argument_name in self._requires_grad:
                 self._requires_grad.remove(argument_name)
+            self._frozen_params.add(argument_name)
 
     def parameters(self) -> Tuple[List[onnx.TensorProto], List[onnx.TensorProto]]:
         """Trainable as well as non-trainable (frozen) parameters of the model.
@@ -185,7 +189,7 @@ class TrainingBlock(blocks.Block):
 
         logging.debug("Building gradient graph for training block %s", self.__class__.__name__)
 
-        self._parameters = _training_graph_utils.get_model_parameters(model, self._requires_grad)
+        self._parameters = _training_graph_utils.get_model_parameters(model, self._requires_grad, self._frozen_params)
 
         # Build the gradient graph. The gradient graph building is composed of the following steps:
         #   - Move all model parameters to model inputs.
@@ -196,6 +200,7 @@ class TrainingBlock(blocks.Block):
         self._training_model, self._eval_model = _training_graph_utils.build_gradient_graph(
             model,
             self._requires_grad,
+            self._frozen_params,
             output,
         )
 

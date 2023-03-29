@@ -1006,13 +1006,13 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                                                                         ToPathString(checkpoint_path)));
         });
   m.def("get_model_after_loading_checkpoint",
-        [](const std::string& checkpoint_path, const py::bytes& serialized_model, const bool strict) {
+        [](const std::string& checkpoint_path, const py::bytes& serialized_model) {
           ONNX_NAMESPACE::ModelProto model_proto;
 
           std::istringstream buffer(serialized_model);
           ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
           ORT_THROW_IF_ERROR(
-              onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto, strict));
+              onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto));
 
           std::string model_proto_str;
           ORT_ENFORCE(model_proto.SerializeToString(&model_proto_str), "Serializing Model failed.");

@@ -38,11 +38,11 @@ base_model = onnx.load(model_path)
 
 # Define the parameters that need their gradient computed
 requires_grad = ["weight1", "bias1", "weight2", "bias2"]
+frozen_params = ["weight3", "bias3"]
 
 # Generate the training artifacts
-artifacts.generate_artifacts(base_model, requires_grad = requires_grad,
-                             loss = artifacts.LossType.CrossEntropyLoss,
-                             optimizer = artifacts.OptimType.AdamW)
+artifacts.generate_artifacts(base_model, requires_grad = requires_grad, frozen_params = frozen_params,
+                             loss = artifacts.LossType.CrossEntropyLoss, optimizer = artifacts.OptimType.AdamW)
 
 # Successful completion of the above call will generate 4 files in the current working directory,
 # one for each of the artifacts mentioned above (training_model.onnx, eval_model.onnx, checkpoint, optimizer_model.onnx)
@@ -100,9 +100,10 @@ base_model = onnx.load(model_path)
 
 # Define the parameters that need their gradient computed
 requires_grad = ["weight1", "bias1", "weight2", "bias2"]
+frozen_params = ["weight3", "bias3"]
 
 # Now, we can invoke generate_artifacts with this custom loss function
-artifacts.generate_artifacts(base_model, requires_grad = requires_grad,
+artifacts.generate_artifacts(base_model, requires_grad = requires_grad, frozen_params = frozen_params,
                              loss = my_custom_loss, optimizer = artifacts.OptimType.AdamW)
 
 # Successful completion of the above call will generate 4 files in the current working directory,
