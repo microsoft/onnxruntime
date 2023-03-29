@@ -63,17 +63,17 @@ inline __device__ void UpdateSum(const T* src, int64_t offset, U& sum, U& sumSq)
   }
 }
 
-template <typename T, int tTHREADS_PER_BLOCK, int ILP>
+template <typename T, int ThreadsPerBlock, int ILP>
 __global__ void groupNormNHWCSumKernel(const T* src, float* redBuffer, int32_t cPerBlock, int32_t hwPerBlock, int32_t hw,
                                        int32_t hwc, int32_t c, int32_t cPerGroup, int32_t groups, int32_t groupsPerBlock) {
   // The object in charge of doing the sums for the different blocks.
-  typedef hipcub::BlockScan<GroupSums, tTHREADS_PER_BLOCK> BlockScan;
+  typedef hipcub::BlockScan<GroupSums, ThreadsPerBlock> BlockScan;
 
   // Allocate shared memory for BlockScan.
   __shared__ typename BlockScan::TempStorage tempStorage;
   // Allocate shared memory for the groups. We could reduce the amount of shared
   // memory reserved.
-  __shared__ float2 smem[tTHREADS_PER_BLOCK];
+  __shared__ float2 smem[ThreadsPerBlock];
 
   // The instance in the batch.
   int32_t ni = blockIdx.z;
@@ -155,7 +155,7 @@ __device__ void computeGroupNorm(const T* src, T* dst, int64_t offset, U mean, U
   *(reinterpret_cast<VecT*>(dst + offset)) = output_v;
 }
 
-template <typename T, int THREADS_PER_BLOCK, int ILP>
+template <typename T, int ThreadsPerBlock, int ILP>
 __global__ void groupNormNHWCScaleKernel(T* dst, const T* src, const float* gamma, const float* beta, const float* redBuffer, float epsilon, int32_t c, int32_t cPerBlock,
                                          int32_t cPerGroup, int32_t groups, int32_t hwc, float invHWC, int32_t hw, int32_t hwPerBlock, bool withSwish) {
   // The channel loaded by that thread (ILP channels per thread for F16x2).

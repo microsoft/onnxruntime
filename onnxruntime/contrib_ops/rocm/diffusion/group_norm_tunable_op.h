@@ -45,10 +45,11 @@ void groupNormNHWCSum(const GroupNormNHWCParams<T>* params) {
   // The number of instances.
   grid.z = params->n;
 
-#define LAUNCH_GROUPNORM_SUM(TPB, ILP)                                                                                              \
-  groupNormNHWCSumKernel<T, TPB, ILP><<<grid, TPB, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock,          \
-                                                                        params->hwPerBlock, params->hw, params->hwc, params->c,     \
-                                                                        params->cPerGroup, params->groups, params->groupsPerBlock); \
+#define LAUNCH_GROUPNORM_SUM(ThreadsPerBlock, VecSize)                                                           \
+  groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>                                                            \
+      <<<grid, ThreadsPerBlock, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock,          \
+                                                     params->hwPerBlock, params->hw, params->hwc, params->c,     \
+                                                     params->cPerGroup, params->groups, params->groupsPerBlock); \
   break;
 
   switch (params->cPerBlock) {
@@ -95,11 +96,12 @@ void groupNormNHWCScale(const GroupNormNHWCParams<T>* params) {
   // The number of instances.
   grid.z = params->n;
 
-#define LAUNCH_GROUPNORM_SCALE(TPB, ILP)                                                                                                    \
-  groupNormNHWCScaleKernel<T, TPB, ILP><<<grid, TPB, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta,            \
-                                                                          params->redBuffer, params->epsilon, params->c, params->cPerBlock, \
-                                                                          params->cPerGroup, params->groups, params->hwc, params->invHWC,   \
-                                                                          params->hw, params->hwPerBlock, params->withSwish);               \
+#define LAUNCH_GROUPNORM_SCALE(ThreadsPerBlock, VecSize)                                                               \
+  groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>                                                                \
+      <<<grid, ThreadsPerBlock, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta,            \
+                                                     params->redBuffer, params->epsilon, params->c, params->cPerBlock, \
+                                                     params->cPerGroup, params->groups, params->hwc, params->invHWC,   \
+                                                     params->hw, params->hwPerBlock, params->withSwish);               \
   break;
 
   switch (params->cPerBlock) {
@@ -154,9 +156,10 @@ class GroupNormNHWCOp {
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
         !(params->c % VecSize == 0 && params->cPerGroup % VecSize == 0));
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock % params->cPerGroup == 0 &&
-                                                params->cPerBlock <= ThreadsPerBlock * VecSize &&
                                                 params->c % params->cPerBlock == 0 &&
                                                 params->hw % params->hwPerBlock == 0));
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock <= ThreadsPerBlock * VecSize &&
+                                                params->cPerBlock > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize));
 
     return Status::OK();
   }
