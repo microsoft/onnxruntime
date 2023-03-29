@@ -65,10 +65,10 @@ jobs:
 
   - task: Cache@2
     inputs:
-      key: ' mac2 | protobuf | $(Build.SourcesDirectory)/cmake/deps.txt '
+      key: ' protobuf | "$(Agent.OS)" | $(Build.SourcesDirectory)/cmake/deps.txt '
       path: $(PROTO_CACHE_DIR)
       restoreKeys: |
-        mac2 | protobuf
+         protobuf | "$(Agent.OS)"
     displayName: mac protobuf
     condition: eq(${{ parameters.WithCache }}, true)
 
