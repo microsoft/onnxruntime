@@ -237,7 +237,7 @@ stages:
 
       - task: DeleteFiles@1
         displayName: 'Delete files from $(Build.BinariesDirectory)\$(BuildConfig)'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.8'))
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
           Contents: |
@@ -258,7 +258,7 @@ stages:
       #in 32 bits Win32 build. I tried all the settings but they all don't work.
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.8'))
         inputs:
           msBuildArchitecture: amd64
           setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests --parallel --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
@@ -267,7 +267,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.8')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
@@ -497,7 +497,7 @@ stages:
 
       - task: DeleteFiles@1
         displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.8'))
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           Contents: |
@@ -516,7 +516,7 @@ stages:
       #Manually set msBuildCommandline so that we can also set CAExcludePath
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.8'))
         inputs:
           msBuildArchitecture: amd64
           setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests ${{ parameters.gpu_build_py_parameters }} --parallel $(EpBuildFlags) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
@@ -525,7 +525,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.8')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
