@@ -1,8 +1,11 @@
 ---
 title: Graph optimizations
-parent: Performance
-nav_order: 2
-redirect_from: /docs/how-to/graph-optimizations
+parent: Model optimizations
+grand_parent: Performance
+nav_order: 3
+redirect_from: 
+- /docs/how-to/graph-optimizations
+- /docs/performance/graph-optimizations
 ---
 
 # Graph Optimizations in ONNX Runtime
@@ -135,11 +138,11 @@ session = rt.InferenceSession("<model_path>", sess_options)
   g_ort->SetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_EXTENDED);
 
   // To enable model serialization after graph optimization set this
-  const wchar_t* optimized_model_path = L"optimized_model_path";
+  const ORTCHAR_T* optimized_model_path = ORT_TSTR("optimized_model_path");
   g_ort->SetOptimizedModelFilePath(session_options, optimized_model_path);
 
   OrtSession* session;
-  const wchar_t* model_path = L"model_path";
+  const ORTCHAR_T* model_path = ORT_TSTR("model_path");
   g_ort->CreateSession(env, model_path, session_option, &session);
 ```
 

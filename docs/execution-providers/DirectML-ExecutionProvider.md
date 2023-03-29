@@ -67,11 +67,22 @@ When using the [C API](../get-started/with-c.md) with a DML-enabled build of onn
 
  Creates a DirectML Execution Provider which executes on the hardware adapter with the given `device_id`, also known as the adapter index. The device ID corresponds to the enumeration order of hardware adapters as given by [IDXGIFactory::EnumAdapters](https://docs.microsoft.com/windows/win32/api/dxgi/nf-dxgi-idxgifactory-enumadapters). A `device_id` of 0 always corresponds to the default adapter, which is typically the primary display GPU installed on the system. Beware that in systems with multiple GPU's, the primary display (GPU 0) is often not the most performant one, particularly on laptops with dual adapters where battery lifetime is preferred over performance. So you can double check in Task Manager's performance tab to see which GPU is which. A negative `device_id` is invalid.
 
+Example for C API:
 ```c
 OrtStatus* OrtSessionOptionsAppendExecutionProvider_DML(
     _In_ OrtSessionOptions* options,
     int device_id
     );
+```
+
+Example for C# API:
+
+Install the Nuget Package [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML/1.14.1) and use the following code to enable the DirectML EP:
+
+```csharp
+SessionOptions sessionOptions = newSessionOptions();
+sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+sessionOptions.AppendExecutionProvider_DML(0);
 ```
 
 ### `OrtSessionOptionsAppendExecutionProviderEx_DML` function
@@ -86,6 +97,7 @@ OrtStatus* OrtSessionOptionsAppendExecutionProviderEx_DML(
     _In_ ID3D12CommandQueue* cmd_queue
     );
 ```
+
 
 ## Configuration Options
 

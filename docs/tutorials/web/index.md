@@ -13,7 +13,7 @@ You can also integrate machine learning into the server side of your web applica
 
 To see an example of the web development flow in practice, you can follow the steps in the following tutorial to [build a web application to classify images using Next.js](classify-images-nextjs-github-template.md).
 
-For more detail on the steps below, see the [build a web application](../../reference/build-web-app.md) with ONNX Runtime reference guide.
+For more detail on the steps below, see the [build a web application](./build-web-app.md) with ONNX Runtime reference guide.
 
 ## ONNX Runtime web application development flow
 
@@ -66,17 +66,17 @@ For more detail on the steps below, see the [build a web application](../../refe
 
    Bootstrap your web application according in your web framework of choice e.g. vuejs, reactjs, angularjs.
 
-   1. [Add the ONNX Runtime dependency](../../reference/build-web-app.md#add-onnx-runtime-web-as-dependency)
+   1. [Add the ONNX Runtime dependency](./build-web-app.md#add-onnx-runtime-web-as-dependency)
 
-   1. [Consume the onnxruntime-web API in your application](../../reference/build-web-app.md#consume-onnxruntime-web-in-your-code)
+   1. [Consume the onnxruntime-web API in your application](./build-web-app.md#consume-onnxruntime-web-in-your-code)
 
-   1. [Add pre and post processing](../../reference/build-web-app.md#pre-and-post-processing) appropriate to your application and model
+   1. [Add pre and post processing](./build-web-app.md#pre-and-post-processing) appropriate to your application and model
 
 4. How do I optimize my application?
 
    The libraries and models mentioned in the previous steps can be optimized to meet memory and processing demands.
 
-   a. Models in ONNX format can be [converted to ORT format](../../reference/ort-format-models.md), for optimized model binary size, faster initialization and peak memory usage.
+   a. Models in ONNX format can be [converted to ORT format](../../performance/model-optimizations/ort-format-models.md), for optimized model binary size, faster initialization and peak memory usage.
 
    b. The size of the ONNX Runtime itself can reduced by [building a custom package](../../build/custom.md) that only includes support for your specific model/s.
 

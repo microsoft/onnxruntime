@@ -1,6 +1,7 @@
 ---
-title: Mobile super resolution
+title: Improve image resolution on mobile
 description: Build Android and iOS applications for improving image resolution with built-in pre and post processing
+image: /images/tutorial-superres-og-image.png
 parent: Deploy on mobile
 grand_parent: Tutorials
 nav_order: 3

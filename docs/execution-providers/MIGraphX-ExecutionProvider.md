@@ -30,6 +30,7 @@ Pre-built binaries of ONNX Runtime with MIGraphX EP are published for most langu
 |ONNX Runtime|MIGraphX|
 |---|---|
 |main|5.4|
+|1.14|5.4|
 |1.13|5.4|
 |1.13|5.3.2|
 |1.12|5.2.3|
@@ -68,9 +69,6 @@ model on either the CPU or MIGraphX Execution Provider.
 
 ## Configuration Options
 MIGraphX providers an environment variable ORT_MIGRAPHX_FP16_ENABLE to enable the FP16 mode.
-
-## Performance Tuning
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
 
 ## Samples
 

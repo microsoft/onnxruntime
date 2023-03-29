@@ -1,8 +1,11 @@
 ---
-title: ORT Format Model Runtime Optimization
-parent: Mobile
-grand_parent: Reference
-nav_order: 2
+title: ORT model format runtime optimization
+grand_parent: Performance
+parent: Model optimizations
+nav_order: 5
+redirect_from: 
+- /docs/performance/ort-format-model-runtime-optimization
+- /docs/reference/mobile/ort-format-model-runtime-optimization
 ---
 {::options toc_levels="2" /}
 
@@ -16,15 +19,15 @@ nav_order: 2
 
 ## Background
 
-The full ONNX Runtime build supports [graph optimizations](../../performance/graph-optimizations.md) at runtime for ONNX models.
+The full ONNX Runtime build supports [graph optimizations](./graph-optimizations.md) at runtime for ONNX models.
 
 The ORT format model was designed to be used with ONNX Runtime [minimal builds](../../build/custom.md#minimal-build) for environments where smaller binary size is important. To reduce the binary size, some or all of the graph optimizer code is excluded from a minimal build. As such, ONNX models and ORT format models do not share the same graph optimization process.
 
 In ONNX Runtime **1.11 and later**, there is limited support for graph optimizations at runtime for ORT format models. This only applies to extended minimal builds or full builds.
 
-In ONNX Runtime **1.10 and earlier**, there is **no support** for graph optimizations at runtime for ORT format models. Any graph optimizations must be done at model conversion time.
+In ONNX Runtime **1.10 and earlier**, there is **no support** for graph optimizations at runtime for ORT format models. Any graph optimizations must be done at model conversion time. See [this page](./../mobile-performance-tuning.md) for guidance using older ORT versions. 
 
-As a rule, [basic graph optimizations](../../performance/graph-optimizations.md#basic-graph-optimizations) are semantics-preserving and result in a valid ONNX graph. The basic optimizations can and generally should be baked in to the converted ORT format model at conversion time - this is the default behavior of the conversion script. In fact, any runtime optimization support for ORT format models will not include basic optimizations at all.
+As a rule, [basic graph optimizations](./graph-optimizations.md#basic-graph-optimizations) are semantics-preserving and result in a valid ONNX graph. The basic optimizations can and generally should be baked in to the converted ORT format model at conversion time - this is the default behavior of the conversion script. In fact, any runtime optimization support for ORT format models will not include basic optimizations at all.
 
 ## Types of runtime optimization
 
@@ -56,4 +59,4 @@ You can compare the performance of:
 - A fully optimized model run with only the CPU EP enabled
 - A model with saved runtime optimizations run with additional EPs enabled
 
-The [model usability checker](./model-usability-checker.md) will provide guidance for a particular model.
+The [model usability checker](../../tutorials/mobile/helpers/model-usability-checker.md) will provide guidance for a particular model.

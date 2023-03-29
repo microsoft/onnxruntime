@@ -1,10 +1,13 @@
 ---
 title: ORT model format
 description: Define the ORT format and show how to convert an ONNX model to ORT format to run on mobile or web
-parent: Reference
-has_children: false
-nav_order: 8
-redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/model-execution
+grand_parent: Performance
+parent: Model optimizations
+nav_order: 4
+redirect_from: 
+  - /docs/tutorials/mobile/model-conversion
+  - /docs/tutorials/mobile/model-execution
+  - /docs/reference/ort-format-models
 ---
 
 # ORT model format
@@ -53,11 +56,11 @@ Each '.onnx' file is loaded, optimized, and saved in ORT format as a file with t
 ### Outputs of the script
 
 1. One ORT format model for each ONNX model
-2. A [build configuration file](./operators/reduced-operator-config-file.md) ('required_operators.config') with the operators required by the optimized ONNX models.
+2. A [build configuration file](../../reference/operators/reduced-operator-config-file.md) ('required_operators.config') with the operators required by the optimized ONNX models.
 
    If [type reduction](#enable-type-reduction) is enabled (ONNX Runtime version 1.7 or later) the configuration file will also include the required types for each operator, and is called 'required_operators_and_types.config'.
 
-   If you are using a pre-built ONNX Runtime [iOS](../install/index.md#install-on-ios), [Android](../install/index.md#install-on-android) or [web](../install/index.md#javascript-installs) package, the build configuration file is not used and can be ignored.
+   If you are using a pre-built ONNX Runtime [iOS](../../install/index.md#install-on-ios), [Android](../../install/index.md#install-on-android) or [web](../../install/index.md#javascript-installs) package, the build configuration file is not used and can be ignored.
 
 ### Script location
 
@@ -117,34 +120,34 @@ python -m onnxruntime.tools.convert_onnx_models_to_ort --help
 ```
 
 ```output
-usage: convert_onnx_models_to_ort.py [-h] [--optimization_style {Fixed,Runtime} [{Fixed,Runtime} ...]] [--enable_type_reduction] [--custom_op_library CUSTOM_OP_LIBRARY] [--save_optimized_onnx_model] [--allow_conversion_failures] [--nnapi_partitioning_stop_ops NNAPI_PARTITIONING_STOP_OPS]
-                                     [--target_platform {arm,amd64}]
-                                     model_path_or_dir
+  usage: convert_onnx_models_to_ort.py [-h] [--optimization_style {Fixed,Runtime} [{Fixed,Runtime} ...]] [--enable_type_reduction] [--custom_op_library CUSTOM_OP_LIBRARY] [--save_optimized_onnx_model] [--allow_conversion_failures] [--nnapi_partitioning_stop_ops NNAPI_PARTITIONING_STOP_OPS]
+                                      [--target_platform {arm,amd64}]
+                                      model_path_or_dir
 
-Convert the ONNX format model/s in the provided directory to ORT format models. All files with a `.onnx` extension will be processed. For each one, an ORT format model will be created in the same directory. A configuration file will also be created containing the list of required
-operators for all converted models. This configuration file should be used as input to the minimal build via the `--include_ops_by_config` parameter.
+  Convert the ONNX format model/s in the provided directory to ORT format models. All files with a `.onnx` extension will be processed. For each one, an ORT format model will be created in the same directory. A configuration file will also be created containing the list of required
+  operators for all converted models. This configuration file should be used as input to the minimal build via the `--include_ops_by_config` parameter.
 
-positional arguments:
-  model_path_or_dir     Provide path to ONNX model or directory containing ONNX model/s to convert. All files with a .onnx extension, including those in subdirectories, will be processed.
+  positional arguments:
+    model_path_or_dir     Provide path to ONNX model or directory containing ONNX model/s to convert. All files with a .onnx extension, including those in subdirectories, will be processed.
 
-optional arguments:
-  -h, --help            show this help message and exit
-  --optimization_style {Fixed,Runtime} [{Fixed,Runtime} ...]
-                        Style of optimization to perform on the ORT format model. Multiple values may be provided. The conversion will run once for each value. The general guidance is to use models optimized with 'Runtime' style when using NNAPI or CoreML and 'Fixed' style otherwise.
-                        'Fixed': Run optimizations directly before saving the ORT format model. This bakes in any platform-specific optimizations. 'Runtime': Run basic optimizations directly and save certain other optimizations to be applied at runtime if possible. This is useful when
-                        using a compiling EP like NNAPI or CoreML that may run an unknown (at model conversion time) number of nodes. The saved optimizations can further optimize nodes not assigned to the compiling EP at runtime.
-  --enable_type_reduction
-                        Add operator specific type information to the configuration file to potentially reduce the types supported by individual operator implementations.
-  --custom_op_library CUSTOM_OP_LIBRARY
-                        Provide path to shared library containing custom operator kernels to register.
-  --save_optimized_onnx_model
-                        Save the optimized version of each ONNX model. This will have the same level of optimizations applied as the ORT format model.
-  --allow_conversion_failures
-                        Whether to proceed after encountering model conversion failures.
-  --nnapi_partitioning_stop_ops NNAPI_PARTITIONING_STOP_OPS
-                        Specify the list of NNAPI EP partitioning stop ops. In particular, specify the value of the "ep.nnapi.partitioning_stop_ops" session options config entry.
-  --target_platform {arm,amd64}
-                        Specify the target platform where the exported model will be used. This parameter can be used to choose between platform-specific options, such as QDQIsInt8Allowed(arm), NCHWc (amd64) and NHWC (arm/amd64) format, different optimizer level options, etc.
+  optional arguments:
+    -h, --help            show this help message and exit
+    --optimization_style {Fixed,Runtime} [{Fixed,Runtime} ...]
+                          Style of optimization to perform on the ORT format model. Multiple values may be provided. The conversion will run once for each value. The general guidance is to use models optimized with 'Runtime' style when using NNAPI or CoreML and 'Fixed' style otherwise.
+                          'Fixed': Run optimizations directly before saving the ORT format model. This bakes in any platform-specific optimizations. 'Runtime': Run basic optimizations directly and save certain other optimizations to be applied at runtime if possible. This is useful when
+                          using a compiling EP like NNAPI or CoreML that may run an unknown (at model conversion time) number of nodes. The saved optimizations can further optimize nodes not assigned to the compiling EP at runtime.
+    --enable_type_reduction
+                          Add operator specific type information to the configuration file to potentially reduce the types supported by individual operator implementations.
+    --custom_op_library CUSTOM_OP_LIBRARY
+                          Provide path to shared library containing custom operator kernels to register.
+    --save_optimized_onnx_model
+                          Save the optimized version of each ONNX model. This will have the same level of optimizations applied as the ORT format model.
+    --allow_conversion_failures
+                          Whether to proceed after encountering model conversion failures.
+    --nnapi_partitioning_stop_ops NNAPI_PARTITIONING_STOP_OPS
+                          Specify the list of NNAPI EP partitioning stop ops. In particular, specify the value of the "ep.nnapi.partitioning_stop_ops" session options config entry.
+    --target_platform {arm,amd64}
+                          Specify the target platform where the exported model will be used. This parameter can be used to choose between platform-specific options, such as QDQIsInt8Allowed(arm), NCHWc (amd64) and NHWC (arm/amd64) format, different optimizer level options, etc.
 ```
 
 #### Optional script arguments
@@ -153,7 +156,7 @@ optional arguments:
 
 **Since ONNX Runtime 1.11**
 
-Specify whether the converted model will be fully optimized ("Fixed") or have saved runtime optimizations ("Runtime"). Both types of models are produced by default. See [here](./mobile/ort-format-model-runtime-optimization.md) for more information.
+Specify whether the converted model will be fully optimized ("Fixed") or have saved runtime optimizations ("Runtime"). Both types of models are produced by default. See [here](./ort-format-model-runtime-optimization.md) for more information.
 
 This replaces the [optimization level](#optimization-level) option from earlier ONNX Runtime versions.
 
@@ -169,7 +172,7 @@ For earlier versions, *extended* is recommended, as the *all* level previously i
 
 If the model is to be run with the NNAPI EP or CoreML EP, it is recommended to create an ORT format model using the *basic* optimization level. Performance testing should be done to compare running this model with the NNAPI or CoreML EP enabled vs. running the model optimized to a higher level using the CPU EP to determine the optimal setup.
 
-See the documentation on [performance tuning mobile scenarios](../performance/mobile-performance-tuning.md) for more information.
+See the documentation on [performance tuning mobile scenarios](../../performance/mobile-performance-tuning.md) for more information.
 
 ##### Enable type reduction
 
@@ -185,7 +188,7 @@ For example, the ONNX Runtime kernel for Softmax supports both float and double.
 
 ##### Custom Operator support
 
-If your ONNX model uses [custom operators](./operators/add-custom-op.md), the path to the library containing the custom operator kernels must be provided so that the ONNX model can be successfully loaded. The custom operators will be preserved in the ORT format model.
+If your ONNX model uses [custom operators](../../reference/operators/add-custom-op.md), the path to the library containing the custom operator kernels must be provided so that the ONNX model can be successfully loaded. The custom operators will be preserved in the ORT format model.
 
 ##### Save optimized ONNX model
 
@@ -203,7 +206,7 @@ python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py
 
 The API for executing ORT format models is the same as for ONNX models.
 
-See the [ONNX Runtime API documentation](../api) for details on individual API usage.
+See the [ONNX Runtime API documentation](../../api) for details on individual API usage.
 
 ### APIs by platform
 

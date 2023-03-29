@@ -74,7 +74,7 @@ If the application does not meet its requirements, there are optimizations that 
 
 #### Reduce model size
 
-One method of reducing model size is to quantize the model. This reduces an original model with 32-bit weights by approximately a factor of 4, as the weights are reduced to 8-bit. See the ONNX Runtime [quantization guide](../../performance/quantization.md) for instructions on how to do this.
+One method of reducing model size is to quantize the model. This reduces an original model with 32-bit weights by approximately a factor of 4, as the weights are reduced to 8-bit. See the ONNX Runtime [quantization guide](../../performance/model-optimizations/quantization.md) for instructions on how to do this.
 
 Another way of reducing the model size is to find a new model with the same inputs, outputs and architecture that has already been optimized for mobile. For example: MobileNet and MobileBert.
 
@@ -88,7 +88,7 @@ There are two options for reducing the ONNX Runtime binary size.
    * iOS C/C++: onnxruntime-mobile-c
    * iOS Objective-C: onnxruntime-mobile-objc
 
-   These mobile packages have a smaller binary size but limited feature support, like a reduced set of operator implementations and the model must be converted to [ORT format](../../reference/ort-format-models.md#convert-onnx-models-to-ort-format).
+   These mobile packages have a smaller binary size but limited feature support, like a reduced set of operator implementations and the model must be converted to [ORT format](../../performance/model-optimizations/ort-format-models.md#convert-onnx-models-to-ort-format).
 
    See the [install guide](../../install/#install-on-web-and-mobile) for package specific instructions.
 

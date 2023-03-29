@@ -1,5 +1,5 @@
 ---
-title: Operator Kernels
+title: Operator kernels
 parent: Operators
 grand_parent: Reference
 nav_order: 1
