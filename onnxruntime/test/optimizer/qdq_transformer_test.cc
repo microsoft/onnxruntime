@@ -2954,5 +2954,49 @@ TEST(QDQTransformerTests, DQ_Produce_Graph_Output) {
   test_case({1, 12, 37}, -1);
 }
 
+// Not fuse if DQ produces graph output - special case for DropDQ path where there is only a DQ -> Node with no
+// trailing Q
+TEST(QDQTransformerTests, DropDQ_DQ_Produces_Graph_Output) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis, bool dq_produces_graph_output) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -5.f, 5.f);
+      auto* output_arg = builder.MakeOutput();
+
+      // add input QDQ
+      auto* input_q_output = builder.MakeIntermediate();
+      auto* dq_output_arg = dq_produces_graph_output ? builder.MakeOutput() : builder.MakeIntermediate();
+
+      builder.AddQuantizeLinearNode<uint8_t>(input_arg, .105f, 127, input_q_output);
+      builder.AddDequantizeLinearNode<uint8_t>(input_q_output, .105f, 127, dq_output_arg);
+
+      // add ArgMax
+      auto* argmax_output = builder.MakeIntermediate();
+      auto& argmax_node = builder.AddNode("ArgMax", {dq_output_arg}, {argmax_output});
+      argmax_node.AddAttribute("axis", axis);
+
+      // add output Identity
+      builder.AddNode("Identity", {argmax_output}, {output_arg});
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["DequantizeLinear"], dq_produces_graph_output ? 1 : 0);
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+  };
+
+  // test with and without the DQ producing a graph output to validate the test hits DropDQ
+  test_case({1, 4, 8}, -1, false);
+  test_case({1, 4, 8}, -1, true);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

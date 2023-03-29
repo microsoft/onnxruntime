@@ -59,9 +59,6 @@ class DropQDQNodeGroupSelector : public NodeGroupSelector {
 
 // Single DQ -> node.
 class DropDQNodeGroupSelector : public NodeGroupSelector {
-  // base check that we have the expected number of DQ inputs.
-  bool CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const;
-
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
@@ -104,14 +101,13 @@ class ConvNodeGroupSelector : public NodeGroupSelector {
 };
 
 class WhereNodeGroupSelector : public NodeGroupSelector {
-public:
-  WhereNodeGroupSelector()= default;
+ public:
+  WhereNodeGroupSelector() = default;
 
-private:
+ private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
-
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
@@ -221,7 +217,7 @@ class ConvSelector : public BaseSelector {
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
 class WhereSelector : public BaseSelector {
-public:
+ public:
   WhereSelector() : BaseSelector(std::make_unique<WhereNodeGroupSelector>()) {}
 };
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
