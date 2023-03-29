@@ -34,6 +34,8 @@ jobs:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
+    ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
     vmImage: 'macOS-12'
   timeoutInMinutes: 300
@@ -56,20 +58,18 @@ jobs:
   - script: |
       brew install ccache
       echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
-      mkdir -p $(Pipeline.Workspace)/ccache_proto
-      mkdir -p $(Pipeline.Workspace)/ccache_ort
+      mkdir -p $(PROTO_CACHE_DIR)
+      mkdir -p $(ORT_CACHE_DIR)
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
     condition: eq(${{ parameters.WithCache }}, true)
 
   - task: Cache@2
     inputs:
-      key: ' mac1 | protobuf | $(Build.SourcesDirectory)/cmake/deps.txt '
-      path: $(CCACHE_DIR)
+      key: ' mac2 | protobuf | $(Build.SourcesDirectory)/cmake/deps.txt '
+      path: $(PROTO_CACHE_DIR)
       restoreKeys: |
-        mac1 | protobuf
+        mac2 | protobuf
     displayName: mac protobuf
-    env:
-      CCACHE_DIR: $(Pipeline.Workspace)/ccache_proto
     condition: eq(${{ parameters.WithCache }}, true)
 
   - script: |
@@ -84,25 +84,23 @@ jobs:
       sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
     displayName: 'Install dependencies'
     env:
-      CCACHE_DIR: $(Pipeline.Workspace)/ccache_proto
+      CCACHE_DIR: $(PROTO_CACHE_DIR)
 
   - script: |
       ccache -s
       ccache -z
-      ls -l $(Pipeline.Workspace)/ccache_proto
-      du -sh $(Pipeline.Workspace)/ccache_proto
+      ls -l $(PROTO_CACHE_DIR)
+      du -sh $(PROTO_CACHE_DIR)
     displayName: Show Cache stats and Clear protolbuf stats.
     condition: eq(${{ parameters.WithCache }}, true)
 
   - task: Cache@2
     inputs:
       key: ' "$(TODAY)" | ccache  | onnxruntime | "$(Build.SourceVersion)" '
-      path: $(CCACHE_DIR)
+      path: $(ORT_CACHE_DIR)
       restoreKeys: |
         "$(TODAY)" | ccache | onnxruntime
     displayName: ccache MacOS Build
-    env:
-      CCACHE_DIR: $(Pipeline.Workspace)/ccache_ort
     condition: eq(${{ parameters.WithCache }}, true)
 
   - ${{ if eq(parameters.MacosArch, 'universal2') }}:
@@ -132,7 +130,7 @@ jobs:
   - script: |
       ccache -s
       ccache -z
-      ls -l $(Pipeline.Workspace)/ccache_ort
-      du -sh $(Pipeline.Workspace)/ccache_ort
+      ls -l $(ORT_CACHE_DIR)
+      du -sh $(ORT_CACHE_DIR)
     displayName: Show Cache stats
     condition: eq(${{ parameters.WithCache }}, true)
