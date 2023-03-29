@@ -44,6 +44,9 @@ class FusionOptions:
         self.enable_shape_inference = True
         self.enable_gemm_fast_gelu = False
 
+        # packing mode is only available for Bert like models now
+        self.enable_packing_mode = False
+
         # Set default to sequence length for BERT model to use fused attention to speed up.
         # Note that embed layer normalization will convert 2D mask to 1D when mask type is MaskIndexEnd.
         self.attention_mask_format = (

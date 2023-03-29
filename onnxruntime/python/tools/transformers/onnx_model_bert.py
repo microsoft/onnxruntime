@@ -428,6 +428,9 @@ class BertOnnxModel(OnnxModel):
 
         self.remove_unused_constant()
 
+        if options is not None and options.enable_packing_mode:
+            self.convert_to_packing_mode()
+
         # Use symbolic batch dimension in input and output.
         if add_dynamic_axes:
             self.use_dynamic_axes()

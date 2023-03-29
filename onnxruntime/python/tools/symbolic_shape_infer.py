@@ -190,6 +190,9 @@ class SymbolicShapeInference:
             "Neg": self._infer_symbolic_compute_ops,
             # contrib ops:
             "Attention": self._infer_Attention,
+            "PackedAttention": self._infer_PackedAttention,
+            "RemovePadding": self._infer_RemovePadding,
+            "RestorePadding": self._infer_RestorePadding,
             "BiasGelu": self._infer_BiasGelu,
             "MultiHeadAttention": self._infer_MultiHeadAttention,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
@@ -2080,6 +2083,30 @@ class SymbolicShapeInference:
                             past_shape[3] = f"{past_shape[3]}+{input_shape[1]}"
                     vi = self.known_vi_[node.output[1]]
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+
+    def _infer_PackedAttention(self, node):  # noqa: N802
+        shape = self._get_shape(node, 0)
+        shape_weights = self._get_shape(node, 1)
+        shape_bias = self._try_get_shape(node, 2)
+        if shape_bias is not None:
+            assert len(shape_bias) == 1
+        tripled_hidden_size = shape_bias[0] if shape_bias is not None else shape_weights[1]
+        if shape and len(shape) == 2:
+            qkv_hidden_sizes_attr = get_attribute(node, "qkv_hidden_sizes")
+            if qkv_hidden_sizes_attr is not None:
+                assert len(qkv_hidden_sizes_attr) == 3
+                shape[1] = int(qkv_hidden_sizes_attr[2])
+            elif isinstance(tripled_hidden_size, int):
+                shape[1] = int(tripled_hidden_size / 3)
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
+
+    def _infer_RemovePadding(self, node):
+        pass
+
+    def _infer_RestorePadding(self, node):
+        pass
 
     def _infer_BiasGelu(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)

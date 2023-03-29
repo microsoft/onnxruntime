@@ -1,0 +1,241 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
+# Convert Bert ONNX model converted from TensorFlow or exported from PyTorch to use Attention, Gelu,
+# SkipLayerNormalization and EmbedLayerNormalization ops to optimize
+# performance on NVidia GPU and CPU.
+#
+# For Bert model exported from PyTorch, OnnxRuntime has bert model optimization support internally.
+# You can use the option --use_onnxruntime to check optimizations from OnnxRuntime.
+# For Bert model file like name.onnx, optimized model for GPU or CPU from OnnxRuntime will output as
+# name_ort_gpu.onnx or name_ort_cpu.onnx in the same directory.
+#
+# This script is retained for experiment purpose. Useful scenarios like the following:
+#  (1) Change model from fp32 to fp16 for mixed precision inference in GPU with Tensor Core.
+#  (2) Change input data type from int64 to int32.
+#  (3) Some model cannot be handled by OnnxRuntime, and you can modify this script to get optimized model.
+
+import argparse
+import logging
+import os
+from typing import Dict, Optional
+
+import coloredlogs
+from onnx import helper, load_model, save_model
+from onnx_model import OnnxModel
+from shape_infer_helper import SymbolicShapeInferenceHelper
+
+logger = logging.getLogger(__name__)
+
+class PackingMode:
+    Attention = "Attention"
+    LayerNorm = "LayerNormalization"
+    SkipLayerNorm = "SkipLayerNormalization"
+    PastIndex = 4
+    PastSequenceLengthIndex = 6
+    def __init__(
+        self,
+        model: OnnxModel,
+    ):
+        self.model: OnnxModel = model
+        self.nodes_to_remove: List = []
+        self.nodes_to_add: List = []
+        self.prune_graph: bool = False
+        self.node_name_to_graph_name: dict = {}
+        self.this_graph_name: str = None
+        self.attention_nodes = self.model.get_nodes_by_op_type(self.Attention)
+
+    def try_getting_attention_mask(self):
+        first_attention_node = self.try_getting_first_attention()
+        # check if attention has mask
+        if not first_attention_node or len(first_attention_node.input) < 3:
+            return None
+
+        attention_mask = first_attention_node.input[3]
+
+        # check if all attention nodes have same mask
+        for node in self.attention_nodes:
+            if len(node.input) < 3 or node.input[3] != attention_mask:
+                return None
+
+        return attention_mask
+
+    def try_getting_first_attention(self):
+        if len(self.attention_nodes) <= 0:
+            return None
+
+        return self.attention_nodes[0]
+
+    def try_getting_last_layernorm(self):
+        last_layernorm_node = None
+        for node in self.model.nodes():
+            if node.op_type == self.LayerNorm or node.op_type == self.SkipLayerNorm:
+                last_layernorm_node = node
+        return last_layernorm_node
+
+    def are_attentions_supportted(self):
+        for node in self.attention_nodes:
+            if OnnxModel.get_node_attribute(node, "past_present_share_buffer") is not None:
+                return False
+            if OnnxModel.get_node_attribute(node, "do_rotary") is not None:
+                return False
+            unidirection_attr = OnnxModel.get_node_attribute(node, "unidirectional")
+            if unidirection_attr is not None and unidirection_attr != 0:
+                return False
+            if len(node.input) > self.PastIndex and not node.input[self.PastIndex]:
+                return False
+            if len(node.input) > self.PastSequenceLengthIndex and not node.input[self.PastSequenceLengthIndex]:
+                return False
+        return True
+
+    def insert_removepadding_node(self,
+                                  inputs,
+                                  outputs):
+        new_node = helper.make_node(
+            "RemovePadding",
+            inputs=inputs,
+            outputs=outputs,
+            name=self.model.create_node_name("RemovePadding"),
+        )
+
+        new_node.domain = "com.microsoft"
+        self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+
+    def insert_restorepadding_node(self,
+                                   inputs,
+                                   outputs):
+        new_node = helper.make_node(
+            "RestorePadding",
+            inputs=inputs,
+            outputs=outputs,
+            name=self.model.create_node_name("RestorePadding"),
+        )
+
+        new_node.domain = "com.microsoft"
+        self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+
+    def replace_attention_with_packing_attention(self, token_offset, cumulative_sequence_length):
+        for attention in self.attention_nodes:
+            packed_attention = helper.make_node(
+                "PackedAttention",
+                inputs=[attention.input[0],
+                        attention.input[1],
+                        attention.input[2],
+                        token_offset,
+                        cumulative_sequence_length,
+                        attention.input[5] if len(attention.input) > 5 else '',
+                        ],
+                outputs=[attention.output[0]],
+                name= self.model.create_node_name("PackedAttention"),
+            )
+
+            attributes = []
+            for attr in attention.attribute:
+                if attr.name in ["num_heads", "qkv_hidden_sizes", "scale"]:
+                    attributes.append(attr)
+
+            packed_attention.attribute.extend(attributes)
+            packed_attention.domain = "com.microsoft"
+            self.nodes_to_add.append(packed_attention)
+            self.nodes_to_remove.append(attention)
+            self.node_name_to_graph_name[packed_attention.name] = self.this_graph_name
+
+    def apply(self):
+        logger.debug(f"start converting to packing model...")
+        if not self.are_attentions_supportted():
+            return
+
+        attention_mask = self.try_getting_attention_mask()
+        if not attention_mask:
+            return
+
+        first_attention_node = self.try_getting_first_attention()
+        last_layernorm_node = self.try_getting_last_layernorm()
+        if not last_layernorm_node:
+            return
+
+        # insert RemovePadding
+        input_to_remove_padding = first_attention_node.input[0]
+        output_without_padding = first_attention_node.input[0] + "_no_padding"
+        token_offset = first_attention_node.input[0] + "_token_offset"
+        cumulated_seq_len = first_attention_node.input[0] + "_cumulated_seq_len"
+        max_seq_len = first_attention_node.input[0] + "_max_seq_len"
+        self.insert_removepadding_node([input_to_remove_padding, attention_mask],
+                                       [output_without_padding, token_offset, cumulated_seq_len, max_seq_len])
+        self.model.replace_input_of_all_nodes(input_to_remove_padding, output_without_padding)
+
+        # insert RestorePadding
+        restorepadding_input = last_layernorm_node.output[0] +"_restore_input"
+        self.insert_restorepadding_node([restorepadding_input, token_offset],
+                                        [last_layernorm_node.output[0]])
+        self.model.replace_output_of_all_nodes(last_layernorm_node.output[0], restorepadding_input)
+
+        # insert PackingAttention
+        self.replace_attention_with_packing_attention(token_offset, cumulated_seq_len)
+
+        self.model.remove_nodes(self.nodes_to_remove)
+        self.model.add_nodes(self.nodes_to_add, self.node_name_to_graph_name)
+
+        if self.prune_graph:
+            self.model.prune_graph()
+        elif self.nodes_to_remove or self.nodes_to_add:
+            self.model.update_graph()
+        self.model.clean_shape_infer()
+
+def _parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Convert to packing mode tool for ONNX Runtime."
+        "It converts BERT like model to use packing mode."
+    )
+    parser.add_argument("--input", required=True, type=str, help="input onnx model path")
+
+    parser.add_argument("--output", required=True, type=str, help="optimized onnx model path")
+
+    parser.add_argument("--verbose", required=False, action="store_true", help="show debug information.")
+    parser.set_defaults(verbose=False)
+
+    parser.add_argument(
+        "--use_external_data_format",
+        required=False,
+        action="store_true",
+        help="use external data format to store large model (>2GB)",
+    )
+    parser.set_defaults(use_external_data_format=False)
+
+    args = parser.parse_args()
+
+    return args
+
+
+def _setup_logger(verbose):
+    if verbose:
+        coloredlogs.install(
+            level="DEBUG",
+            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+        )
+    else:
+        coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+
+
+def main():
+    args = _parse_arguments()
+
+    _setup_logger(args.verbose)
+
+    logger.debug(f"arguments:{args}")
+
+    if os.path.realpath(args.input) == os.path.realpath(args.output):
+        logger.warning("Specified the same input and output path. Note that this may overwrite the original model")
+
+    model = load_model(args.input)
+    packing_mode = PackingMode(OnnxModel(model))
+    packing_mode.apply()
+    packing_mode.model.save_model_to_file(args.output)
+
+
+if __name__ == "__main__":
+    main()
