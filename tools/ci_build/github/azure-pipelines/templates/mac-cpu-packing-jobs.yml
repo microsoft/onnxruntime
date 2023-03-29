@@ -87,10 +87,10 @@ jobs:
       env:
         CCACHE_DIR: $(PROTO_CACHE_DIR)
 
-  - script: |
-      ccache -sv
-    displayName: Show Cache stats and Clear protolbuf stats.
-    condition: eq(${{ parameters.WithCache }}, true)
+  - ${{ if eq(parameters.WithCache, true) }}:
+    - template: check-cache-stats.yml
+      parameters:
+        CacheDir: $(PROTO_CACHE_DIR)
 
   - task: Cache@2
     inputs:
@@ -134,10 +134,7 @@ jobs:
         ${{ if eq(parameters.WithCache, true) }}:
           CacheDir: $(ORT_CACHE_DIR)
 
-  - script: |
-      ccache -s
-      ccache -z
-      ls -l $(ORT_CACHE_DIR)
-      du -sh $(ORT_CACHE_DIR)
-    displayName: Show Cache stats
-    condition: eq(${{ parameters.WithCache }}, true)
+  - ${{ if eq(parameters.WithCache, true) }}:
+    - template: check-cache-stats.yml
+      parameters:
+        CacheDir: $(ORT_CACHE_DIR)

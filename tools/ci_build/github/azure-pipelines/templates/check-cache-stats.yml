@@ -1,0 +1,15 @@
+# it's used to check the cache stats after the build with ccache
+parameters:
+- name: CacheDir
+  displayName: Cache Directory
+  type: string
+
+steps:
+  - script: |
+      ccache -sv
+      ccache -z
+      ls -l $(CacheDir)
+      du -sh $(CacheDir)
+    displayName: Show Cache stats
+    env:
+      CCACHE_DIR: $(CacheDir)
