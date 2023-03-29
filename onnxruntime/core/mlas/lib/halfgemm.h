@@ -499,7 +499,7 @@ struct MLAS_HALFGEMM_DISPATCH {
 
 extern const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchDefault;
 
-#if defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 extern const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchNeon;
 #endif
 
@@ -507,7 +507,7 @@ MLAS_FORCEINLINE
 const MLAS_HALFGEMM_DISPATCH*
 MlasHalfGemmGetDispatch()
 {
-#if defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
     return &MlasHalfGemmDispatchNeon;
 #else
     return &MlasHalfGemmDispatchDefault;
