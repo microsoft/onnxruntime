@@ -554,12 +554,11 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
                                "The model cannot run using the current set of target devices, ",
                                GetDevicesDescription(nnapi_target_devices_));
     }
-    
+    // Workaround bugs in NNAPI drives on some phones
+    // where ops are passed checking by 'ANeuralNetworksModel_getSupportedOperationsForDevices'
+    // but failed at compilation.
+    // ANeuralNetworksCompilation_create allows falling back to CPU if compilation fails
     if (target_device_option_ != TargetDeviceOption::ALL_DEVICES) {
-      // Workaround bugs in NNAPI drives on some phones
-      // where ops are passed checking by 'ANeuralNetworksModel_getSupportedOperationsForDevices'
-      // but failed at compilation.
-      // ANeuralNetworksCompilation_create allows falling back to CPU if compilation fails
       use_create_for_devices = true;
     }
   }
