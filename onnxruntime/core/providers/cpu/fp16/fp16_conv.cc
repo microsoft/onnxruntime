@@ -39,10 +39,11 @@ using ConvPadVector = ConvAttributes::ConvPadVector;
  * In the derived NHWC class, where channel_last_ is true, it takes NHWC tensors directly.
  *
 */
-class FusedConvFp16 : public OpKernel {
+class FusedConvFp16 final : public OpKernel {
  public:
   FusedConvFp16(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
+    channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -611,23 +612,16 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 
 #ifndef DISABLE_CONTRIB_OPS
 
-class NHWCFusedConvFp16 final : public FusedConvFp16 {
- public:
-  NHWCFusedConvFp16(const OpKernelInfo& info) : FusedConvFp16(info) {
-    channels_last_ = true;
-  }
-};
-
 namespace contrib {
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    FusedConv,
-    kMSInternalNHWCDomain,
+    NhwcFusedConv,
+    kMSDomain,
     1,
     MLFloat16,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-    NHWCFusedConvFp16);
+    FusedConvFp16);
 }  // namespace contrib
 #endif
 

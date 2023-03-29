@@ -39,7 +39,8 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                 int opset = 11) {
   std::unique_ptr<OpTester> tester;
   if (!attributes.activation.empty()) {
-    tester = std::make_unique<OpTester>("FusedConv", 1, onnxruntime::kMSInternalNHWCDomain);
+    tester = std::make_unique<OpTester>("NhwcFusedConv", 1, onnxruntime::kMSDomain);
+    tester->AddAttribute("channels_last", int64_t(1));
     tester->AddAttribute("activation", attributes.activation);
 
     if (!attributes.activation_parameters.empty()) {
