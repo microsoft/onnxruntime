@@ -90,6 +90,16 @@ void Filter(const Ort::Custom2::TensorT<float>& floats_in,
   }
 }
 
+/////////////////////////////////// Filter ////////////////////////////////////////
+
+void Merge(const Ort::Custom2::TensorT<std::string>& strings_in,
+           const std::string& string_in,
+           Ort::Custom2::TensorT<std::string>& strings_out) {
+  std::vector<std::string> string_pool = strings_in.Data();
+  string_pool.push_back(string_in);
+  strings_out.SetStringOutput(0, string_pool, {static_cast<int64_t>(string_pool.size())});
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
@@ -99,10 +109,12 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   static std::unique_ptr<OrtCustomOp> fus_op_ptr{Ort::Custom2::CreateCustomOp<FuseOp>("Fuse", "CPUExecutionProvider")};
   static std::unique_ptr<OrtCustomOp> sel_op_ptr{Ort::Custom2::CreateCustomOp("Select", "CPUExecutionProvider", Select)};
   static std::unique_ptr<OrtCustomOp> fil_op_ptr{Ort::Custom2::CreateCustomOp("Filter", "CPUExecutionProvider", Filter)};
+  static std::unique_ptr<OrtCustomOp> mrg_op_ptr{Ort::Custom2::CreateCustomOp("Merge", "CPUExecutionProvider", Merge)};
 
   v2_domain.Add(fus_op_ptr.get());
   v2_domain.Add(sel_op_ptr.get());
   v2_domain.Add(fil_op_ptr.get());
+  v2_domain.Add(mrg_op_ptr.get());
 
   Ort::UnownedSessionOptions session_options(options);
   session_options.Add(v2_domain);

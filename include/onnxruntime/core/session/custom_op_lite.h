@@ -27,6 +27,7 @@ struct Span {
   }
 };
 
+// std::enable_if<std::is_same<T, std::string>::value>::type
 template <typename T>
 class TensorT : public Tensor {
  public:
@@ -80,13 +81,72 @@ class TensorT : public Tensor {
   Span<T> span_;
 };
 
+template <>
+class TensorT<std::string> : public Tensor {
+ public:
+  using strings = std::vector<std::string>;
+
+  TensorT(OrtKernelContext* ctx, size_t indice, bool is_input) : Tensor(ctx), indice_(indice), is_input_(is_input) {
+    if (is_input) {
+      auto const_value = ctx_.GetInput(indice);
+      auto type_shape_info = const_value.GetTensorTypeAndShapeInfo();
+      shape_ = type_shape_info.GetShape();
+      auto num_chars = const_value.GetStringTensorDataLength();
+      //todo - too much copies here ...
+      std::vector<char> chars(num_chars + 1, '\0');
+      auto num_strings = NumberOfElement();
+      std::vector<size_t> offsets(NumberOfElement());
+      const_value.GetStringTensorContent(static_cast<void*>(chars.data()), num_chars, offsets.data(), offsets.size());
+      auto upper_bound = static_cast<int64_t>(num_strings) - 1;
+      input_strings_.resize(num_strings);
+      for (int64_t i = upper_bound; i >= 0; --i) {
+        if (i < upper_bound) {
+          chars[offsets[i + 1]] = '\0';
+        }
+        input_strings_[i] = chars.data() + offsets[i];
+      }
+    }
+  }
+  std::vector<int64_t> Shape() const {
+    return shape_;
+  }
+  int64_t NumberOfElement() const {
+    if (shape_.empty()) {
+      return 0;
+    } else {
+      return std::accumulate(shape_.begin(), shape_.end(), 1ULL, std::multiplies<int64_t>());
+    }
+  }
+  const strings& Data() const {
+    return input_strings_;
+  }
+  void SetStringOutput(size_t output_indice, const strings& ss, const std::vector<int64_t>& dims) {
+    std::vector<const char*> raw;
+    for (const auto& s: ss) {
+      raw.push_back(s.data());
+    }
+    auto output = ctx_.GetOutput(0, dims.data(), dims.size());
+    // note - there will be copy ...
+    output.FillStringTensor(raw.data(), raw.size());
+  }
+  const std::string& AsScalar() {
+    // assert shape_ is {1}
+    return input_strings_[0];
+  }
+ private:
+  size_t indice_;
+  bool is_input_;
+  std::vector<std::string> input_strings_; // for input
+  // TT* data_{};              // for output
+  std::vector<int64_t> shape_;
+};
+
 using TensorPtr = std::unique_ptr<Custom2::Tensor>;
 
 //////////////////////////// OrtCustomOpBase ////////////////////////////////
 
 struct OrtCustomOpBase : public OrtCustomOp {
-  ///////////////////////////// CreateInputTuple ///////////////////////////////
-
+  // CreateInputTuple
   template <size_t ith_input, size_t ith_output, typename... Ts>
   static typename std::enable_if<sizeof...(Ts) == 0, std::tuple<>>::type
   CreateInputTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors) {
@@ -115,6 +175,15 @@ struct OrtCustomOpBase : public OrtCustomOp {
   static typename std::enable_if<std::is_same<T, const Custom2::TensorT<int32_t>&>::value, std::tuple<T, Ts...>>::type
   CreateInputTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors) {
     tensors.push_back(std::make_unique<Custom2::TensorT<int32_t>>(context, ith_input, true));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*tensors.back())};
+    auto next = CreateInputTuple<ith_input + 1, ith_output, Ts...>(context, tensors);
+    return std::tuple_cat(current, next);
+  }
+
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, const Custom2::TensorT<std::string>&>::value, std::tuple<T, Ts...>>::type
+  CreateInputTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors) {
+    tensors.push_back(std::make_unique<Custom2::TensorT<std::string>>(context, ith_input, true));
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*tensors.back())};
     auto next = CreateInputTuple<ith_input + 1, ith_output, Ts...>(context, tensors);
     return std::tuple_cat(current, next);
@@ -158,6 +227,15 @@ struct OrtCustomOpBase : public OrtCustomOp {
     return std::tuple_cat(current, next);
   }
 
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, const std::string&>::value, std::tuple<T, Ts...>>::type
+  CreateInputTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors) {
+    tensors.push_back(std::make_unique<Custom2::TensorT<std::string>>(context, ith_input, true));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<Custom2::TensorT<std::string>*>(tensors.back().get())->AsScalar()};
+    auto next = CreateInputTuple<ith_input + 1, ith_output, Ts...>(context, tensors);
+    return std::tuple_cat(current, next);
+  }
+
   // tensor outputs
   template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
   static typename std::enable_if<std::is_same<T, Custom2::TensorT<float>&>::value, std::tuple<T, Ts...>>::type
@@ -177,8 +255,16 @@ struct OrtCustomOpBase : public OrtCustomOp {
     return std::tuple_cat(current, next);
   }
 
-  /////////////////////////////  parse args ///////////////////////////////
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, Custom2::TensorT<std::string>&>::value, std::tuple<T, Ts...>>::type
+  CreateInputTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors) {
+    tensors.push_back(std::make_unique<Custom2::TensorT<std::string>>(context, ith_output, false));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*tensors.back())};
+    auto next = CreateInputTuple<ith_input, ith_output + 1, Ts...>(context, tensors);
+    return std::tuple_cat(current, next);
+  }
 
+  // ParseArgs ...
   template <typename... Ts>
   static typename std::enable_if<0 == sizeof...(Ts)>::type
   ParseArgs(std::vector<ONNXTensorElementDataType>&, std::vector<ONNXTensorElementDataType>&) {
@@ -202,6 +288,13 @@ struct OrtCustomOpBase : public OrtCustomOp {
   static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const Custom2::TensorT<int32_t>&>::value>::type
   ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
     input_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
+    ParseArgs<Ts...>(input_types, output_types);
+  }
+
+  template <typename T, typename... Ts>
+  static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const Custom2::TensorT<std::string>&>::value>::type
+  ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
+    input_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
     ParseArgs<Ts...>(input_types, output_types);
   }
 
@@ -235,6 +328,13 @@ struct OrtCustomOpBase : public OrtCustomOp {
     ParseArgs<Ts...>(input_types, output_types);
   }
 
+  template <typename T, typename... Ts>
+  static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const std::string&>::value>::type
+  ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
+    input_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+    ParseArgs<Ts...>(input_types, output_types);
+  }
+
   // outputs
   template <typename T, typename... Ts>
   static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, Custom2::TensorT<float>&>::value>::type
@@ -247,6 +347,13 @@ struct OrtCustomOpBase : public OrtCustomOp {
   static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, Custom2::TensorT<int32_t>&>::value>::type
   ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
     output_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
+    ParseArgs<Ts...>(input_types, output_types);
+  }
+
+  template <typename T, typename... Ts>
+  static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, Custom2::TensorT<std::string>&>::value>::type
+  ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
+    output_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
     ParseArgs<Ts...>(input_types, output_types);
   }
 
