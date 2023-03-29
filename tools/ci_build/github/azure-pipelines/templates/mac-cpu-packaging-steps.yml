@@ -22,13 +22,24 @@ parameters:
   type: boolean
   default: false
 
+- name: WithCache
+  displayName: Build with Cache
+  type: boolean
+  default: false
+
+- name: CacheDir
+  displayName: Cache Directory
+  type: string
+  default: ''
+
 steps:
 - script: |
     rm -rf $(Build.BinariesDirectory)/Release
     python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
   displayName: 'Build ${{ parameters.MacosArch }}'
-  env:
-    CCACHE_DIR: $(Pipeline.Workspace)/ccache_ort
+  ${{ if eq(parameters.WithCache, true) }}:
+    env:
+      CCACHE_DIR: $(CACHEDIR)
 
 - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
   - script: |

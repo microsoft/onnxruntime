@@ -83,8 +83,9 @@ jobs:
       python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
       sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
     displayName: 'Install dependencies'
-    env:
-      CCACHE_DIR: $(PROTO_CACHE_DIR)
+    ${{ if eq(parameters.WithCache, true) }}:
+      env:
+        CCACHE_DIR: $(PROTO_CACHE_DIR)
 
   - script: |
       ccache -s
@@ -92,6 +93,12 @@ jobs:
       ls -l $(PROTO_CACHE_DIR)
       du -sh $(PROTO_CACHE_DIR)
     displayName: Show Cache stats and Clear protolbuf stats.
+    condition: eq(${{ parameters.WithCache }}, true)
+
+  - script: |
+      ls -l $(PROTO_CACHE_DIR)
+      du -sh $(PROTO_CACHE_DIR)
+    displayName: Check Cache stats
     condition: eq(${{ parameters.WithCache }}, true)
 
   - task: Cache@2
@@ -110,6 +117,9 @@ jobs:
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
         BuildJava: false
         BuildNodejs: false
+        WithCache: ${{ parameters.WithCache }}
+        ${{ if eq(parameters.WithCache, true) }}:
+          CacheDir: $(ORT_CACHE_DIR)
 
   - ${{ if eq(parameters.MacosArch, 'arm64') }}:
     - template: mac-cpu-packaging-steps.yml
@@ -118,6 +128,9 @@ jobs:
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
         BuildJava: true
         BuildNodejs: true
+        WithCache: ${{ parameters.WithCache }}
+        ${{ if eq(parameters.WithCache, true) }}:
+          CacheDir: $(ORT_CACHE_DIR)
 
   - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
     - template: mac-cpu-packaging-steps.yml
@@ -126,6 +139,9 @@ jobs:
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
         BuildJava: true
         BuildNodejs: true
+        WithCache: ${{ parameters.WithCache }}
+        ${{ if eq(parameters.WithCache, true) }}:
+          CacheDir: $(ORT_CACHE_DIR)
 
   - script: |
       ccache -s
