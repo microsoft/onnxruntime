@@ -14,11 +14,11 @@ nav_order: 1
 {:toc}
 
 
-## ONNX Go Live Tool (OLive)
+## Olive
 
-The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime. It contains two parts: (1) model conversion to ONNX with correctness validation (2) auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
+[Olive](https://github.com/microsoft/Olive) is an easy-to-use hardware-aware model optimization tool that composes industry-leading techniques across model compression, optimization, and compilation. Given a model and targeted hardware, Olive composes the best suitable optimization techniques to output the most efficient model(s) for inferencing on cloud or edge, while taking a set of constraints such as accuracy and latency into consideration.
 
-As a quickstart, please see the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples](https://github.com/microsoft/OLive/tree/master/cmd-example) 
+As a quickstart, please refer to [documentation](https://microsoft.github.io/Olive) and [examples](https://github.com/microsoft/Olive/tree/main/examples).
 
 ## In-code performance profiling
 
