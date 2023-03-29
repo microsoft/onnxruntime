@@ -16,7 +16,6 @@
  * limitations under the License.
  */
 
-// The ROCM kernel is hipified from CUDA kernel.
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime_api.h>
 #include "core/providers/rocm/cu_inc/common.cuh"
