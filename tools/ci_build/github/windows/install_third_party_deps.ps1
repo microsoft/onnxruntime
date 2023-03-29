@@ -25,7 +25,7 @@ $Env:MSBUILDDISABLENODEREUSE=1
 New-Item -Path "$install_prefix" -ItemType Directory -Force
 
 # Setup compile flags
-$compile_flags = '/MP /guard:cf /Qspectre /DWIN32 /D_WINDOWS /DWINVER=0x0601 /D_WIN32_WINNT=0x0601 /DNTDDI_VERSION=0x06010000 /W3 '
+$compile_flags = '/MP /guard:cf /Qspectre /DWIN32 /D_WINDOWS /DWINVER=0x0A00 /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A000000 /W3 '
 $linker_flags=@('/guard:cf')
 
 if ($use_cache) {

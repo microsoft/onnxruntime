@@ -88,7 +88,8 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
         LOGS(logger, VERBOSE) << "Single Q/DQ node is supported for NPU backend. Node name: " << node_unit.Name();
         return true;
       }
-      // Tranpose only chagne the data layout, still support it
+
+      // Tranpose only changes the data layout. NPU still supports it.
       if ("Transpose" == node_unit.OpType()) {
         LOGS(logger, VERBOSE) << "Single Transpose node is supported for NPU backend. Node name: " << node_unit.Name();
         return true;

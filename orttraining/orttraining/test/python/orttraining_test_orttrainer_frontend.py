@@ -17,8 +17,7 @@ from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
 from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp
 from onnxruntime.training import model_desc_validation as md_val
-from onnxruntime.training import optim, orttrainer
-from onnxruntime.training import orttrainer_options as orttrainer_options
+from onnxruntime.training import optim, orttrainer, orttrainer_options
 
 ###############################################################################
 # Testing starts here #########################################################

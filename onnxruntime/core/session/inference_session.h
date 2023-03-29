@@ -654,14 +654,9 @@ class InferenceSession {
       MinimalBuildOptimizationHandling minimal_build_optimization_handling,
       RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const;
 
-  [[nodiscard]] common::Status TransformGraph(onnxruntime::Graph& graph,
-                                              const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                              const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
-                                              const InsertCastTransformer& insert_cast_transformer,
-                                              SessionState& session_state,
-                                              bool saving_model_in_ort_format);
+  common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+  onnxruntime::GraphTransformerManager graph_transformer_mgr_;
 
   InsertCastTransformer insert_cast_transformer_;
 

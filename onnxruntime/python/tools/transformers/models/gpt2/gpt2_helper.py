@@ -878,7 +878,7 @@ class Gpt2Helper:
                 logger.info(
                     f"test_case={i} batch_size={batch_size} past_sequence_length={past_sequence_length} sequence_length={sequence_length} MaxDiff={max_abs_diff}"
                 )
-                for i, message in enumerate(messages):
+                for i, message in enumerate(messages):  # noqa: PLW2901
                     logger.info(f"\t{i}: Name={ort_session.get_outputs()[i].name}, {message}")
 
             # Collect data for debugging
