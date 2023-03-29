@@ -95,6 +95,7 @@ set(contrib_ops_excluded_files
   "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
   "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention.h"
   "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.cu"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_32.cu"
   "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_64.cu"
   "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_128.cu"
 )

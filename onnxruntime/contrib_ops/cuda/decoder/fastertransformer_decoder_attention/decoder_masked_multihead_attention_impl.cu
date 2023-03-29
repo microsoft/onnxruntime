@@ -497,6 +497,20 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedSelfAttentionPara
 
 // Template instantiation(s)
 
+// fp32 + head size = 32
+template void __global__ masked_multihead_attention_kernel<float, 32, 4, 8, 64>(DecoderMaskedSelfAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<float, 32, 2, 8, 128>(DecoderMaskedSelfAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<float, 32, 1, 8, 256>(DecoderMaskedSelfAttentionParams params);
+
+// fp16 + head size = 32
+template void __global__ masked_multihead_attention_kernel<uint16_t, 32, 4, 4, 64>(DecoderMaskedSelfAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, 32, 2, 4, 128>(DecoderMaskedSelfAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, 32, 1, 4, 256>(DecoderMaskedSelfAttentionParams params);
+
 // fp32 + head size = 64
 template void __global__ masked_multihead_attention_kernel<float, 64, 4, 16, 64>(DecoderMaskedSelfAttentionParams params);
 
