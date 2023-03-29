@@ -238,7 +238,6 @@ class WhisperHelper:
                 optimization_options = FusionOptions("bart")
             optimization_options.use_multi_head_attention = True
 
-        pdb.set_trace
         m = optimize_model(
             onnx_model_path,
             model_type="bart",
