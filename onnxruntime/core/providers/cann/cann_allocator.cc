@@ -7,17 +7,9 @@
 #include "core/providers/cann/cann_call.h"
 #include "core/providers/cann/cann_allocator.h"
 #include "core/framework/allocatormgr.h"
-#include "core/providers/cann/cann_fence.h"
 #include "core/providers/cann/npu_data_transfer.h"
 
 namespace onnxruntime {
-
-static const NPUDataTransfer* GetNPUDataTransfer(const SessionState* session_state) {
-  OrtDevice npu_device(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, 0);
-  OrtDevice cpu_device;
-  return static_cast<const NPUDataTransfer*>(
-      session_state->GetDataTransferMgr().GetDataTransfer(npu_device, cpu_device));
-}
 
 void* CANNAllocator::Alloc(size_t size) {
   void* p = nullptr;
@@ -32,10 +24,6 @@ void CANNAllocator::Free(void* p) {
   aclrtFree(p);
 }
 
-FencePtr CANNAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<CANNFence>(GetNPUDataTransfer(session_state));
-}
-
 void* CANNPinnedAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
@@ -46,10 +34,6 @@ void* CANNPinnedAllocator::Alloc(size_t size) {
 
 void CANNPinnedAllocator::Free(void* p) {
   CANN_CALL_THROW(aclrtFreeHost(p));
-}
-
-FencePtr CANNPinnedAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<CANNFence>(GetNPUDataTransfer(session_state));
 }
 
 }  // namespace onnxruntime
