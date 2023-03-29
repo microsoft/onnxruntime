@@ -865,8 +865,8 @@ common::Status InferenceSession::Load() {
 
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
-  // 1. run level 1 optimizations. these only use ONNX operators.
-  // 2. ensure potential QDQ node units have unique DQ nodes (required transformer).
+  // 1. ensure potential QDQ node units have unique DQ nodes (required transformer).
+  // 2. run level 1 optimizations. these only use ONNX operators.
   // 3. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
   // 4. run level 2+ optimizations. level 2 and 3 optimizations use contrib ops.
   // 5. insert cast nodes (required transformer).
@@ -878,9 +878,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     return transformer.Apply(graph, modified, logger);
   };
 
-  // first apply execution provider independent level 1 graph optimizations.
-  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
-
   // ensure potential QDQ node units have unique DQ nodes
   if (const bool disable_quant_qdq =
           session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
@@ -888,6 +885,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     EnsureUniqueDQForNodeUnit ensure_unique_dq_for_node_unit{};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(ensure_unique_dq_for_node_unit, *session_logger_, graph));
   }
+
+  // apply execution provider independent level 1 graph optimizations.
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
   // we do this to preserve the original nodes in the model but prevent optimizers from changing them.

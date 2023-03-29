@@ -56,6 +56,7 @@
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
@@ -212,6 +213,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
+
+        // EnsureUniqueDQForNodeUnit is actually a required graph transformation. The unique DQ per QDQ node unit input
+        // condition that it ensures is important for the partitioning that happens after Level1 optimizers are run.
+        // It runs unconditionally in InferenceSession::TransformGraph() prior to Level1 optimizers.
+        // We also put it here with other Level1 optimizers so that it can fix things up after their changes.
+        transformers.emplace_back(std::make_unique<EnsureUniqueDQForNodeUnit>());
       }
 
       // add __backwardpass attribute to nodes after YieldOp, ROCm-only
