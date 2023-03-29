@@ -550,7 +550,7 @@ class SymbolicShapeInference:
 
     def _get_int_or_float_values(self, node, broadcast=False, allow_float_values=False):
         def int_or_float(value, allow_float_values):
-           # If casting into int has precision loss: keep float output
+            # If casting into int has precision loss: keep float output
             if allow_float_values and value % 1 != 0:
                 return value
             return int(value)
@@ -587,11 +587,11 @@ class SymbolicShapeInference:
 
     def _compute_on_sympy_data(self, node, op_func):
         assert len(node.output) == 1
-        
+
         # Before mul & div operations
         # cast inputs into interger might lose decimal part and reduce precision
         # keep them as float, finish the operation, then cast the result into integer
-        if node.op_type in ['Mul', 'Div']:
+        if node.op_type in ["Mul", "Div"]:
             values = self._get_int_or_float_values(node, broadcast=True, allow_float_values=True)
         else:
             values = self._get_int_or_float_values(node, broadcast=True)
@@ -795,7 +795,9 @@ class SymbolicShapeInference:
     def _infer_symbolic_compute_ops(self, node):
         funcs = {
             "Add": lambda l: l[0] + l[1],  # noqa: E741
-            "Div": lambda l: int(l[0] // l[1]) if isinstance(l[0] // l[1], float) else l[0] // l[1],  # integer div in sympy  # noqa: E741
+            "Div": lambda l: int(l[0] // l[1])
+            if isinstance(l[0] // l[1], float)
+            else l[0] // l[1],  # integer div in sympy  # noqa: E741
             "Equal": lambda l: l[0] == l[1],  # noqa: E741
             "Floor": lambda l: sympy.floor(l[0]),  # noqa: E741
             "Max": lambda l: l[1]  # noqa: E741

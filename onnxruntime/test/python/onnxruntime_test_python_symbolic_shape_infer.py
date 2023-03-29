@@ -3,8 +3,10 @@
 
 import os
 
+import numpy
+
 # -*- coding: UTF-8 -*-
-import onnx, numpy
+import onnx
 from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 if os.path.exists(
@@ -346,7 +348,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
 
         # initializers
         value = numpy.array([0.5], dtype=numpy.float32)
-        constant = numpy_helper.from_array(value, name='constant')
+        constant = numpy_helper.from_array(value, name="constant")
 
         nodes = [
             # Get the shape of the input tensor: `input_tensor_shape = [1024]`.
@@ -354,7 +356,9 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             # mul(1024, 0.5) => 512
             onnx.helper.make_node("Mul", ["input_shape", "constant"], ["output_shape"]),
             # Resize input
-            onnx.helper.make_node("Resize", inputs=["input", "", "", "output_shape"], outputs=["output"], mode="nearest"),
+            onnx.helper.make_node(
+                "Resize", inputs=["input", "", "", "output_shape"], outputs=["output"], mode="nearest"
+            ),
         ]
 
         graph_def = onnx.helper.make_graph(nodes, "TestMulPrecision", [graph_input], [graph_output], [constant])
@@ -369,7 +373,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
 
         # initializers
         value = numpy.array([1.5], dtype=numpy.float32)
-        constant = numpy_helper.from_array(value, name='constant')
+        constant = numpy_helper.from_array(value, name="constant")
 
         nodes = [
             # Get the shape of the input tensor: `input_tensor_shape = [768]`.
@@ -377,7 +381,9 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             # div(768, 1.5) => 512
             onnx.helper.make_node("Div", ["input_shape", "constant"], ["output_shape"]),
             # Resize input
-            onnx.helper.make_node("Resize", inputs=["input", "", "", "output_shape"], outputs=["output"], mode="nearest"),
+            onnx.helper.make_node(
+                "Resize", inputs=["input", "", "", "output_shape"], outputs=["output"], mode="nearest"
+            ),
         ]
 
         graph_def = onnx.helper.make_graph(nodes, "TestDivPrecision", [graph_input], [graph_output], [constant])
@@ -385,6 +391,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         output_dims = unique_element(model.graph.output).type.tensor_type.shape.dim
         self.assertEqual(len(output_dims), 1)
         self.assertEqual(output_dims[0].dim_value, 512)
+
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):
