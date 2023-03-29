@@ -39,7 +39,7 @@ steps:
   displayName: 'Build ${{ parameters.MacosArch }}'
   ${{ if eq(parameters.WithCache, true) }}:
     env:
-      CCACHE_DIR: $(CACHEDIR)
+      CCACHE_DIR: $(CacheDir)
 
 - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
   - script: |
