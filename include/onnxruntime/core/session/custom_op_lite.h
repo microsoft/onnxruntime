@@ -120,12 +120,12 @@ class TensorT<std::string> : public Tensor {
   const strings& Data() const {
     return input_strings_;
   }
-  void SetStringOutput(size_t output_indice, const strings& ss, const std::vector<int64_t>& dims) {
+  void SetStringOutput(const strings& ss, const std::vector<int64_t>& dims) {
     std::vector<const char*> raw;
     for (const auto& s: ss) {
       raw.push_back(s.data());
     }
-    auto output = ctx_.GetOutput(0, dims.data(), dims.size());
+    auto output = ctx_.GetOutput(indice_, dims.data(), dims.size());
     // note - there will be copy ...
     output.FillStringTensor(raw.data(), raw.size());
   }

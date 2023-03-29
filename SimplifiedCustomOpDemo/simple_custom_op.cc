@@ -97,7 +97,7 @@ void Merge(const Ort::Custom2::TensorT<std::string>& strings_in,
            Ort::Custom2::TensorT<std::string>& strings_out) {
   std::vector<std::string> string_pool = strings_in.Data();
   string_pool.push_back(string_in);
-  strings_out.SetStringOutput(0, string_pool, {static_cast<int64_t>(string_pool.size())});
+  strings_out.SetStringOutput(string_pool, {static_cast<int64_t>(string_pool.size())});
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
