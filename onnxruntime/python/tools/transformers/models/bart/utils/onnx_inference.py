@@ -32,7 +32,6 @@ def run_inference(args):
     config, tokenizer = export_helper.initialize_config(args)
 
     with torch.no_grad():
-
         model, input_data = export_helper.initialize_model(config, tokenizer, args)
         batch_num = 3
         input_data = input_data.repeat(batch_num, 1)

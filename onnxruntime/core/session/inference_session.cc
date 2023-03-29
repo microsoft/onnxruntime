@@ -33,6 +33,7 @@
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/transform_layout_functions.h"
 #include "core/framework/utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -51,6 +52,7 @@
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
+#include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
@@ -252,7 +254,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
-  ORT_ENFORCE(graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
+  ORT_ENFORCE(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
 #endif
 
   bool set_denormal_as_zero =
@@ -365,7 +367,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
     :
 #if !defined(ORT_MINIMAL_BUILD)
-      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
 #endif
       logging_manager_(session_env.GetLoggingManager()),
@@ -380,7 +382,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool)
     :
 #if !defined(ORT_MINIMAL_BUILD)
-      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
 #endif
       logging_manager_(session_env.GetLoggingManager()),
@@ -395,7 +397,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const PathString& model_uri)
     : model_location_(model_uri),
-      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
@@ -417,7 +419,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
-    : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+    : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
@@ -430,7 +432,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const void* model_data, int model_data_len)
-    : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+    : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
@@ -571,7 +573,7 @@ common::Status InferenceSession::RegisterGraphTransformer(
                           "Graph transformers must be registered before the session is initialized.");
   }
 
-  return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
+  return graph_transformer_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
 common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) const {
@@ -865,13 +867,7 @@ common::Status InferenceSession::Load() {
   return LoadWithLoader(loader, "model_loading_from_saved_proto");
 }
 
-common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
-                                                const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                                const ExecutionProviders& providers,
-                                                KernelRegistryManager& kernel_registry_manager,
-                                                const InsertCastTransformer& insert_cast_transformer,
-                                                SessionState& session_state,
-                                                bool saving_model_in_ort_format) {
+common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. run level 1 optimizations. these only use ONNX operators.
   // 2. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
@@ -881,7 +877,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // first apply execution provider independent level 1 graph optimizations.
   ORT_RETURN_IF_ERROR_SESSIONID_(
-      graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
+      graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
   // we do this to preserve the original nodes in the model but prevent optimizers from changing them.
@@ -890,34 +886,81 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
                                          : GraphPartitioner::Mode::kNormal;
 
+  layout_transformer::TransformLayoutFunction transform_layout_fn = nullptr;
+
   // only provide NCWH to NHWC layout transformer if supported
-  TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
-                                                    ? layout_transformer::TransformLayoutForEP
-                                                    : nullptr;
+  if (layout_transformer::IsSupportedOpset(graph)) {
+    // we want to run L1 transformers after the layout transform primarily to constant fold any initializers
+    // that get converted to an alternative layout.
+    // create a lambda to combine the two operations in the layout transformation function
+    transform_layout_fn = [this](Graph& graph_to_transform, bool& modified,
+                                 const IExecutionProvider& execution_provider,
+                                 const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
+                                                   debug_graph_fn));
+
+      if (modified) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(
+            graph_transformer_mgr_.ApplyTransformers(graph_to_transform, TransformerLevel::Level1, *session_logger_));
+
+        // debug the graph after the L1 transformers have run against any layout transformation changes.
+        // this is prior to GraphPartitioner::GetCapabilityForEP calling IExecutionProvider::GetCapability the second
+        // time to validate the EP that requested the layout transformation can take all nodes using the new layout.
+        // if that fails, this allows debugging the graph used in that GetCapability call.
+        if (debug_graph_fn) {
+          debug_graph_fn(graph_to_transform);
+        }
+      }
+
+      return Status::OK();
+    };
+  }
+
+  // debug infrastructure for layout transformation. it's extremely difficult to trace the transpose optimizer changes
+  // manually, so dumping out the model so it can be viewed in Netron makes it far easier
+  layout_transformer::DebugGraphFn debug_graph_fn;
+  if (transform_layout_fn) {
+    bool enable_debug = session_options_.config_options.GetConfigOrDefault(kDebugLayoutTransformation, "0") == "1";
+
+    if (enable_debug) {
+      // init counter to 1 to match to documentation and have a more natural output filename of '..._step_1.onnx'
+      // for the result of the first step in layout transformation
+      debug_graph_fn = [counter = 1, this](const Graph& graph) mutable {
+        if (graph.GraphProtoSyncNeeded()) {
+          ORT_THROW_IF_ERROR(
+              Model::Save(*model_, "post_layout_transform_step_" + std::to_string(counter) + ".onnx"));
+        }
+
+        // counter is used to denote the step, so increment regardless of whether we wrote out the model in this step.
+        ++counter;
+      };
+    }
+  }
 
   // Do partitioning based on execution providers' capabilities.
-  GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.GetMutableFuncMgr(), transform_layout_fn,
-                                                       mode));
+  GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_);
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
+                                                       mode, debug_graph_fn));
 
   // apply Level2 and higher transformers.
   // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
   for (int i = static_cast<int>(TransformerLevel::Level2); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     ORT_RETURN_IF_ERROR_SESSIONID_(
-        graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
+        graph_transformer_mgr_.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
 
   bool modified = false;
   // Insert cast node/s.
-  ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified, *session_logger_));
+  ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer_.Apply(graph, modified, *session_logger_));
 
   std::vector<std::string> provider_types;
-  for (auto& provider_ptr : providers) {
+  for (auto& provider_ptr : execution_providers_) {
     provider_types.push_back(provider_ptr->Type());
   }
 
   // Insert copy node/s.
-  MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
+  MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager_};
   ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified, *session_logger_));
 
   return common::Status::OK();
@@ -1023,7 +1066,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
                 "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
-#else  // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
+#else   // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
   const auto has_saved_runtime_optimizations = [](const fbs::InferenceSession& fbs_session) -> bool {
     if (const auto* fbs_model = fbs_session.model()) {
       if (const auto* fbs_graph = fbs_model->graph()) {
@@ -1171,11 +1214,11 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                SessionState& session_state) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // only provide NCWH to NHWC layout transformer if supported
-  TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
-                                                    ? layout_transformer::TransformLayoutForEP
-                                                    : nullptr;
+  layout_transformer::TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
+                                                                        ? layout_transformer::TransformLayoutForEP
+                                                                        : nullptr;
 #else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  TransformLayoutFunction transform_layout_fn{};
+  layout_transformer::TransformLayoutFunction transform_layout_fn{};
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
@@ -1377,22 +1420,27 @@ common::Status InferenceSession::Initialize() {
       };
 
       // add predefined transformers
-      ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformation_mgr_,
+      ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformer_mgr_,
                                                                session_options_.graph_optimization_level,
                                                                minimal_build_optimization_handling,
                                                                record_runtime_optimization_produced_op_schema));
 
 #ifdef USE_DML
       if (execution_providers_.Get(kDmlExecutionProvider)) {
+        // DML graph fusion is an important runtime optimization that cannot be done ahead of time; it must be disabled
+        // when running in "offline mode" and saving an optimized model to disk. To support users that want to optimize
+        // models offline, and then disable graph optimizations when running "online", this transformer ignores the ORT
+        // graph optimization level and is generally always applied.
         bool dml_graph_fusion_enabled = session_options_.optimized_model_filepath.empty() &&
-                                        session_options_.graph_optimization_level >= TransformerLevel::Level3;
+                                        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableDmlGraphFusion, "0") == "0";
+
         if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
                                                                                                                                       execution_providers_.Get(kDmlExecutionProvider));
           if (dmlGraphFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
           }
-          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
         }
 
         // This transformer applies DML-specific fusions that go beyond what ORT offers by default
@@ -1402,17 +1450,13 @@ common::Status InferenceSession::Initialize() {
           if (dmlOperatorFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
           }
-          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
         }
       }
 #endif
 
       // apply any transformations to the main graph and any subgraphs
-      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
-                                                    execution_providers_, kernel_registry_manager_,
-                                                    insert_cast_transformer_,
-                                                    *session_state_,
-                                                    saving_ort_format));
+      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, saving_ort_format));
 
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());

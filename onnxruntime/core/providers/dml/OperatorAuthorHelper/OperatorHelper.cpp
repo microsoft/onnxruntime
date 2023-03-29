@@ -2524,4 +2524,21 @@ namespace OperatorHelper
         return outputShapes;
     }
 
+    std::vector<EdgeShapes> SkipLayerNormHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 3);
+
+        auto inputShape = shapeInfo.GetInputTensorShape(0);
+
+        std::vector<EdgeShapes> outputShapes(4);
+        outputShapes[0] = EdgeShapes(inputShape);
+
+        if (shapeInfo.IsOutputValid(3))
+        {
+            outputShapes[3] = EdgeShapes(inputShape);
+        }
+
+        return outputShapes;
+    }
+
 } // namespace OperatorHelper

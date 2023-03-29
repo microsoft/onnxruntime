@@ -55,7 +55,9 @@ static void RunMultiHeadAttentionTest(
     std::vector<int64_t> key_dims =  {batch_size, is_static_kv ? kv_sequence_length : sequence_length, hidden_size};
     std::vector<int64_t> value_dims = {batch_size, is_static_kv ? kv_sequence_length : sequence_length, v_hidden_size};
     std::vector<int64_t> bias_dims = {hidden_size + hidden_size + v_hidden_size};
-    std::vector<int64_t> rel_pos_bias_dims = {1, num_heads, sequence_length, sequence_length + kv_sequence_length};
+    // TODO(wy): Introduce past sequence length to avoid using kv_sequence_length.
+    std::vector<int64_t> rel_pos_bias_dims =
+                         {1, num_heads, sequence_length, past_key_data.size() ? sequence_length + kv_sequence_length : sequence_length};
     std::vector<int64_t> past_key_dims = {batch_size, num_heads, kv_sequence_length, hidden_size / num_heads};
     std::vector<int64_t> past_value_dims = past_key_dims;
     std::vector<int64_t> output_dims = {batch_size, sequence_length, v_hidden_size};
@@ -82,9 +84,10 @@ static void RunMultiHeadAttentionTest(
 
     std::vector<int64_t> mask_dims_1 = {batch_size};
     std::vector<int64_t> mask_dims_2 = {batch_size, kv_sequence_length};
+    std::vector<int64_t> mask_dims_3 = {3 * batch_size + 2};
     std::vector<int64_t>& key_padding_mask_dims = (mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN)
-                                                      ? mask_dims_1
-                                                      : mask_dims_2;
+                                                   ? mask_dims_1
+                                                   : (mask_type == AttentionMaskType::MASK_2D_KEY_PADDING ? mask_dims_2 : mask_dims_3);
 
     if (use_float16) {
       tester.AddInput<MLFloat16>("query", query_dims, ToFloat16(query));
@@ -484,6 +487,12 @@ TEST(MultiHeadAttentionTest, CrossAttentionWithPast) {
 TEST(MultiHeadAttentionTest, SelfAttentionWithPast) {
   AttentionTestData data;
   GetSelfAttentionDataWithPast(data);
+  RunMultiHeadAttentionTests(data);
+}
+
+TEST(MultiHeadAttentionTest, AttentionCutlassRelPosBias) {
+  AttentionTestData data;
+  GetAttentionDataCutlassRelPosBias(data);
   RunMultiHeadAttentionTests(data);
 }
 

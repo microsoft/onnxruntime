@@ -14,7 +14,7 @@ from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector, RunOptio
 
 
 class TestSparseToDenseMatmul(unittest.TestCase):
-    def testRunSparseOutputOrtValueVector(self):
+    def testRunSparseOutputOrtValueVector(self):  # noqa: N802
         """
         Try running models using the new run_with_ort_values
         sparse_initializer_as_output.onnx - requires no inputs, but only one output
@@ -28,7 +28,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         res = sess._sess.run_with_ort_values({}, ["values"], RunOptions())
         self.assertIsInstance(res, OrtValueVector)
 
-    def testRunSparseOutputOnly(self):
+    def testRunSparseOutputOnly(self):  # noqa: N802
         """
         Try running models using the new run_with_ort_values
         sparse_initializer_as_output.onnx - requires no inputs, but only one output
@@ -52,12 +52,12 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         self.assertTrue(np.array_equal(values, sparse_output.values()))
         self.assertTrue(np.array_equal(indices, sparse_output.as_coo_view().indices()))
 
-    def testRunContribSparseMatMul(self):
+    def testRunContribSparseMatMul(self):  # noqa: N802
         """
         Mutliple sparse COO tensor to dense
         """
         common_shape = [9, 9]  # inputs and oputputs same shape
-        A_values = np.array(
+        A_values = np.array(  # noqa: N806
             [
                 1.0,
                 2.0,
@@ -116,7 +116,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
             np.float32,
         )
         # 2-D index
-        A_indices = np.array(
+        A_indices = np.array(  # noqa: N806
             [
                 0,
                 1,
@@ -230,9 +230,9 @@ class TestSparseToDenseMatmul(unittest.TestCase):
 
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         sparse_tensor = onnxrt.SparseTensor.sparse_coo_from_numpy(common_shape, A_values, A_indices, cpu_device)
-        A_ort_value = onnxrt.OrtValue.ort_value_from_sparse_tensor(sparse_tensor)
+        A_ort_value = onnxrt.OrtValue.ort_value_from_sparse_tensor(sparse_tensor)  # noqa: N806
 
-        B_data = np.array(
+        B_data = np.array(  # noqa: N806
             [
                 0,
                 1,
@@ -318,9 +318,9 @@ class TestSparseToDenseMatmul(unittest.TestCase):
             ],
             np.float32,
         ).reshape(common_shape)
-        B_ort_value = onnxrt.OrtValue.ortvalue_from_numpy(B_data)
+        B_ort_value = onnxrt.OrtValue.ortvalue_from_numpy(B_data)  # noqa: N806
 
-        Y_result = np.array(
+        Y_result = np.array(  # noqa: N806
             [
                 546,
                 561,

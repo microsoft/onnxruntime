@@ -4,7 +4,6 @@
 # pylint: disable=missing-docstring
 # pylint: disable=C0103
 
-from __future__ import print_function
 
 import argparse
 import os
@@ -40,7 +39,7 @@ def my_loss(x, target):
 def train_with_eager(args, model, optimizer, device, train_loader, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         data_cpu = data.reshape(data.shape[0], -1)
-        data = data_cpu.to(device)
+        data = data_cpu.to(device)  # noqa: PLW2901
         target_ort = target.to(device)
 
         x = model(data)
@@ -99,7 +98,7 @@ def main():
         shuffle=True,
         **kwargs,
     )
-    test_loader = torch.utils.data.DataLoader(
+    torch.utils.data.DataLoader(
         datasets.MNIST(
             dataset_root_dir,
             train=False,
