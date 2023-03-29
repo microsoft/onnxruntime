@@ -172,7 +172,12 @@ namespace ONNX_NAMESPACE {
 
           // The output has the following shape: [batch_size][frames][dft_unique_bins][2]
           ONNX_NAMESPACE::TensorShapeProto result_shape_proto;
-          result_shape_proto.add_dim()->set_dim_value(input_shape.dim(0).dim_value()); // batch size
+          auto batch_dim = result_shape_proto.add_dim();
+
+          if (input_shape.dim(0).has_dim_value()) {
+            batch_dim->set_dim_value(input_shape.dim(0).dim_value()); // batch size
+          }
+
           result_shape_proto.add_dim()->set_dim_value(n_dfts);
           result_shape_proto.add_dim()->set_dim_value(dft_unique_bins);
           result_shape_proto.add_dim()->set_dim_value(2);
