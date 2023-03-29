@@ -39,73 +39,50 @@ Status dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, con
 
     // This value must match the WARP_SIZE constexpr value computed inside softmax_warp_forward.
     int warp_size = (next_power_of_two < GPU_WARP_SIZE_HOST) ? next_power_of_two : GPU_WARP_SIZE_HOST;
-
-    // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
-    int batches_per_warp = 1;
-
-    // use 128 threads per block to maximimize gpu utilization
-    constexpr int threads_per_block = 32; // one block only has 1 warp
-
+    int batches_per_warp, threads_per_block, shared_memory_size;
+    // there are 2 options to save one row of the input matrix: register or shared memory
+    // when the number of elements is small, we use register; otherwise, we use shared memory;
+    if (log2_elements <= 10){
+      // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
+      batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
+      // use 128 threads per block to maximimize gpu utilization
+      threads_per_block = 128;
+      shared_memory_size = 0;
+    } else{
+      // when the number of elements is large, one cuda block will only process 1 row of the input matrix(to avoid high shared memory usage and hurt warp occupancy), so hardcode the following values
+      batches_per_warp = 1;
+      threads_per_block = 32;
+      // use shared memory to contain one row of elements
+      // TODO: one more optimization can be done here: we actually not need to save next_power_of_two elements, we can just save the valid elements
+      shared_memory_size = next_power_of_two * sizeof(input_t);
+    }
     int warps_per_block = (threads_per_block / warp_size);
     int batches_per_block = warps_per_block * batches_per_warp;
     int blocks = (batch_count + batches_per_block - 1) / batches_per_block;
-    // use shared memory to contain one row of elements
-    int shared_memory_size = next_power_of_two * sizeof(input_t);
     dim3 threads(warp_size, warps_per_block, 1);
     // Launch code would be more elegant if C++ supported FOR CONSTEXPR
     switch (log2_elements) {
-      case 0:  // 1
-        softmax_warp_forward<input_t, output_t, acc_t, 0, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 1:  // 2
-        softmax_warp_forward<input_t, output_t, acc_t, 1, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 2:  // 4
-        softmax_warp_forward<input_t, output_t, acc_t, 2, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 3:  // 8
-        softmax_warp_forward<input_t, output_t, acc_t, 3, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 4:  // 16
-        softmax_warp_forward<input_t, output_t, acc_t, 4, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 5:  // 32
-        softmax_warp_forward<input_t, output_t, acc_t, 5, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 6:  // 64
-        softmax_warp_forward<input_t, output_t, acc_t, 6, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 7:  // 128
-        softmax_warp_forward<input_t, output_t, acc_t, 7, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 8:  // 256
-        softmax_warp_forward<input_t, output_t, acc_t, 8, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 9:  // 512
-        softmax_warp_forward<input_t, output_t, acc_t, 9, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 10:  // 1024
-        softmax_warp_forward<input_t, output_t, acc_t, 10, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 11:  // 2048
-        softmax_warp_forward<input_t, output_t, acc_t, 11, is_log_softmax>
-            <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      default:
-        break;
-    }
-  }
+#define CASE_LOG2_ELEMENTS(log2_elements_value, impl_version) \
+  case log2_elements_value: { \
+    softmax_warp_forward##impl_version<input_t, output_t, acc_t, log2_elements_value, is_log_softmax> \
+      <<<blocks, threads, shared_memory_size, stream>>>(dst, src, batch_count, softmax_elements_stride, softmax_elements); \
+  } break
+
+        CASE_LOG2_ELEMENTS(0, 1);
+        CASE_LOG2_ELEMENTS(1, 1);
+        CASE_LOG2_ELEMENTS(2, 1);
+        CASE_LOG2_ELEMENTS(3, 1);
+        CASE_LOG2_ELEMENTS(4, 1);
+        CASE_LOG2_ELEMENTS(5, 1);
+        CASE_LOG2_ELEMENTS(6, 1);
+        CASE_LOG2_ELEMENTS(7, 1);
+        CASE_LOG2_ELEMENTS(8, 1);
+        CASE_LOG2_ELEMENTS(9, 1);
+        CASE_LOG2_ELEMENTS(10, 1);
+        CASE_LOG2_ELEMENTS(11, 2); // start from here, using shared memory will have better performance namely the second version implementation
+#undef CASE_LOG2_ELEMENTS
+    } // switch
+  } // else
   return CUDA_CALL(cudaGetLastError());
 }
 
