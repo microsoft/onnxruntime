@@ -56,6 +56,7 @@ MODEL_TYPES = {
     "unet": (UnetOnnxModel, "pytorch", 1),
     "vae": (VaeOnnxModel, "pytorch", 1),
     "clip": (ClipOnnxModel, "pytorch", 1),
+    "vit": (BertOnnxModel, "pytorch", 1),
 }
 
 
