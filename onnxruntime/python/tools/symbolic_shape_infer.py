@@ -795,9 +795,9 @@ class SymbolicShapeInference:
     def _infer_symbolic_compute_ops(self, node):
         funcs = {
             "Add": lambda l: l[0] + l[1],  # noqa: E741
-            "Div": lambda l: int(l[0] // l[1])
+            "Div": lambda l: int(l[0] // l[1])  # noqa: E741
             if isinstance(l[0] // l[1], float)
-            else l[0] // l[1],  # integer div in sympy  # noqa: E741
+            else l[0] // l[1],  # integer div in sympy
             "Equal": lambda l: l[0] == l[1],  # noqa: E741
             "Floor": lambda l: sympy.floor(l[0]),  # noqa: E741
             "Max": lambda l: l[1]  # noqa: E741
