@@ -16,6 +16,11 @@ SD_MODELS = {
     "2.1": "stabilityai/stable-diffusion-2-1",
 }
 
+PROVIDERS = {
+    "cuda": "CUDAExecutionProvider",
+    "rocm": "ROCMExecutionProvider",
+}
+
 
 def example_prompts():
     prompts = [
@@ -187,7 +192,16 @@ def get_image_filename_prefix(engine: str, model_name: str, batch_size: int, dis
 
 
 def run_ort_pipeline(
-    pipe, batch_size: int, image_filename_prefix: str, height, width, steps, num_prompts, batch_count, start_memory
+    pipe,
+    batch_size: int,
+    image_filename_prefix: str,
+    height,
+    width,
+    steps,
+    num_prompts,
+    batch_count,
+    start_memory,
+    enable_mem_measure,
 ):
     from diffusers import OnnxStableDiffusionPipeline
 
@@ -199,8 +213,11 @@ def run_ort_pipeline(
         pipe("warm up", height, width, num_inference_steps=steps, num_images_per_prompt=batch_size)
 
     # Run warm up, and measure GPU memory of two runs (The first run has cuDNN algo search so it might need more memory)
-    first_run_memory = measure_gpu_memory(warmup, start_memory)
-    second_run_memory = measure_gpu_memory(warmup, start_memory)
+    first_run_memory = measure_gpu_memory(warmup, start_memory) if enable_mem_measure else -1
+    second_run_memory = measure_gpu_memory(warmup, start_memory) if enable_mem_measure else -1
+
+    if not enable_mem_measure:
+        warmup()
 
     latency_list = []
     for i, prompt in enumerate(prompts):
@@ -243,19 +260,31 @@ def run_ort_pipeline(
 
 
 def run_torch_pipeline(
-    pipe, batch_size: int, image_filename_prefix: str, height, width, steps, num_prompts, batch_count, start_memory
+    pipe,
+    batch_size: int,
+    image_filename_prefix: str,
+    height,
+    width,
+    steps,
+    num_prompts,
+    batch_count,
+    start_memory,
+    enable_mem_measure,
 ):
     import torch
 
     prompts = example_prompts()
 
-    # total 2 runs of warm up, and measure GPU memory
+    # total 2 runs of warm up, and measure GPU memory for CUDA EP
     def warmup():
         pipe("warm up", height, width, num_inference_steps=steps, num_images_per_prompt=batch_size)
 
     # Run warm up, and measure GPU memory of two runs (The first run has cuDNN algo search so it might need more memory)
-    first_run_memory = measure_gpu_memory(warmup, start_memory)
-    second_run_memory = measure_gpu_memory(warmup, start_memory)
+    first_run_memory = measure_gpu_memory(warmup, start_memory) if enable_mem_measure else -1
+    second_run_memory = measure_gpu_memory(warmup, start_memory) if enable_mem_measure else -1
+
+    if not enable_mem_measure:
+        warmup()
 
     torch.set_grad_enabled(False)
 
@@ -313,6 +342,7 @@ def run_ort(
     num_prompts,
     batch_count,
     start_memory,
+    enable_mem_measure,
 ):
     load_start = time.time()
     pipe = get_ort_pipeline(model_name, directory, provider, disable_safety_checker)
@@ -321,7 +351,16 @@ def run_ort(
 
     image_filename_prefix = get_image_filename_prefix("ort", model_name, batch_size, disable_safety_checker)
     result = run_ort_pipeline(
-        pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count, start_memory
+        pipe,
+        batch_size,
+        image_filename_prefix,
+        height,
+        width,
+        steps,
+        num_prompts,
+        batch_count,
+        start_memory,
+        enable_mem_measure,
     )
 
     result.update(
@@ -347,6 +386,7 @@ def run_torch(
     num_prompts,
     batch_count,
     start_memory,
+    enable_mem_measure,
 ):
     import torch
 
@@ -365,11 +405,29 @@ def run_torch(
     if not enable_torch_compile:
         with torch.inference_mode():
             result = run_torch_pipeline(
-                pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count, start_memory
+                pipe,
+                batch_size,
+                image_filename_prefix,
+                height,
+                width,
+                steps,
+                num_prompts,
+                batch_count,
+                start_memory,
+                enable_mem_measure,
             )
     else:
         result = run_torch_pipeline(
-            pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count, start_memory
+            pipe,
+            batch_size,
+            image_filename_prefix,
+            height,
+            width,
+            steps,
+            num_prompts,
+            batch_count,
+            start_memory,
+            enable_mem_measure,
         )
 
     result.update(
@@ -394,6 +452,16 @@ def parse_arguments():
         default="onnxruntime",
         choices=["onnxruntime", "torch"],
         help="Engines to benchmark. Default is onnxruntime.",
+    )
+
+    parser.add_argument(
+        "-r",
+        "--provider",
+        required=False,
+        type=str,
+        default="cuda",
+        choices=list(PROVIDERS.keys()),
+        help="Provider to benchmark. Default is CUDAExecutionProvider.",
     )
 
     parser.add_argument(
@@ -500,14 +568,16 @@ def main():
     args = parse_arguments()
     print(args)
 
-    start_memory = measure_gpu_memory(None)
+    enable_mem_measure = args.provider == "cuda"
+
+    start_memory = measure_gpu_memory(None) if enable_mem_measure else -1
     print("GPU memory used before loading models:", start_memory)
 
     sd_model = SD_MODELS[args.version]
+    provider = PROVIDERS[args.provider]
     if args.engine == "onnxruntime":
         assert args.pipeline, "--pipeline should be specified for onnxruntime engine"
 
-        provider = "CUDAExecutionProvider"
         result = run_ort(
             sd_model,
             args.pipeline,
@@ -520,6 +590,7 @@ def main():
             args.num_prompts,
             args.batch_count,
             start_memory,
+            enable_mem_measure,
         )
     else:
         result = run_torch(
@@ -534,6 +605,7 @@ def main():
             args.num_prompts,
             args.batch_count,
             start_memory,
+            enable_mem_measure,
         )
 
     print(result)
