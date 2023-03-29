@@ -143,7 +143,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   const size_t bi_max_seq_length = bi * params.max_sequence_length;
 
-  int tlength = params.is_cross_attention ? params.kv_sequence_length - 1 : params.past_sequence_length;
+  int tlength = params.is_cross_attention ? params.kv_sequence_length : params.past_sequence_length;
 
   // First QK_VECS_PER_WARP load Q and K + the bias values for the current timestep.
   const bool is_masked = tidx >= QK_VECS_PER_WARP;
@@ -157,6 +157,19 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   if (!is_masked) {
     q = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q)[qk_offset]));
+  }
+
+  // bugbug: print q
+  if (tidx == 0 && bi == 0 && hi == 0) {
+    printf("q: ");
+    for (int i = 0; i < params.batch_size * params.num_heads * params.head_size; i++) {
+      printf("%f ", reinterpret_cast<float*>(params.q)[i]);
+      if (i == params.num_heads * params.head_size - 1) {
+        printf("\n");
+      }
+    }
+    printf("\n");
+    printf("\n");
   }
 
   Qk_vec_k k;
@@ -194,6 +207,20 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   }
 
   T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
+
+  // bugbug: print k
+  if (tidx == 0 && bi == 0 && hi == 0) {
+    printf("original cache_k: ");
+    for (int i = 0; i < params.batch_size * params.num_heads * params.head_size * params.max_sequence_length; i++) {
+      printf("%f ", reinterpret_cast<float*>(params.k_cache)[i]);
+      if (i == params.num_heads * params.head_size * params.max_sequence_length - 1) {
+        printf("\n");
+      }
+    }
+    printf("\n");
+    printf("\n");
+  }
+
   const float inv_sqrt_dh = params.scale;
 
   if (!params.is_cross_attention) {
@@ -253,6 +280,30 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     // Make sure the data is in shared memory.
     __syncthreads();
+  }
+
+  // bugbug: print k
+  if (tidx == 0 && bi == 0 && hi == 0) {
+    printf("cache k: ");
+    float* cache_key_data = reinterpret_cast<float*>(params.k_cache);
+    for (int i = 0; i < params.batch_size * params.num_heads * params.head_size * params.max_sequence_length; i++) {
+      printf("%f ", cache_key_data[i]);
+      if (i == params.num_heads * params.head_size * params.max_sequence_length - 1) {
+        printf("\n");
+      }
+    }
+    printf("\n");
+    printf("\n");
+
+    if (params.relative_attention_bias != nullptr) {
+      printf("relative_attention_bias: ");
+      float* relative_attention_bias_data = reinterpret_cast<float*>(params.relative_attention_bias);
+      for (int i = 0; i < params.num_heads * params.max_sequence_length; i++) {
+        printf("%f ", relative_attention_bias_data[i]);
+      }
+      printf("\n");
+      printf("\n");
+    }
   }
 
   // The type of queries and keys for the math in the Q*K^T product.
@@ -352,6 +403,8 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       }
       qk_max = fmaxf(qk_max, qk);
       qk_smem[ti] = qk;
+      // bugbug: print qk value
+      printf("qk value: %f\n", qk);
     }
   }
 
@@ -386,8 +439,12 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   // Broadcast to all the threads in the warp.
   qk_max = __shfl_sync(uint32_t(-1), qk_max, 0);
 
+  // bugbug
+  printf("qk max: %f\n", qk_max);
+
   // Compute the logits and start the sum.
   float sum = 0.f;
+  // bugbug here: ti <= tlength is not correct
   for (int ti = tidx; ti <= tlength; ti += THREADS_PER_BLOCK) {
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to
@@ -425,6 +482,19 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // The base pointer for the value in the cache buffer.
   T* params_v_cache = reinterpret_cast<T*>(params.v_cache);
+
+  // bugbug: print v
+  if (tidx == 0 && bi == 0 && hi == 0) {
+    printf("original cache_v: ");
+    for (int i = 0; i < params.batch_size * params.num_heads * params.head_size * params.max_sequence_length; i++) {
+      printf("%f ", reinterpret_cast<float*>(params.v_cache)[i]);
+      if (i == params.num_heads * params.head_size * params.max_sequence_length - 1) {
+        printf("\n");
+      }
+    }
+    printf("\n");
+    printf("\n");
+  }
 
   T* v_cache = &params_v_cache[bhi * params.max_sequence_length * head_size + vi];
 
@@ -489,6 +559,19 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // Make sure we can start writing to shared memory.
   __syncthreads();
+
+  // bugbug: print v
+  if (tidx == 0 && bi == 0 && hi == 0) {
+    printf("cache_v: ");
+    for (int i = 0; i < params.batch_size * params.num_heads * params.head_size * params.max_sequence_length; i++) {
+      printf("%f ", reinterpret_cast<float*>(params_v_cache)[i]);
+      if (i == params.num_heads * params.head_size * params.max_sequence_length - 1) {
+        printf("\n");
+      }
+    }
+    printf("\n");
+    printf("\n");
+  }
 
   // Run the final reduction amongst the different groups computing different partial outputs.
 #pragma unroll

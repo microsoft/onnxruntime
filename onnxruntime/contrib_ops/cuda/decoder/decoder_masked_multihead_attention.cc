@@ -7,6 +7,7 @@
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/cuda/decoder/decoder_masked_multihead_attention.h"
 #include "contrib_ops/cuda/decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -118,9 +119,17 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   // Update the q buffers
   parameters.q = const_cast<T1*>(query->Data<T1>());
 
+  // bugbug
+  DUMP_TENSOR_INIT();
+
+  if (relative_position_bias == nullptr) {
+    std::cout << "relative_position_bias is null" << std::endl;
+  }
+
   // Update the relative position bias for self attention
   if (relative_position_bias != nullptr) {
     parameters.relative_attention_bias = const_cast<T1*>(relative_position_bias->Data<T1>());
+    DUMP_TENSOR_D("relative_attention_bias", relative_position_bias->Data<T1>(), parameters.num_heads, parameters.max_sequence_length);
   }
 
   // Decoder cross-attention
@@ -136,6 +145,16 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     // parameters.k and paraneters.v are nullptr
     parameters.k_cache = const_cast<T1*>(key->Data<T1>());
     parameters.v_cache = const_cast<T1*>(value->Data<T1>());
+
+    std::cout << "parameters.beam_width " << parameters.beam_width << std::endl;
+    std::cout << "parameters.batch_size " << parameters.batch_size << std::endl;
+    std::cout << "parameters.num_heads " << parameters.num_heads << std::endl;
+    std::cout << "parameters.head_size " << parameters.head_size << std::endl;
+    std::cout << "parameters.sequence_length " << parameters.sequence_length << std::endl;
+    std::cout << "parameters.kv_sequence_length " << parameters.kv_sequence_length << std::endl;
+    std::cout << "parameters.max_sequence_length " << parameters.max_sequence_length << std::endl;
+    std::cout << "parameters.past_sequence_length " << parameters.past_sequence_length << std::endl;
+    std::cout << "parameters.total_sequence_length " << parameters.total_sequence_length << std::endl;
   } else {
     // Sanity check
     ORT_ENFORCE(past_present_share_buffer_);
@@ -150,17 +169,39 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     // will be shared.
     // This is just to circumvent the OpTester's limitation of not being able to bind a specific
     // buffer to inputs/outputs.
-    if (present_key_data != past_key_data || present_value_data != past_value_data) {
+    if (present_key_data != past_key_data) {
+      std::cout << "This line should not be executed" << std::endl;
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_key_data, past_key_data, past_key->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, cuda_stream));
+    }
+    if (present_value_data != past_value_data) {
+      std::cout << "This line should not be executed" << std::endl;
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_value_data, past_value_data, past_value->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, cuda_stream));
     }
 
+    // bugbug
+    DUMP_TENSOR_D("after copy: past_key_data", past_key_data, parameters.batch_size, parameters.num_heads, parameters.max_sequence_length * parameters.head_size);
+    DUMP_TENSOR_D("after copy: past_value_data", past_value_data, parameters.batch_size, parameters.num_heads, parameters.max_sequence_length * parameters.head_size);
+    DUMP_TENSOR_D("after copy: present_key_data", present_key_data, parameters.batch_size, parameters.num_heads, parameters.max_sequence_length * parameters.head_size);
+    DUMP_TENSOR_D("after copy: present_value_data", present_value_data, parameters.batch_size, parameters.num_heads, parameters.max_sequence_length * parameters.head_size);
+
+    parameters.is_cross_attention = false;
+
     parameters.k = const_cast<T1*>(key->Data<T1>());
     parameters.v = const_cast<T1*>(value->Data<T1>());
-    parameters.k_cache = present_key->MutableDataRaw();
-    parameters.v_cache = present_value->MutableData<T1>();
+    parameters.k_cache = present_key_data;
+    parameters.v_cache = present_value_data;
+
+    std::cout << "parameters.beam_width " << parameters.beam_width << std::endl;
+    std::cout << "parameters.batch_size " << parameters.batch_size << std::endl;
+    std::cout << "parameters.num_heads " << parameters.num_heads << std::endl;
+    std::cout << "parameters.head_size " << parameters.head_size << std::endl;
+    std::cout << "parameters.sequence_length " << parameters.sequence_length << std::endl;
+    std::cout << "parameters.kv_sequence_length " << parameters.kv_sequence_length << std::endl;
+    std::cout << "parameters.max_sequence_length " << parameters.max_sequence_length << std::endl;
+    std::cout << "parameters.past_sequence_length " << parameters.past_sequence_length << std::endl;
+    std::cout << "parameters.total_sequence_length " << parameters.total_sequence_length << std::endl;
   }
 
   parameters.out = output->MutableDataRaw();

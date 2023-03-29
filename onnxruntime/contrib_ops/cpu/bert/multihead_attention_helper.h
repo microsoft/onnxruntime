@@ -61,6 +61,7 @@ Status CheckInputs(const T* query,
   int kv_sequence_length = sequence_length;
 
   int past_sequence_length = 0;
+  int max_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     const auto& past_key_dims = past_key->Shape().GetDims();
     const auto& past_value_dims = past_value->Shape().GetDims();
@@ -112,6 +113,14 @@ Status CheckInputs(const T* query,
                              past_value_dims[3]);
     }
     past_sequence_length = static_cast<int>(past_key_dims[2]);
+    max_sequence_length = static_cast<int>(past_key_dims[2]);
+    if (past_present_share_buffer) {
+      if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
+      }
+      past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+    }
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
@@ -237,14 +246,6 @@ Status CheckInputs(const T* query,
     }
   }
 
-  if (past_present_share_buffer) {
-    if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
-    }
-    past_sequence_length = *((*past_seq_len).template Data<int32_t>());
-  }
-
   int total_sequence_length = past_sequence_length + kv_sequence_length;
   bool broadcast_res_pos_bias = false;
   if (relative_position_bias != nullptr) {
@@ -287,7 +288,7 @@ Status CheckInputs(const T* query,
     output_parameters->past_sequence_length = past_sequence_length;
     output_parameters->kv_sequence_length = kv_sequence_length;
     output_parameters->total_sequence_length = total_sequence_length;
-    output_parameters->max_sequence_length = 0;
+    output_parameters->max_sequence_length = max_sequence_length;
     output_parameters->input_hidden_size = 0;
     output_parameters->hidden_size = hidden_size;
     output_parameters->v_hidden_size = v_hidden_size;
