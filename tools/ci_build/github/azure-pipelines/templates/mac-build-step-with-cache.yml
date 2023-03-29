@@ -10,7 +10,7 @@ parameters:
 - name: AdditionalKey
   type: string
 
-- name: CCACHE_DIR
+- name: CACHE_DIR
   type: string
 
 steps:
@@ -28,7 +28,7 @@ steps:
         "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}}
     displayName: ccache task
     env:
-      CCACHE_DIR: ${{parameters.CCACHE_DIR}}
+      CCACHE_DIR: ${{parameters.CACHE_DIR}}
 
   - ${{ parameters.BuildStep }}
 
@@ -39,3 +39,5 @@ steps:
       ls -l $(Pipeline.Workspace)/ccache
       du -sh $(Pipeline.Workspace)/ccache
     displayName: Show Cache stats and Clear stats.
+    env:
+      CCACHE_DIR: ${{parameters.CACHE_DIR}}

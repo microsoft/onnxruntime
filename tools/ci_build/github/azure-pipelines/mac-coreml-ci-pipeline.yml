@@ -17,7 +17,7 @@ jobs:
     parameters:
       TODAY: $(TODAY)
       AdditionalKey: coreml
-      CCACHE_DIR: $(CCACHE_DIR)
+      CACHE_DIR: $(CCACHE_DIR)
       BuildStep:
         - script: |
             python3 tools/ci_build/build.py \
