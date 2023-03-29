@@ -35,7 +35,7 @@ template <typename T>
 struct GroupNormNHWCParams : OpParams {
   GroupNormNHWCParams(RocmTuningContext* tuning_ctx, hipStream_t stream, T* dst, float* redBuffer, const T* src, const float* gamma,
                       const float* beta, int32_t n, int32_t h, int32_t w, int32_t c, int32_t groups, float epsilon, bool withSwish)
-      : OpParams(tuning_ctx, stream), dst(dst), redBuffer(redBuffer), src(src), gamma(gamma), beta(beta), n(n), h(h), w(w), c(c), groups(groups), epsilon(epsilon), withSwish(withSwish) {
+      : OpParams(tuning_ctx, stream), dst(dst), src(src), gamma(gamma), beta(beta), redBuffer(redBuffer), epsilon(epsilon), n(n), h(h), w(w), c(c), groups(groups), withSwish(withSwish) {
     cPerBlock = 320;
     int32_t maxBlocksPerHW = 1024;
     switch (c) {
@@ -57,7 +57,6 @@ struct GroupNormNHWCParams : OpParams {
     hw = h * w;
     const int32_t blocksPerHW = findMaxDivisor(hw, maxBlocksPerHW);
     hwPerBlock = divUp(hw, blocksPerHW);
-    cPerBlock = cPerBlock;
     cPerGroup = c / groups;
     hwc = hw * c;
     invHWC = 1.F / (float)(hw * cPerGroup);

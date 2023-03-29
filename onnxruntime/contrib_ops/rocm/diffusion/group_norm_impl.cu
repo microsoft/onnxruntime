@@ -17,151 +17,16 @@
  */
 
 // The ROCM kernel is hipified from CUDA kernel.
-#include <hip/hip_fp16.h>
-#include <hip/hip_runtime_api.h>
-#include "core/providers/rocm/cu_inc/common.cuh"
-#include "core/providers/rocm/rocm_common.h"
-#include "contrib_ops/rocm/diffusion/group_norm_common.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl.h"
-#include "contrib_ops/rocm/diffusion/group_norm_impl_kernel.h"
+
+#include <hip/hip_fp16.h>
+#include "contrib_ops/rocm/diffusion/group_norm_common.h"
+#include "contrib_ops/rocm/diffusion/group_norm_tunable_op.h"
 #include "contrib_ops/rocm/transformers/dump_rocm_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
-
-template <typename T>
-void groupNormNHWCSum(const GroupNormNHWCParams<T>* params) {
-  // Make sure the values are as we expect.
-  ORT_ENFORCE(params->c % params->cPerBlock == 0 && params->hw % params->hwPerBlock == 0);
-  // Make sure a group does not span multiple blocks.
-  ORT_ENFORCE(params->cPerBlock % params->cPerGroup == 0);
-
-  dim3 grid;
-
-  // The number of blocks to compute all the channels.
-  grid.x = params->c / params->cPerBlock;
-  // The number of blocks to compute all the activations in a given instance.
-  grid.y = divUp(params->hw, params->hwPerBlock);
-  // The number of instances.
-  grid.z = params->n;
-
-#define LAUNCH_GROUPNORM_SUM(TPB, ILP)                                                                                              \
-  groupNormNHWCSumKernel<T, TPB, ILP><<<grid, TPB, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock,          \
-                                                                        params->hwPerBlock, params->hw, params->hwc, params->c,     \
-                                                                        params->cPerGroup, params->groups, params->groupsPerBlock); \
-  break;
-
-  switch (params->cPerBlock) {
-    case 320:
-      LAUNCH_GROUPNORM_SUM(256, 2)
-    case 480:
-      LAUNCH_GROUPNORM_SUM(256, 2)
-    case 256:
-      LAUNCH_GROUPNORM_SUM(128, 2)
-    case 128:
-      LAUNCH_GROUPNORM_SUM(64, 2)
-    default:
-      ORT_NOT_IMPLEMENTED("Not implemented");
-  }
-}
-
-template <typename T, int ThreadsPerBlock, int VecSize>
-Status GroupNormNHWCSumOp(const GroupNormNHWCParams<T>* params) {
-  dim3 grid;
-  grid.x = params->c / params->cPerBlock;
-  grid.y = divUp(params->hw, params->hwPerBlock);
-  grid.z = params->n;
-
-  groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>
-      <<<grid, ThreadsPerBlock, 0, params->stream>>>(
-          params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
-          params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
-  return HIP_CALL(hipGetLastError());
-}
-
-template <typename T>
-void groupNormNHWCScale(const GroupNormNHWCParams<T>* params) {
-  // Make sure the dimensions are aligned with what we expect.
-  ORT_ENFORCE(params->c % params->cPerBlock == 0);
-  // Make sure a group does not span multiple blocks.
-  ORT_ENFORCE(params->cPerBlock % params->cPerGroup == 0);
-
-  dim3 grid;
-
-  // The number of blocks to compute all the channels.
-  grid.x = params->c / params->cPerBlock;
-  // The number of blocks to compute all the activations in a given instance.
-  grid.y = divUp(params->hw, params->hwPerBlock);
-  // The number of instances.
-  grid.z = params->n;
-
-#define LAUNCH_GROUPNORM_SCALE(TPB, ILP)                                                                                                    \
-  groupNormNHWCScaleKernel<T, TPB, ILP><<<grid, TPB, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta,            \
-                                                                          params->redBuffer, params->epsilon, params->c, params->cPerBlock, \
-                                                                          params->cPerGroup, params->groups, params->hwc, params->invHWC,   \
-                                                                          params->hw, params->hwPerBlock, params->withSwish);               \
-  break;
-
-  switch (params->cPerBlock) {
-    case 320:
-      LAUNCH_GROUPNORM_SCALE(256, 2)
-    case 480:
-      LAUNCH_GROUPNORM_SCALE(256, 2)
-    case 256:
-      LAUNCH_GROUPNORM_SCALE(128, 2)
-    case 128:
-      LAUNCH_GROUPNORM_SCALE(64, 2)
-    default:
-      ORT_NOT_IMPLEMENTED("Not implemented");
-  }
-}
-
-template <typename T, int ThreadsPerBlock, int VecSize>
-Status GroupNormNHWCScaleOp(const GroupNormNHWCParams<T>* params) {
-  dim3 grid;
-  grid.x = params->c / params->cPerBlock;
-  grid.y = divUp(params->hw, params->hwPerBlock);
-  grid.z = params->n;
-
-  groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>
-      <<<grid, ThreadsPerBlock, 0, params->stream>>>(
-          params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->c, params->cPerBlock,
-          params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
-  return HIP_CALL(hipGetLastError());
-}
-
-template <typename T, int ThreadsPerBlock, int VecSize>
-class GroupNormNHWCOp {
- public:
-  Status operator()(const GroupNormNHWCParams<T>* params) {
-    DUMP_TENSOR_INIT();
-    DUMP_TENSOR("input", params->src, params->n, params->c, params->h * params->w);
-    DUMP_TENSOR("gamma", params->gamma, 1, params->c);
-    DUMP_TENSOR("beta", params->beta, 1, params->c);
-    HIP_RETURN_IF_ERROR(hipMemsetAsync(params->redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), params->stream));
-    auto status = GroupNormNHWCSumOp<T, ThreadsPerBlock, VecSize>(params);
-    ORT_RETURN_IF_ERROR(status);
-    DUMP_TENSOR("workspace", params->redBuffer, params->n, params->groups, 2);
-    HIP_RETURN_IF_ERROR(hipGetLastError());
-    status = GroupNormNHWCScaleOp<T, ThreadsPerBlock, VecSize>(params);
-    ORT_RETURN_IF_ERROR(status);
-    HIP_RETURN_IF_ERROR(hipGetLastError());
-    DUMP_TENSOR("output", params->dst, params->n, params->c, params->h * params->w);
-    return Status::OK();
-  }
-
-  Status IsSupported(const GroupNormNHWCParams<T>* params) {
-    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-        !(params->c % VecSize == 0 && params->cPerGroups % VecSize == 0));
-    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock % params->cPerGroups == 0 &&
-                                                params->cPerBlock <= ThreadsPerBlock * VecSize &&
-                                                params->c % params->cPerBlock == 0 &&
-                                                params->hw % params->hwPerBlock == 0));
-
-    return Status::OK();
-  }
-};
 
 template <typename T>
 Status LaunchGroupNormKernel(
@@ -191,18 +56,7 @@ Status LaunchGroupNormKernel(
   GroupNormNHWCParams<T> params(nullptr, stream, output, reinterpret_cast<float*>(workspace), input, gamma, beta,
                                 batch_size, height, width, num_channels, num_groups, epsilon, use_swish_activation);
 
-  DUMP_TENSOR_INIT();
-  DUMP_TENSOR("input", input, batch_size, num_channels, height * width);
-  DUMP_TENSOR("gamma", gamma, 1, num_channels);
-  DUMP_TENSOR("beta", beta, 1, num_channels);
-  HIP_RETURN_IF_ERROR(hipMemsetAsync(params.redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), stream));
-  groupNormNHWCSum<T>(&params);
-  DUMP_TENSOR("workspace", params.redBuffer, batch_size, num_groups, 2);
-  HIP_RETURN_IF_ERROR(hipGetLastError());
-  groupNormNHWCScale<T>(&params);
-  HIP_RETURN_IF_ERROR(hipGetLastError());
-  DUMP_TENSOR("output", output, batch_size, num_channels, height * width);
-  return Status::OK();
+  return GroupNormNHWCStaticSelection(&params);
 }
 
 template Status LaunchGroupNormKernel<half>(hipStream_t stream, half* output,
