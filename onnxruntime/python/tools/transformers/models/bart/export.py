@@ -32,7 +32,6 @@ def print_args(args):
 
 
 def user_command():
-
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument("--max_length", type=int, default=20, help="default to 20")
     parent_parser.add_argument("--min_length", type=int, default=0, help="default to 0")
@@ -66,12 +65,11 @@ def user_command():
 
 
 if __name__ == "__main__":
-
     args = user_command()
     if args.opset_version < 14:
         raise ValueError(f"The minimum supported opset version is 14! The given one was {args.opset_version}.")
 
-    isExist = os.path.exists(args.output)
+    isExist = os.path.exists(args.output)  # noqa: N816
     if not isExist:
         os.makedirs(args.output)
 
@@ -87,14 +85,14 @@ if __name__ == "__main__":
         )
 
     if not args.no_encoder:
-        logger.info(f"========== EXPORTING ENCODER ==========")
+        logger.info("========== EXPORTING ENCODER ==========")
         export_summarization_edinit.export_encoder(args)
     if not args.no_decoder:
-        logger.info(f"========== EXPORTING DECODER ==========")
+        logger.info("========== EXPORTING DECODER ==========")
         export_summarization_enc_dec_past.export_decoder(args)
     if not args.no_chain:
-        logger.info(f"========== CONVERTING MODELS ==========")
+        logger.info("========== CONVERTING MODELS ==========")
         chain_enc_dec_with_beamsearch.convert_model(args)
     if not args.no_inference:
-        logger.info(f"========== INFERENCING WITH ONNX MODEL ==========")
+        logger.info("========== INFERENCING WITH ONNX MODEL ==========")
         onnx_inference.run_inference(args)

@@ -1,12 +1,10 @@
+import math
+
 import torch
-from orttraining_test_bert_postprocess import postprocess_model
 from orttraining_test_data_loader import BatchArgsOption, create_ort_test_dataloader, split_batch
 
 from onnxruntime.capi.ort_trainer import IODescription, ORTTrainer
-from onnxruntime.training import TrainStepInfo, _utils, amp
-from onnxruntime.training import model_desc_validation as md_val
-from onnxruntime.training import optim, orttrainer
-from onnxruntime.training import orttrainer_options as orttrainer_options
+from onnxruntime.training import amp, optim, orttrainer
 from onnxruntime.training.optim import _LRScheduler
 
 
@@ -196,11 +194,11 @@ def run_test(
         )
         print("running with old frontend API")
 
-    # trainig loop
+    # training loop
     eval_batch = None
     if not use_new_api:
         model.train()
-    for epoch in range(epochs):
+    for _epoch in range(epochs):
         for step, batch in enumerate(dataloader):
             if eval_batch is None:
                 eval_batch = batch
@@ -214,13 +212,9 @@ def run_test(
 
             if batch_args_option == BatchArgsOption.List:
                 if not use_internal_get_lr_this_step:
-                    batch = batch + [
-                        learning_rate,
-                    ]
+                    batch = [*batch, learning_rate]  # noqa: PLW2901
                 if not use_internal_loss_scaler and fp16:
-                    batch = batch + [
-                        loss_scale,
-                    ]
+                    batch = [*batch, loss_scale]  # noqa: PLW2901
                 outputs = model.train_step(*batch)
             elif batch_args_option == BatchArgsOption.Dict:
                 args, kwargs = split_batch(batch, model_desc.inputs_, 0)

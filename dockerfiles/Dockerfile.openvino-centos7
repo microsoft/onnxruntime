@@ -96,7 +96,7 @@ RUN yum update -y && \
     pip3 install numpy wheel setuptools cython && \
     git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
     pip3 install onnx && \
-    cd /code/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel && \
+    cd /code/onnxruntime && ./build.sh --allow_running_as_root --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel && \
     pip3 install /code/onnxruntime/build/Linux/Release/dist/*-linux_x86_64.whl && \
 # Clean up
     cd  $MY_ROOT && rm -rf onnxruntime Python-3* && \

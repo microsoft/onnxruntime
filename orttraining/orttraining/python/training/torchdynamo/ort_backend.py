@@ -18,13 +18,13 @@ import torch.jit
 import torch.onnx
 import torch.onnx._onnx_supported_ops
 from torch._decomp import decomposition_table
+from torch._subclasses.fake_tensor import FakeTensor
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.fx.passes.fake_tensor_prop import FakeTensorProp
 from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
 from torch.fx.passes.operator_support import OperatorSupport
 from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
 from torch.onnx._globals import GLOBALS as ONNX_GLOBALS
-from torch._subclasses.fake_tensor import FakeTensor
 
 import onnxruntime  # type: ignore
 from onnxruntime.capi import _pybind_state as ORTC
@@ -103,12 +103,14 @@ def _get_onnx_supported_table() -> Set[str]:
     return onnx_supported_ops
 
 
-def _get_support_dictionaries_and_decomposition_tables() -> Tuple[
-    Dict[torch._ops.OpOverload, Any],
-    Dict[str, Any],
-    Dict[torch._ops.OpOverload, Callable],
-    Dict[torch._ops.OpOverload, Callable],
-]:
+def _get_support_dictionaries_and_decomposition_tables() -> (
+    Tuple[
+        Dict[torch._ops.OpOverload, Any],
+        Dict[str, Any],
+        Dict[torch._ops.OpOverload, Callable],
+        Dict[torch._ops.OpOverload, Callable],
+    ]
+):
     # The keys of this dictionary are OpOverload's which can be
     # exported by ONNX exporter. Type of key is torch._ops.OpOverload.
     # For example, if torch.ops.aten.add.default is a key in support_dict,
@@ -265,7 +267,6 @@ def _move_placeholder_to_front(graph_module: torch.fx.GraphModule) -> None:
 def _replace_to_copy_with_to(fx_module: torch.fx.GraphModule) -> None:
     # aten._to_copy doesn't have exporter so we replace it with aten.to.
     for node in fx_module.graph.nodes:
-
         if (
             isinstance(node.target, torch._ops.OpOverload)
             and node.target.overloadpacket == torch.ops.aten._to_copy  # type: ignore
@@ -308,7 +309,7 @@ def _fx_to_torchscript(
         new_kwargs = {}
         for k, v in node.kwargs.items():
             if isinstance(v, torch.device):
-                v = v.type
+                v = v.type  # noqa: PLW2901
             new_kwargs[k] = v
         node.kwargs = new_kwargs
     for node in fx_module.graph.nodes:
@@ -443,7 +444,7 @@ def _assert_allclose_with_detailed_error_message(
     max_value = torch.max(torch.abs(actual), torch.abs(expected))
     max_value[max_value == 0.0] = 1.0
     real_rtol = torch.max(diff / max_value)
-    allclose = True if real_atol <= atol or real_rtol <= rtol else False
+    allclose = bool(real_atol <= atol or real_rtol <= rtol)
     if not allclose:
         raise RuntimeError(
             "ONNX output doesn't match baseline output with "
