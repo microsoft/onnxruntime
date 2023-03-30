@@ -168,7 +168,7 @@ class PackingMode:
 
         # insert PackingAttention
         self._replace_attention_with_packing_attention(token_offset, cumulated_seq_len)
-        logger.debug(f"replaced Attention with PackedAttention")
+        logger.debug("replaced Attention with PackedAttention")
 
         self.model.remove_nodes(self.nodes_to_remove)
         self.model.add_nodes(self.nodes_to_add, self.node_name_to_graph_name)
