@@ -2105,7 +2105,7 @@ class SymbolicShapeInference:
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
 
-    def _infer_RemovePadding(self, node):
+    def _infer_RemovePadding(self, node):  # noqa: N802
         shape = self._get_shape(node, 0)
         if shape and len(shape) == 3:
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
@@ -2127,7 +2127,7 @@ class SymbolicShapeInference:
                                                                    onnx.TensorProto.INT32,
                                                                    [1]))
 
-    def _infer_RestorePadding(self, node):
+    def _infer_RestorePadding(self, node):  # noqa: N802
         shape_input = self._get_shape(node, 0)
         shape_token_offset = self._get_shape(node, 1)
         if shape_input and len(shape_input) == 2 and shape_token_offset and len(shape_token_offset) == 2:
