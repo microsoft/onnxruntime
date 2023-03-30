@@ -146,66 +146,76 @@
 											<div class="tab-pane fade show active" id="v-pills-python" role="tabpanel"
 												aria-labelledby="v-pills-python-tab">
 												<pre style="overflow: hidden">
-												<code>import onnxruntime as ort 
-import numpy as np
-x, y = test_data[0][0], test_data[0][1]
-ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-outputs = ort_sess.run(None, {'input': x.numpy()})
-
-predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-print(f'Predicted: "{predicted}", Actual: "{actual}"')</code>
+												<code>
+													import onnxruntime as ort
+													import numpy as np
+													ort_sess = ort.InferenceSession('model.onnx')
+													outputs = ort_sess.run(None, {'input': text.numpy(),
+																				'offsets':  torch.tensor([0]).numpy()})
+													
+													result = outputs[0].argmax(axis=1)
+													print(result[0])
+												</code>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-java" role="tabpanel"
 												aria-labelledby="v-pills-java-tab">
 												<pre style="overflow: hidden">
-												<code>import onnxruntime as ort2 
-import numpy as np
-x, y = test_data[0][0], test_data[0][1]
-ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-outputs = ort_sess.run(None, {'input': x.numpy()})
+												<code>
+													import onnxruntime as ort2 
+													import numpy as np
+													x, y = test_data[0][0], test_data[0][1]
+													ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
+													outputs = ort_sess.run(None, {'input': x.numpy()})
 
-predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-print(f'Predicted: "{predicted}", Actual: "{actual}"')</code>
+													predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
+													print(f'Predicted: "{predicted}", Actual: "{actual}"')
+												</code>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-javascript" role="tabpanel"
 												aria-labelledby="v-pills-javascript-tab">
 												<pre style="overflow: hidden">
-												<code>import onnxruntime as ort3 
-import numpy as np
-x, y = test_data[0][0], test_data[0][1]
-ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-outputs = ort_sess.run(None, {'input': x.numpy()})
+												<code>
+													import onnxruntime as ort3 
+													import numpy as np
+													x, y = test_data[0][0], test_data[0][1]
+													ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
+													outputs = ort_sess.run(None, {'input': x.numpy()})
 
-predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-print(f'Predicted: "{predicted}", Actual: "{actual}"')</code>
+													predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
+													print(f'Predicted: "{predicted}", Actual: "{actual}"')
+												</code>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-cpp" role="tabpanel"
 												aria-labelledby="v-pills-cpp-tab">
 												<pre style="overflow: hidden">
 												<code>import onnxruntime as ort4
-import numpy as np
-x, y = test_data[0][0], test_data[0][1]
-ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-outputs = ort_sess.run(None, {'input': x.numpy()})
+														import numpy as np
+														x, y = test_data[0][0], test_data[0][1]
+														ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
+														outputs = ort_sess.run(None, {'input': x.numpy()})
 
-predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-print(f'Predicted: "{predicted}", Actual: "{actual}"')</code>
+														predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
+														print(f'Predicted: "{predicted}", Actual: "{actual}"')
+												</code>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-cs" role="tabpanel"
 												aria-labelledby="v-pills-cs-tab">
 												<pre style="overflow: hidden">
-												<code>import onnxruntime as ort5 
-import numpy as np
-x, y = test_data[0][0], test_data[0][1]
-ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-outputs = ort_sess.run(None, {'input': x.numpy()})
-
-predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-print(f'Predicted: "{predicted}", Actual: "{actual}"')</code>
+												<code>
+													using Microsoft.ML.OnnxRuntime;
+													
+													review = "A text review";
+													var modelPath = "./model.onnx";
+													var inputTensor = new DenseTensor<string>(new string[] { review }, new int[] { 1, 1 });
+													var input = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<string>("input", inputTensor) };
+													var session = new InferenceSession(modelPath);
+													var output = session.Run(input).ToList().Last().AsEnumerable<NamedOnnxValue>();
+													var inferenceResult = output.First().AsDictionary<string, float>();
+												</code>
 											</pre>
 											</div>
 										</div>
