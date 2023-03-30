@@ -4,7 +4,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
-#include "contrib_ops/cuda/decoder/decoder_masked_multihead_attention.h"
+#include "contrib_ops/cuda/decoder/decoder_masked_self_attention.h"
 #include "contrib_ops/cuda/decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
 
 using namespace onnxruntime::cuda;
@@ -23,7 +23,7 @@ static constexpr int kPresentOutputIndex = 1;
 
 #define REGISTER_KERNEL_TYPED(T1, T2)                                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
-      DecoderMaskedMultiheadAttention,                                        \
+      DecoderMaskedSelfAttention,                                        \
       kMSDomain,                                                              \
       1,                                                                      \
       T1,                                                                     \
@@ -33,13 +33,13 @@ static constexpr int kPresentOutputIndex = 1;
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())             \
           .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex) \
           .InputMemoryType(OrtMemTypeCPUInput, kBeamWidthInputIndex),         \
-      DecoderMaskedMultiheadAttention<T1, T2>);
+      DecoderMaskedSelfAttention<T1, T2>);
 
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(MLFloat16, uint16_t)
 
 template <typename T1, typename T2>
-Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext* context) const {
+Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
@@ -51,7 +51,7 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
 
   auto& device_prop = GetDeviceProp();
-  DecoderMaskedMultiheadAttentionParams parameters;
+  DecoderMaskedSelfAttentionParams parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
@@ -70,29 +70,26 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
 
   // This kernel is for decoding only (i.e.) sequence length has to be 1
   if (sequence_length != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedMultiheadAttention");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedSelfAttention");
   }
 
-  // TODO(hasesh): In future, we may support CrossAttention. Currently, this kernel only supports SelfAttention.
-  if (parameters.sequence_length != parameters.kv_sequence_length) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedMultiheadAttention only supports self attention currently");
-  }
+  ORT_ENFORCE(parameters.sequence_length == parameters.kv_sequence_length);
 
   // TODO(hasesh): If there is a need, we will support this later
   if (parameters.head_size != parameters.v_head_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "QK head size should be same as V head size to use DecoderMaskedMultiheadAttention");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "QK head size should be same as V head size to use DecoderMaskedSelfAttention");
   }
 
   // TODO(hasesh): If there is a need, we will support this later
   if (relative_position_bias != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedMultiheadAttention does not support relative position bias currently");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedSelfAttention does not support relative position bias currently");
   }
 
   // TODO(hasesh): Support more mask types. Currently, it only supports the HuggingFace GreedySearch/BeamSearch pattern.
   if (parameters.mask_type != AttentionMaskType::MASK_2D_KEY_PADDING &&
       parameters.mask_type != AttentionMaskType::MASK_NONE) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "DecoderMaskedMultiheadAttention only supports no mask or 2D key "
+                           "DecoderMaskedSelfAttention only supports no mask or 2D key "
                            "padding mask of shape [batch, total_seq_length] currently");
   }
 
@@ -199,7 +196,7 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
 
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "Unsupported head size in DecoderMaskedMultiheadAttention. "
+                             "Unsupported head size in DecoderMaskedSelfAttention. "
                              "Got head size: ",
                              parameters.head_size);
   }

@@ -3,7 +3,7 @@ import threading
 import time
 
 
-class OutputGrabber(object):
+class OutputGrabber:
     """
     Class used to grab standard output or another stream.
     """
@@ -78,14 +78,16 @@ class OutputGrabber(object):
             self.capturedtext += char
 
 
-import torch
-from onnxruntime.capi import _pybind_state as torch_ort_eager
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-import os
-from onnxruntime.training import optim, orttrainer, orttrainer_options
-import unittest
+import os  # noqa: E402
+import unittest  # noqa: E402
+
+import numpy as np  # noqa: E402, F401
+import torch  # noqa: E402
+import torch.nn as nn  # noqa: E402
+import torch.nn.functional as F  # noqa: E402
+
+from onnxruntime.capi import _pybind_state as torch_ort_eager  # noqa: E402, F401
+from onnxruntime.training import optim, orttrainer, orttrainer_options  # noqa: E402, F401
 
 
 def my_loss(x, target):
@@ -94,7 +96,7 @@ def my_loss(x, target):
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNet, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, num_classes)
@@ -134,7 +136,7 @@ class OrtEPTests(unittest.TestCase):
         target = torch.randint(0, 10, (batch_size,))
 
         with OutputGrabber() as out:
-            loss = model.train_step(data, target)
+            model.train_step(data, target)
         assert "******************Trigger Customized Graph Transformer:  MyGraphTransformer!" in out.capturedtext
 
 

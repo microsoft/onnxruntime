@@ -6,7 +6,7 @@
 import torch
 
 TrainingMode = torch.onnx.TrainingMode
-from packaging.version import Version
+from packaging.version import Version  # noqa: E402
 
 
 def torch_onnx_export(

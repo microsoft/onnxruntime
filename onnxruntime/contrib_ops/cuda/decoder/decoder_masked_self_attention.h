@@ -13,9 +13,9 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 template <typename T1, typename T2>
-class DecoderMaskedMultiheadAttention final : public CudaKernel, public AttentionBase {
+class DecoderMaskedSelfAttention final : public CudaKernel, public AttentionBase {
  public:
-  DecoderMaskedMultiheadAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, true) {}
+  DecoderMaskedSelfAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, true) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 

@@ -38,7 +38,7 @@ regdecs_path = args.header_file
 print(f"INFO: Using RegistrationDeclarations from: {regdecs_path}")
 output = sys.stdout
 if args.output_file:
-    output = open(args.output_file, "wt")
+    output = open(args.output_file, "w")  # noqa: SIM115
 
 with CPPParser(regdecs_path) as parser, SourceWriter(output) as writer:
     ortgen.run(parser, writer)

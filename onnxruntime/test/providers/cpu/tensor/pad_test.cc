@@ -75,11 +75,11 @@ static void RunAllOpsetAllDomainPadTests(
   };
   const std::vector<TestParams> all_test_params {
     {false, false},
-#if defined(USE_NNAPI) && defined(__ANDROID__)
-    // only enable when building NNAPI EP on Android
-    // test runs out of memory in QEMU aarch64 environment, so don't enable otherwise
-    // TODO try to enable when we move from QEMU to arm64 CI machines
-    {true, true},
+#if (defined(USE_NNAPI) && defined(__ANDROID__)) || (defined(USE_COREML) && defined(__APPLE__))
+        // only enable when building NNAPI EP on Android or building CoreML EP for Apple environment
+        // test runs out of memory in QEMU aarch64 environment, so don't enable otherwise
+        // TODO try to enable when we move from QEMU to arm64 CI machines
+        {true, true},
 #endif
   };
   for (const auto& test_params : all_test_params) {
@@ -809,23 +809,151 @@ TEST(PadOpTest, ConstantPadAxes) {
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
   test.AddInput<int32_t>("data", {1, 2, 2, 2},
-  {
-    1, 1,
-    1, 1,
-    1, 1,
-    1, 1});
+                         {1, 1,
+                          1, 1,
+                          1, 1,
+                          1, 1});
   test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1});
   test.AddInput<int32_t>("value", {1}, {0});
   test.AddInput<int32_t>("axes", {2}, {1, 3});
   test.AddOutput<int32_t>("output", {1, 2, 2, 4},
-  {
-    0, 1, 1, 0,
-    0, 1, 1, 0,
-    0, 1, 1, 0,
-    0, 1, 1, 0
-    }
-  );
+                          {0, 1, 1, 0,
+                           0, 1, 1, 0,
+                           0, 1, 1, 0,
+                           0, 1, 1, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// CoreML EP only supports padding on last two dimensions and requires axes to be an initializer if provided,
+// added the following test cases (can be taken by CoreML):
+TEST(PadOpTest, ConstantPadAxesTest1) {
+  // Specified axes with last two dimensions and have non-zero padding values with one of them
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {2}, {2, 3}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  // Note: exclude nnapi ep here, as int64_t type axes input is invalid for NNAPI. Similar for below tests.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxesTest2) {
+  // Specified axes with last two dimensions and have non-zero padding values on both of them
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {4}, {1, 1, 1, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {2}, {2, 3}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 4, 4},
+                        {0.0f, 0.0f, 0.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 0.0f, 0.0f, 0.0f,
+                         0.0f, 0.0f, 0.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 0.0f, 0.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxesTest3) {
+  // Specified axes with 0's in pad values other than the last two dimensions
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {8}, {0, 0, 0, 1, 0, 0, 0, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {4}, {0, 1, 2, 3}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxesOutOfOrder) {
+  // Specified out of order axes values
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {4}, {1, 0, 1, 0}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {2}, {3, 2}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxesWithOneDimensionSpecified) {
+  // Specified axes and non-zero padding values for only one of the last two dimensions
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {2}, {1, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {1}, {3}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+/*
+  Note: Disable the Negative Axes test for ConstantPad for now until onnx shape inferencing
+  add support for handling negative axes.
+  Issue link to the bug: https://github.com/onnx/onnx/issues/5003
+*/
+TEST(PadOpTest, DISABLED_ConstantPadNegativeAxes) {
+  // Specified negative axes value
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {2}, {1, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddInput<int64_t>("axes", {1}, {-1}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 
 }  // namespace test

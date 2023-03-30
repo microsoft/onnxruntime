@@ -6,12 +6,12 @@
 #include "core/common/common.h"
 #include "core/graph/graph.h"
 #include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/transform_layout_functions.h"
 
 namespace onnxruntime {
 
 class ExecutionProviders;
 class KernelRegistryManager;
-using TransformLayoutFunction = std::function<Status(Graph& graph, bool& modified, IExecutionProvider& current_ep)>;
 
 class GraphPartitioner {
  public:
@@ -29,8 +29,9 @@ class GraphPartitioner {
 
   // Run partitioning.
   Status Partition(Graph& graph, FuncManager& func_mgr,
-                   TransformLayoutFunction transform_layout_function,
-                   Mode mode = Mode::kNormal) const;
+                   const layout_transformer::TransformLayoutFunction& transform_layout_function,
+                   Mode mode = Mode::kNormal,
+                   const layout_transformer::DebugGraphFn& debug_graph_fn = {}) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);

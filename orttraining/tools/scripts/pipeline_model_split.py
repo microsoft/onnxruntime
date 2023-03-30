@@ -1,9 +1,8 @@
-import sys
 import os
+import sys  # noqa: F401
+
 import onnx
-from onnx import helper
-from onnx import TensorProto
-from onnx import OperatorSetIdProto
+from onnx import OperatorSetIdProto, TensorProto, helper  # noqa: F401
 
 # Edge that needs to be cut for the split.
 # If the edge is feeding into more than one nodes, and not all the nodes belong to the same cut,
@@ -32,7 +31,7 @@ def split_graph(model, split_edge_groups):
     new_recv_nodes = []
 
     for cut_index in range(len(split_edge_groups)):
-        edgeIds = split_edge_groups[cut_index]
+        edgeIds = split_edge_groups[cut_index]  # noqa: N806
 
         # split the graph based on edgeIds
         upstream_nodes = []
@@ -135,8 +134,8 @@ def split_graph(model, split_edge_groups):
             new_receive.output.extend([new_receive_output_name])
 
             for output_node in output_nodes:
-                for i in range(len(output_node.input)):
-                    for edgeId in edgeIds:
+                for i in range(len(output_node.input)):  # noqa: PLW2901
+                    for edgeId in edgeIds:  # noqa: N806
                         if output_node.input[i] == edgeId:
                             output_node.input[i] = new_receive_output_name
 
@@ -153,7 +152,7 @@ def find_all_input_nodes(model, node):
     inputs = []
 
     if node:
-        for inputId in node.input:
+        for inputId in node.input:  # noqa: N806
             nodes.extend([n for n in model.graph.node if inputId in n.output])
             inputs.extend([n for n in model.graph.input if inputId in n.name])
     return nodes, inputs
@@ -163,7 +162,7 @@ def find_all_output_nodes(model, node):
     nodes = []
     outputs = []
     if node:
-        for outputId in node.output:
+        for outputId in node.output:  # noqa: N806
             nodes.extend([n for n in model.graph.node if outputId in n.input])
             outputs.extend([n for n in model.graph.output if outputId in n.name])
     return nodes, outputs
@@ -179,7 +178,7 @@ def find_all_output_nodes_by_edge(model, arg):
 
 def add_identity(model, cuttingEdge, newEdgeIdName):
     output_nodes = None
-    edgeId = cuttingEdge.edgeId
+    edgeId = cuttingEdge.edgeId  # noqa: N806
     for node in model.graph.node:
         if len(node.output) >= 1:
             for output in node.output:
@@ -287,7 +286,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
         try:
             if i in identity_node_index:
                 del main_graph.graph.node[i]
-        except:
+        except Exception:
             print("error deleting identity node", i)
 
     all_visited_nodes = []
@@ -301,7 +300,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
         outputs0 = []
         while stack0:
             node = stack0.pop()
-            if not node in visited0:
+            if node not in visited0:
                 tranversed_node += 1
                 visited0.append(node)
                 all_visited_nodes.append(node)
@@ -338,7 +337,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.node[i]
                 else:
                     del main_graph.graph.node[i]
-            except:
+            except Exception:
                 print("error deleting node", i)
 
         for i in reversed(range(len(main_graph.graph.input))):
@@ -347,7 +346,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.input[i]
                 else:
                     del main_graph.graph.input[i]
-            except:
+            except Exception:
                 print("error deleting inputs", i)
 
         for i in reversed(range(len(main_graph.graph.output))):
@@ -356,7 +355,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.output[i]
                 else:
                     del main_graph.graph.output[i]
-            except:
+            except Exception:
                 print("error deleting outputs ", i)
 
         print("model", str(model_count), " length ", len(subgraph.graph.node))

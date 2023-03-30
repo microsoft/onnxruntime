@@ -47,7 +47,7 @@ print("output type", output_type)
 #########################
 # Let's compute its outputs (or predictions if it is a machine learned model).
 
-import numpy.random
+import numpy.random  # noqa: E402
 
 x = numpy.random.random((3, 4, 5))
 x = x.astype(numpy.float32)

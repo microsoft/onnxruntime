@@ -218,11 +218,11 @@ For self attention, kv_sequence_length equals to sequence_length (sequence lengt
 For cross attention, query and key might have different lengths.
 )DOC";
 
-// Currently, the `convert_generation.py` script renames the `Attention` nodes to `DecoderMaskedMultiheadAttention`
-// if the user requests it. Hence, the schemas of `DecoderMaskedMultiheadAttention` and `Attention` schemas
-// are tightly coupled. A change in Attention also needs corresponding schema updates in `DecoderMaskedMultiheadAttention`
+// Currently, the `convert_generation.py` script renames the `Attention` nodes to `DecoderMaskedSelfAttention`
+// if the user requests it. Hence, the schemas of `DecoderMaskedSelfAttention` and `Attention` schemas
+// are tightly coupled. A change in Attention also needs corresponding schema updates in `DecoderMaskedSelfAttention`
 // and its kernel.
-// TODO(hasesh): Decouple the schema of `DecoderMaskedMultiheadAttention` from the schema of the `Attention` operator
+// TODO(hasesh): Decouple the schema of `DecoderMaskedSelfAttention` from the schema of the `Attention` operator
 // by making appropriate tool changes.
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -272,7 +272,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "mask_index",
                "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), "
                "(batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), "
-               "or index with shape (batch_size) or (2 * batch_size)",
+               "or index with shape (batch_size) or (2 * batch_size) or (3 * batch_size + 2)",
                "M",
                OpSchema::Optional)
         .Input(4,
@@ -442,8 +442,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PackedAttentionTypeAndShapeInference(ctx);
         }));
 
-constexpr const char* DecoderMaskedMultiheadAttention_ver1_doc = R"DOC(
-Uni-directional attention that supports input sequence length of 1.
+constexpr const char* DecoderMaskedSelfAttention_ver1_doc = R"DOC(
+Self attention that supports input sequence length of 1.
 
 The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
 is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
@@ -460,9 +460,9 @@ Currently, only self attention is supported which means that kv_sequence_length 
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    DecoderMaskedMultiheadAttention, 1,
+    DecoderMaskedSelfAttention, 1,
     OpSchema()
-        .SetDoc(DecoderMaskedMultiheadAttention_ver1_doc)
+        .SetDoc(DecoderMaskedSelfAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("past_present_share_buffer",
               "Corresponding past and present are same tensor, its size is "
@@ -471,6 +471,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Input(0,
@@ -571,7 +575,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1,
                "key",
                "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
-                "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+               "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(2,
@@ -586,7 +590,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "key_padding_mask",
-               "Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)",
+               "Key padding mask with shape (batch_size) or (3 * batch_size + 2) or (batch_size, kv_sequence_length)",
                "M",
                OpSchema::Optional)
         .Input(5,
