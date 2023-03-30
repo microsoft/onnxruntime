@@ -109,11 +109,7 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
     }
   }
 
-  int row_count = gsl::narrow_cast<int>(input_dims[0]);
-  if (input_dims_size == 3) {
-    row_count *= gsl::narrow_cast<int>(input_dims[1]);
-  }
-
+  int row_count = gsl::narrow<int>(input->Shape().SizeToDimension(input_dims_size - 1));
   typedef typename ToCudaType<T>::MappedType CudaT;
   HostApplyLayerNorm<CudaT, float, CudaT, Simplified>(
       GetDeviceProp(),
