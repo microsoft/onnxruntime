@@ -22,11 +22,24 @@ parameters:
   type: boolean
   default: false
 
+- name: WithCache
+  displayName: Build with Cache
+  type: boolean
+  default: false
+
+- name: CacheDir
+  displayName: Cache Directory
+  type: string
+  default: ''
+
 steps:
 - script: |
     rm -rf $(Build.BinariesDirectory)/Release
     python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
   displayName: 'Build ${{ parameters.MacosArch }}'
+  ${{ if eq(parameters.WithCache, true) }}:
+    env:
+      CCACHE_DIR: ${{ parameters.CacheDir }}
 
 - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
   - script: |
@@ -50,7 +63,7 @@ steps:
     replaceExistingArchive: true
 
 - script: |
-   set -e -x       
+   set -e -x
    mkdir -p $(Build.ArtifactStagingDirectory)/testdata
    cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
   displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
