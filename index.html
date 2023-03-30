@@ -147,14 +147,12 @@
 												aria-labelledby="v-pills-python-tab">
 												<pre style="overflow: hidden">
 <code>
-	import onnxruntime as ort
-	import numpy as np
-	ort_sess = ort.InferenceSession('model.onnx')
-	outputs = ort_sess.run(None, {'input': text.numpy(),
-								'offsets':  torch.tensor([0]).numpy()})
-	
-	result = outputs[0].argmax(axis=1)
-	print(result[0])
+import onnxruntime as ort
+import numpy as np
+ort_sess = ort.InferenceSession('model.onnx')
+outputs = ort_sess.run(None, {'input': text.numpy(),'offsets':  torch.tensor([0]).numpy()})
+result = outputs[0].argmax(axis=1)
+print(result[0])
 </code>
 											</pre>
 											</div>
@@ -162,12 +160,12 @@
 												aria-labelledby="v-pills-java-tab">
 												<pre style="overflow: hidden">
 <code>
-		OrtEnvironment env = OrtEnvironment.getEnvironment();
-		OrtSession session = env.createSession("model.onnx", new OrtSession.SessionOptions());
-		var tensorFromArray = OnnxTensor.createTensor(env,sourceArray);
-		OrtSession.Result output = session.run(Collections.singletonMap("input", tensorFromArray));
-		float[][] result = (float[][]) output.get(0).getValue();
-		System.out.println((int) result[0][0]);
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+OrtSession session = env.createSession("model.onnx", new OrtSession.SessionOptions());
+var tensorFromArray = OnnxTensor.createTensor(env,sourceArray);
+OrtSession.Result output = session.run(Collections.singletonMap("input", tensorFromArray));
+float[][] result = (float[][]) output.get(0).getValue();
+System.out.println((int) result[0][0]);
 </code>
 											</pre>
 											</div>
@@ -175,26 +173,27 @@
 												aria-labelledby="v-pills-javascript-tab">
 												<pre style="overflow: hidden">
 <code>
-	const ort = require('onnxruntime-web');
-	const input = new Float32Array([1, 2, 3]);
-	const offsets = new Int32Array([0]);
-	const session = await ort.InferenceSession.create('model.onnx');
-	const output = await session.run({ input, offsets });
-	const result = output.values().next().value.argmax(1);
-	console.log(result[0]);
+const ort = require('onnxruntime-web');
+var input = new Float32Array([1, 2, 3]);
+var offsets = new Int32Array([0]);
+var session = await ort.InferenceSession.create('model.onnx');
+var output = await session.run({ input, offsets });
+var result = output.values().next().value.argmax(1);
+console.log(result[0]);
 </code>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-cpp" role="tabpanel"
 												aria-labelledby="v-pills-cpp-tab">
 												<pre style="overflow: hidden">
-<code>import onnxruntime as ort4
-		import numpy as np
-		x, y = test_data[0][0], test_data[0][1]
-		ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-		outputs = ort_sess.run(None, {'input': x.numpy()})
-		predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-		print(f'Predicted: "{predicted}", Actual: "{actual}"')
+<code>
+import onnxruntime as ort4
+import numpy as np
+x, y = test_data[0][0], test_data[0][1]
+ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
+outputs = ort_sess.run(None, {'input': x.numpy()})
+predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
+print(f'Predicted: "{predicted}", Actual: "{actual}"')
 </code>
 											</pre>
 											</div>
@@ -202,16 +201,14 @@
 												aria-labelledby="v-pills-cs-tab">
 												<pre style="overflow: hidden">
 <code>
-	using Microsoft.ML.OnnxRuntime;
-	
-	review = "A text review";
-	var modelPath = "./model.onnx";
-	var inputTensor = new DenseTensor<string>(new string[] { review }, new int[] { 1, 1 });
-	var input = new List<NamedOnnxValue> { 
-		NamedOnnxValue.CreateFromTensor<string>("input", inputTensor) };
-	var session = new InferenceSession(modelPath);
-	var output = session.Run(input).ToList().Last().AsEnumerable<NamedOnnxValue>();
-	var inferenceResult = output.First().AsDictionary<string, float>();
+using Microsoft.ML.OnnxRuntime;
+review = "A text review";
+var modelPath = "./model.onnx";
+var inputTensor = new DenseTensor<string>(new string[] { review }, new int[] { 1, 1 });
+var input = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<string>("input", inputTensor) };
+var session = new InferenceSession(modelPath);
+var output = session.Run(input).ToList().Last().AsEnumerable<NamedOnnxValue>();
+var inferenceResult = output.First().AsDictionary<string, float>();
 </code>
 											</pre>
 											</div>
