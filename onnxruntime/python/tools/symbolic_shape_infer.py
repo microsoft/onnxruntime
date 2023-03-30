@@ -2113,19 +2113,17 @@ class SymbolicShapeInference:
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, ["token_count", shape[2]]))
 
             vi_token_offset = self.known_vi_[node.output[1]]
-            vi_token_offset.CopyFrom(helper.make_tensor_value_info(node.output[1],
-                                                                   onnx.TensorProto.INT32,
-                                                                   [shape[0], shape[1]]))
+            vi_token_offset.CopyFrom(
+                helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT32, [shape[0], shape[1]])
+            )
 
             vi_cumulated_seq_len = self.known_vi_[node.output[2]]
-            vi_cumulated_seq_len.CopyFrom(helper.make_tensor_value_info(node.output[2],
-                                                                   onnx.TensorProto.INT32,
-                                                                   ['batch_size + 1']))
+            vi_cumulated_seq_len.CopyFrom(
+                helper.make_tensor_value_info(node.output[2], onnx.TensorProto.INT32, ["batch_size + 1"])
+            )
 
             vi_max_seq_len = self.known_vi_[node.output[3]]
-            vi_max_seq_len.CopyFrom(helper.make_tensor_value_info(node.output[3],
-                                                                   onnx.TensorProto.INT32,
-                                                                   [1]))
+            vi_max_seq_len.CopyFrom(helper.make_tensor_value_info(node.output[3], onnx.TensorProto.INT32, [1]))
 
     def _infer_RestorePadding(self, node):  # noqa: N802
         shape_input = self._get_shape(node, 0)
