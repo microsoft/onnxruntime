@@ -1,6 +1,6 @@
 import io
 from pathlib import Path
-from typing import Any, Callable, Optional, Union  # noqa: F401
+from typing import Any, Callable, Union
 
 import torch
 from torch.onnx import TrainingMode

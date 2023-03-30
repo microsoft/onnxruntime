@@ -1,11 +1,8 @@
-import os.path  # noqa: F401
 import struct
-import sys  # noqa: F401
 
-import numpy as np  # noqa: F401
 import onnx
 from onnx import *  # noqa: F403
-from onnx import helper, numpy_helper  # noqa: F401
+from onnx import helper
 
 
 def run_postprocess(model):

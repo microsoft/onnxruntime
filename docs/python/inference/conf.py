@@ -6,8 +6,6 @@
 # Configuration file for the Sphinx documentation builder.
 
 import os
-import shutil  # noqa: F401
-import sys  # noqa: F401
 
 import onnxruntime
 
@@ -95,7 +93,7 @@ def setup(app):
         urllib.request.urlretrieve(url, dest)
     loc = os.path.split(dest)[-1]
     if not os.path.exists(loc):
-        import shutil  # noqa: F811
+        import shutil
 
         shutil.copy(dest, loc)
     return app

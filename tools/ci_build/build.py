@@ -1862,8 +1862,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     )
 
             try:
-                import onnx  # noqa: F401
-
                 onnx_test = True
             except ImportError as error:
                 log.exception(error)
@@ -1922,9 +1920,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.skip_keras_test:
                 try:
-                    import keras  # noqa: F401
-                    import onnxmltools  # noqa: F401
-
                     onnxml_test = True
                 except ImportError:
                     log.warning("onnxmltools and keras are not installed. " "The keras tests will be skipped.")

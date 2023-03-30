@@ -1,8 +1,7 @@
 import os
-import sys  # noqa: F401
 
 import onnx
-from onnx import OperatorSetIdProto, TensorProto, helper  # noqa: F401
+from onnx import TensorProto, helper
 
 # Edge that needs to be cut for the split.
 # If the edge is feeding into more than one nodes, and not all the nodes belong to the same cut,

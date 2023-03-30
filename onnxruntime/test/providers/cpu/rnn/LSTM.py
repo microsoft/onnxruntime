@@ -2,8 +2,6 @@
 # Licensed under the MIT License.
 
 
-from typing import Any, Tuple  # noqa: F401
-
 import numpy as np  # type: ignore
 
 # import onnx

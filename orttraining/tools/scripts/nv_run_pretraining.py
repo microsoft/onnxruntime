@@ -33,14 +33,10 @@ from apex import amp
 from apex.amp import _amp_state
 from apex.parallel import DistributedDataParallel as DDP  # noqa: N817
 from apex.parallel.distributed import flat_dist_call
-from file_utils import PYTORCH_PRETRAINED_BERT_CACHE  # noqa: F401
 from modeling import BertConfig, BertForPreTraining
 from optimization import BertLAMB
-from schedulers import LinearWarmUpScheduler  # noqa: F401
-from tokenization import BertTokenizer  # noqa: F401
-from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler  # noqa: F401
-from torch.utils.data.distributed import DistributedSampler  # noqa: F401
-from tqdm import tqdm, trange  # noqa: F401
+from torch.utils.data import DataLoader, Dataset, RandomSampler
+from tqdm import tqdm
 from utils import is_main_process
 
 logging.basicConfig(

@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 
 import argparse
-import io  # noqa: F401
 import os
 import pathlib
 from collections import defaultdict

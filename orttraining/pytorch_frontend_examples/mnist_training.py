@@ -7,11 +7,9 @@
 import argparse
 import os
 
-import numpy as np  # noqa: F401
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim  # noqa: F401
 from mpi4py import MPI
 from torchvision import datasets, transforms
 
@@ -193,7 +191,6 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         train_with_trainer(args, trainer, device, train_loader, epoch)
-        import pdb  # noqa: F401
 
         test_with_trainer(args, trainer, device, test_loader)
 

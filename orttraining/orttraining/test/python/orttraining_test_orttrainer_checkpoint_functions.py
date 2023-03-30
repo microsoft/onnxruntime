@@ -6,7 +6,7 @@ import pytest
 import torch
 from _test_commons import _load_pytorch_transformer_model
 
-from onnxruntime.training import _checkpoint_storage, amp, checkpoint, optim, orttrainer  # noqa: F401
+from onnxruntime.training import _checkpoint_storage, checkpoint, optim, orttrainer
 
 # Helper functions
 

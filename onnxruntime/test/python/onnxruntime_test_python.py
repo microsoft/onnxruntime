@@ -173,7 +173,6 @@ class TestInferenceSession(unittest.TestCase):
 
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             import ctypes
-            import sys  # noqa: F401
 
             CUDA_SUCCESS = 0  # noqa: N806
 

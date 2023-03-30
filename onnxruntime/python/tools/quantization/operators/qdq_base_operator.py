@@ -1,8 +1,5 @@
 import itertools
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, quantize_nparray  # noqa: F401
-from .base_operator import QuantOperatorBase  # noqa: F401
-
 
 class QDQOperatorBase:
     def __init__(self, onnx_quantizer, onnx_node):

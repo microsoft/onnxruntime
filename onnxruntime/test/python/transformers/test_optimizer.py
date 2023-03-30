@@ -309,7 +309,7 @@ class TestModelOptimization(unittest.TestCase):
 class TestTensorflowModelOptimization(unittest.TestCase):
     def Setup(self):  # noqa: N802
         try:
-            import tf2onnx  # noqa: F401
+            pass
         except ImportError:
             self.skipTest("skip TestBertOptimizationTF since tf2onnx not installed")
 

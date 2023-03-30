@@ -12,7 +12,6 @@ import torch
 import wget
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
-from transformers import BertConfig  # noqa: F401
 from transformers import (
     AdamW,
     AutoConfig,

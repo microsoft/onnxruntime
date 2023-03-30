@@ -7,7 +7,7 @@ from datetime import date
 
 import numpy as np
 import onnx
-from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper, utils  # noqa: F401
+from onnx import TensorProto, helper, numpy_helper
 
 
 def parse_arguments():

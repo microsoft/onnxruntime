@@ -299,7 +299,7 @@ class ORTTrainer:
 
     def _check_model_export(self, input):
         from numpy.testing import assert_allclose
-        from onnx import TensorProto, helper, numpy_helper  # noqa: F401
+        from onnx import numpy_helper
 
         onnx_model_copy = copy.deepcopy(self._onnx_model)
 

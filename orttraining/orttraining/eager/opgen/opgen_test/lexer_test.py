@@ -3,7 +3,7 @@
 
 import unittest
 
-from opgen.lexer import Lexer, SourceLocation, StringReader, Token, TokenKind  # noqa: F401
+from opgen.lexer import Lexer, StringReader, Token, TokenKind
 
 
 class LexerTestCase(unittest.TestCase):

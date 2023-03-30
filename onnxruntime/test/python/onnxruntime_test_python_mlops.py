@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import os  # noqa: F401
 
 # -*- coding: UTF-8 -*-
 import unittest

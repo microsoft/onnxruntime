@@ -1,13 +1,8 @@
-import argparse  # noqa: F401
-import copy  # noqa: F401
-import csv  # noqa: F401
 import json
-import logging  # noqa: F401
 import os
 import pprint
 import re
 
-import coloredlogs  # noqa: F401
 from benchmark import *  # noqa: F403
 from perf_utils import *  # noqa: F403
 

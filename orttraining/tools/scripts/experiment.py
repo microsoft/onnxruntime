@@ -1,15 +1,12 @@
 import argparse
-import os  # noqa: F401
 import re
-import sys  # noqa: F401
 
 from azure.common.client_factory import get_client_from_cli_profile
 from azure.mgmt.containerregistry import ContainerRegistryManagementClient
-from azureml.core import Datastore, Experiment, Run, Workspace  # noqa: F401
-from azureml.core.compute import AmlCompute, ComputeTarget  # noqa: F401
+from azureml.core import Datastore, Experiment, Workspace
+from azureml.core.compute import ComputeTarget
 from azureml.core.container_registry import ContainerRegistry
-from azureml.core.runconfig import MpiConfiguration, RunConfiguration  # noqa: F401
-from azureml.data.azure_storage_datastore import AzureBlobDatastore, AzureFileDatastore  # noqa: F401
+from azureml.core.runconfig import MpiConfiguration
 from azureml.train.estimator import Estimator
 
 parser = argparse.ArgumentParser()

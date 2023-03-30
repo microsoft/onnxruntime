@@ -9,7 +9,7 @@ import os
 import unittest
 
 import packaging.version
-from onnx import ModelProto, helper, version  # noqa: F401
+from onnx import helper, version
 from onnx.backend.base import Backend
 from onnx.checker import check_model
 

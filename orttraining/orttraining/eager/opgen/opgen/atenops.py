@@ -1,5 +1,3 @@
-from copy import deepcopy  # noqa: F401
-
 import torch
 from opgen.generator import MakeTorchFallback, ONNXOp, SignatureOnly
 from opgen.onnxops import *  # noqa: F403

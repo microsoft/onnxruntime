@@ -26,7 +26,6 @@ The input model is generated like the following (need install keras2onnx from so
 import argparse
 import os
 import random
-import sys  # noqa: F401
 import timeit
 from pathlib import Path
 

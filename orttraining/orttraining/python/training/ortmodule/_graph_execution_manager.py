@@ -8,7 +8,7 @@ import inspect
 import io
 import os
 import warnings
-from abc import ABC, abstractmethod  # noqa: F401
+from abc import abstractmethod
 from enum import IntFlag
 from functools import reduce
 

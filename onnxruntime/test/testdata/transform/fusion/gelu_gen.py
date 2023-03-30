@@ -1,6 +1,6 @@
 import numpy as np
 import onnx
-from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper  # noqa: F401
+from onnx import OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 """
 Generate test model for Gelu subgraph pattern 2:

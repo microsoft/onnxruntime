@@ -67,8 +67,6 @@ def validate_build_package_info():
 
     has_ortmodule = False
     try:
-        from onnxruntime.training.ortmodule import ORTModule  # noqa: F401
-
         has_ortmodule = True
     except ImportError:
         # ORTModule not present

@@ -45,12 +45,9 @@ import logging
 import os
 import timeit
 from datetime import datetime
-from enum import Enum  # noqa: F401
 
 import numpy
-import onnx  # noqa: F401
 import psutil
-from benchmark_helper import allocateOutputBuffers  # noqa: F401
 from benchmark_helper import (
     ConfigModifier,
     OptimizerInfo,

@@ -2,7 +2,6 @@
 # For details, see https://pytorch.org/tutorials/intermediate/ddp_tutorial.html.
 import argparse
 import os
-import sys  # noqa: F401
 import tempfile
 
 import torch
@@ -12,7 +11,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
 
-import onnxruntime  # noqa: F401
 from onnxruntime.training.ortmodule import ORTModule
 
 

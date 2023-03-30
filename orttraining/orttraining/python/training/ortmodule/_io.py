@@ -11,7 +11,7 @@ from collections import abc
 
 import torch
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception  # noqa: F401
+from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
 from ._utils import warn_of_constant_inputs
 
 

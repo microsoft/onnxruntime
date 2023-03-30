@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import warnings  # noqa: F401
 
 import torch
 import torch.onnx.symbolic_helper as sym_help

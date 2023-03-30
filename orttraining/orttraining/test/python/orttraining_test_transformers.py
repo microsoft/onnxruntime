@@ -9,7 +9,7 @@ from orttraining_test_utils import get_lr, run_test
 from transformers import BertConfig, BertForPreTraining
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer  # noqa: F401
+from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription
 
 
 class BertModelTest(unittest.TestCase):

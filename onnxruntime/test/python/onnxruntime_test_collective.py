@@ -3,9 +3,8 @@
 import unittest
 
 import numpy as np
-import onnx  # noqa: F401
 from mpi4py import MPI
-from onnx import AttributeProto, GraphProto, TensorProto, helper  # noqa: F401
+from onnx import TensorProto, helper
 
 import onnxruntime as ort
 

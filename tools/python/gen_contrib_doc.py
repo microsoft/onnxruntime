@@ -8,13 +8,10 @@ import os
 import pathlib
 import sys
 from collections import defaultdict
-from typing import Any, Dict, List, Sequence, Set, Text, Tuple  # noqa: F401
 
 import numpy as np  # type: ignore
-from onnx import AttributeProto, FunctionProto  # noqa: F401
 
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy
-from onnxruntime.capi.onnxruntime_pybind11_state import schemadef  # noqa: F401
 from onnxruntime.capi.onnxruntime_pybind11_state.schemadef import OpSchema
 
 ONNX_ML = not bool(os.getenv("ONNX_ML") == "0")
