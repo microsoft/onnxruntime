@@ -208,7 +208,6 @@ RUN cd /tmp/scripts && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.10 $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.11 $INSTALL_DEPS_EXTRA_ARGS && \
      rm -rf /tmp/scripts
 
 # remove protobuf to prevent ambiguity which is used for onnxruntime build
