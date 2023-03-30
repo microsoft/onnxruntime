@@ -448,9 +448,12 @@ class SymbolicShapeInference:
             "LayerNormalization",
             "LongformerAttention",
             "RelativePositionBias",
+            "RemovePadding",
+            "RestorePadding",
             "SimplifiedLayerNormalization",
             "SkipLayerNormalization",
             "SkipSimplifiedLayerNormalization",
+            "PackedAttention",
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
@@ -2103,10 +2106,36 @@ class SymbolicShapeInference:
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
 
     def _infer_RemovePadding(self, node):
-        pass
+        shape = self._get_shape(node, 0)
+        if shape and len(shape) == 3:
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, ["token_count", shape[2]]))
+
+            vi_token_offset = self.known_vi_[node.output[1]]
+            vi_token_offset.CopyFrom(helper.make_tensor_value_info(node.output[1],
+                                                                   onnx.TensorProto.INT32,
+                                                                   [shape[0], shape[1]]))
+
+            vi_cumulated_seq_len = self.known_vi_[node.output[2]]
+            vi_cumulated_seq_len.CopyFrom(helper.make_tensor_value_info(node.output[2],
+                                                                   onnx.TensorProto.INT32,
+                                                                   ['batch_size + 1']))
+
+            vi_max_seq_len = self.known_vi_[node.output[3]]
+            vi_max_seq_len.CopyFrom(helper.make_tensor_value_info(node.output[3],
+                                                                   onnx.TensorProto.INT32,
+                                                                   [1]))
 
     def _infer_RestorePadding(self, node):
-        pass
+        shape_input = self._get_shape(node, 0)
+        shape_token_offset = self._get_shape(node, 1)
+        if shape_input and len(shape_input) == 2 and shape_token_offset and len(shape_token_offset) == 2:
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+
+            output_shape = [shape_token_offset[0], shape_token_offset[1], shape_input[1]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_BiasGelu(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)

@@ -3,27 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-# Convert Bert ONNX model converted from TensorFlow or exported from PyTorch to use Attention, Gelu,
-# SkipLayerNormalization and EmbedLayerNormalization ops to optimize
-# performance on NVidia GPU and CPU.
-#
-# For Bert model exported from PyTorch, OnnxRuntime has bert model optimization support internally.
-# You can use the option --use_onnxruntime to check optimizations from OnnxRuntime.
-# For Bert model file like name.onnx, optimized model for GPU or CPU from OnnxRuntime will output as
-# name_ort_gpu.onnx or name_ort_cpu.onnx in the same directory.
-#
-# This script is retained for experiment purpose. Useful scenarios like the following:
-#  (1) Change model from fp32 to fp16 for mixed precision inference in GPU with Tensor Core.
-#  (2) Change input data type from int64 to int32.
-#  (3) Some model cannot be handled by OnnxRuntime, and you can modify this script to get optimized model.
-
 import argparse
 import logging
 import os
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import coloredlogs
-from onnx import helper, load_model, save_model
+from onnx import ModelProto, helper, load_model, save_model
 from onnx_model import OnnxModel
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
@@ -144,7 +130,7 @@ class PackingMode:
             self.nodes_to_remove.append(attention)
             self.node_name_to_graph_name[packed_attention.name] = self.this_graph_name
 
-    def apply(self):
+    def convert(self, use_symbolic_shape_infer = True):
         logger.debug(f"start converting to packing model...")
         if not self.are_attentions_supportted():
             return
@@ -185,6 +171,13 @@ class PackingMode:
         elif self.nodes_to_remove or self.nodes_to_add:
             self.model.update_graph()
         self.model.clean_shape_infer()
+        if use_symbolic_shape_infer:
+            # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
+            # are not recognized by onnx shape inference.
+            shape_infer_helper = SymbolicShapeInferenceHelper(self.model.model, verbose=0)
+            infered_model = shape_infer_helper.infer_shapes(self.model.model, auto_merge=True, guess_output_rank=False)
+            if infered_model:
+                self.model.model = infered_model
 
 def _parse_arguments():
     parser = argparse.ArgumentParser(
@@ -233,9 +226,8 @@ def main():
 
     model = load_model(args.input)
     packing_mode = PackingMode(OnnxModel(model))
-    packing_mode.apply()
-    packing_mode.model.save_model_to_file(args.output)
-
+    model = packing_mode.convert()
+    packing_mode.model.save_model_to_file(args.output, use_external_data_format=args.use_external_data_format)
 
 if __name__ == "__main__":
     main()
