@@ -12,11 +12,11 @@ import random
 import traceback
 import types
 import warnings
-from typing import List
-from packaging.version import Version as LooseVersion
+from typing import List  # noqa: F401
 
 import numpy as np
 import torch
+from packaging.version import Version as LooseVersion
 from torch._C import _from_dlpack
 from torch.utils.dlpack import to_dlpack
 
@@ -67,7 +67,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device=None):
     if len(ortvalues) == 0:
         return tuple()
 
-    if device is not None and "ort" == device.type:
+    if device is not None and device.type == "ort":
         if not hasattr(C, "to_aten_ort_device_tensor"):
             raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
         return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
@@ -239,12 +239,11 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                 or not inspect.ismethod(torch_module_attributes[attribute_name])
                 or attribute.__func__ != torch_module_attributes[attribute_name].__func__
             ):
-
                 # forward is expected to be defined by the user.
                 if attribute_name == "forward":
                     continue
 
-                # This is a user defined/overriden method. Check for collisions.
+                # This is a user defined/overridden method. Check for collisions.
                 if attribute_name in ortmodule_attributes:
                     # This is a user defined method, issue a warning.
                     warnings.warn(
@@ -294,7 +293,6 @@ def get_state_after_deletion_of_non_ortmodule_methods(ortmodule, user_module):
                 and inspect.ismethod(ortmodule_attributes[attribute_name])
                 and attribute.__func__ == ortmodule_attributes[attribute_name].__func__
             ):
-
                 # forward is expected to be defined by the user.
                 if attribute_name == "forward":
                     continue
@@ -316,7 +314,7 @@ def get_exception_as_string(exception):
 
     try:
         raise exception
-    except:
+    except Exception:
         return traceback.format_exc()
 
 

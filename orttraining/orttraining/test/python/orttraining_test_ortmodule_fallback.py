@@ -52,7 +52,7 @@ def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_poli
 
     class UnsupportedInputModel(torch.nn.Module):
         def __init__(self):
-            super(UnsupportedInputModel, self).__init__()
+            super().__init__()
 
         def forward(self, point):
             return point.x * point.y
@@ -160,7 +160,7 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     data_device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
 
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
     ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -224,7 +224,7 @@ def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_polic
     os.environ["ORTMODULE_FALLBACK_RETRY"] = str(not persist_fallback)
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     pt_model = NeuralNetCustomClassOutput(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(N, D_in, device=device)
@@ -336,7 +336,7 @@ def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_
     os.environ["ORTMODULE_FALLBACK_RETRY"] = str(not persist_fallback)
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     x = torch.randn(N, D_in, device=device)
 
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
@@ -379,7 +379,6 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
     runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])
     minimum_runtime_pytorch_version = version.parse(MINIMUM_RUNTIME_PYTORCH_VERSION_STR)
     if runtime_pytorch_version < minimum_runtime_pytorch_version:
-
         if fallback_enabled:
             if matching_policy:
                 policy = "FALLBACK_BAD_INITIALIZATION"
@@ -391,12 +390,12 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
         os.environ["ORTMODULE_FALLBACK_RETRY"] = str(not persist_fallback)
 
         device = "cuda"
-        N, D_in, H, D_out = 64, 784, 500, 10
+        N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
         x = torch.randn(N, D_in, device=device)
 
         pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
 
-        for i in range(3):
+        for _i in range(3):
             if fallback_enabled:
                 if matching_policy:
                     ort_model = ORTModule(pt_model)
@@ -440,10 +439,9 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(
     if is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR):
         warnings.warn(
             "Skipping test_ortmodule_fallback_init__missing_cpp_extensions."
-            f" It requires PyTorch CPP extensions to be missing"
+            " It requires PyTorch CPP extensions to be missing"
         )
     else:
-
         if fallback_enabled:
             if matching_policy:
                 policy = "FALLBACK_BAD_INITIALIZATION"
@@ -455,7 +453,7 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(
         os.environ["ORTMODULE_FALLBACK_RETRY"] = str(not persist_fallback)
 
         device = "cuda"
-        N, D_in, H, D_out = 64, 784, 500, 10
+        N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
         x = torch.randn(N, D_in, device=device)
 
         pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
@@ -544,7 +542,7 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     data_device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
 
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
     ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -557,9 +555,8 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
     inputs = torch.randn(N, D_in, device=data_device)
 
     for _ in range(3):
-        with pytest.raises(RuntimeError):
-            with pytest.warns(UserWarning) as warning_record:
-                ort_model(inputs)
+        with pytest.raises(RuntimeError), pytest.warns(UserWarning) as warning_record:
+            ort_model(inputs)
         assert "Fallback to PyTorch due to exception" in str(warning_record[0].message.args[0])
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
@@ -644,11 +641,11 @@ def test_ortmodule_fallback_non_contiguous_tensors(is_training, persist_fallback
     optimizer = torch.optim.SGD(model.parameters(), lr=5.0)
 
     n_iter = 0
-    for epoch in range(1, 2):
+    for _epoch in range(1, 2):
         model.train()  # turn on train mode
 
-        num_batches = len(train_data) // bptt
-        for batch, i in enumerate(range(0, train_data.size(0) - 1, bptt)):
+        len(train_data) // bptt
+        for _batch, i in enumerate(range(0, train_data.size(0) - 1, bptt)):
             data, targets = get_batch(train_data, i)
             batch_size = data.size(0)
             if batch_size != bptt:  # only on last batch

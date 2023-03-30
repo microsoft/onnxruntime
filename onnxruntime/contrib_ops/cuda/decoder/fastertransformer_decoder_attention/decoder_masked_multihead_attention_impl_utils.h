@@ -1,6 +1,6 @@
 /*
  * The implementation of this file is based on code provided by https://github.com/NVIDIA/FasterTransformer
- * 
+ *
  * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,7 +30,7 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-namespace decoder_masked_multihead_attention_details {
+namespace decoder_masked_self_attention_details {
 
 //------------------------------------------------------------
 // Qk_vec
@@ -741,7 +741,7 @@ inline __device__ void ConvertFromFloat(uint4& dst, Float8_ src) {
 //------------------------------------------------------------
 
 template <typename T>
-inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiheadAttentionParams& params,
+inline size_t CalcDynamicBlockMemory(const DecoderMaskedSelfAttentionParams& params,
                                      int threads_per_value, int threads_per_block) {
   // The amount of shared memory needed to store the Q*K^T values in float.
 
@@ -768,7 +768,7 @@ inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiheadAttentionParams
   return std::max(softmax_sz, red_sz);
 }
 
-}  // namespace decoder_masked_multihead_attention_details
+}  // namespace decoder_masked_self_attention_details
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

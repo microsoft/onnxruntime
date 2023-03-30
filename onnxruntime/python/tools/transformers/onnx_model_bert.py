@@ -33,7 +33,7 @@ class BertOptimizationOptions(FusionOptions):
     """This class is deprecated"""
 
     def __init__(self, model_type):
-        logger.warning(f"BertOptimizationOptions is depreciated. Please use FusionOptions instead.")
+        logger.warning("BertOptimizationOptions is depreciated. Please use FusionOptions instead.")
         super().__init__(model_type)
 
 
@@ -235,7 +235,6 @@ class BertOnnxModel(OnnxModel):
             casted=True
         ) + self.get_graph_inputs_from_fused_nodes(casted=False)
 
-        dynamic_batch_inputs = {}
         for input in self.model.graph.input:
             if input.name in bert_graph_inputs:
                 dim_proto = input.type.tensor_type.shape.dim[0]
@@ -324,7 +323,7 @@ class BertOnnxModel(OnnxModel):
                 if parent_nodes is not None:
                     (
                         cast,
-                        constantOfShape,
+                        constantOfShape,  # noqa: N806
                         concat,
                         unsqueeze,
                         gather,

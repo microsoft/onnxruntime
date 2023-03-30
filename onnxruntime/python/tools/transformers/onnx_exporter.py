@@ -19,7 +19,7 @@ from torch_onnx_export_helper import torch_onnx_export
 from transformers import AutoConfig, AutoTokenizer, LxmertConfig, TransfoXLConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState, TFGPT2ModelNoPastState
+from gpt2_helper import PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState, TFGPT2ModelNoPastState  # noqa: E402
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -95,7 +95,7 @@ def update_flatten_list(inputs, res_list):
 def build_dynamic_axes(example_inputs, outputs_flatten):
     sequence_length = example_inputs["input_ids"].shape[-1]
 
-    dynamic_axes = {key: {0: "batch_size", 1: "seq_len"} for key in example_inputs.keys()}
+    dynamic_axes = {key: {0: "batch_size", 1: "seq_len"} for key in example_inputs}
 
     output_names = ["output_" + str(i + 1) for i in range(len(outputs_flatten))]
     for i, output_name in enumerate(output_names):
@@ -172,7 +172,7 @@ def get_onnx_file_path(
         filename = f"{normalized_model_name}_{input_count}_{precision}_{device}"
 
     if optimized_by_onnxruntime:
-        filename += f"_ort"
+        filename += "_ort"
 
     directory = onnx_dir
     # ONNXRuntime will not write external data so the raw and optimized models shall be in same directory.
@@ -236,9 +236,9 @@ def optimize_onnx_model(
         if optimization_options is None:
             optimization_options = FusionOptions(model_type)
         optimization_options.use_raw_attention_mask(use_raw_attention_mask)
-        if Precision.FLOAT16 == precision:
+        if precision == Precision.FLOAT16:
             optimization_options.enable_gelu_approximation = True
-        if Precision.INT8 == precision:
+        if precision == Precision.INT8:
             optimization_options.enable_embed_layer_norm = False
 
         # Use script to optimize model.
@@ -259,7 +259,7 @@ def optimize_onnx_model(
 
         model_fusion_statistics[optimized_model_path] = opt_model.get_fused_operator_statistics()
 
-        if Precision.FLOAT16 == precision:
+        if precision == Precision.FLOAT16:
             opt_model.convert_float_to_float16(keep_io_types=True)
 
         opt_model.save_model_to_file(optimized_model_path, use_external_data_format)
@@ -268,7 +268,7 @@ def optimize_onnx_model(
 
 
 def modelclass_dispatcher(model_name, custom_model_class):
-    if custom_model_class != None:
+    if custom_model_class is not None:
         if custom_model_class in MODEL_CLASSES:
             return custom_model_class
         else:
@@ -279,11 +279,11 @@ def modelclass_dispatcher(model_name, custom_model_class):
 
     import re
 
-    if re.search("-squad$", model_name) != None:
+    if re.search("-squad$", model_name) is not None:
         return "AutoModelForQuestionAnswering"
-    elif re.search("-mprc$", model_name) != None:
+    elif re.search("-mprc$", model_name) is not None:
         return "AutoModelForSequenceClassification"
-    elif re.search("gpt2", model_name) != None:
+    elif re.search("gpt2", model_name) is not None:
         return "AutoModelWithLMHead"
 
     return "AutoModel"
@@ -461,7 +461,6 @@ def export_onnx_model_from_pt(
     model_fusion_statistics,
     fusion_options,
 ):
-
     config, model = load_pt_model(model_name, model_class, cache_dir, config_modifier)
     # config, model = load_pt_model_from_tf(model_name)
     model.cpu()
@@ -495,7 +494,7 @@ def export_onnx_model_from_pt(
     )
 
     if overwrite or not os.path.exists(onnx_model_path):
-        logger.info("Exporting ONNX model to {}".format(onnx_model_path))
+        logger.info(f"Exporting ONNX model to {onnx_model_path}")
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
@@ -600,7 +599,7 @@ def export_onnx_model_from_tf(
         # Use no past state for these models
         if config.use_cache:
             config.use_cache = False
-    except:
+    except Exception:
         pass
 
     example_outputs = model(example_inputs, training=False)
@@ -629,7 +628,7 @@ def export_onnx_model_from_tf(
     tf_internal_model_path = onnx_model_path[:-5] if use_external_data_format else onnx_model_path
 
     if overwrite or not os.path.exists(tf_internal_model_path):
-        logger.info("Exporting ONNX model to {}".format(onnx_model_path))
+        logger.info(f"Exporting ONNX model to {onnx_model_path}")
         if not use_external_data_format:
             Path(tf_internal_model_path).parent.mkdir(parents=True, exist_ok=True)
 

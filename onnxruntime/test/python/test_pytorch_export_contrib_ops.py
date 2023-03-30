@@ -36,7 +36,7 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
     inputs = list(map(to_numpy, input))
     outputs = list(map(to_numpy, output))
 
-    ort_inputs = dict((ort_sess.get_inputs()[i].name, input) for i, input in enumerate(inputs))
+    ort_inputs = {ort_sess.get_inputs()[i].name: input for i, input in enumerate(inputs)}
     ort_outs = ort_sess.run(None, ort_inputs)
 
     # compare onnxruntime and PyTorch results
@@ -112,7 +112,7 @@ class ONNXExporterTest(unittest.TestCase):
             if test_with_inputs is not None:
                 for test_input in test_with_inputs:
                     if isinstance(test_input, torch.Tensor):
-                        test_input = (test_input,)
+                        test_input = (test_input,)  # noqa: PLW2901
                     test_input_copy = copy.deepcopy(test_input)
                     output = model(*test_input_copy)
                     if isinstance(output, torch.Tensor):
@@ -163,7 +163,7 @@ class ONNXExporterTest(unittest.TestCase):
 
             class Module(torch.nn.Module):
                 def forward(self, input):
-                    return input.triu(diagonal=i)
+                    return input.triu(diagonal=i)  # noqa: B023
 
             model = Module()
             x = torch.randn(5, 4, 7, dtype=torch.float32)
@@ -179,7 +179,7 @@ class ONNXExporterTest(unittest.TestCase):
 
             class Module2D(torch.nn.Module):
                 def forward(self, input):
-                    return input.triu(diagonal=i)
+                    return input.triu(diagonal=i)  # noqa: B023
 
             model = Module2D()
             x = torch.randn(4, 7, dtype=torch.float32)
@@ -196,7 +196,7 @@ class ONNXExporterTest(unittest.TestCase):
 
             class Module(torch.nn.Module):
                 def forward(self, input):
-                    return input.tril(diagonal=i)
+                    return input.tril(diagonal=i)  # noqa: B023
 
             model = Module()
             x = torch.randn(5, 4, 7, dtype=torch.float32)
@@ -212,7 +212,7 @@ class ONNXExporterTest(unittest.TestCase):
 
             class Module2D(torch.nn.Module):
                 def forward(self, input):
-                    return input.tril(diagonal=i)
+                    return input.tril(diagonal=i)  # noqa: B023
 
             model = Module2D()
             x = torch.randn(4, 7, dtype=torch.float32)
@@ -228,7 +228,7 @@ class ONNXExporterTest(unittest.TestCase):
 # opset 9 tests, with keep_initializers_as_inputs=False for
 # IR version 4 style export.
 ONNXExporterTest_opset9_IRv4 = type(
-    str("TestONNXRuntime_opset9_IRv4"),
+    "TestONNXRuntime_opset9_IRv4",
     (unittest.TestCase,),
     dict(ONNXExporterTest.__dict__, keep_initializers_as_inputs=False),
 )

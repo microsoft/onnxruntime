@@ -1,24 +1,25 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import unittest
-import torch
-import onnxruntime_pybind11_state as torch_ort
 import os
 import sys
+import unittest
+
+import onnxruntime_pybind11_state as torch_ort
+import torch
 
 
 def is_windows():
     return sys.platform.startswith("win")
 
 
-from io import StringIO
-import sys
-import threading
-import time
+import sys  # noqa: E402, F811
+import threading  # noqa: E402
+import time  # noqa: E402
+from io import StringIO  # noqa: E402, F401
 
 
-class OutputGrabber(object):
+class OutputGrabber:
     """
     Class used to grab standard output or another stream.
     """
@@ -81,7 +82,7 @@ class OutputGrabber(object):
         # Close the duplicate stream:
         os.close(self.streamfd)
 
-    def readOutput(self):
+    def readOutput(self):  # noqa: N802
         """
         Read the stream data (one byte at a time)
         and save the text in `capturedtext`.
@@ -107,22 +108,22 @@ class OrtEPTests(unittest.TestCase):
         # capture std out
         with OutputGrabber() as out:
             torch_ort.set_device(1, "TestExecutionProvider", {"device_id": "0", "some_config": "val"})
-            ort_device = torch_ort.device(1)
+            torch_ort.device(1)
         assert "My EP provider created, with device id: 0, some_option: val" in out.capturedtext
         with OutputGrabber() as out:
             torch_ort.set_device(2, "TestExecutionProvider", {"device_id": "1", "some_config": "val"})
-            ort_device = torch_ort.device(1)
+            torch_ort.device(1)
         assert "My EP provider created, with device id: 1, some_option: val" in out.capturedtext
         # test the reusing EP instance
         with OutputGrabber() as out:
             torch_ort.set_device(3, "TestExecutionProvider", {"device_id": "0", "some_config": "val"})
-            ort_device = torch_ort.device(1)
+            torch_ort.device(1)
         assert "My EP provider created, with device id: 0, some_option: val" not in out.capturedtext
         # test clear training ep instance pool
         torch_ort.clear_training_ep_instances()
         with OutputGrabber() as out:
             torch_ort.set_device(3, "TestExecutionProvider", {"device_id": "0", "some_config": "val"})
-            ort_device = torch_ort.device(1)
+            torch_ort.device(1)
         assert "My EP provider created, with device id: 0, some_option: val" in out.capturedtext
 
     @unittest.skip("Test fails with newest pytorch version.")

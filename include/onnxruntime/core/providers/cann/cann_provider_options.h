@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "onnxruntime_c_api.h"
 #include "core/framework/arena_extend_strategy.h"
 
@@ -11,9 +13,13 @@ struct OrtCANNProviderOptions {
   int device_id;                                           // CANN device id
   size_t npu_mem_limit;                                    // BFC Arena memory limit for CANN
   onnxruntime::ArenaExtendStrategy arena_extend_strategy;  // Strategy used to grow the memory arena
-  int do_copy_in_default_stream;                           // Flag indicating if copying needs to take place on the
-                                                           // same stream as the compute stream in the CANN EP
   int enable_cann_graph;                                   // Flag indicating if prioritizing the use of
                                                            // CANN's graph-running capabilities
+  int dump_graphs;                                         // Flag indicating if dumping graphs
+  std::string precision_mode;                              // Operator Precision Mode
+  std::string op_select_impl_mode;                         // Operator-level model compilation options:
+                                                           // Mode selection
+  std::string optypelist_for_implmode;                     // Operator-level model compilation options:
+                                                           // Operator list
   OrtArenaCfg* default_memory_arena_cfg;                   // CANN memory arena configuration parameters
 };

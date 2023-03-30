@@ -80,10 +80,10 @@ def main():
         emulator_proc = android.start_emulator(**start_emulator_args)
 
         with open(args.emulator_pid_file, mode="w") as emulator_pid_file:
-            print("{}".format(emulator_proc.pid), file=emulator_pid_file)
+            print(f"{emulator_proc.pid}", file=emulator_pid_file)
 
     elif args.stop:
-        with open(args.emulator_pid_file, mode="r") as emulator_pid_file:
+        with open(args.emulator_pid_file) as emulator_pid_file:
             emulator_pid = int(emulator_pid_file.readline().strip())
 
         android.stop_emulator(emulator_pid)

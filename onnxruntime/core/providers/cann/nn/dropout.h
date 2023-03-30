@@ -21,7 +21,7 @@ class Dropout final : public CannKernel {
     }
   }
 
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
   mutable std::unique_ptr<RandomGenerator> generator_;

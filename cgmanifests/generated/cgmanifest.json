@@ -132,16 +132,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a20c65f2cd549445fda907f7b83894c8eb7427d6",
-          "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
-        },
-        "comments": "git submodule at cmake/external/protobuf"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "8c0b94e793a66495e0b1f34a5eb26bd7dc672db0",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
@@ -322,6 +312,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "f0dc78d7e6e331b8c6bb2d5283e06aa26883ca7c",
+          "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
+        },
+        "comments": "protobuf"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "072586a71b55b7f8c584153d223e95687148a900",
           "repositoryUrl": "https://github.com/Maratyszcza/psimd.git"
         },
@@ -392,7 +392,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "66d9cddc832c1cdc2b30a8755274f7f74640cfe6",
+          "commitHash": "c4f6b8c6bc94ff69048492fb34df0dfaf1983933",
           "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
         },
         "comments": "cutlass"
