@@ -6,7 +6,7 @@ import * as binaryOps from './ops/binary-op';
 import {conv, parseConvAttributes} from './ops/conv';
 // import {gather, parseGatherAttributes} from './ops/gather';
 import {gemm, parseGemmAttributes} from './ops/gemm';
-// import {matMul, parseMatMulAttributes} from './ops/matmul';
+import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
 //  import {sum} from
 // './ops/reduce-tensors'; import {reshape} from './ops/reshape'; import {shape} from './ops/shape';
@@ -50,7 +50,8 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   // ['InstanceNormalization', '', '6+', instanceNormalization, parseInstanceNormalizationAttributes],
   //['LeakyRelu', '', '6+', unaryOps.leakyRelu, unaryOps.parseLeakyReluAttributes],
   // ['Less', '', '7+', binaryOps.less],
-  //['Log', '', '6+', unaryOps.log], ['MatMul', '', '1+', matMul, parseMatMulAttributes],
+  //['Log', '', '6+', unaryOps.log],
+  ['MatMul', [matMul]],
   // TODO: support new attributes for MaxPool-8 and MaxPool-10
   ['MaxPool', [pool.maxPool, pool.parseMaxPoolAttributes]], ['Mul', [binaryOps.mul]], ['Neg', [unaryOps.neg]],
   // ['Not', '', '1+', unaryOps.not],
