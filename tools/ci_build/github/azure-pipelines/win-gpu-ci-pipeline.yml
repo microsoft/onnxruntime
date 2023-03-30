@@ -44,7 +44,7 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-T4
+        MachinePool: onnxruntime-Win2019-GPU-A10
 
 - stage: training
   dependsOn: []
@@ -62,7 +62,7 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-training-T4
+        MachinePool: onnxruntime-Win2019-GPU-training-A10
         isTraining: true
 
 - stage: dml
@@ -102,4 +102,4 @@ stages:
         GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-T4
+        MachinePool: onnxruntime-Win2019-GPU-A10
