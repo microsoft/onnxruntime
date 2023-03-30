@@ -108,7 +108,7 @@ $(document).ready(function () {
   });
 
     // loop thru json items and create blog-item elements on the blogs page
-    for (var i = 0; i < json.items.length; i++) {
+    for (var i = 0; i < json.blogs.length; i++) {
       var blogItem = document.createElement("blog-item");
       blogItem.setAttribute("title", json.items[i].title);
       blogItem.setAttribute("date", json.items[i].date);
