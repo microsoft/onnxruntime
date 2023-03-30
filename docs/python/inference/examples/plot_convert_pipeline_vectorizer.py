@@ -54,7 +54,7 @@ print(r2_score(y_test, pred))
 # to convert the model into ONNX format.
 
 from skl2onnx import convert_sklearn
-from skl2onnx.common.data_types import DictionaryType, FloatTensorType, Int64TensorType, SequenceType
+from skl2onnx.common.data_types import DictionaryType, FloatTensorType, Int64TensorType
 
 # initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
 initial_type = [("float_input", DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
@@ -70,8 +70,6 @@ from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 
 sess = rt.InferenceSession("pipeline_vectorize.onnx", providers=rt.get_available_providers())
 
-import numpy
-
 inp, out = sess.get_inputs()[0], sess.get_outputs()[0]
 print("input name='{}' and shape={} and type={}".format(inp.name, inp.shape, inp.type))
 print("output name='{}' and shape={} and type={}".format(out.name, out.shape, out.type))
@@ -81,7 +79,7 @@ print("output name='{}' and shape={} and type={}".format(out.name, out.shape, ou
 # We could do that in one call:
 
 try:
-    pred_onx = sess.run([out.name], {inp.name: X_test_dict})[0]
+    sess.run([out.name], {inp.name: X_test_dict})[0]
 except (RuntimeError, InvalidArgument) as e:
     print(e)
 
