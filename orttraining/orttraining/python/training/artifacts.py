@@ -75,7 +75,7 @@ def generate_artifacts(
 
     loss_block = None
     if loss is None:
-        loss_block = onnxblock.blocks.Passhrough()
+        loss_block = onnxblock.blocks.PassThrough()
         logging.info("No loss function enum provided. Loss node will not be added to the graph.")
     elif isinstance(loss, LossType):
         loss_block = loss_blocks[loss]()
