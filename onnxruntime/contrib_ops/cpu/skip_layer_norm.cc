@@ -92,7 +92,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   }
 
 
-  int task_count = gsl::narrow<int>(input->Shape().SizeToDimension(input_dims_size - 1));
+  int64_t task_count = input->Shape().SizeToDimension(input_dims_size - 1);
 
   const T* input_data = input->Data<T>();
   const T* skip_data = skip->Data<T>();

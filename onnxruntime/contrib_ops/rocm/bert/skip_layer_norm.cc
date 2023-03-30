@@ -99,7 +99,6 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  int sequence_length = static_cast<int>(input_dims[1]);
   int64_t element_count = input->Shape().Size();
   typedef typename ToHipType<T>::MappedType HipT;
 
