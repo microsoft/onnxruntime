@@ -87,7 +87,7 @@ def onnx_compile(
                 "nn.upsampling": ["NHWC", "default"],
                 "vision.roi_align": ["NHWC", "default"],
             }
-            log.info("Use tuning file from ", ANSOR_TYPE, ": ", tuning_logfile)
+            log.info("Use tuning file from %s: %s", ANSOR_TYPE, tuning_logfile)
             with auto_scheduler.ApplyHistoryBest(tuning_logfile):  # noqa: SIM117
                 with tvm.transform.PassContext(
                     opt_level=opt_level,
@@ -109,7 +109,7 @@ def onnx_compile(
                     lib = get_tvm_executor(irmod, executor, tvm_target, params)
         elif tuning_type == AUTO_TVM_TYPE:
             with relay.build_config(opt_level=opt_level):
-                log.info("Use tuning file from ", AUTO_TVM_TYPE, ": ", tuning_logfile)
+                log.info("Use tuning file from %s: %s", AUTO_TVM_TYPE, tuning_logfile)
                 with autotvm.apply_history_best(tuning_logfile):
                     lib = get_tvm_executor(irmod, executor, tvm_target, params)
         else:

@@ -116,7 +116,7 @@ def _use_deterministic_algorithms(enabled):
 
 
 def _are_deterministic_algorithms_enabled():
-    global ORTMODULE_IS_DETERMINISTIC
+    global ORTMODULE_IS_DETERMINISTIC  # noqa: PLW0602
     return ORTMODULE_IS_DETERMINISTIC
 
 

@@ -41,7 +41,7 @@ steps:
 
           echo "Directories created"            
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\$`parameters.buildConfig}}\onnxruntime_providers_shared.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
@@ -70,12 +70,13 @@ steps:
 
         workingDirectory: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}'
 
-    - template: win-esrp-dll.yml
-      parameters:
-        FolderPath: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
-        DisplayName: 'ESRP - Sign Native dlls'
-        DoEsrp: ${{parameters.DoEsrp}}
-        Pattern: '*.dll,*.exe'
+    - ${{ if eq(parameters.DoEsrp, true) }}:
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: ${{parameters.DoEsrp}}
+          Pattern: '*.dll,*.exe'
 
     - task: ArchiveFiles@2
       inputs:
