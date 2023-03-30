@@ -175,13 +175,13 @@
 												aria-labelledby="v-pills-javascript-tab">
 												<pre style="overflow: hidden">
 <code>
-	import onnxruntime as ort3 
-	import numpy as np
-	x, y = test_data[0][0], test_data[0][1]
-	ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
-	outputs = ort_sess.run(None, {'input': x.numpy()})
-	predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
-	print(f'Predicted: "{predicted}", Actual: "{actual}"')
+	const ort = require('onnxruntime-web');
+	const input = new Float32Array([1, 2, 3]);
+	const offsets = new Int32Array([0]);
+	const session = await ort.InferenceSession.create('model.onnx');
+	const output = await session.run({ input, offsets });
+	const result = output.values().next().value.argmax(1);
+	console.log(result[0]);
 </code>
 											</pre>
 											</div>
