@@ -86,21 +86,27 @@ $(document).ready(function () {
 		}
 		);
 
+    $.getJSON('js/blogs.json', function(data) {
+      var template = $('#blog-item').html();
+      var html = $.render(data, template);
+      $('#target').html(html);
+    });
 
- $.getJSON("js/blogs.json", function (json) {
 
-    console.log(json);
+//  $.getJSON("js/blogs.json", function (json) {
+
+//     console.log(json);
     
-    for (var i = 0; i < json.blogs.length; i++) {
-      var blogItem = document.createElement("blog-item");
-      blogItem.setAttribute("title", json.blogs[i].title);
-      blogItem.setAttribute("date", json.blogs[i].date);
-      blogItem.setAttribute("blurb", json.blogs[i].blurb);
-      blogItem.setAttribute("link", json.blogs[i].link);
-      document.getElementById("blog-list").appendChild(blogItem);
-    }
+//     for (var i = 0; i < json.blogs.length; i++) {
+//       var blogItem = document.createElement("blog-item");
+//       blogItem.setAttribute("title", json.blogs[i].title);
+//       blogItem.setAttribute("date", json.blogs[i].date);
+//       blogItem.setAttribute("blurb", json.blogs[i].blurb);
+//       blogItem.setAttribute("link", json.blogs[i].link);
+//       document.getElementById("blog-list").appendChild(blogItem);
+//     }
 
-  });
+//   });
    
 });
 
