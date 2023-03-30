@@ -17,8 +17,11 @@ def shared
   # else
   #   pod 'onnxruntime-mobile-c'
   # end
-  if File.exist?('../local_pods/onnxruntime-c.zip')
-    pod 'onnxruntime-c'
+
+  ort_c_local_pod_path = ENV['ORT_C_LOCAL_POD_PATH']
+  if ort_c_local_pod_path != nil
+    print 'Using onnxruntime-c pod at ', ort_c_local_pod_path, "\n"
+    pod 'onnxruntime-c', :path => ort_c_local_pod_path
   else
     pod 'onnxruntime-c'
   end
