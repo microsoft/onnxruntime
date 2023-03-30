@@ -161,11 +161,13 @@ print(result[0])
 												<pre style="overflow: hidden">
 <code>
 OrtEnvironment env = OrtEnvironment.getEnvironment();
-OrtSession session = env.createSession("model.onnx", new OrtSession.SessionOptions());
-var tensorFromArray = OnnxTensor.createTensor(env,sourceArray);
-OrtSession.Result output = session.run(Collections.singletonMap("input", tensorFromArray));
-float[][] result = (float[][]) output.get(0).getValue();
-System.out.println((int) result[0][0]);
+OrtSession session = env.createSession(Paths.get("model.onnx"), , new OrtSession.SessionOptions());
+float[] input = new float[] { 1.0f, 2.0f, 3.0f };
+TensorInfo inputInfo = session.getInputInfo().values().iterator().next();
+OnnxTensor inputTensor = OnnxTensor.createTensor(env, input, inputInfo);
+Result output = session.run(Collections.singletonMap(inputInfo.getName(), inputTensor));
+float[] outputFloats = (float[]) output.get(0).getValue();
+System.out.println(Arrays.toString(outputFloats));
 </code>
 											</pre>
 											</div>
