@@ -78,6 +78,10 @@ unfixable = [
     "F401", # Unused imports
 ]
 
+[tool.ruff.flake8-tidy-imports]
+# Disallow all relative imports.
+ban-relative-imports = "all"
+
 [tool.ruff.per-file-ignores]
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.
 # Prefer inline ignores with `noqa: xxx`.
@@ -85,3 +89,4 @@ unfixable = [
 "orttraining/orttraining/test/**" = ["N802"] # Function casing
 "**/test/**" = ["TID252"] # Allow relative imports in tests
 "tools/**" = ["TID252"] # Allow relative imports in tools
+"__init__.py" = ["TID252"] # Allow relative imports in __init__.py
