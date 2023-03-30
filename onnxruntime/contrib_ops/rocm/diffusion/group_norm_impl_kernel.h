@@ -65,9 +65,10 @@ inline __device__ void UpdateSum(const T* src, int64_t offset, U& sum, U& sumSq)
 
 template <typename T, int ThreadsPerBlock, int ILP>
 __global__ void groupNormNHWCSumKernel(const T* src, float* redBuffer, int32_t cPerBlock, int32_t hwPerBlock, int32_t hw,
-                                       int32_t hwc, int32_t c, int32_t cPerGroup, int32_t groups, int32_t groupsPerBlock) {
+                                       int32_t hwc, int32_t c, int32_t cPerGroup, int32_t groups) {
   // The object in charge of doing the sums for the different blocks.
   typedef hipcub::BlockScan<GroupSums, ThreadsPerBlock> BlockScan;
+  int32_t groupsPerBlock = cPerBlock / cPerGroup;
 
   // Allocate shared memory for BlockScan.
   __shared__ typename BlockScan::TempStorage tempStorage;

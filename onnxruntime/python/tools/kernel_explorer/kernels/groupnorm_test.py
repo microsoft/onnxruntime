@@ -118,7 +118,9 @@ class GroupNormNHWCMetric(ke.BandwidthMetric):
         return prefix + "not supported"
 
 
-def profile_group_norm_func(batch_size: int, height: int, width: int, num_channels: int, num_groups: int, dtype: str, func):
+def profile_group_norm_func(
+    batch_size: int, height: int, width: int, num_channels: int, num_groups: int, dtype: str, func
+):
     np.random.seed(0)
     input_x = np.random.rand(batch_size, height, width, num_channels).astype(dtype)
     gamma = np.random.rand(num_channels).astype(np.float32)

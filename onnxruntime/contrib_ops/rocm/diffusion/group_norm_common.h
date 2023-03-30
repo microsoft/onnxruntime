@@ -36,31 +36,13 @@ struct GroupNormNHWCParams : OpParams {
   GroupNormNHWCParams(RocmTuningContext* tuning_ctx, hipStream_t stream, T* dst, float* redBuffer, const T* src, const float* gamma,
                       const float* beta, int32_t n, int32_t h, int32_t w, int32_t c, int32_t groups, float epsilon, bool withSwish)
       : OpParams(tuning_ctx, stream), dst(dst), src(src), gamma(gamma), beta(beta), redBuffer(redBuffer), epsilon(epsilon), n(n), h(h), w(w), c(c), groups(groups), withSwish(withSwish) {
-    cPerBlock = 320;
     int32_t maxBlocksPerHW = 1024;
-    switch (c) {
-      case 960:
-      case 1920:
-        cPerBlock = 480;
-        break;
-      case 512:
-      case 256:
-        cPerBlock = 256;
-        break;
-      case 128:
-        cPerBlock = 128;
-        break;
-      default:
-        cPerBlock = 320;
-    }
-
     hw = h * w;
     const int32_t blocksPerHW = findMaxDivisor(hw, maxBlocksPerHW);
     hwPerBlock = divUp(hw, blocksPerHW);
     cPerGroup = c / groups;
     hwc = hw * c;
     invHWC = 1.F / (float)(hw * cPerGroup);
-    groupsPerBlock = cPerBlock / cPerGroup;
   }
 
   std::string Signature() const override {

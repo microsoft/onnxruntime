@@ -86,17 +86,14 @@ struct GroupNormNHWCParams {
   // activations per block.
   int32_t hw;
   int32_t hwPerBlock;
-  // The number of channels per group and blocks per activation in the C
+  // The number of channels per group per activation in the C
   // dimension.
-  int32_t cPerBlock;
   int32_t cPerGroup;
 
   // The precomputed stride between instances.
   int32_t hwc;
   // The inverse of hwc in floats (to compute mean/var).
   float invHWC;
-  // The precomputed number of groups per block.
-  int32_t groupsPerBlock;
 };
 
 template <typename T>
@@ -175,7 +172,7 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
 
   // Store the results for the groups in shared memory (to produce coalesced
   // stores later).
-  if (cj == params.cPerGroup - 2) {  //2 channels per thread
+  if (cj == params.cPerGroup - 2) {  // 2 channels per thread
     smem[gi] = make_float2(out.sum, out.sumSq);
   }
 

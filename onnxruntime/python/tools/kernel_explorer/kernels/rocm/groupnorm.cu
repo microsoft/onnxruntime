@@ -14,7 +14,7 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
-template <typename T, int ThreadsPerBlock, int VecSize>
+template <typename T, int CPerBlock, int ThreadsPerBlock, int VecSize>
 class GroupNormNHWC : public IKernelExplorer {
  public:
   GroupNormNHWC(DeviceArray& output, DeviceArray& workspace, DeviceArray& input, DeviceArray& gamma, DeviceArray& beta,
@@ -35,7 +35,7 @@ class GroupNormNHWC : public IKernelExplorer {
  private:
   using ParamsT = contrib::rocm::GroupNormNHWCParams<T>;
   ParamsT params_{};
-  contrib::rocm::GroupNormNHWCOp<T, ThreadsPerBlock, VecSize> op_{};
+  contrib::rocm::GroupNormNHWCOp<T, CPerBlock, ThreadsPerBlock, VecSize> op_{};
 };
 
 template <typename T>
@@ -86,31 +86,45 @@ class GroupNormNHWCTunable : public IKernelExplorer {
   contrib::rocm::GroupNormNHWCTunableOp<T> op_{};
 };
 
-#define REGISTER_OP(name, type, threads_per_block, vec_size)                                                   \
-  py::class_<name<type, threads_per_block, vec_size>>(m, #name "_" #type "_" #threads_per_block "_" #vec_size) \
-      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&,                      \
-                    int, int, int, int, int, float, bool>())                                                   \
-      .def("SetRepeats", &name<type, threads_per_block, vec_size>::SetRepeats)                                 \
-      .def("Profile", &name<type, threads_per_block, vec_size>::Profile)                                       \
-      .def("Run", &name<type, threads_per_block, vec_size>::Run)                                               \
-      .def("IsSupported", &name<type, threads_per_block, vec_size>::IsSupported);
+#define REGISTER_OP(name, type, c_per_block, threads_per_block, vec_size)                                                                    \
+  py::class_<name<type, c_per_block, threads_per_block, vec_size>>(m, #name "_" #type "_" #c_per_block "_" #threads_per_block "_" #vec_size) \
+      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&,                                                    \
+                    int, int, int, int, int, float, bool>())                                                                                 \
+      .def("SetRepeats", &name<type, c_per_block, threads_per_block, vec_size>::SetRepeats)                                                  \
+      .def("Profile", &name<type, c_per_block, threads_per_block, vec_size>::Profile)                                                        \
+      .def("Run", &name<type, c_per_block, threads_per_block, vec_size>::Run)                                                                \
+      .def("IsSupported", &name<type, c_per_block, threads_per_block, vec_size>::IsSupported);
 
-#define REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, threads_per_block) \
-  REGISTER_OP(name, type, threads_per_block, 1)                     \
-  REGISTER_OP(name, type, threads_per_block, 2)                     \
-  REGISTER_OP(name, type, threads_per_block, 4)                     \
-  REGISTER_OP(name, type, threads_per_block, 8)                     \
-  REGISTER_OP(name, type, threads_per_block, 16)
+#define REGISTER_OP_FOR_ALL_CONFIG(name, type, c_per_block, threads_per_block, vec_size) \
+  if (c_per_block <= threads_per_block * vec_size &&                                     \
+      c_per_block > (threads_per_block - onnxruntime::rocm::GPU_WARP_SIZE) * vec_size) { \
+    REGISTER_OP(name, type, c_per_block, threads_per_block, vec_size);                   \
+  }
 
-#define REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name, type) \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 64)                         \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 128)                        \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 192)                        \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 256)                        \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 320)                        \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)                        \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 448)                        \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 512)
+#define REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, c_per_block, threads_per_block) \
+  REGISTER_OP_FOR_ALL_CONFIG(name, type, c_per_block, threads_per_block, 1);     \
+  REGISTER_OP_FOR_ALL_CONFIG(name, type, c_per_block, threads_per_block, 2);     \
+  REGISTER_OP_FOR_ALL_CONFIG(name, type, c_per_block, threads_per_block, 4);     \
+  REGISTER_OP_FOR_ALL_CONFIG(name, type, c_per_block, threads_per_block, 8);     \
+  REGISTER_OP_FOR_ALL_CONFIG(name, type, c_per_block, threads_per_block, 16);
+
+#define REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name, type, c_per_block) \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, c_per_block, 64)                         \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, c_per_block, 128)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, c_per_block, 192)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, c_per_block, 256)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, c_per_block, 320)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, c_per_block, 384)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, c_per_block, 448)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, c_per_block, 512)
+
+#define REGISTER_OP_FOR_ALL_C_PER_BLOCK_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name, type) \
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name, type, 64)                   \
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name, type, 128)                  \
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name, type, 160)                  \
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name, type, 256)                  \
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name, type, 320)                  \
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name, type, 480)
 
 #define REGISTER_OP_TYPED(name, type)                                                     \
   py::class_<name<type>>(m, #name "_" #type)                                              \
@@ -122,8 +136,8 @@ class GroupNormNHWCTunable : public IKernelExplorer {
       .def("IsSupported", &name<type>::IsSupported);
 
 KE_REGISTER(m) {
-  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWC, half);
-  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWC, float);
+  REGISTER_OP_FOR_ALL_C_PER_BLOCK_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWC, half);
+  REGISTER_OP_FOR_ALL_C_PER_BLOCK_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWC, float);
 
   REGISTER_OP_TYPED(GroupNormNHWCTunable, half);
   REGISTER_OP_TYPED(GroupNormNHWCTunable, float);
@@ -131,5 +145,10 @@ KE_REGISTER(m) {
   REGISTER_OP_TYPED(GroupNormNHWCStaticSelection, half);
   REGISTER_OP_TYPED(GroupNormNHWCStaticSelection, float);
 }
+
+#undef REGISTER_OP_FOR_ALL_CONFIG
+#undef REGISTER_OP_FOR_ALL_VEC_SIZE
+#undef REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE
+#undef REGISTER_OP_FOR_ALL_C_PER_BLOCK_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE
 
 }  // namespace onnxruntime
