@@ -658,10 +658,7 @@ class InferenceSession {
 
   onnxruntime::GraphTransformerManager graph_transformer_mgr_;
 
-  InsertCastTransformer insert_cast_transformer_;
-
-  // assuming that OpSchema* elements are not null. our version of gsl::not_null doesn't specialize std::hash.
-  InlinedHashSet<const ONNX_NAMESPACE::OpSchema*> saved_runtime_optimization_produced_node_op_schemas_;
+  InlinedHashSet<gsl::not_null<const ONNX_NAMESPACE::OpSchema*>> saved_runtime_optimization_produced_node_op_schemas_;
 #endif
   // Any GraphTransformer/RewriteRule name in this set will not be enabled.
   InlinedHashSet<std::string> optimizers_to_disable_;

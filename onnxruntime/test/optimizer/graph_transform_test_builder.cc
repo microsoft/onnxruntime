@@ -97,8 +97,9 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                                  &fetches));
 
     if (level == target_level) {
-      ASSERT_TRUE(check_transformed_graph);
-      check_transformed_graph(session);
+      if (check_transformed_graph) {
+        check_transformed_graph(session);
+      }
     }
   };
 
@@ -148,12 +149,17 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
                 domain_to_version, {}, logger);
     Graph& graph = model.MainGraph();
     ModelTestBuilder helper(graph);
+    ORT_RETURN_IF_NOT(build_test_case, "build_test_case must be provided");
     build_test_case(helper);
     helper.SetGraphOutputs();
     ORT_RETURN_IF_ERROR(graph.Resolve());
-    ORT_RETURN_IF_ERROR(pre_graph_checker(graph));
+    if (pre_graph_checker) {
+      ORT_RETURN_IF_ERROR(pre_graph_checker(graph));
+    }
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, level, logger));
-    ORT_RETURN_IF_ERROR(post_graph_checker(graph));
+    if (post_graph_checker) {
+      ORT_RETURN_IF_ERROR(post_graph_checker(graph));
+    }
   }
 
   return Status::OK();
