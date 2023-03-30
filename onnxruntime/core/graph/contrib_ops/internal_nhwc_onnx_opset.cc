@@ -78,14 +78,14 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   // /onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 11);
 
-  REGISTER_NHWC_SCHEMA(fn, BatchNormalization, 9);
-  REGISTER_NHWC_SCHEMA(fn, BatchNormalization, 14);
-  REGISTER_NHWC_SCHEMA(fn, BatchNormalization, 15);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 9);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 14);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 15);
 
   REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 11);
   REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 13);
 
-  REGISTER_NHWC_SCHEMA(fn, InstanceNormalization, 6);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, InstanceNormalization, 6);
 
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, Conv, 11);
 
