@@ -86,28 +86,11 @@ $(document).ready(function () {
 		}
 		);
 
-  //   var json = {
-  //     "items": [
-  //         {
-  //         "title": "sample x",
-  //         "date": "author x",
-  //         "blurb": "author x",
-  //         "link": "author x",
-  //         },
-  //         {
-  //         "title": "sample y",
-  //         "date": "author x",
-  //         "blurb": "author x",
-  //         "link": "author x",
-  //         }
-  //     ]
-  // };
-  // pull json from blogs.json
-  var json = $.getJSON("blogs.json", function (json) {
-    console.log(json);
-  });
 
-    // loop thru json items and create blog-item elements on the blogs page
+ $.getJSON("blogs.json", function (json) {
+
+    console.log(json);
+    
     for (var i = 0; i < json.blogs.length; i++) {
       var blogItem = document.createElement("blog-item");
       blogItem.setAttribute("title", json.items[i].title);
@@ -117,6 +100,10 @@ $(document).ready(function () {
       document.getElementById("blog-list").appendChild(blogItem);
     }
 
+  });
+
+    // loop thru json items and create blog-item elements on the blogs page
+   
 });
 
 function getStartedScroll() {
