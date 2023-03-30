@@ -87,6 +87,31 @@ inline int3 Get2DMaskStrides(int total_sequence_length) {
   return {total_sequence_length, 0, 1};
 }
 
+template <typename HipT, typename T>
+std::tuple<const HipT*, const HipT*, const HipT*> GetQkvBuffers(
+    const AttentionParameters* attn,
+    const T* query,
+    const T* key,
+    const T* value) {
+  switch (attn->qkv_format) {
+    case Q_K_V_BNSH:
+    case Q_K_V_BSNH:
+      return {reinterpret_cast<const HipT*>(query),
+              reinterpret_cast<const HipT*>(key),
+              reinterpret_cast<const HipT*>(value)};
+    case Q_KV_BSNH_BSN2H: {
+      auto packed_kv = reinterpret_cast<const HipT*>(key);
+      return {reinterpret_cast<const HipT*>(query), packed_kv, packed_kv + attn->head_size};
+    }
+    case QKV_BSN3H: {
+      auto packed_qkv = reinterpret_cast<const HipT*>(query);
+      return {packed_qkv, packed_qkv + 1 * attn->head_size, packed_qkv + 2 * attn->head_size};
+    }
+    default:
+      return {nullptr, nullptr, nullptr};
+  }
+}
+
 inline std::tuple<int4, int4, int4> GetQkvStrides(const AttentionParameters* attn) {
   // G0 not used, because it is the slowest dimension
   const int& G1 = attn->num_heads;
@@ -94,10 +119,30 @@ inline std::tuple<int4, int4, int4> GetQkvStrides(const AttentionParameters* att
   const int& N = attn->total_sequence_length;
   const int& K = attn->head_size;
   const int& O = attn->v_head_size;
-  int4 q_strides = {G1 * M * K, M * K, K, 1};
-  int4 k_strides = {G1 * N * K, N * K, K, 1};  // matrices are transposed
-  int4 v_strides = {G1 * N * O, N * O, 1, O};
-  return {q_strides, k_strides,v_strides};
+
+  int4 q_strides, k_strides, v_strides;
+  switch (attn->qkv_format) {
+    case Q_K_V_BNSH:
+      q_strides = {G1 * M * K, M * K, K, 1};
+      k_strides = {G1 * N * K, N * K, K, 1};  // matrices are transposed
+      v_strides = {G1 * N * O, N * O, 1, O};
+      break;
+    case Q_KV_BSNH_BSN2H:
+      ORT_ENFORCE(K == O);
+      q_strides = {M * G1 * K, K, G1 * K, 1};              // [G0, M, G1, K] layout
+      k_strides = {N * G1 * 2 * K, 2 * K, G1 * 2 * K, 1};  // [G0, N, G1, K] layout
+      v_strides = {N * G1 * 2 * O, 2 * O, 1, G1 * 2 * O};  // [G0, N, G1, O] layout
+      break;
+    case QKV_BSN3H:
+      ORT_ENFORCE(K == O);
+      q_strides = {M * G1 * 3 * K, 3 * K, G1 * 3 * K, 1};  // [G0, M, G1, K] layout
+      k_strides = {N * G1 * 3 * K, 3 * K, G1 * 3 * K, 1};  // [G0, N, G1, K] layout
+      v_strides = {N * G1 * 3 * O, 3 * O, 1, G1 * 3 * O};  // [G0, N, G1, O] layout
+      break;
+    default:
+      break;
+  }
+  return {q_strides, k_strides, v_strides};
 }
 
 inline std::tuple<const int*, int3, int3> GetRawMaskBufferAddrSizesAndStrides(
@@ -140,7 +185,8 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
         "_N", attention->num_heads,
         "_H", attention->head_size,
         bias_buffer != nullptr ? "_B" : "_NB",
-        "_M", mask_index_dims.size());
+        "_M", mask_index_dims.size(),
+        "_QKV", attention->qkv_format);
   }
 
   std::tuple<int, int, int, int, int> GetGemmsMNKOBatch() const {
@@ -285,7 +331,8 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
   }
 
   static Status Run(const GemmSoftmaxGemmPermuteParams<T>* params, bool use_persistent_softmax) {
-    ORT_ENFORCE(params->attention->qkv_format == Q_K_V_BNSH);
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+        params->attention->qkv_format != Q_K_V_BNSH, "GenericPipeline only supports qkv_format as Q_K_V_BNSH");
     ORT_RETURN_IF_ERROR(Gemm1(params));
 
     if (UseRawAttentionMask(params)) {
@@ -310,6 +357,8 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
   inline static bool IsSupportedQkvFormat(const AttentionParameters* attn) {
     switch (attn->qkv_format) {
       case Q_K_V_BNSH:
+      case Q_KV_BSNH_BSN2H:
+      case QKV_BSN3H:
         return true;
       default:
         return false;
@@ -442,18 +491,24 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
     auto op = [impl = std::move(impl), invoker = std::move(invoker)](
                   const GemmSoftmaxGemmPermuteParams<T>* params) -> Status {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-        !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedQkvFormat(params->attention));
+          !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedQkvFormat(params->attention),
+          "qkv format is not supported, got ", params->attention->qkv_format);
       if constexpr (USE_BIAS) {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->bias_buffer == nullptr);
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+            params->bias_buffer == nullptr, "biased version only support input with bias");
       } else {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->bias_buffer != nullptr);
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+            params->bias_buffer != nullptr, "non-biased version only support input without bias");
       }
       if constexpr (USE_MASK) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMaskType(params->attention));
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->mask_index_buffer == nullptr);
+            !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMaskType(params->attention),
+            "mask type is not supported, got ", params->attention->mask_type);
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+            params->mask_index_buffer == nullptr, "masked version only support input with mask");
       } else {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->mask_index_buffer != nullptr);
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+            params->mask_index_buffer != nullptr, "non-masked version only support input without mask");
       }
 
       auto attn = params->attention;

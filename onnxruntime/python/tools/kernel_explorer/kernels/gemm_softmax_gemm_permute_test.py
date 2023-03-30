@@ -55,8 +55,32 @@ def get_mask_dim_id(dim):
     return f"mask_{dim}d"
 
 
+def maybe_pack_Q_K_V_BNSH_for_device_on_host(Q, K, V, dtype, qkv_format):  # noqa: N806
+    Q = Q.astype(dtype)
+    K = K.astype(dtype)
+    V = V.astype(dtype)
+    if qkv_format == ke.qkv_format.Q_K_V_BNSH:
+        return Q, K, V
+
+    # BNSH to BSNH
+    Q = np.swapaxes(Q, 2, 1)
+    K = np.swapaxes(K, 2, 1)
+    V = np.swapaxes(V, 2, 1)
+
+    if qkv_format == ke.qkv_format.Q_K_V_BSNH:
+        return np.ascontiguousarray(Q), np.ascontiguousarray(K), np.ascontiguousarray(V)
+
+    if qkv_format == ke.qkv_format.QKV_BSN3H:
+        return np.ascontiguousarray(np.stack([Q, K, V], axis=-2)), None, None
+
+    if qkv_format == ke.qkv_format.Q_KV_BSNH_BSN2H:
+        return np.ascontiguousarray(Q), np.ascontiguousarray(np.stack([K, V], axis=-2)), None
+
+    raise NotImplementedError
+
+
 def _test_gemm_softmax_gemm_permute(
-    f, dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, mask_dim, scale
+    f, dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, mask_dim, scale, qkv_format
 ):
     v_head_size = head_size
     q_shape = [batch, num_heads, seqlen, head_size]
@@ -110,13 +134,11 @@ def _test_gemm_softmax_gemm_permute(
     ref = np.swapaxes(attn, 2, 1)  # permute 0213
 
     out = np.empty(out_shape, dtype=dtype)
-    host_Q = Q.astype(dtype)  # noqa: N806
-    host_K = K.astype(dtype)  # noqa: N806
-    host_V = V.astype(dtype)  # noqa: N806
+    host_Q, host_K, host_V = maybe_pack_Q_K_V_BNSH_for_device_on_host(Q, K, V, dtype, qkv_format)  # noqa: N806
     host_attn_bias = attn_bias.astype(dtype) if attn_bias is not None else None
     dev_Q = ke.DeviceArray(host_Q)  # noqa: N806
-    dev_K = ke.DeviceArray(host_K)  # noqa: N806
-    dev_V = ke.DeviceArray(host_V)  # noqa: N806
+    dev_K = ke.DeviceArray(host_K) if host_K is not None else None  # noqa: N806
+    dev_V = ke.DeviceArray(host_V) if host_V is not None else None  # noqa: N806
     dev_out = ke.DeviceArray(out)
     dev_attn_bias = ke.DeviceArray(host_attn_bias) if host_attn_bias is not None else None
     dev_attn_mask = ke.DeviceArray(attn_mask) if attn_mask is not None else None
@@ -130,6 +152,7 @@ def _test_gemm_softmax_gemm_permute(
         head_size,
         mask_dim,
         scale,
+        qkv_format,
         dev_Q,
         dev_K,
         dev_V,
@@ -181,7 +204,9 @@ def _test_gemm_softmax_gemm_permute(
 def test_gemm_softmax_gemm_permute_generic(dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim):
     f = getattr(ke, "GemmSoftmaxGemmPermuteGeneric_" + dtype_to_suffix(dtype))
     scale = 1.0 / np.sqrt(head_size)
-    _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale)
+    _test_gemm_softmax_gemm_permute(
+        f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale, ke.qkv_format.Q_K_V_BNSH
+    )
 
 
 @pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
@@ -196,7 +221,9 @@ def test_gemm_softmax_gemm_permute_generic(dtype, batch, seqlen, total_seqlen, n
 def test_gemm_softmax_gemm_permute_ck(dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim):
     f = getattr(ke, get_ck_binding_name(dtype, biased, mask_dim != 0))
     scale = 1.0 / np.sqrt(head_size)
-    _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale)
+    _test_gemm_softmax_gemm_permute(
+        f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale, ke.qkv_format.Q_K_V_BNSH
+    )
 
 
 @pytest.mark.parametrize("mask_dim", [2], ids=get_mask_dim_id)
@@ -210,7 +237,38 @@ def test_gemm_softmax_gemm_permute_ck(dtype, batch, seqlen, total_seqlen, nhead,
 def test_gemm_softmax_gemm_permute_tunable(dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim):
     f = getattr(ke, "GemmSoftmaxGemmPermuteTunable_" + dtype_to_suffix(dtype))
     scale = 1.0 / np.sqrt(head_size)
-    _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale)
+    _test_gemm_softmax_gemm_permute(
+        f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale, ke.qkv_format.Q_K_V_BNSH
+    )
+
+
+stabel_diffusion_configs = [
+    [2, 64, 64, 8, 160, "QKV_BSN3H"],
+    [2, 256, 256, 8, 160, "QKV_BSN3H"],
+    [2, 1024, 1024, 8, 80, "QKV_BSN3H"],
+    [2, 4096, 4096, 8, 40, "QKV_BSN3H"],
+    [2, 64, 77, 8, 160, "Q_KV_BSNH_BSN2H"],
+    [2, 256, 77, 8, 160, "Q_KV_BSNH_BSN2H"],
+    [2, 1024, 77, 8, 80, "Q_KV_BSNH_BSN2H"],
+    [2, 4096, 77, 8, 40, "Q_KV_BSNH_BSN2H"],
+    [1, 4096, 4096, 1, 512, "Q_K_V_BNSH"],
+]
+
+
+@pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
+@pytest.mark.parametrize("mask_dim", [0], ids=get_mask_dim_id)
+@pytest.mark.parametrize("biased", [False], ids=get_biased_id)
+@pytest.mark.parametrize("batch, seqlen, total_seqlen, nhead, head_size, qkv_format_name", stabel_diffusion_configs)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_gemm_softmax_gemm_permute_ck_sd(
+    dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, qkv_format_name
+):
+    qkv_format = getattr(ke.qkv_format, qkv_format_name)
+    f = getattr(ke, get_ck_binding_name(dtype, biased, mask_dim != 0))
+    scale = 1.0 / np.sqrt(head_size)
+    _test_gemm_softmax_gemm_permute(
+        f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale, qkv_format
+    )
 
 
 @dataclass
@@ -238,7 +296,7 @@ class GemmSoftmaxGemmPermuteMetric(ke.ComputeMetric):
 
 
 def profile_gemm_softmax_gemm_permute_func(
-    f, dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, mask_dim, scale
+    f, dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, mask_dim, scale, qkv_format
 ):
     v_head_size = head_size
     q_shape = [batch, num_heads, seqlen, head_size]
@@ -273,13 +331,11 @@ def profile_gemm_softmax_gemm_permute_func(
         attn_mask = (np.random.randint(0, 100, size=mask_shape) < 95).astype(np.int32)
 
     out = np.empty(out_shape, dtype=dtype)
-    host_Q = Q.astype(dtype)  # noqa: N806
-    host_K = K.astype(dtype)  # noqa: N806
-    host_V = V.astype(dtype)  # noqa: N806
+    host_Q, host_K, host_V = maybe_pack_Q_K_V_BNSH_for_device_on_host(Q, K, V, dtype, qkv_format)  # noqa: N806
     host_attn_bias = attn_bias.astype(dtype) if attn_bias is not None else None
     dev_Q = ke.DeviceArray(host_Q)  # noqa: N806
-    dev_K = ke.DeviceArray(host_K)  # noqa: N806
-    dev_V = ke.DeviceArray(host_V)  # noqa: N806
+    dev_K = ke.DeviceArray(host_K) if host_K is not None else None  # noqa: N806
+    dev_V = ke.DeviceArray(host_V) if host_V is not None else None  # noqa: N806
     dev_out = ke.DeviceArray(out)
     dev_attn_bias = ke.DeviceArray(host_attn_bias) if host_attn_bias is not None else None
     dev_attn_mask = ke.DeviceArray(attn_mask) if attn_mask is not None else None
@@ -293,6 +349,7 @@ def profile_gemm_softmax_gemm_permute_func(
         head_size,
         mask_dim,
         scale,
+        qkv_format,
         dev_Q,
         dev_K,
         dev_V,
@@ -324,12 +381,15 @@ def profile_gemm_softmax_gemm_permute_func(
         )
 
 
-def profile_with_args(dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, mask_dim, scale, *, sort=False):
+def profile_with_args(
+    dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, mask_dim, scale, qkv_format, *, sort=False
+):
     with ke.benchmark(sort):
-        args = (dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, mask_dim, scale)
-        profile_gemm_softmax_gemm_permute_func(
-            getattr(ke, "GemmSoftmaxGemmPermuteGeneric_" + dtype_to_suffix(dtype)), *args
-        )
+        args = (dtype, batch, seqlen, total_seqlen, num_heads, head_size, biased, mask_dim, scale, qkv_format)
+        if qkv_format == ke.qkv_format.Q_K_V_BNSH:
+            profile_gemm_softmax_gemm_permute_func(
+                getattr(ke, "GemmSoftmaxGemmPermuteGeneric_" + dtype_to_suffix(dtype)), *args
+            )
         if ke.is_composable_kernel_available():
             profile_gemm_softmax_gemm_permute_func(
                 getattr(ke, get_ck_binding_name(dtype, biased, mask_dim != 0)), *args
@@ -340,8 +400,24 @@ def profile_with_args(dtype, batch, seqlen, total_seqlen, num_heads, head_size, 
 
 
 def profile():
+    for batch, seqlen, total_seqlen, nhead, head_size, qkv_format_name in stabel_diffusion_configs:
+        profile_with_args(
+            "float16",
+            batch,
+            seqlen,
+            total_seqlen,
+            nhead,
+            head_size,
+            biased=False,
+            mask_dim=0,
+            qkv_format=getattr(ke.qkv_format, qkv_format_name),
+            scale=0.125,
+            sort=True,
+        )
+        print()
+
     for args in product(dtypes, batches, seqlens, total_seqlens, num_heads, head_sizes, biaseds, mask_dims):
-        profile_with_args(*args, scale=0.125, sort=True)
+        profile_with_args(*args, qkv_format=ke.qkv_format.Q_K_V_BNSH, scale=0.125, sort=True)
         print()
 
 
@@ -359,7 +435,18 @@ if __name__ == "__main__":
     group.add_argument("head_size", type=int)
     group.add_argument("biased", type=int, choices=[0, 1], default=0)
     group.add_argument("mask_dim", type=int, choices=[0, 2, 3, 4], default=2, help="0 for mask disabled")
-    group.add_argument("scale", type=float, default=None, help="default to 1.0/sqrt(head_size)")
+    group.add_argument("--scale", type=float, default=None, help="default to 1.0/sqrt(head_size)")
+    group.add_argument(
+        "--qkv_format",
+        type=lambda name: getattr(ke.qkv_format, name),
+        default="Q_K_V_BNSH",
+        choices=[
+            "Q_K_V_BNSH",  # non-packed, permuted
+            "Q_K_V_BSNH",  # non-packed, non-permuted
+            "Q_KV_BSNH_BSN2H",  # kv packed, non-permuted
+            "QKV_BSN3H",  # qkv packed, non-permuted
+        ],
+    )
 
     if len(sys.argv) == 1:
         profile()
@@ -375,5 +462,6 @@ if __name__ == "__main__":
             args.biased,
             args.mask_dim,
             args.scale,
+            args.qkv_format,
             sort=args.sort,
         )

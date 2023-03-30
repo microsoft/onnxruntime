@@ -11,6 +11,18 @@
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
+
+constexpr int kCumulatedSequenceLengthCacheMaxBatchSize = 128;
+
+struct CumulatedSequenceLengthCache {
+  onnxruntime::IAllocatorUniquePtr<void> buffer;
+  int32_t max_batch_size;
+  int32_t sequence_length;
+
+  CumulatedSequenceLengthCache() : max_batch_size(0), sequence_length(0) {}
+  void Initialize(int32_t sequence_length, hipStream_t stream);
+};
+
 size_t GetAttentionScratchSize(
     size_t element_size,
     int batch_size,
