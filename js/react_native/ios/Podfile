@@ -18,7 +18,7 @@ def shared
   #   pod 'onnxruntime-mobile-c'
   # end
   if File.exist?('../local_pods/onnxruntime-c.zip')
-    pod 'onnxruntime-c', :podspec => '../onnxruntime-c.podspec'
+    pod 'onnxruntime-c'
   else
     pod 'onnxruntime-c'
   end

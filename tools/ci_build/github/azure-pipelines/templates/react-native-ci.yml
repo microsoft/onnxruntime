@@ -40,6 +40,7 @@ jobs:
     vmImage: 'macOS-12'
   variables:
     runCodesignValidationInjection: false
+    ORT_POD_VERSION: '1.15.0'
   #dependsOn:
   #- Android_Java_API_AAR_Packaging_For_React_Native
   timeoutInMinutes: 150
@@ -84,12 +85,17 @@ jobs:
     displayName: Install python modules
 
   - script: |
-      python3 $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_ios_framework.py \
-        --config ${{parameters.BuildConfig}} \
-        --build_dir $(Build.BinariesDirectory)/ios_framework \
-        $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
+      python3 $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+        --build-dir $(Build.BinariesDirectory)/ios_framework_full \
+        --staging-dir "$(Build.BinariesDirectory)/staging" \
+        --pod-version "${variables.ORT_POD_VERSION}" \
+        --variant Full \
+        --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
       cd $(Build.BinariesDirectory)/ios_framework/framework_out
       zip -r onnxruntime-c.zip .
+
+    # TODO: update for the mobile build one as well
+
     # Mobile build:
     #  python3 $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_ios_framework.py \
     #    --config ${{parameters.BuildConfig}} \
@@ -99,7 +105,7 @@ jobs:
     #  cd $(Build.BinariesDirectory)/ios_framework/framework_out
     #  zip -r onnxruntime-mobile-c.zip .
 
-    displayName: Build iOS package
+    displayName: Build iOS package and assemble pods
 
   #- task: DownloadPipelineArtifact@2
   #  inputs:
@@ -120,7 +126,8 @@ jobs:
   #    contents: onnxruntime-android-*.aar
   #    targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
   #  displayName: Copy Android package to React Native directory
-
+  
+  # TODO: Refine to set env variable in Podfile to avoid copying to the local_pods/
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.BinariesDirectory)/ios_framework/framework_out
@@ -295,6 +302,11 @@ jobs:
       detox test --record-logs all --configuration ios.sim.release
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Run React Native Detox iOS e2e Tests
+  
+  - script: |
+      set -e -x
+      ls -R '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+    displayName: Examine detox artifacts/ folder
 
   #- script: |
   #    export FORCE_BUNDLING=1
