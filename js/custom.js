@@ -92,7 +92,7 @@ $(document).ready(function () {
     console.log(json);
     
     for (var i = 0; i < json.blogs.length; i++) {
-      var blogItem = document.createElement("blog-item");
+      var blogItem = document.createElement("js/blog-item");
       blogItem.setAttribute("title", json.items[i].title);
       blogItem.setAttribute("date", json.items[i].date);
       blogItem.setAttribute("blurb", json.items[i].blurb);
