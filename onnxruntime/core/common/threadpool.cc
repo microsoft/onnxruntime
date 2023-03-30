@@ -45,7 +45,9 @@ limitations under the License.
 #ifdef USE_OCT
 #include <octopus/threadpool.h>
 #include <iostream>
-#else
+#endif
+
+#ifdef USE_TBB
 #include <oneapi/tbb.h>
 #endif
 
