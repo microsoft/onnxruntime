@@ -71,23 +71,40 @@ $(document).ready(function () {
 
   $('.nav-tabs').responsiveTabs();
 
+  //populate blogs
  $.getJSON("js/blogs.json", function (json) {
 
-  var template = document.querySelector('#blog-item');
-  var blogList = document.querySelector('#blog-list');
+    var template = document.querySelector('#blog-item');
+    var blogList = document.querySelector('#blog-list');
 
-  json.blogs.forEach(function(blog) {
-    var clone = template.content.cloneNode(true);
-    clone.querySelector('[name="title"]').textContent = blog.title;
-    clone.querySelector('[name="date"]').textContent = blog.date;
-    clone.querySelector('[name="blurb"]').textContent = blog.blurb;
-    clone.querySelector('[name="link"]').href = blog.link;
-    blogList.appendChild(clone);
+    json.blogs.forEach(function(blog) {
+      var clone = template.content.cloneNode(true);
+      clone.querySelector('[name="title"]').textContent = blog.title;
+      clone.querySelector('[name="date"]').textContent = blog.date;
+      clone.querySelector('[name="blurb"]').textContent = blog.blurb;
+      clone.querySelector('[name="link"]').href = blog.link;
+      blogList.appendChild(clone);
+    });
+
   });
 
-  });
+//   //create local json and template fill for testing
+//   var template = document.querySelector('#blog-item');
+//   var blogList = document.querySelector('#blog-list');
+//   var blog = {
+//     title: "Test Title",
+//     date: "Test Date",
+//     blurb: "Test Blurb",
+//     link: "https://cloudblogs.microsoft.com/opensource/2023/01/25/improve-bert-inference-speed-by-combining-the-power-of-optimum-openvino-onnx-runtime-and-azure/"
+//   };
+//   var clone = template.content.cloneNode(true);
+//   clone.querySelector('[name="title"]').textContent = blog.title;
+//   clone.querySelector('[name="date"]').textContent = blog.date;
+//   clone.querySelector('[name="blurb"]').textContent = blog.blurb;
+//   clone.querySelector('[name="link"]').href = blog.link;
+//   blogList.appendChild(clone);
    
-});
+// });
 
 function getStartedScroll() {
   var windowsHash = location.hash.split("#");

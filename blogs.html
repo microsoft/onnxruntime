@@ -42,6 +42,8 @@
 
                         </div>
                     </section>
+                    <!--add template here-->
+
                 </div>
             </div>
 	    </div>	    
@@ -60,22 +62,21 @@
 
 	<!--create a custom web component-->
 	<template id="blog-item">
-		<div>
+		<div class="news row blue-title-columns">
 			<div class="col-12 col-md-8 mb-4 mb-md-0 blue-text">
-				<h3>
+				<h3 class="mr-xl-5 mb-3">
 					<slot name="title"></slot>
 				</h3>
-				<span>
+				<span class="article-date">
 					<slot name="date"></slot>
 				</span>
 				<br/>
-				<span>
+				<span class="article-blurb">
 					<slot name="blurb"></slot>
 				</span>
 				<br/>
 				<div >
-					<slot name="link"></slot>
-					<a href="" 
+					<a href=""  name="link"
 					target="_blank" class="link">
 					<span class="link-content">
 						Read more
