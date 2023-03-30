@@ -9,6 +9,7 @@ import os
 from typing import List, Union
 
 import coloredlogs
+from constants import AttentionInputIDs, AttentionOutputIDs, Operators
 from onnx import helper, load_model
 from onnx_model import NodeProto, OnnxModel
 from shape_infer_helper import SymbolicShapeInferenceHelper
@@ -16,28 +17,7 @@ from shape_infer_helper import SymbolicShapeInferenceHelper
 logger = logging.getLogger(__name__)
 
 
-class AttentionInputIDs:
-    INPUT = 0
-    WEIGHTS = 1
-    BIAS = 2
-    MASK_INDEX = 3
-    PAST = 4
-    RELATIVE_POSITION_BIAS = 5
-    PAST_SEQUENCE_LENGTH = 6
-
-
-class AttentionOutputIDs:
-    OUTPUT = 0
-    PRESENT = 1
-
-
 class PackingMode:
-    Attention = "Attention"
-    LayerNorm = "LayerNormalization"
-    SkipLayerNorm = "SkipLayerNormalization"
-    PastIndex = 4
-    PastSequenceLengthIndex = 6
-
     def __init__(
         self,
         model: OnnxModel,
@@ -48,7 +28,7 @@ class PackingMode:
         self.prune_graph: bool = False
         self.node_name_to_graph_name: dict = {}
         self.this_graph_name: str = self.model.model.graph.name
-        self.attention_nodes = self.model.get_nodes_by_op_type(self.Attention)
+        self.attention_nodes = self.model.get_nodes_by_op_type(Operators.ATTENTION)
 
     def _try_getting_attention_mask(self) -> Union[str, None]:
         first_attention_node = self._try_getting_first_attention()
@@ -77,7 +57,7 @@ class PackingMode:
     def _try_getting_last_layernorm(self) -> Union[NodeProto, None]:
         last_layernorm_node = None
         for node in self.model.nodes():
-            if node.op_type == self.LayerNorm or node.op_type == self.SkipLayerNorm:
+            if node.op_type == Operators.LAYERNORM or node.op_type == Operators.SKIPLAYERNORM:
                 last_layernorm_node = node
         return last_layernorm_node
 
@@ -101,10 +81,10 @@ class PackingMode:
 
     def _insert_removepadding_node(self, inputs: List[str], outputs: List[str]) -> None:
         new_node = helper.make_node(
-            "RemovePadding",
+            Operators.REMOVEPADDING,
             inputs=inputs,
             outputs=outputs,
-            name=self.model.create_node_name("RemovePadding"),
+            name=self.model.create_node_name(Operators.REMOVEPADDING),
         )
 
         new_node.domain = "com.microsoft"
@@ -113,10 +93,10 @@ class PackingMode:
 
     def _insert_restorepadding_node(self, inputs: List[str], outputs: List[str]) -> None:
         new_node = helper.make_node(
-            "RestorePadding",
+            Operators.RESTOREPADDING,
             inputs=inputs,
             outputs=outputs,
-            name=self.model.create_node_name("RestorePadding"),
+            name=self.model.create_node_name(Operators.RESTOREPADDING),
         )
 
         new_node.domain = "com.microsoft"
@@ -126,7 +106,7 @@ class PackingMode:
     def _replace_attention_with_packing_attention(self, token_offset: str, cumulative_sequence_length: str) -> None:
         for attention in self.attention_nodes:
             packed_attention = helper.make_node(
-                "PackedAttention",
+                Operators.PACKEDATTENTION,
                 inputs=[
                     attention.input[AttentionInputIDs.INPUT],
                     attention.input[AttentionInputIDs.WEIGHTS],
@@ -138,7 +118,7 @@ class PackingMode:
                     else "",
                 ],
                 outputs=[attention.output[AttentionOutputIDs.OUTPUT]],
-                name=self.model.create_node_name("PackedAttention"),
+                name=self.model.create_node_name(Operators.PACKEDATTENTION),
             )
 
             attributes = []
@@ -202,9 +182,9 @@ class PackingMode:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
             # are not recognized by onnx shape inference.
             shape_infer_helper = SymbolicShapeInferenceHelper(self.model.model, verbose=0)
-            infered_model = shape_infer_helper.infer_shapes(self.model.model, auto_merge=True, guess_output_rank=False)
-            if infered_model:
-                self.model.model = infered_model
+            inferred_model = shape_infer_helper.infer_shapes(self.model.model, auto_merge=True, guess_output_rank=False)
+            if inferred_model:
+                self.model.model = inferred_model
 
 
 def _parse_arguments():
