@@ -104,7 +104,7 @@ $(document).ready(function () {
 //   clone.querySelector('[name="link"]').href = blog.link;
 //   blogList.appendChild(clone);
    
-// });
+});
 
 function getStartedScroll() {
   var windowsHash = location.hash.split("#");
