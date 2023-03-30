@@ -44,13 +44,11 @@ jobs:
   #- Android_Java_API_AAR_Packaging_For_React_Native
   timeoutInMinutes: 150
   steps:
-  # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
-  # pythonVersion can be updated in Azure pipeline settings
-  # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=188
   - task: UsePythonVersion@0
-    displayName: Use Python $(pythonVersion)
-    inputs:
-      versionSpec: $(pythonVersion)
+  inputs:
+    versionSpec: "3.9"
+    addToPath: true
+    architecture: "x64"
 
   - task: JavaToolInstaller@0
     displayName: Use jdk 11
@@ -80,11 +78,11 @@ jobs:
     displayName: Install applesimutils tools required by detox ios
 
   - script: |
-      python3 -m pip install -q flatbuffers
+      python -m pip install -q flatbuffers
     displayName: Install python modules
 
   - script: |
-      python3 $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+      python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
         --build-dir $(Build.BinariesDirectory)/ios_framework_full \
         --staging-dir "$(Build.BinariesDirectory)/staging" \
         --pod-version "1.15.0" \
@@ -171,7 +169,7 @@ jobs:
   #      displayName: Run React Native Android Instrumented Tests
 
   - script: |
-      ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/pod_staging \
+      ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/staging/onnxruntime-c \
       pod install
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
     displayName: Pod install for onnxruntime react native ios bridge library
