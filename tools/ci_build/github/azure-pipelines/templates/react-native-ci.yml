@@ -90,8 +90,6 @@ jobs:
         --pod-version "1.15.0" \
         --variant Full \
         --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
-      cd $(Build.BinariesDirectory)/staging/tmpsie14l6m/c_pod
-      zip -r onnxruntime-c.zip .
 
     # TODO: update for the mobile build one as well
 
@@ -125,16 +123,6 @@ jobs:
   #    contents: onnxruntime-android-*.aar
   #    targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
   #  displayName: Copy Android package to React Native directory
-  
-  # TODO: Refine to set env variable in Podfile to avoid copying to the local_pods/
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Build.BinariesDirectory)/staging/tmpsie14l6m/c_pod
-      # Mobile build:
-      #  contents: onnxruntime-mobile-c.zip
-      contents: onnxruntime-c.zip
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/local_pods
-    displayName: Copy iOS package to React Native directory
 
   - script: |
       npm ci
@@ -183,6 +171,7 @@ jobs:
   #      displayName: Run React Native Android Instrumented Tests
 
   - script: |
+      ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/pod_staging \
       pod install
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
     displayName: Pod install for onnxruntime react native ios bridge library
