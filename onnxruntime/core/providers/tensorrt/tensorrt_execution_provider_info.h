@@ -7,6 +7,7 @@
 
 #include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
+#include "core/framework/provider_options_internal.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/library_handles.h"
 
