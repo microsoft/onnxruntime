@@ -47,9 +47,9 @@ jobs:
   - task: UsePythonVersion@0
     displayName: Use python 3.9
     inputs:
-    versionSpec: "3.9"
-    addToPath: true
-    architecture: "x64"
+      versionSpec: "3.9"
+      addToPath: true
+      rchitecture: "x64"
 
   - task: JavaToolInstaller@0
     displayName: Use jdk 11
