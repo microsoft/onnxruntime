@@ -47,8 +47,8 @@ def get_template():  # type: ignore
 
 
 def _get_diff_template():  # type: ignore
-    Template = get_template()
-    return Template(
+    template = get_template()
+    return template(
         textwrap.dedent(
             """
         <div id="{{ div_name }}"></div>
@@ -87,8 +87,8 @@ def _get_diff_template():  # type: ignore
 
 
 def _get_ops_template():  # type: ignore
-    Template = get_template()
-    return Template(
+    template = get_template()
+    return template(
         textwrap.dedent(
             """
         {% for sch in schemas %}
@@ -187,8 +187,8 @@ def _get_ops_template():  # type: ignore
 
 
 def _get_main_template():  # type: ignore
-    Template = get_template()
-    return Template(
+    template = get_template()
+    return template(
         textwrap.dedent(
             """
         .. _l-onnx-operators:
@@ -515,8 +515,8 @@ def get_rst_doc(  # type: ignore
     if diff:
         lines = docs.split("\n")
         new_lines = [""]
-        for line in lines:
-            line = line.rstrip("\r\t ")
+        for line_ in lines:
+            line = line_.rstrip("\r\t ")
             if len(line) == 0 and len(new_lines[-1]) == 0:
                 continue
             new_lines.append(line)
@@ -534,8 +534,8 @@ def get_rst_doc(  # type: ignore
     if clean:
         lines = docs.split("\n")
         new_lines = [""]
-        for line in lines:
-            line = line.rstrip("\r\t ")
+        for line_ in lines:
+            line = line_.rstrip("\r\t ")
             if len(line) == 0 and len(new_lines[-1]) == 0:
                 continue
             new_lines.append(line)
@@ -662,7 +662,7 @@ def _process_example(code: str) -> str:
     """
     code = code.replace("  # type: ignore", "")
     missing_imports = ["import numpy as np", "import onnx"]
-    elements = missing_imports + ["", "", code.strip("\n"), ""]
+    elements = [*missing_imports, "", "", code.strip("\n"), ""]
     return "\n".join(elements)
 
 
@@ -850,7 +850,7 @@ def onnx_documentation_folder(
             full = os.path.join(folder, page_name + ".rst")
             content = "\n".join(rows)
             if os.path.exists(full):
-                with open(full, "r", encoding="utf-8") as f:
+                with open(full, encoding="utf-8") as f:
                     old_content = f.read()
                 write = old_content != content
             else:

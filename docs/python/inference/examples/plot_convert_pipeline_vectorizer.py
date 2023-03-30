@@ -29,9 +29,9 @@ X_test_dict = pandas.DataFrame(X_test[:, 1:]).T.to_dict().values()
 ####################################
 # We create a pipeline.
 
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.feature_extraction import DictVectorizer
-from sklearn.pipeline import make_pipeline
+from sklearn.ensemble import GradientBoostingRegressor  # noqa: E402
+from sklearn.feature_extraction import DictVectorizer  # noqa: E402
+from sklearn.pipeline import make_pipeline  # noqa: E402
 
 pipe = make_pipeline(DictVectorizer(sparse=False), GradientBoostingRegressor())
 
@@ -40,7 +40,7 @@ pipe.fit(X_train_dict, y_train)
 ####################################
 # We compute the prediction on the test set
 # and we show the confusion matrix.
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score  # noqa: E402
 
 pred = pipe.predict(X_test_dict)
 print(r2_score(y_test, pred))
@@ -53,8 +53,12 @@ print(r2_score(y_test, pred))
 # `sklearn-onnx <https://github.com/onnx/sklearn-onnx>`_
 # to convert the model into ONNX format.
 
-from skl2onnx import convert_sklearn
-from skl2onnx.common.data_types import DictionaryType, FloatTensorType, Int64TensorType
+from skl2onnx import convert_sklearn  # noqa: E402
+from skl2onnx.common.data_types import (  # noqa: E402
+    DictionaryType,
+    FloatTensorType,
+    Int64TensorType,
+)
 
 # initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
 initial_type = [("float_input", DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
@@ -65,14 +69,14 @@ with open("pipeline_vectorize.onnx", "wb") as f:
 ##################################
 # We load the model with ONNX Runtime and look at
 # its input and output.
-import onnxruntime as rt
+import onnxruntime as rt  # noqa: E402
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 
 sess = rt.InferenceSession("pipeline_vectorize.onnx", providers=rt.get_available_providers())
 
 inp, out = sess.get_inputs()[0], sess.get_outputs()[0]
-print("input name='{}' and shape={} and type={}".format(inp.name, inp.shape, inp.type))
-print("output name='{}' and shape={} and type={}".format(out.name, out.shape, out.type))
+print(f"input name='{inp.name}' and shape={inp.shape} and type={inp.type}")
+print(f"output name='{out.name}' and shape={out.shape} and type={out.type}")
 
 ##################################
 # We compute the predictions.
