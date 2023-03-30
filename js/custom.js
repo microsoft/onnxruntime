@@ -71,42 +71,19 @@ $(document).ready(function () {
 
   $('.nav-tabs').responsiveTabs();
 
-  customElements.define(
-		"blog-item",
-		class extends HTMLElement {
-			constructor() {
-			super();
-			let template = document.getElementById("blog-item");
-			let templateContent = template.content;
+ $.getJSON("js/blogs.json", function (json) {
 
-			const shadowRoot = this.attachShadow({ mode: "open" });
-			shadowRoot.appendChild(templateContent.cloneNode(true));
-      
-			}
-		}
-		);
+  var template = document.querySelector('#blog-item');
+  var blogList = document.querySelector('#blog-list');
 
-    $.getJSON('js/blogs.json', function(data) {
-      var template = $('#blog-item').html();
-      var html = $.render(data, template);
-      $('#target').html(html);
-    });
-
-
-//  $.getJSON("js/blogs.json", function (json) {
-
-//     console.log(json);
-    
-//     for (var i = 0; i < json.blogs.length; i++) {
-//       var blogItem = document.createElement("blog-item");
-//       blogItem.setAttribute("title", json.blogs[i].title);
-//       blogItem.setAttribute("date", json.blogs[i].date);
-//       blogItem.setAttribute("blurb", json.blogs[i].blurb);
-//       blogItem.setAttribute("link", json.blogs[i].link);
-//       document.getElementById("blog-list").appendChild(blogItem);
-//     }
-
-//   });
+  json.blogs.forEach(function(blog) {
+    var clone = template.content.cloneNode(true);
+    clone.querySelector('[name="title"]').textContent = blog.title;
+    clone.querySelector('[name="date"]').textContent = blog.date;
+    clone.querySelector('[name="blurb"]').textContent = blog.blurb;
+    clone.querySelector('[name="link"]').href = blog.link;
+    blogList.appendChild(clone);
+  });
    
 });
 
