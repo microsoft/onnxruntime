@@ -101,8 +101,6 @@ $(document).ready(function () {
     }
 
   });
-
-    // loop thru json items and create blog-item elements on the blogs page
    
 });
 
