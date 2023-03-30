@@ -20,3 +20,8 @@ requirements-training.txt @microsoft/onnxruntime-admin
 requirements.txt.in @microsoft/onnxruntime-admin
 /cgmanifests/cgmanifest.json @microsoft/onnxruntime-admin
 /cgmanifests/generated/cgmanifest.json @microsoft/onnxruntime-admin
+
+# Public facing APIs
+/onnxruntime/include/onnxruntime/core/session/onnxruntime_c_api.h @microsoft/onnxruntime-api
+/onnxruntime/include/onnxruntime/core/session/onnxruntime_cxx_api.h @microsoft/onnxruntime-api
+/onnxruntime/include/onnxruntime/core/session/onnxruntime_cxx_inline.h @microsoft/onnxruntime-api
