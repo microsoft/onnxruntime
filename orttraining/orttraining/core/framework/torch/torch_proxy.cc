@@ -71,7 +71,8 @@ void CheckArguments(
   ORT_ENFORCE(obj_args.size() == obj_indices.size());
 
   for (const auto i : requires_grads) {
-    ORT_ENFORCE(i == 0 || i == 1, "Flag of requiring gradient must be either 0 (not required) or 1 (required) but got ", i);
+    ORT_ENFORCE(i == 0 || i == 1,
+                "Flag of requiring gradient must be either 0 (not required) or 1 (required) but got ", i);
   }
 
   std::vector<int64_t> counts(len, 0);
@@ -150,15 +151,19 @@ void InvokeRunner(
     // from Pytorch.
     PyObject* py_obj = PyTuple_GetItem(result_ptr.get(), 0);
     if (is_training_mode) {
-      const auto& refcnt = Py_REFCNT(py_obj);
-      // We don't need do ref increase here because, python returns tensor.grad_fn as part of
-      // tuple, who increased the refcnt already (and tensor persist until the backward kernels completed).
-      // Pytorch also increases refcnt before apply() return, so we should expect refcount >= 2.
-      // We say "at least" 2 because user could increase the context refcnt as well in their autograd forward()
-      // and backward() functions.
-      ORT_ENFORCE(refcnt >= 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
-      if (refcnt > 2) {
-        LOGS_DEFAULT(WARNING) << "Autograd context refcnt > 2";
+      if (py_obj == Py_None) {
+        LOGS_DEFAULT(VERBOSE) << "Under training mode, autograd context found to be Py_None.";
+      } else {
+        const auto refcnt = Py_REFCNT(py_obj);
+        // We don't need do ref increase here because, python returns tensor.grad_fn as part of
+        // tuple, who increased the refcnt already (and tensor persist until the backward kernels completed).
+        // Pytorch also increases refcnt before apply() return, so we should expect refcount >= 2.
+        // We say "at least" 2 because user could increase the context refcnt as well in their autograd forward()
+        // and backward() functions.
+        ORT_ENFORCE(refcnt >= 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
+        if (refcnt > 2) {
+          LOGS_DEFAULT(VERBOSE) << "Autograd context refcnt > 2, refcnt: " << refcnt;
+        }
       }
     } else {
       ORT_ENFORCE(py_obj == Py_None, "Under inference mode, autograd context should be Py_None.");

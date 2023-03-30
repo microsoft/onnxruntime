@@ -218,11 +218,11 @@ For self attention, kv_sequence_length equals to sequence_length (sequence lengt
 For cross attention, query and key might have different lengths.
 )DOC";
 
-// Currently, the `convert_generation.py` script renames the `Attention` nodes to `DecoderMaskedMultiheadAttention`
-// if the user requests it. Hence, the schemas of `DecoderMaskedMultiheadAttention` and `Attention` schemas
-// are tightly coupled. A change in Attention also needs corresponding schema updates in `DecoderMaskedMultiheadAttention`
+// Currently, the `convert_generation.py` script renames the `Attention` nodes to `DecoderMaskedSelfAttention`
+// if the user requests it. Hence, the schemas of `DecoderMaskedSelfAttention` and `Attention` schemas
+// are tightly coupled. A change in Attention also needs corresponding schema updates in `DecoderMaskedSelfAttention`
 // and its kernel.
-// TODO(hasesh): Decouple the schema of `DecoderMaskedMultiheadAttention` from the schema of the `Attention` operator
+// TODO(hasesh): Decouple the schema of `DecoderMaskedSelfAttention` from the schema of the `Attention` operator
 // by making appropriate tool changes.
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -272,7 +272,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "mask_index",
                "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), "
                "(batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), "
-               "or index with shape (batch_size) or (2 * batch_size)",
+               "or index with shape (batch_size) or (2 * batch_size) or (3 * batch_size + 2)",
                "M",
                OpSchema::Optional)
         .Input(4,
@@ -315,8 +315,135 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));
 
-constexpr const char* DecoderMaskedMultiheadAttention_ver1_doc = R"DOC(
-Uni-directional attention that supports input sequence length of 1.
+constexpr const char* PackingAttention_ver1_doc = R"DOC(
+This is the packed version of Attention.
+
+Sequences in one batch usually don't have same length and they are padded to have same length,
+e.g., below is a batch with 3 sequences and tokens* are padded.
+  Sequence_0:   0,  1*, 2*,  3*
+  Sequence_1:   4,  5,  6*,  7*
+  Sequence_2:   8,  9,  10,  11
+
+PackedAttention is designed to takes in packed input, i.e., only the real tokens without padding.
+An input as above will be packed into 3 tensors like below:
+ - input ([h0, h4, h5, h8, h9, h10, h11])
+ - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
+ - cumulated_token_count: 0, 1, 1+2, 1+2+4
+
+Input tensors contains the hidden embedding of real tokens.
+Token_offset records the offset of token in the unpacked input.
+cumulated_token_count records cumulated length of each sequnces length.
+
+The operator only supports BERT like model with padding on right now.
+
+)DOC";
+
+// Shape inference for PackedAttention. Here are the shapes of inputs and output:
+// Input 'input':                      (token_count, input_hidden_size)
+// Input 'weights':                    (input_hidden_size, hidden_size + hidden_size + v_hidden_size)
+// Input 'bias':                       (hidden_size + hidden_size + v_hidden_size)
+// Input 'token_offset':               (batch_size, sequence_length)
+// Input 'cumulative_sequence_length': (batch_size + 1)
+// Input 'relative_position_bias':     (batch_size, num_heads, sequence_length, sequence_length)
+// Output 'output':                    (token_count, v_hidden_size)
+void PackedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  // Shape inference
+  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
+    auto& input_shape = getInputShape(ctx, 0);
+    auto& input_dims = input_shape.dim();
+    int input_dim_size = input_dims.size();
+    if (input_dim_size != 2) {
+      fail_shape_inference("Inputs 0 shall be 2 dimensions");
+    }
+
+    auto& bias_shape = getInputShape(ctx, 2);
+    auto& bias_dims = bias_shape.dim();
+    if (bias_dims.size() != 1) {
+      fail_shape_inference("Invalid bias shape");
+    }
+
+    int64_t v_hidden_size = -1;
+    std::vector<int64_t> qkv_hidden_sizes;
+    getRepeatedAttribute(ctx, "qkv_hidden_sizes", qkv_hidden_sizes);
+
+    if (qkv_hidden_sizes.size() != 0) {
+      if (qkv_hidden_sizes.size() != 3) {
+        fail_shape_inference("qkv_hidden_sizes should have 3 elements")
+      }
+      v_hidden_size = qkv_hidden_sizes[2];
+    } else {
+      v_hidden_size = bias_shape.dim(0).dim_value() / 3;
+    }
+
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    for (auto& dim : input_dims) {
+      *output_shape.add_dim() = dim;
+    }
+
+    output_shape.mutable_dim(input_dim_size - 1)->set_dim_value(v_hidden_size);
+    updateOutputShape(ctx, 0, output_shape);
+  }
+}
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    PackedAttention, 1,
+    OpSchema()
+        .SetDoc(PackingAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("qkv_hidden_sizes",
+              "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size",
+              AttributeProto::INTS,
+              OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "input",
+               "Input tensor with shape (token_count, input_hidden_size)",
+               "T")
+        .Input(1,
+               "weights",
+               "Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)",
+               "T")
+        .Input(2,
+               "bias",
+               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection",
+               "T")
+        .Input(3,
+               "token_offset",
+               "In packing mode, it specifies the offset of each token(batch_size, sequence_length).",
+               "M")
+        .Input(4,
+               "cumulative_sequence_length",
+               "A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.",
+               "M")
+        .Input(5,
+               "relative_position_bias",
+               "A tensor with shape (batch_size, num_heads, sequence_length, sequence_length)"
+               "or (1, num_heads, sequence_length, sequence_length)."
+               "It specifies the additional bias to QxK'",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "2D output tensor with shape (token_count, v_hidden_size)",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("M",
+                        {"tensor(int32)"},
+                        "Constrain mask index to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          PackedAttentionTypeAndShapeInference(ctx);
+        }));
+
+constexpr const char* DecoderMaskedSelfAttention_ver1_doc = R"DOC(
+Self attention that supports input sequence length of 1.
 
 The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
 is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
@@ -333,9 +460,9 @@ Currently, only self attention is supported which means that kv_sequence_length 
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    DecoderMaskedMultiheadAttention, 1,
+    DecoderMaskedSelfAttention, 1,
     OpSchema()
-        .SetDoc(DecoderMaskedMultiheadAttention_ver1_doc)
+        .SetDoc(DecoderMaskedSelfAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("past_present_share_buffer",
               "Corresponding past and present are same tensor, its size is "
@@ -344,6 +471,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Input(0,
@@ -367,9 +498,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past",
                "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)"
                "When past_present_share_buffer is set, "
-               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size)",
-               "T",
-               OpSchema::Optional)
+               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size). "
+               "The first `batch_size * num_heads * max_sequence_length * head_size` elements correspond to keys "
+               "and the next `batch_size * num_heads * max_sequence_length * head_size` elements correspond to values. "
+               "The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape "
+               "(batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape "
+               "(batch_size, num_heads, max_sequence_length, head_size / x, x) is reordered to "
+               "become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`.",
+               "T")
         .Input(5,
                "relative_position_bias",
                "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
@@ -378,6 +514,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(6,
                "past_sequence_length",
                "When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).",
+               "M")
+        .Input(7,
+               "beam_width",
+               "The beam width that is being used while decoding."
+               "If not provided, the beam width will be assumed to be 1.",
+               "M",
+               OpSchema::Optional)
+        .Input(8,
+               "cache_indirection",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
+               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
                "M",
                OpSchema::Optional)
         .Output(0,
@@ -390,8 +537,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "If past_present_share_buffer is set, "
                 "its shape is (2, batch_size, num_heads, max_sequence_length, head_size), "
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
-                "T",
-                OpSchema::Optional)
+                "T")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")
@@ -429,7 +575,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1,
                "key",
                "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
-                "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+               "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(2,
@@ -444,7 +590,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "key_padding_mask",
-               "Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)",
+               "Key padding mask with shape (batch_size) or (3 * batch_size + 2) or (batch_size, kv_sequence_length)",
                "M",
                OpSchema::Optional)
         .Input(5,

@@ -56,6 +56,7 @@ class MlasFp16ActivationTest : public MlasTestBase {
         MlasIdentityActivation,
         MlasReluActivation,
         MlasLeakyReluActivation,
+        MlasTanhActivation,
         MlasLogisticActivation,
         MlasClipActivation,
         MlasHardSigmoidActivation};

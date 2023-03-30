@@ -1,9 +1,10 @@
 import logging
 
 import numpy as np
-import onnxruntime.quantization as quantization
 import torch
 from torchvision import datasets, transforms
+
+import onnxruntime.quantization as quantization
 
 
 def preprocess(input_model_dir, output_model_dir):
