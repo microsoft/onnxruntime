@@ -16,7 +16,7 @@ import itertools
 import logging
 import os
 import tempfile
-from typing import Dict, List
+from typing import Dict
 
 import numpy as np
 import onnx
@@ -53,17 +53,17 @@ def convert_np_to_float16(np_array, min_positive_val=5.96e-08, max_finite_val=65
         positive_max = np_array[np.where(np_array > 0)].max()
         positive_min = np_array[np.where(np_array > 0)].min()
         if positive_max >= max_finite_val:
-            logger.info("the float32 number {} will be truncated to {}".format(positive_max, max_finite_val))
+            logger.info(f"the float32 number {positive_max} will be truncated to {max_finite_val}")
         if positive_min <= min_positive_val:
-            logger.info("the float32 number {} will be truncated to {}".format(positive_min, min_positive_val))
+            logger.info(f"the float32 number {positive_min} will be truncated to {min_positive_val}")
 
     if np_array[np.where(np_array < 0)].shape[0] > 0:
         negative_max = np_array[np.where(np_array < 0)].max()
         negative_min = np_array[np.where(np_array < 0)].min()
         if negative_min <= -max_finite_val:
-            logger.info("the float32 number {} will be truncated to {}".format(negative_min, -max_finite_val))
+            logger.info(f"the float32 number {negative_min} will be truncated to {-max_finite_val}")
         if negative_max >= -min_positive_val:
-            logger.info("the float32 number {} will be truncated to {}".format(negative_max, -min_positive_val))
+            logger.info(f"the float32 number {negative_max} will be truncated to {-min_positive_val}")
 
     np_array = np.where(between(0, np_array, min_positive_val), min_positive_val, np_array)
     np_array = np.where(between(-min_positive_val, np_array, 0), -min_positive_val, np_array)
@@ -354,7 +354,7 @@ def convert_float_to_float16(
                     next_level.append(n)
                 q.t.CopyFrom(convert_tensor_float_to_float16(q.t, min_positive_val, max_finite_val))
                 for n in q.tensors:
-                    n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)
+                    n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)  # noqa: PLW2901
             # if q is graph, process input, output and value_info (ValueInfoProto)
             if isinstance(q, onnx_proto.GraphProto):
                 # Note that float initializers tracked by fp32_initializers will be processed later.
@@ -373,7 +373,7 @@ def convert_float_to_float16(
 
         queue = next_level
 
-    for key, value in fp32_initializers.items():
+    for _key, value in fp32_initializers.items():
         # By default, to avoid precision loss, do not convert an initializer to fp16 when it is used only by fp32 nodes.
         if force_fp16_initializers or value.fp16_nodes:
             value.initializer = convert_tensor_float_to_float16(value.initializer, min_positive_val, max_finite_val)

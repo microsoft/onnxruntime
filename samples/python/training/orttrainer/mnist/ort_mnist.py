@@ -16,7 +16,7 @@ from onnxruntime.training import ORTTrainer, ORTTrainerOptions, optim
 # Pytorch model
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNet, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, num_classes)
@@ -47,8 +47,8 @@ def train(log_interval, trainer, device, train_loader, epoch, train_steps):
             break
 
         # Fetch data
-        data, target = data.to(device), target.to(device)
-        data = data.reshape(data.shape[0], -1)
+        data, target = data.to(device), target.to(device)  # noqa: PLW2901
+        data = data.reshape(data.shape[0], -1)  # noqa: PLW2901
 
         # Train step
         loss, prob = trainer.train_step(data, target)
@@ -67,8 +67,8 @@ def test(trainer, device, test_loader):
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            data = data.reshape(data.shape[0], -1)
+            data, target = data.to(device), target.to(device)  # noqa: PLW2901
+            data = data.reshape(data.shape[0], -1)  # noqa: PLW2901
 
             # Using fetches around without eval_step to not pass 'target' as input
             trainer._train_step_info.fetches = ["probability"]

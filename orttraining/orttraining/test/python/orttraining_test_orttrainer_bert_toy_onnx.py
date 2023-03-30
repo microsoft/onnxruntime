@@ -1,33 +1,22 @@
-import copy
-from functools import partial
-import inspect
-import math
-import numpy as np
-from numpy.testing import assert_allclose
-import onnx
+import copy  # noqa: F401
+import inspect  # noqa: F401
+import math  # noqa: F401
 import os
+from functools import partial
+
+import _test_commons
+import _test_helpers
+import onnx
 import pytest
 import torch
+from numpy.testing import assert_allclose
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import (
-    IODescription as Legacy_IODescription,
-    ModelDescription as Legacy_ModelDescription,
-    LossScaler as Legacy_LossScaler,
-    ORTTrainer as Legacy_ORTTrainer,
-)
-from onnxruntime.training import (
-    _utils,
-    amp,
-    checkpoint,
-    optim,
-    orttrainer,
-    TrainStepInfo,
-    model_desc_validation as md_val,
-    orttrainer_options as orttrainer_options,
-)
-
-import _test_commons, _test_helpers
+from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
+from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
+from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
+from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
+from onnxruntime.training import amp, optim, orttrainer
 
 ###############################################################################
 # Helper functions ############################################################
@@ -145,7 +134,7 @@ def load_bert_onnx_model():
 
 
 class CustomLossScaler(amp.LossScaler):
-    def __init__(self, loss_scale=float(1 << 16)):
+    def __init__(self, loss_scale=float(1 << 16)):  # noqa: B008
         super().__init__(loss_scale)
         self._initial_loss_scale = loss_scale
         self.loss_scale = loss_scale
@@ -162,7 +151,7 @@ class CustomLossScaler(amp.LossScaler):
 
 
 class LegacyCustomLossScaler:
-    def __init__(self, loss_scale=float(1 << 16)):
+    def __init__(self, loss_scale=float(1 << 16)):  # noqa: B008
         self._initial_loss_scale = loss_scale
         self.loss_scale_ = loss_scale
 
@@ -173,7 +162,7 @@ class LegacyCustomLossScaler:
         self.loss_scale_ *= 0.9
 
 
-def legacy_model_params(lr, device=torch.device("cuda", 0)):
+def legacy_model_params(lr, device=torch.device("cuda", 0)):  # noqa: B008
     legacy_model_desc = legacy_bert_model_description()
     learning_rate_description = legacy_ort_trainer_learning_rate_description()
     learning_rate = torch.tensor([lr]).to(device)
@@ -191,7 +180,6 @@ def legacy_ort_trainer_learning_rate_description():
 
 
 def legacy_bert_model_description():
-    vocab_size = 30528
     input_ids_desc = Legacy_IODescription("input_ids", ["batch", "max_seq_len_in_batch"])
     segment_ids_desc = Legacy_IODescription("segment_ids", ["batch", "max_seq_len_in_batch"])
     input_mask_desc = Legacy_IODescription("input_mask", ["batch", "max_seq_len_in_batch"])
@@ -242,7 +230,7 @@ def testToyBERTModelBasicTraining(dynamic_shape):
     opts = orttrainer.ORTTrainerOptions({})
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
 
-    for i in range(10):
+    for _i in range(10):
         sample_input = generate_random_input_from_model_desc(model_desc)
         output = trainer.train_step(*sample_input)
         assert output.shape == torch.Size([])
@@ -264,7 +252,7 @@ def testToyBERTDeterministicCheck(expected_losses):
     # Modeling
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
-    params = optimizer_parameters(model)
+    optimizer_parameters(model)
     optim_config = optim.LambConfig()
     opts = orttrainer.ORTTrainerOptions(
         {
@@ -692,7 +680,7 @@ def testToyBertCheckpointFrozenWeights():
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
 
     # Train for a few steps
-    for i in range(total_steps):
+    for _i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, seed)
         _ = trainer.train_step(*sample_input)
     sample_input = generate_random_input_from_model_desc(model_desc, seed + total_steps + 1)
@@ -727,7 +715,6 @@ def testToyBertCheckpointFrozenWeights():
 )
 def testToyBertLoadOptimState(optimizer, mixedprecision_enabled):
     # Common setup
-    rtol = 1e-03
     device = "cuda"
     seed = 1
     torch.manual_seed(seed)

@@ -1,37 +1,27 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # ==================
-import os
-import shutil
-import logging
-import random
-import h5py
-from tqdm import tqdm
-import datetime
-import numpy as np
 import dataclasses
-from dataclasses import dataclass, field
-from typing import Optional, Any, Dict
-import json
+import datetime
 import glob
-
+import json
+import logging
+import os
+import random
+import shutil
 import unittest
-
-import torch
-from torch.utils.data import DataLoader, RandomSampler, Dataset
-import torch.distributed as dist
-from torch.utils.tensorboard import SummaryWriter
-
-from transformers import BertForPreTraining, BertConfig, HfArgumentParser
-
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
+
+import h5py
+import numpy as np
+import torch
+import torch.distributed as dist
+from torch.utils.data import DataLoader, Dataset, RandomSampler
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+from transformers import BertConfig, BertForPreTraining, HfArgumentParser
 
 import onnxruntime as ort
-from onnxruntime.training import amp, optim, orttrainer
-from onnxruntime.training.optim import PolyWarmupLRScheduler, LinearWarmupLRScheduler
-from onnxruntime.training.checkpoint import aggregate_checkpoints
 
 # need to override torch.onnx.symbolic_opset12.nll_loss to handle ignore_index == -100 cases.
 # the fix for ignore_index == -100 cases is already in pytorch master.
@@ -39,6 +29,9 @@ from onnxruntime.training.checkpoint import aggregate_checkpoints
 # eventually we will use pytorch with fixed nll_loss once computation
 # issues are understood and solved.
 import onnxruntime.capi.pt_patch
+from onnxruntime.training import amp, optim, orttrainer
+from onnxruntime.training.checkpoint import aggregate_checkpoints
+from onnxruntime.training.optim import LinearWarmupLRScheduler, PolyWarmupLRScheduler  # noqa: F401
 
 # we cannot make full convergence run in nightly pipeling because of its timeout limit,
 # max_steps is still needed to calculate learning rate. force_to_stop_max_steps is used to
@@ -109,7 +102,6 @@ def bert_model_description(config):
 
 
 def create_pretraining_dataset(input_file, max_pred_length, args):
-
     train_data = pretraining_dataset(input_file=input_file, max_pred_length=max_pred_length)
     train_sampler = RandomSampler(train_data)
     train_dataloader = DataLoader(
@@ -118,7 +110,7 @@ def create_pretraining_dataset(input_file, max_pred_length, args):
     return train_dataloader, input_file
 
 
-class pretraining_dataset(Dataset):
+class pretraining_dataset(Dataset):  # noqa: N801
     def __init__(self, input_file, max_pred_length):
         logger.info("pretraining_dataset: %s, max_pred_length: %d", input_file, max_pred_length)
         self.input_file = input_file
@@ -158,11 +150,10 @@ class pretraining_dataset(Dataset):
         return [input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels]
 
 
-import argparse
+import argparse  # noqa: E402
 
 
 def parse_arguments():
-
     parser = argparse.ArgumentParser()
 
     # batch size test config parameters
@@ -340,7 +331,7 @@ class PretrainArguments:
 
     def to_sanitized_dict(self) -> Dict[str, Any]:
         """
-        Sanitized serialization to use with TensorBoard’s hparams
+        Sanitized serialization to use with TensorBoard`s hparams
         """
         d = dataclasses.asdict(self)
         valid_types = [bool, int, float, str, torch.Tensor]
@@ -348,7 +339,6 @@ class PretrainArguments:
 
 
 def setup_training(args):
-
     assert torch.cuda.is_available()
 
     if args.local_rank == -1:
@@ -362,7 +352,7 @@ def setup_training(args):
 
     if args.gradient_accumulation_steps < 1:
         raise ValueError(
-            "Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(args.gradient_accumulation_steps)
+            f"Invalid gradient_accumulation_steps parameter: {args.gradient_accumulation_steps}, should be >= 1"
         )
     if args.train_batch_size % args.gradient_accumulation_steps != 0:
         raise ValueError(
@@ -384,7 +374,7 @@ def setup_torch_distributed(world_rank, world_size):
     os.environ["RANK"] = str(world_rank)
     os.environ["WORLD_SIZE"] = str(world_size)
     os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = str("12345")
+    os.environ["MASTER_PORT"] = "12345"
     torch.distributed.init_process_group(backend="nccl", world_size=world_size, rank=world_rank)
     return
 
@@ -493,7 +483,6 @@ def do_pretrain(args):
 
     logger.info("Running training: Batch size = %d, initial LR = %f", args.train_batch_size, args.learning_rate)
 
-    most_recent_ckpts_paths = []
     average_loss = 0.0
     epoch = 0
     training_steps = 0
@@ -524,9 +513,9 @@ def do_pretrain(args):
             )
 
             train_iter = tqdm(train_dataloader, desc="Iteration") if is_main_process(args) else train_dataloader
-            for step, batch in enumerate(train_iter):
+            for _step, batch in enumerate(train_iter):
                 training_steps += 1
-                batch = [t.to(device) for t in batch]
+                batch = [t.to(device) for t in batch]  # noqa: PLW2901
                 input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels = batch
 
                 loss, _, _ = model.train_step(
@@ -547,7 +536,7 @@ def do_pretrain(args):
                                 # tb_writer.add_scalar('train/summary/scalar/all_fp16_gradients_finite_859', all_finite, global_step)
                             tb_writer.add_scalar("train/summary/total_loss", average_loss / divisor, global_step)
 
-                        print("Step:{} Average Loss = {}".format(global_step, average_loss / divisor))
+                        print(f"Step:{global_step} Average Loss = {average_loss / divisor}")
 
                     if global_step >= args.max_steps or global_step >= force_to_stop_max_steps:
                         if tb_writer:
@@ -555,9 +544,7 @@ def do_pretrain(args):
 
                     if global_step >= args.max_steps:
                         if args.save_checkpoint:
-                            model.save_checkpoint(
-                                os.path.join(args.output_dir, "checkpoint-{}.ortcp".format(args.world_rank))
-                            )
+                            model.save_checkpoint(os.path.join(args.output_dir, f"checkpoint-{args.world_rank}.ortcp"))
                         final_loss = average_loss / (args.log_freq * args.gradient_accumulation_steps)
                         return final_loss
 
@@ -696,7 +683,7 @@ class ORTBertPretrainTest(unittest.TestCase):
             deepspeed_zero_stage=self.deepspeed_zero_stage,
             save_checkpoint=True,
         )
-        train_loss = do_pretrain(args)
+        do_pretrain(args)
 
         # ensure all workers reach this point before loading the checkpointed state
         torch.distributed.barrier()
@@ -733,12 +720,9 @@ if __name__ == "__main__":
     # calling unpublished get_mpi_context_xxx to get rank/size numbers.
     try:
         # In case ORT is not built with MPI/NCCL, there are no get_mpi_context_xxx internal apis.
-        from onnxruntime.capi._pybind_state import (
-            get_mpi_context_local_rank,
-            get_mpi_context_local_size,
-            get_mpi_context_world_rank,
-            get_mpi_context_world_size,
-        )
+        from onnxruntime.capi._pybind_state import get_mpi_context_local_size  # noqa: F401
+        from onnxruntime.capi._pybind_state import get_mpi_context_world_rank  # noqa: F401
+        from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_world_size
 
         has_get_mpi_context_internal_api = True
     except ImportError:

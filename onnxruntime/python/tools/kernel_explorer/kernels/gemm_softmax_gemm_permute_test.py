@@ -85,9 +85,9 @@ def _test_gemm_softmax_gemm_permute(
             raise ValueError
 
     np.random.seed(42)
-    Q = multinormal_distribution(np.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)
-    K = multinormal_distribution(np.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)
-    V = multinormal_distribution(np.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)
+    Q = multinormal_distribution(np.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)  # noqa: N806
+    K = multinormal_distribution(np.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)  # noqa: N806
+    V = multinormal_distribution(np.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)  # noqa: N806
     if bias_shape is not None:
         attn_bias = np.random.uniform(-0.5, 0.5, size=bias_shape)
     if mask_shape is not None:
@@ -110,13 +110,13 @@ def _test_gemm_softmax_gemm_permute(
     ref = np.swapaxes(attn, 2, 1)  # permute 0213
 
     out = np.empty(out_shape, dtype=dtype)
-    host_Q = Q.astype(dtype)
-    host_K = K.astype(dtype)
-    host_V = V.astype(dtype)
+    host_Q = Q.astype(dtype)  # noqa: N806
+    host_K = K.astype(dtype)  # noqa: N806
+    host_V = V.astype(dtype)  # noqa: N806
     host_attn_bias = attn_bias.astype(dtype) if attn_bias is not None else None
-    dev_Q = ke.DeviceArray(host_Q)
-    dev_K = ke.DeviceArray(host_K)
-    dev_V = ke.DeviceArray(host_V)
+    dev_Q = ke.DeviceArray(host_Q)  # noqa: N806
+    dev_K = ke.DeviceArray(host_K)  # noqa: N806
+    dev_V = ke.DeviceArray(host_V)  # noqa: N806
     dev_out = ke.DeviceArray(out)
     dev_attn_bias = ke.DeviceArray(host_attn_bias) if host_attn_bias is not None else None
     dev_attn_mask = ke.DeviceArray(attn_mask) if attn_mask is not None else None
@@ -264,22 +264,22 @@ def profile_gemm_softmax_gemm_permute_func(
             raise ValueError
 
     np.random.seed(42)
-    Q = multinormal_distribution(np.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)
-    K = multinormal_distribution(np.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)
-    V = multinormal_distribution(np.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)
+    Q = multinormal_distribution(np.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)  # noqa: N806
+    K = multinormal_distribution(np.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)  # noqa: N806
+    V = multinormal_distribution(np.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)  # noqa: N806
     if bias_shape is not None:
         attn_bias = np.random.uniform(-2, 2, size=bias_shape)
     if mask_shape is not None:
         attn_mask = (np.random.randint(0, 100, size=mask_shape) < 95).astype(np.int32)
 
     out = np.empty(out_shape, dtype=dtype)
-    host_Q = Q.astype(dtype)
-    host_K = K.astype(dtype)
-    host_V = V.astype(dtype)
+    host_Q = Q.astype(dtype)  # noqa: N806
+    host_K = K.astype(dtype)  # noqa: N806
+    host_V = V.astype(dtype)  # noqa: N806
     host_attn_bias = attn_bias.astype(dtype) if attn_bias is not None else None
-    dev_Q = ke.DeviceArray(host_Q)
-    dev_K = ke.DeviceArray(host_K)
-    dev_V = ke.DeviceArray(host_V)
+    dev_Q = ke.DeviceArray(host_Q)  # noqa: N806
+    dev_K = ke.DeviceArray(host_K)  # noqa: N806
+    dev_V = ke.DeviceArray(host_V)  # noqa: N806
     dev_out = ke.DeviceArray(out)
     dev_attn_bias = ke.DeviceArray(host_attn_bias) if host_attn_bias is not None else None
     dev_attn_mask = ke.DeviceArray(attn_mask) if attn_mask is not None else None

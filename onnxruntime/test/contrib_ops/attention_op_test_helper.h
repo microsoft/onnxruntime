@@ -62,6 +62,8 @@ void GetCrossAttentionData_HeadSize16(AttentionTestData& data);
 void GetCrossAttentionDataWithPast(AttentionTestData& data);
 void GetSelfAttentionDataWithPast(AttentionTestData& data);
 
+void GetAttentionDataCutlassRelPosBias(AttentionTestData& data);
+
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type);
 }  // namespace test
 }  // namespace onnxruntime

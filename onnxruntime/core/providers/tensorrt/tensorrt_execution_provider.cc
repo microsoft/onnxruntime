@@ -194,33 +194,33 @@ void Impl_Cast(
 }  // namespace cuda
 
 template <>
-Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 template <>
-void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
+void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 template <>
-Status CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+Status CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 template <>
-void CudaCall<cublasStatus_t, true>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
+void CudaCall<cublasStatus_t, true>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 template <>
-Status CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+Status CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 template <>
-void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
+void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 class Memcpy final : public OpKernel {
@@ -1496,8 +1496,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
           if (detailed_build_log_) {
             auto engine_build_stop = std::chrono::steady_clock::now();
-            LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_node_name_with_precision << " took: " <<
-              std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+            LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
           }
           if (engine_cache_enable_) {
             std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
@@ -1899,8 +1898,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
           if (detailed_build_log_) {
             auto engine_build_stop = std::chrono::steady_clock::now();
-            LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " <<
-              std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+            LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
           }
         }
         if (trt_state->engine == nullptr) {

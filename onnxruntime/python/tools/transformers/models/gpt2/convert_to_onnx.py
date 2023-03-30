@@ -30,14 +30,14 @@ from transformers import AutoConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import (
+from benchmark_helper import (  # noqa: E402
     Precision,
     create_onnxruntime_session,
     get_ort_environment_variables,
     prepare_environment,
     setup_logger,
 )
-from quantize_helper import QuantizeHelper
+from quantize_helper import QuantizeHelper  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -348,7 +348,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
         )
 
         nodes = m.nodes()
-        op_list = set([node.op_type for node in nodes])
+        op_list = {node.op_type for node in nodes}
         all_ops = ",".join(op_list)
 
         # print optimized operators
@@ -372,7 +372,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
         output_path = args.output
 
     logger.info(f"Output path: {output_path}")
-    model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)
+    model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)  # noqa: N806
 
     session = create_onnxruntime_session(
         output_path, args.use_gpu, args.provider, enable_all_optimization=True, verbose=args.verbose
@@ -496,7 +496,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
                 "nan_rate": parity_result["nan_rate"],
                 "top1_match_rate": parity_result["top1_match_rate"],
                 "top1_match_rate_per_run": parity_result["top1_match_rate_per_run"],
-                "onnx_size_in_MB": "{}".format(model_size_in_MB),
+                "onnx_size_in_MB": f"{model_size_in_MB}",
             }
             logger.info(f"result: {row}")
             result.update(row)
@@ -508,7 +508,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
         # {"input_ids": [[14698, 257, 1310, 13688, 319, 326]]}
         with open(args.input_test_file) as read_f:
             for _, line in enumerate(read_f):
-                line = line.rstrip()
+                line = line.rstrip()  # noqa: PLW2901
                 data = json.loads(line)
                 input_ids = torch.from_numpy(numpy.asarray(data["input_ids"], dtype=numpy.int64)).to(device)
 

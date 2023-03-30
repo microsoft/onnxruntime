@@ -108,7 +108,7 @@ public:
 
                 auto outputDescs = std::vector<DML_TENSOR_DESC> { m_outputTensorDesc.GetDmlDesc() };
                 auto inputDescs = std::vector<DML_TENSOR_DESC>(m_inputTensorDescs.size());
-                for (int i = 0; i < inputDescs.size(); i++)
+                for (size_t i = 0; i < inputDescs.size(); i++)
                 {
                     inputDescs[i] = m_inputTensorDescs[i].GetDmlDesc();
                 }

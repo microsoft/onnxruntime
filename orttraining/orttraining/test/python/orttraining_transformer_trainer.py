@@ -4,36 +4,21 @@ import json
 import logging
 import os
 import random
-
-from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Callable, Dict, List, NamedTuple, Optional
 
 import numpy as np
 import torch
-from torch import nn
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data.sampler import RandomSampler, SequentialSampler
+from torch.utils.data.sampler import SequentialSampler
 from tqdm import tqdm, trange
-
-from transformers.data.data_collator import DataCollator, DefaultDataCollator
+from transformers.data.data_collator import DefaultDataCollator
 from transformers.modeling_utils import PreTrainedModel
 from transformers.training_args import TrainingArguments
 
 import onnxruntime
-from orttraining_test_bert_postprocess import postprocess_model
-from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
-
-from onnxruntime.training import (
-    _utils,
-    amp,
-    optim,
-    orttrainer,
-    TrainStepInfo,
-    model_desc_validation as md_val,
-    orttrainer_options as orttrainer_options,
-)
-from onnxruntime.training.optim import LinearWarmupLRScheduler, _LRScheduler
+from onnxruntime.training import amp, optim, orttrainer
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -41,7 +26,7 @@ try:
     _has_tensorboard = True
 except ImportError:
     try:
-        from tensorboardX import SummaryWriter
+        from tensorboardX import SummaryWriter  # noqa: F401
 
         _has_tensorboard = True
     except ImportError:
@@ -242,10 +227,9 @@ class ORTTransformerTrainer:
             disable=self.args.local_rank not in [-1, 0],
         )
 
-        for epoch in train_iterator:
+        for _epoch in train_iterator:
             epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=self.args.local_rank not in [-1, 0])
             for step, inputs in enumerate(epoch_iterator):
-
                 # Skip past any already trained steps if resuming training
                 if steps_trained_in_current_epoch > 0:
                     steps_trained_in_current_epoch -= 1
@@ -266,7 +250,7 @@ class ORTTransformerTrainer:
                             if self.args.evaluate_during_training:
                                 results = self.evaluate()
                                 for key, value in results.items():
-                                    eval_key = "eval_{}".format(key)
+                                    eval_key = f"eval_{key}"
                                     logs[eval_key] = value
 
                             loss_scalar = (tr_loss - logging_loss) / self.args.logging_steps

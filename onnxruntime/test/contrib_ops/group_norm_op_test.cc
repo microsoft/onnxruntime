@@ -393,8 +393,9 @@ TEST(GroupNormTest, GroupNorm_128) {
   int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+  bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
 
-  if (enable_cuda || enable_rocm) {
+  if (enable_cuda || enable_rocm || enable_dml) {
     OpTester test("GroupNorm", 1, onnxruntime::kMSDomain);
     test.AddAttribute<float>("epsilon", 1e-05f);
     test.AddAttribute<int64_t>("groups", 32);
@@ -416,12 +417,15 @@ TEST(GroupNormTest, GroupNorm_128) {
     if (enable_rocm) {
       execution_providers.push_back(DefaultRocmExecutionProvider());
     }
+    if (enable_dml) {
+      execution_providers.push_back(DefaultDmlExecutionProvider());
+    }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 
   // Test float32, with activation
   enable_cuda = HasCudaEnvironment(0);
-  if (enable_cuda || enable_rocm) {
+  if (enable_cuda || enable_rocm || enable_dml) {
     OpTester test("GroupNorm", 1, onnxruntime::kMSDomain);
     test.AddAttribute<float>("epsilon", 1e-05f);
     test.AddAttribute<int64_t>("groups", 32);
@@ -441,6 +445,9 @@ TEST(GroupNormTest, GroupNorm_128) {
     }
     if (enable_rocm) {
       execution_providers.push_back(DefaultRocmExecutionProvider());
+    }
+    if (enable_dml) {
+      execution_providers.push_back(DefaultDmlExecutionProvider());
     }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }

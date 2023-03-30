@@ -12,7 +12,7 @@ from onnxruntime.training.api import CheckpointState, LinearLRScheduler, Module,
 
 class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingModel):
     def __init__(self):
-        super(SimpleModelWithCrossEntropyLoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.CrossEntropyLoss()
 
     def build(self, output_name):

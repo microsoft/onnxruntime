@@ -2,8 +2,9 @@
 # Licensed under the MIT License.
 
 import unittest
+
+import onnxruntime_pybind11_state as torch_ort  # noqa: F401
 import torch
-import onnxruntime_pybind11_state as torch_ort
 
 
 class OrtTensorTests(unittest.TestCase):
@@ -49,7 +50,7 @@ class OrtTensorTests(unittest.TestCase):
         ort_ones = cpu_ones.to("ort")
         y = torch.as_strided(ort_ones, (2, 2), (1, 2))
         assert y.size() == (2, 2)
-        assert y.is_contiguous() == False
+        assert y.is_contiguous() is False
         contiguous_y = y.contiguous()
         w = torch.ones((2, 3))
         ort_w = w.to("ort")
@@ -65,7 +66,7 @@ class OrtTensorTests(unittest.TestCase):
         ort_ones = cpu_ones.to("ort")
         y_cpu = cpu_ones[0:128, :128]
         y = ort_ones[0:128, :128]
-        assert y.is_contiguous() == False
+        assert y.is_contiguous() is False
         assert y.size() == (128, 128)
         assert torch.allclose(y.cpu(), y_cpu)
 

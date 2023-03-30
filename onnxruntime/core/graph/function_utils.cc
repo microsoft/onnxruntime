@@ -229,7 +229,18 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
   int i = 0;
   for (auto& input : input_types_list) {
-    op_schema->Input(i, input.first, "", input.second);
+    if (!input.first.empty()) {
+      op_schema->Input(i, input.first, "", input.second);
+    } else {
+      // Handle unused input: its type can be anything.
+      std::string type_str = "Tin" + std::to_string(i);
+      op_schema->Input(i, onnx_func_proto.input(i), "", type_str);
+      auto& dest_types = type_constraint_map[type_str];
+      dest_types.reserve(dest_types.size() + all_types.size());
+      for (const auto& data_type : all_types) {
+        dest_types.emplace_back(data_type);
+      }
+    }
     ++i;
   }
   i = 0;
