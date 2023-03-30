@@ -866,6 +866,8 @@ common::Status InferenceSession::Load() {
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. ensure potential QDQ node units have unique DQ nodes (required transformer).
+  //    - This is a required transformer as the ORT code has a hard requirement there are no overlapping QDQ node units.
+  //    - We run it here in case optimizers are disabled.
   // 2. run level 1 optimizations. these only use ONNX operators.
   // 3. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
   // 4. run level 2+ optimizations. level 2 and 3 optimizations use contrib ops.
