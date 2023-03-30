@@ -86,24 +86,24 @@ $(document).ready(function () {
 		}
 		);
 
-    var json = {
-      "items": [
-          {
-          "title": "sample x",
-          "date": "author x",
-          "blurb": "author x",
-          "link": "author x",
-          },
-          {
-          "title": "sample y",
-          "date": "author x",
-          "blurb": "author x",
-          "link": "author x",
-          }
-      ]
-  };
+  //   var json = {
+  //     "items": [
+  //         {
+  //         "title": "sample x",
+  //         "date": "author x",
+  //         "blurb": "author x",
+  //         "link": "author x",
+  //         },
+  //         {
+  //         "title": "sample y",
+  //         "date": "author x",
+  //         "blurb": "author x",
+  //         "link": "author x",
+  //         }
+  //     ]
+  // };
   // pull json from blogs.json
-  var jsonList = $.getJSON("blogs.json", function (json) {
+  var json = $.getJSON("blogs.json", function (json) {
     console.log(json);
   });
 
@@ -116,8 +116,6 @@ $(document).ready(function () {
       blogItem.setAttribute("link", json.items[i].link);
       document.getElementById("blog-list").appendChild(blogItem);
     }
-
-
 
 });
 
