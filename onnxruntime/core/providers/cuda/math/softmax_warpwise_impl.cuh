@@ -165,100 +165,63 @@ __global__ void softmax_warp_forward1(output_t* dst, const input_t* src, int bat
 
 template <typename input_t, typename output_t, typename acc_t, int log2_elements, bool is_log_softmax>
 __global__ void softmax_warp_forward2(output_t* dst, const input_t* src, int batch_size, int stride, int element_count) {
-  // WARP_SIZE and WARP_BATCH must match the return values batches_per_warp and warp_size of method warp_softmax_forward_kernel.
+  // 1 cuda block only processes one row and contains 1 cuda warp only.
   constexpr int next_power_of_two = 1 << log2_elements;
-  constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
+  constexpr int WARP_SIZE = 32;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
-  constexpr int WARP_BATCH = 1;
 
-  int first_batch = (blockDim.y * blockIdx.x + threadIdx.y) * WARP_BATCH;
-
-  // batch_size might not be a multiple of WARP_BATCH. Check how
-  // many batches have to computed within this WARP.
-  int local_batches = batch_size - first_batch;
-  if (local_batches > WARP_BATCH)
-    local_batches = WARP_BATCH;
-
-  // there might be multiple batches per warp. compute the index within the batch
   int local_idx = threadIdx.x;
-
-  src += first_batch * stride + local_idx;
-  dst += first_batch * stride + local_idx;
-
-  // The nested loops over WARP_BATCH and then WARP_ITERATIONS can be simplified to one loop,
-  // but I think doing so would obfuscate the logic of the algorithm, thus I chose to keep
-  // the nested loops.
-  // This should have no impact on performance because the loops are unrolled anyway.
-
-  // load data from global memory
-  // __shared__ input_t elements[WARP_ITERATIONS][GPU_WARP_SIZE];
+  src +=  blockIdx.x * stride + local_idx;
+  dst +=  blockIdx.x * stride + local_idx;
   extern __shared__ unsigned char smem[];
-  // auto elements = reinterpret_cast<input_t*>(smem);
   input_t (&elements)[WARP_ITERATIONS][WARP_SIZE] = *reinterpret_cast<input_t (*)[WARP_ITERATIONS][WARP_SIZE]>(smem);
-  for (int i = 0; i < WARP_BATCH; ++i) {
-    int batch_element_count = (i >= local_batches) ? 0 : element_count;
 #pragma unroll
-    for (int it = 0; it < WARP_ITERATIONS; ++it) {
-      int element_index = local_idx + it * WARP_SIZE;
-      if (element_index < batch_element_count) {
-        elements[it][local_idx] = src[i * element_count + it * WARP_SIZE];
-      } else {
-        elements[it][local_idx] = -std::numeric_limits<input_t>::infinity();
-      }
+  for (int it = 0; it < WARP_ITERATIONS; ++it) {
+    int element_index = local_idx + it * WARP_SIZE;
+    if (element_index < element_count) {
+      elements[it][local_idx] = src[it * WARP_SIZE];
+    } else {
+      elements[it][local_idx] = -std::numeric_limits<input_t>::infinity();
     }
   }
-
   // compute max_value
-  input_t max_value[WARP_BATCH];
+  input_t max_value = elements[0][local_idx];
 #pragma unroll
-  for (int i = 0; i < WARP_BATCH; ++i) {
-    max_value[i] = elements[0][local_idx];
-#pragma unroll
-    for (int it = 1; it < WARP_ITERATIONS; ++it) {
-      max_value[i] = (max_value[i] > elements[it][local_idx]) ? max_value[i] : elements[it][local_idx];
-    }
+  for (int it = 1; it < WARP_ITERATIONS; ++it) {
+    max_value = (max_value > elements[it][local_idx]) ? max_value : elements[it][local_idx];
   }
-  warp_reduce<input_t, WARP_BATCH, WARP_SIZE, Max>(max_value);
-
-  acc_t sum[WARP_BATCH]{0.0f};
-
-  for (int i = 0; i < WARP_BATCH; ++i) {
-// #pragma unroll
-    for (int it = 0; it < WARP_ITERATIONS; ++it) {
-      int element_index = local_idx + it * WARP_SIZE;
-      if (element_index >= element_count)
-        break;
-      if (is_log_softmax) {
-        sum[i] += std::exp((float)(elements[it][local_idx] - max_value[i]));
-      } else {
-        acc_t tmp = std::exp((float)(elements[it][local_idx] - max_value[i]));
-        elements[it][local_idx] = tmp;
-        sum[i] += tmp;
-      }
-    }
-  }
-  warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
-
-// store result
-#pragma unroll
-  for (int i = 0; i < WARP_BATCH; ++i) {
-    if (i >= local_batches)
+  warp_reduce<input_t, 1, WARP_SIZE, Max>(&max_value);
+  // compute sum
+  acc_t sum{0.0f};
+  // #pragma unroll
+  // "exp" contains many instructions, if we unroll the loop then cuda warp will be stalled because of icache miss and thus lower the perf.
+  for (int it = 0; it < WARP_ITERATIONS; ++it) {
+    int element_index = local_idx + it * WARP_SIZE;
+    if (element_index >= element_count)
       break;
-    if (is_log_softmax) sum[i] = static_cast<acc_t>(max_value[i]) + std::log((float)(sum[i]));
-
-    acc_t invsum = static_cast<acc_t>(1.0f / sum[i]);
+    if (is_log_softmax) {
+      sum += std::exp((float)(elements[it][local_idx] - max_value));
+    } else {
+      acc_t tmp = std::exp((float)(elements[it][local_idx] - max_value));
+      elements[it][local_idx] = tmp;
+      sum += tmp;
+    }
+  }
+  warp_reduce<acc_t, 1, WARP_SIZE, Add>(&sum);
+  // store result
+  if (is_log_softmax) sum = static_cast<acc_t>(max_value) + std::log((float)(sum));
+  acc_t invsum = static_cast<acc_t>(1.0f / sum);
 #pragma unroll
-    for (int it = 0; it < WARP_ITERATIONS; ++it) {
-      int element_index = local_idx + it * WARP_SIZE;
-      if (element_index < element_count) {
-        if (is_log_softmax) {
-          dst[i * element_count + it * WARP_SIZE] = (float)elements[it][local_idx] - sum[i];
-        } else {
-          dst[i * element_count + it * WARP_SIZE] = (float)elements[it][local_idx] * invsum;
-        }
+  for (int it = 0; it < WARP_ITERATIONS; ++it) {
+    int element_index = local_idx + it * WARP_SIZE;
+    if (element_index < element_count) {
+      if (is_log_softmax) {
+        dst[it * WARP_SIZE] = (float)elements[it][local_idx] - sum;
       } else {
-        break;
+        dst[it * WARP_SIZE] = (float)elements[it][local_idx] * invsum;
       }
+    } else {
+      break;
     }
   }
 }

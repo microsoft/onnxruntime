@@ -39,18 +39,18 @@ Status dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, con
 
     // This value must match the WARP_SIZE constexpr value computed inside softmax_warp_forward.
     int warp_size = (next_power_of_two < GPU_WARP_SIZE_HOST) ? next_power_of_two : GPU_WARP_SIZE_HOST;
-    int batches_per_warp, threads_per_block, shared_memory_size;
+    int threads_per_block, shared_memory_size;
     // there are 2 options to save one row of the input matrix: register or shared memory
     // when the number of elements is small, we use register; otherwise, we use shared memory;
+    int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
     if (log2_elements <= 10){
       // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
-      batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
       // use 128 threads per block to maximimize gpu utilization
       threads_per_block = 128;
       shared_memory_size = 0;
     } else{
-      // when the number of elements is large, one cuda block will only process 1 row of the input matrix(to avoid high shared memory usage and hurt warp occupancy), so hardcode the following values
-      batches_per_warp = 1;
+      // 1 warp(32 threads) per block, so the index offset calculations in cuda kernel will be easier
+      // under this setting, the cuda block number will be equal to batch size and contains one warp only
       threads_per_block = 32;
       // use shared memory to contain one row of elements
       // TODO: one more optimization can be done here: we actually not need to save next_power_of_two elements, we can just save the valid elements
