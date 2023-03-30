@@ -1,6 +1,6 @@
 
-Python Bindings for ONNX Runtime
-================================
+Python API
+==========
 
 ONNX Runtime is a performance-focused scoring engine for Open Neural Network Exchange (ONNX) models.
 For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://aka.ms/onnxruntime/>`_
