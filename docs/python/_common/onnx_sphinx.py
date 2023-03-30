@@ -630,7 +630,7 @@ def _insert_diff(folder, docs, split=".. tag-diff-insert.", op_name=None, versio
             )
             filename = os.path.join(folder, name + ".rst")
             if os.path.exists(filename):
-                with open(filename, "r", encoding="utf-8") as f:
+                with open(filename, encoding="utf-8") as f:
                     old_content = f.read()
                     write = old_content != content
             else:

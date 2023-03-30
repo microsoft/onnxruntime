@@ -54,11 +54,7 @@ print(r2_score(y_test, pred))
 # to convert the model into ONNX format.
 
 from skl2onnx import convert_sklearn  # noqa: E402
-from skl2onnx.common.data_types import (  # noqa: E402
-    DictionaryType,
-    FloatTensorType,
-    Int64TensorType,
-)
+from skl2onnx.common.data_types import DictionaryType, FloatTensorType, Int64TensorType  # noqa: E402
 
 # initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
 initial_type = [("float_input", DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
@@ -70,7 +66,7 @@ with open("pipeline_vectorize.onnx", "wb") as f:
 # We load the model with ONNX Runtime and look at
 # its input and output.
 import onnxruntime as rt  # noqa: E402
-from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
+from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument  # noqa: E402
 
 sess = rt.InferenceSession("pipeline_vectorize.onnx", providers=rt.get_available_providers())
 
