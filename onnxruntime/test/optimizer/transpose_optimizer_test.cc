@@ -14,7 +14,6 @@
 
 #include "test/test_environment.h"
 #include "test/optimizer/graph_transform_test_builder.h"
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/internal_testing/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -3716,10 +3715,7 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
                     /*opset_version*/ 10);
 }
 
-// TODO do we need this test and the associated transpose optimizer behavior of only swapping DQ/transpose when the
-// transpose is the only consumer now? see https://github.com/microsoft/onnxruntime/pull/12099.
-// the test doesn't work with the required EnsureUniqueDQForNodeUnit transformer.
-TEST(TransposeOptimizerTests, DISABLED_TestDequantizeLinearTransposePropagation) {
+TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
     auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
@@ -3738,13 +3734,22 @@ TEST(TransposeOptimizerTests, DISABLED_TestDequantizeLinearTransposePropagation)
   };
 
   auto check_graph = [&](InferenceSessionWrapper& session) {
-    std::vector<std::string> expected_op_types_in_order{
-        "DequantizeLinear",
-        "Transpose",
-        "Transpose"};
+      const auto& graph = session.GetGraph();
 
-    const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
-    EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
+      const auto op_count = CountOpsInGraph(graph);
+      decltype(op_count) expected_op_count{
+          {"DequantizeLinear", 2},  // EnsureUniqueDQForNodeUnit should duplicate the original DQ
+          {"Transpose", 2},
+      };
+      ASSERT_EQ(op_count, expected_op_count);
+
+      // Transposes should be pushed, so check for Transpose -> DQ edges
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() == "Transpose") {
+          ASSERT_EQ(node.GetOutputEdgesCount(), static_cast<size_t>(1));
+          ASSERT_EQ(node.OutputEdgesBegin()->GetNode().OpType(), "DequantizeLinear");
+        }
+      }
   };
 
   TransformerTester(build_test_case_1,
