@@ -8,17 +8,7 @@ library.
 Please do not directly modify [the generated C++ header file](ort.fbs.h) or [the generated Python binding
 files](../ort_flatbuffers_py).
 
-The flatbuffers compiler (flatc) is built as part of an ONNX Runtime build. It is located in the external/flatbuffers
-subdirectory of the build output directory.
-
-e.g.
-  - Windows Debug build
-    - \build\Windows\Debug\external\flatbuffers\Debug\flatc.exe
-  - Linux Debug build
-    - /build/Linux/external/flatbuffers/Debug/flatc
-
-It is possible to use another flatc as well, e.g., from a separate installation. Note that ONNX Runtime uses
-FlatBuffers 1.12.
+Note that ONNX Runtime requires FlatBuffers 1.12.
 
 To update the ORT file format schema and generated files:
 1. Modify [the ORT file format schema](ort.fbs).
