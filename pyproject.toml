@@ -50,6 +50,7 @@ select = [
     "W", # pycodestyle
     "B", # flake8-bugbear
     "N", # pep8-naming
+    "NPY", # numpy
     "YTT", # flake8-2020
     "RUF", # Ruff-specific rules
     "SIM", # flake8-simplify
@@ -57,7 +58,7 @@ select = [
     "PLE", # pylint errors
     "PLW", # pylint warnings
     "PLC", # pylint conventions
-    "NPY", # numpy
+    "TID252", # Relative imports
 ]
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.
 # Always include a comment to explain why.
@@ -82,3 +83,5 @@ unfixable = [
 # Prefer inline ignores with `noqa: xxx`.
 # Eventually this list should become empty.
 "orttraining/orttraining/test/**" = ["N802"] # Function casing
+"**/test/**" = ["TID252"] # Allow relative imports in tests
+"tools/**" = ["TID252"] # Allow relative imports in tools
