@@ -219,7 +219,7 @@ export const createConv2DMatMulProgramInfo =
         ...metadata,
         outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
         dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
-        shaderSource: `
+        getShaderSource: () => `
         ${utilFunctions}
         //struct Uniforms { xShape : vec4<i32>, wShape : vec4<i32>, outShape : vec4<i32>,
         //  outShapeStrides: vec3<i32>, filterDims : vec2<i32>, pad : vec2<i32>, stride : vec2<i32>,

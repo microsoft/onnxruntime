@@ -7,7 +7,7 @@ import {GemmUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {WORKGROUP_SIZE} from './common';
+import {ShaderHelper} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs) {
@@ -91,8 +91,7 @@ const createGemmProgramInfo =
       if (inputs.length === 3) {
         inputStorageBuffersDeclarations.push(`@group(0) @binding(2) var<storage, read> c : array<${dataType}>;`);
       }
-      const shaderSource = `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+      const getShaderSource = (shaderHelper: ShaderHelper) => `
   const M: u32 = ${M}u;
   const N: u32 = ${N}u;
   const K: u32 = ${K}u;
@@ -102,13 +101,8 @@ const createGemmProgramInfo =
   ${inputStorageBuffersDeclarations.join('\n')}
   @group(0) @binding(${inputs.length}) var<storage, read_write> output : array<${dataType}>;
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${outputSize}u) {
-      return;
-    }
+  ${shaderHelper.mainStart()}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
     let m = global_id.x / N;
     let n = global_id.x % N;
@@ -126,7 +120,7 @@ const createGemmProgramInfo =
       return {
         ...metadata,
         outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        shaderSource,
+        getShaderSource,
         dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
       };
     };

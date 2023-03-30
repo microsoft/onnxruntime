@@ -5,6 +5,7 @@ import {env} from 'onnxruntime-common';
 
 import {WebGpuBackend} from '../backend-webgpu';
 
+import {createShaderHelper} from './ops/common';
 import {Artifact, GpuData, ProgramInfo} from './types';
 
 /**
@@ -30,8 +31,7 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[],
-      dispatchGroup: {x: number; y?: number; z?: number}): void {
+  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number]): void {
     const device = this.backend.device;
     const computePassEncoder = this.backend.getComputePassEncoder();
 
@@ -53,8 +53,7 @@ export class ProgramManager {
     const bindGroup = device.createBindGroup({layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries});
     computePassEncoder.setBindGroup(0, bindGroup);
 
-    const {x, y, z} = dispatchGroup;
-    computePassEncoder.dispatchWorkgroups(x, y, z);
+    computePassEncoder.dispatchWorkgroups(...dispatchGroup);
 
     this.backend.pendingDispatchNumber++;
 
@@ -109,18 +108,40 @@ export class ProgramManager {
   dispose(): void {
     // this.repo.forEach(a => this.glContext.deleteProgram(a.program));
   }
-  build(programInfo: ProgramInfo): Artifact {
+  build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
     const device = this.backend.device;
 
-    const shaderModule = device.createShaderModule({code: programInfo.shaderSource});
+    const code = programInfo.getShaderSource(createShaderHelper(normalizedDispatchGroupSize));
+    const shaderModule = device.createShaderModule({code});
     if (env.debug) {
       // eslint-disable-next-line no-console
-      console.log('WebGpuProgram: ' + programInfo.shaderSource);
+      console.log(`WebGpuProgram: ${code}`);
     }
 
     const computePipeline =
         device.createComputePipeline({compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto'});
 
     return {programInfo, computePipeline};
+  }
+
+  normalizeDispatchGroupSize(dispatchGroup: ReturnType<ProgramInfo['dispatchGroup']>): [number, number, number] {
+    const x = typeof dispatchGroup === 'number' ? dispatchGroup : dispatchGroup.x;
+    const y = typeof dispatchGroup === 'number' ? 1 : (dispatchGroup.y || 1);
+    const z = typeof dispatchGroup === 'number' ? 1 : (dispatchGroup.z || 1);
+    const limitPerDimension = this.backend.device.limits.maxComputeWorkgroupsPerDimension;
+    if (x <= limitPerDimension && y <= limitPerDimension && z <= limitPerDimension) {
+      return [x, y, z];
+    }
+    const size = x * y * z;
+    let dispatchAverage = Math.ceil(Math.sqrt(size));
+    if (dispatchAverage > limitPerDimension) {
+      dispatchAverage = Math.ceil(Math.cbrt(size));
+      if (dispatchAverage > limitPerDimension) {
+        throw new Error('Total dispatch size exceeds WebGPU maximum.');
+      }
+      return [dispatchAverage, dispatchAverage, dispatchAverage];
+    } else {
+      return [dispatchAverage, dispatchAverage, 1];
+    }
   }
 }

@@ -6,14 +6,15 @@ import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {WORKGROUP_SIZE} from './common';
+import {ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type ElementwiseCustomExpression = (expression: string) => string;
 type ElementwiseFunctionCall = BuiltinFunctionName|ElementwiseCustomExpression;
 
 const createElementwiseProgramShader =
-    (datasize: number, funcCall: ElementwiseFunctionCall, additionalImplementation?: string): string => {
+    (shaderHelper: ShaderHelper, datasize: number, funcCall: ElementwiseFunctionCall,
+     additionalImplementation?: string): string => {
       const vecSize = Math.ceil(datasize / 4);
 
       let expression = '';
@@ -23,23 +24,16 @@ const createElementwiseProgramShader =
         expression = funcCall('a');
       }
       return `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
-
   @group(0) @binding(0) var<storage, read> inputData : array<vec4<f32>>;
   @group(0) @binding(1) var<storage, read_write> outputData : array<vec4<f32>>;
 
   ${additionalImplementation ?? ''}
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
+  ${shaderHelper.mainStart()}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
 
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${vecSize}u) {
-      return;
-    }
-
-    let a = inputData[global_id.x];
-    outputData[global_id.x] = ${expression};
+    let a = inputData[global_idx];
+    outputData[global_idx] = ${expression};
   }`;
     };
 
@@ -47,7 +41,8 @@ const createElementwiseProgramInfo =
     (metadata: ProgramMetadata, input: TensorView, funcCall: ElementwiseFunctionCall,
      additionalImplementation?: string): ProgramInfo => ({
       ...metadata,
-      shaderSource: createElementwiseProgramShader(ShapeUtil.size(input.dims), funcCall, additionalImplementation),
+      getShaderSource: shaderHelper =>
+          createElementwiseProgramShader(shaderHelper, ShapeUtil.size(input.dims), funcCall, additionalImplementation),
       outputs: [{dims: input.dims, dataType: input.dataType, gpuDataType: GpuDataType.default}],
       dispatchGroup: (inputTensors) =>
           ({x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)})

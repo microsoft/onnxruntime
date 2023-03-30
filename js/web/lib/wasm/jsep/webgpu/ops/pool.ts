@@ -7,7 +7,7 @@ import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, WORKGROUP_SIZE} from './common';
+import {createIndicesHelper, ShaderHelper} from './common';
 
 // TODO: support:
 // - ceil_mode                 "test_maxpool_2d_ceil"
@@ -61,8 +61,8 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
 };
 
 const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
-    inputDims: readonly number[], outputShape: readonly number[], attributes: AttributeType, op1: string, op2: string,
-    dataType: string, start: string): string => {
+    shaderHelper: ShaderHelper, inputDims: readonly number[], outputShape: readonly number[], attributes: AttributeType,
+    op1: string, op2: string, dataType: string, start: string): string => {
   const isChannelsLast = attributes.format === 'NHWC';
   const rank = inputDims.length;
   const outputSize = ShapeUtil.size(outputShape);
@@ -126,25 +126,19 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     }
 
     const poolingCode = `
-            const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
             @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
             @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
             ${outputIndicesHelper.o2iImpl}
             ${xIndicesHelper.i2oImpl}
 
-            @compute @workgroup_size(WORKGROUP_SIZE)
-            fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-              // Guard against out-of-bounds work group sizes
-              if (global_id.x >= ${outputSize}u) {
-                return;
-              }
+            ${shaderHelper.mainStart()}
+              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
               ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-              ${outputIndicesHelper.o2iCall('global_id.x', 'indices')}
+              ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
               ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
-              ${outputIndicesHelper.o2iCall('global_id.x', 'xIndices')}
+              ${outputIndicesHelper.o2iCall('global_idx', 'xIndices')}
 
               var value: ${dataType} = ${dataType}(${start});
               var pad = 0;
@@ -153,7 +147,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
               ${codeHEnd}
               ${op2}
 
-              output[global_id.x] = value;
+              output[global_idx] = value;
             }`;
     return poolingCode;
   } else {
@@ -186,7 +180,6 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
             `;
     }
     const poolingCode = `
-            const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
             @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
             @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
@@ -198,18 +191,13 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
             const kernelStrides = array<u32, ${stridesRank}>(${kernelStrides.map(i => `${i}u`).join(',')});
             const strides = array<u32, ${stridesRank}>(${attributes.strides.map(i => `${i}u`).join(',')});
 
-            @compute @workgroup_size(WORKGROUP_SIZE)
-            fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-              // Guard against out-of-bounds work group sizes
-              if (global_id.x >= ${outputSize}u) {
-                return;
-              }
+            ${shaderHelper.mainStart()}
+              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
               ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-              ${outputIndicesHelper.o2iCall('global_id.x', 'indices')}
+              ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
               ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
-              ${outputIndicesHelper.o2iCall('global_id.x', 'xIndices')}
+              ${outputIndicesHelper.o2iCall('global_idx', 'xIndices')}
 
               var offsets: array<u32, ${stridesRank}>;
 
@@ -233,7 +221,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
               }
               ${op2}
 
-              output[global_id.x] = value;
+              output[global_idx] = value;
             }`;
     return poolingCode;
   }
@@ -283,7 +271,8 @@ const createAveragePoolProgramInfo =
       return {
         ...metadata,
         outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        shaderSource: generatePoolingCode(inputs[0].dims, outputShape, adjustedAttributes, op1, op2, dataType, '0.0'),
+        getShaderSource: shaderHelper => generatePoolingCode(
+            shaderHelper, inputs[0].dims, outputShape, adjustedAttributes, op1, op2, dataType, '0.0'),
         dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
       };
     };
@@ -348,7 +337,8 @@ const createMaxPoolProgramInfo =
       return {
         ...metadata,
         outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        shaderSource: generatePoolingCode(inputs[0].dims, outputShape, adjustedAttributes, op1, op2, 'f32', '-1e5'),
+        getShaderSource: shaderHelper =>
+            generatePoolingCode(shaderHelper, inputs[0].dims, outputShape, adjustedAttributes, op1, op2, 'f32', '-1e5'),
         dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
       };
     };

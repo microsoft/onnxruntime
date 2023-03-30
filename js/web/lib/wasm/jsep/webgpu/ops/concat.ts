@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, IndicesHelper, WORKGROUP_SIZE} from './common';
+import {createIndicesHelper, IndicesHelper, ShaderHelper} from './common';
 
 export interface ConcatAttributes extends AttributeWithCacheKey {
   readonly axis: number;
@@ -118,8 +118,7 @@ const createConcatProgramInfo =
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
 
       const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
-      const shaderSource = `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+      const getShaderSource = (shaderHelper: ShaderHelper) => `
 
   ${inputStorageBuffersDeclarations.join('\n')}
   @group(0) @binding(${inputs.length}) var<storage, read_write> output : array<${dataType}>;
@@ -131,28 +130,23 @@ const createConcatProgramInfo =
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
   ${readBufferDataImpl(inputIndicesHelpers, rank, dataType)}
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${outputSize}u) {
-      return;
-    }
+  ${shaderHelper.mainStart()}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
     ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-    ${outputIndicesHelper.o2iCall('global_id.x', 'indices')}
+    ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
 
     let textureIndex = calculateInputIndex(${indicesAxis});
     if (textureIndex != 0u) {
       ${indicesAxis} -= sizeInConcatAxis[textureIndex - 1u];
     }
 
-    output[global_id.x] = readBufferData(textureIndex, &indices);
+    output[global_idx] = readBufferData(textureIndex, &indices);
   }`;
       return {
         ...metadata,
         outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        shaderSource,
+        getShaderSource,
         dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
       };
     };

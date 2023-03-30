@@ -5,7 +5,7 @@ import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, WORKGROUP_SIZE} from './common';
+import {createIndicesHelper, ShaderHelper} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
 import {getActicationSnippet} from './fuse-utils';
 
@@ -43,8 +43,7 @@ const createGroupedConvProgramInfo =
       const xIndicesHelper = createIndicesHelper('x', xShape);
       const wIndicesHelper = createIndicesHelper('w', wShape);
 
-      const shaderSource = `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+      const getShaderSource = (shaderHelper: ShaderHelper) => `
   const strides: vec2<u32> = vec2(${attributes.strides[0]}u, ${attributes.strides[1]}u);
   const pads: vec2<u32> = vec2(${attributes.pads[0]}u, ${attributes.pads[1]}u);
 
@@ -56,15 +55,11 @@ const createGroupedConvProgramInfo =
   ${xIndicesHelper.i2oImpl}
   ${wIndicesHelper.i2oImpl}
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${outputSize}u) {
-      return;
-    }
+  ${shaderHelper.mainStart()}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
     ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-    ${outputIndicesHelper.o2iCall('global_id.x', 'outputIndices')}
+    ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
     let batch: u32 = outputIndices[0];
     let output_channel: u32 = outputIndices[${isChannelLast ? 3 : 1}];
     let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[${isChannelLast ? 1 : 2}], outputIndices[${
@@ -106,7 +101,7 @@ const createGroupedConvProgramInfo =
     }
     ${processBias}
     ${applyActivation}
-    output[global_id.x] = value;
+    output[global_idx] = value;
   }`;
       return {
         ...metadata,
@@ -115,7 +110,7 @@ const createGroupedConvProgramInfo =
           dataType: inputs[0].dataType,
           gpuDataType: GpuDataType.default
         }],
-        shaderSource,
+        getShaderSource,
         dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
       };
     };

@@ -3,6 +3,8 @@
 
 import {Tensor, TensorView} from '../tensor';
 
+import {ShaderHelper} from './ops/common';
+
 export enum GpuDataType {
   default = 0,
   upload = 1,
@@ -76,7 +78,7 @@ export interface ProgramInfo extends ProgramMetadata {
   /**
    * the shader's processing source code
    */
-  shaderSource: string;
+  getShaderSource: (shaderHelper: ShaderHelper) => string;
   /**
    * default is "main"
    */

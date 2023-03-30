@@ -231,12 +231,14 @@ export class WebGpuBackend {
       outputDatas.push(gpuData);
     }
 
+    const normalizedDispatchGroup = this.programManager.normalizeDispatchGroupSize(programInfo.dispatchGroup(inputs));
+
     if (!artifact) {
-      artifact = this.programManager.build(programInfo);
+      artifact = this.programManager.build(programInfo, normalizedDispatchGroup);
       this.programManager.setArtifact(key, artifact);
     }
 
-    this.programManager.run(artifact, inputDatas, outputDatas, artifact.programInfo.dispatchGroup(inputs));
+    this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup);
 
     return outputTensorViews;
   }
