@@ -65,17 +65,21 @@ index 9ef1e99..ec52833 100755
 +fi
 \ No newline at end of file
 diff --git a/install-runtime-packages.sh b/install-runtime-packages.sh
-index 137d2e2..5b7cc0a 100755
+index 137d2e2..bd329f4 100755
 --- a/install-runtime-packages.sh
 +++ b/install-runtime-packages.sh
-@@ -75,7 +75,12 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
+@@ -73,9 +73,14 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
+ 	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
+ 		# Software collection (for devtoolset-10)
  		yum -y install centos-release-scl-rh
-- 		# EPEL support (for yasm)
-- 		yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+-		# EPEL support (for yasm)
+-		yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
 -		TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
 +               if [[ -d /opt/rocm ]]; then
 +                 TOOLCHAIN_DEPS="devtoolset-10-binutils devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-gcc-gfortran"
 +               else
++                 # EPEL support (for yasm)
++                 yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
 +                 TOOLCHAIN_DEPS="devtoolset-11-binutils devtoolset-11-gcc devtoolset-11-gcc-c++ devtoolset-11-gcc-gfortran"
 +               fi
 +               TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
