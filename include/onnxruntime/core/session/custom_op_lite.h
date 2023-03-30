@@ -1,5 +1,6 @@
 #pragma once
 #include "onnxruntime_cxx_api.h"
+#include <optional>
 #include <numeric>
 
 namespace Ort {
@@ -39,20 +40,21 @@ class TensorT : public Tensor {
       shape_ = type_shape_info.GetShape();
     }
   }
-  std::vector<int64_t> Shape() const {
+  const std::vector<int64_t>& Shape() const {
     return shape_;
   }
   int64_t NumberOfElement() const {
-    if (shape_.empty()) {
-      return 0;
+    if (shape_.has_value()) {
+      return std::accumulate(shape_->begin(), shape_->end(), 1ULL, std::multiplies<int64_t>());
     } else {
-      return std::accumulate(shape_.begin(), shape_.end(), 1ULL, std::multiplies<int64_t>());
+      return 0;
     }
   }
   const TT* Data() const {
     return reinterpret_cast<const TT*>(const_value_.GetTensorRawData());
   }
   TT* Allocate(const std::vector<int64_t>& shape) {
+    shape_ = shape;
     if (!data_) {
       shape_ = shape;
       data_ = ctx_.GetOutput(indice_, shape).GetTensorMutableData<TT>();
@@ -60,24 +62,21 @@ class TensorT : public Tensor {
     return data_;
   }
   static TT GetT() { return (TT)0; }
-
   const Span<T>& AsSpan() {
     // assert shape_ is 1-d
-    span_.Assign(Data(), shape_[0]);
+    span_.Assign(Data(), (*shape_)[0]);
     return span_;
   }
-
   const T& AsScalar() {
     // assert shape_ is {1}
     return *Data();
   }
-
  private:
   size_t indice_;
   bool is_input_;
   ConstValue const_value_;  // for input
   TT* data_{};              // for output
-  std::vector<int64_t> shape_;
+  std::optional<std::vector<int64_t>> shape_;
   Span<T> span_;
 };
 
@@ -107,20 +106,21 @@ class TensorT<std::string> : public Tensor {
       }
     }
   }
-  std::vector<int64_t> Shape() const {
-    return shape_;
+  const std::vector<int64_t>& Shape() const {
+    return *shape_;
   }
   int64_t NumberOfElement() const {
-    if (shape_.empty()) {
-      return 0;
+    if (shape_.has_value()) {
+      return std::accumulate(shape_->begin(), shape_->end(), 1ULL, std::multiplies<int64_t>());
     } else {
-      return std::accumulate(shape_.begin(), shape_.end(), 1ULL, std::multiplies<int64_t>());
+      return 0;
     }
   }
   const strings& Data() const {
     return input_strings_;
   }
   void SetStringOutput(const strings& ss, const std::vector<int64_t>& dims) {
+    shape_ = dims;
     std::vector<const char*> raw;
     for (const auto& s: ss) {
       raw.push_back(s.data());
@@ -138,7 +138,7 @@ class TensorT<std::string> : public Tensor {
   bool is_input_;
   std::vector<std::string> input_strings_; // for input
   // TT* data_{};              // for output
-  std::vector<int64_t> shape_;
+  std::optional<std::vector<int64_t>> shape_;
 };
 
 using TensorPtr = std::unique_ptr<Custom2::Tensor>;
