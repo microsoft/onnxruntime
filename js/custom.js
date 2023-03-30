@@ -84,6 +84,8 @@ $(document).ready(function () {
     clone.querySelector('[name="link"]').href = blog.link;
     blogList.appendChild(clone);
   });
+
+  });
    
 });
 
