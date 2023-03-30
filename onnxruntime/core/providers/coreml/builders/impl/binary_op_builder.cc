@@ -53,7 +53,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (op_type == "Add") {
     // original mutable_add() has limited broadcasting support
-    // updated to use CoreML- AddBroadcastableLayerParams which has more general broadcasting support
+    // updated to use CoreML::AddBroadcastableLayerParams which has more general broadcasting support
     if (CheckIfBothInputShapesMatch(node, logger)) {
       layer->mutable_add();
     } else {
