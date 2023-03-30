@@ -52,7 +52,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                               ACL_ENGINE_SYS,
                                               ACL_COMPILE_SYS,
                                               NULL,
-                                              Stream(ctx)));
+                                              Stream()));
 
   return Status::OK();
 }

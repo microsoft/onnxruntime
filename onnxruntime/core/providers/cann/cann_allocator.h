@@ -19,6 +19,7 @@ class CANNAllocator : public IAllocator {
                           device_id, OrtMemTypeDefault)) {}
   void* Alloc(size_t size) override;
   void Free(void* p) override;
+  FencePtr CreateFence(const SessionState* session_state) override;
 };
 
 class CANNPinnedAllocator : public IAllocator {
@@ -31,6 +32,7 @@ class CANNPinnedAllocator : public IAllocator {
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
+  FencePtr CreateFence(const SessionState* session_state) override;
 };
 
 }  // namespace onnxruntime

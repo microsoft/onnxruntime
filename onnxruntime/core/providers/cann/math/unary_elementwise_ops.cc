@@ -38,9 +38,9 @@ Status UnaryElementwise::Prepare(OpKernelContext* ctx, CannPreparation& prepare)
 
 #define REGISTER_ELEMENTWISE_TYPED_COMPUTE(x, T)                               \
   template <>                                                                  \
-  Status x<T>::ComputeInternal(OpKernelContext* ctx) const {                   \
+  Status x<T>::ComputeInternal(OpKernelContext* context) const {               \
     CannPreparation prepare;                                                   \
-    ORT_RETURN_IF_ERROR(Prepare<T>(ctx, prepare));                             \
+    ORT_RETURN_IF_ERROR(Prepare<T>(context, prepare));                         \
     CANN_RETURN_IF_ERROR(aclopCompileAndExecute(#x,                            \
                                                 prepare.inputDesc_.size(),     \
                                                 prepare.inputDesc_.data(),     \
@@ -52,7 +52,7 @@ Status UnaryElementwise::Prepare(OpKernelContext* ctx, CannPreparation& prepare)
                                                 ACL_ENGINE_SYS,                \
                                                 ACL_COMPILE_SYS,               \
                                                 NULL,                          \
-                                                Stream(ctx)));                 \
+                                                Stream()));                    \
     return Status::OK();                                                       \
   }
 

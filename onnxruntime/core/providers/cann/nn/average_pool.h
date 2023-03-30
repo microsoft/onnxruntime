@@ -15,7 +15,7 @@ class AveragePool : public CannKernel, public PoolBase {
  public:
   explicit AveragePool(const OpKernelInfo& info) : CannKernel(info), PoolBase(info) {}
 
-  Status ComputeInternal(OpKernelContext* ctx) const override;
+  Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 }  // namespace cann
