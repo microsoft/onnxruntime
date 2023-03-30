@@ -178,14 +178,17 @@ class PackingMode:
             [output_without_padding, token_offset, cumulated_seq_len, max_seq_len],
         )
         self.model.replace_input_of_all_nodes(input_to_remove_padding, output_without_padding)
+        logger.debug("inserted RemovePadding before Attention")
 
         # insert RestorePadding
         restorepadding_input = last_layernorm_node.output[0] + "_restore_input"
         self._insert_restorepadding_node([restorepadding_input, token_offset], [last_layernorm_node.output[0]])
         self.model.replace_output_of_all_nodes(last_layernorm_node.output[0], restorepadding_input)
+        logger.debug(f"inserted RestorePadding after last {last_layernorm_node.op_type} layer")
 
         # insert PackingAttention
         self._replace_attention_with_packing_attention(token_offset, cumulated_seq_len)
+        logger.debug(f"replaced Attention with PackedAttention")
 
         self.model.remove_nodes(self.nodes_to_remove)
         self.model.add_nodes(self.nodes_to_add, self.node_name_to_graph_name)
