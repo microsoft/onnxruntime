@@ -40,7 +40,6 @@ jobs:
     vmImage: 'macOS-12'
   variables:
     runCodesignValidationInjection: false
-    ORT_POD_VERSION: '1.15.0'
   #dependsOn:
   #- Android_Java_API_AAR_Packaging_For_React_Native
   timeoutInMinutes: 150
@@ -88,7 +87,7 @@ jobs:
       python3 $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
         --build-dir $(Build.BinariesDirectory)/ios_framework_full \
         --staging-dir "$(Build.BinariesDirectory)/staging" \
-        --pod-version "${variables.ORT_POD_VERSION}" \
+        --pod-version "1.15.0" \
         --variant Full \
         --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
       cd $(Build.BinariesDirectory)/staging/onnxruntime-c
