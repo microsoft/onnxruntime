@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <string>
 #include <cstring>
+#include <optional>
 #include "core/common/gsl.h"
 #include "onnxruntime_config.h"
 
@@ -64,6 +65,8 @@ inline TensorShapeVector ToShapeVector(const gsl::span<const int64_t>& span) {
 inline gsl::span<const int64_t> ToConstSpan(const TensorShapeVector& vec) {
   return gsl::make_span(vec);
 }
+
+using ShardDim = TensorShapeVector;
 
 class TensorShape {
   // We use negative numbers for unknown symbolic dimension. Each negative
@@ -181,6 +184,8 @@ class TensorShape {
     size_t len = values_.size();
     return len == 0 || (len == 1 && values_[0] == 1);
   }
+
+  virtual std::optional<ShardDim> shardDims() const { return std::nullopt_t; }
 
  private:
   struct External {};

@@ -20,7 +20,7 @@
 struct OrtValue;
 
 namespace onnxruntime {
-
+using ShardDims = TensorShapeVector;
 // TODO:ensure dtype_!=nullptr
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -307,13 +307,8 @@ class Tensor final {
   bool CheckIsContiguous() const;
 #endif
 
-  void* p_data_;
-  /**
-     if buffer_deleter_ is null, it means tensor does not own the buffer.
-     otherwise tensor will use the deleter to release the buffer when
-     tensor is released.
-  */
-  AllocatorPtr buffer_deleter_;
+  Storage storage_;
+  ShardDims shardDims_;
 
   TensorShape shape_;
 #ifdef ENABLE_STRIDED_TENSORS
@@ -323,7 +318,6 @@ class Tensor final {
 
   const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;
-  ptrdiff_t byte_offset_;
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

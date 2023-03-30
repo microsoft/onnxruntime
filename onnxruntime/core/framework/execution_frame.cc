@@ -552,7 +552,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   }
 
   // no memory pattern, or the pattern is not correct.
-  if (!alloc) alloc = GetAllocator(location);
+  if (!alloc) alloc = GetAllocator(location, shape.getLocations());
   Stream* current_stream = GetValueStream(ort_value_index);
   if (current_stream) {
 #ifdef ORT_ENABLE_STREAM
