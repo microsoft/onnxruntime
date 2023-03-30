@@ -34,8 +34,9 @@ steps:
       set -ex
       ccache -s
       ccache -z
-      ls -l $(Pipeline.Workspace)/ccache
-      du -sh $(Pipeline.Workspace)/ccache
+      ls -l "${{ parameters.CACHE_DIR }}"
+      du -sh "${{ parameters.CACHE_DIR }}"
     displayName: Show Cache stats and Clear stats.
     env:
       CCACHE_DIR: ${{parameters.CACHE_DIR}}
+    condition: always()
