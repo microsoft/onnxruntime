@@ -103,6 +103,12 @@ def generate_artifacts(
 
     training_block = _TrainingBlock(loss_block)
 
+    if requires_grad is not None and frozen_params is not None and set(requires_grad).intersection(set(frozen_params)):
+        raise RuntimeError(
+            "A parameter cannot be frozen and require gradient computation at the same "
+            f"time {set(requires_grad).intersection(set(frozen_params))}"
+        )
+
     if requires_grad is not None:
         for arg in requires_grad:
             training_block.requires_grad(arg)
