@@ -19,12 +19,6 @@
 namespace onnxruntime {
 namespace test {
 
-template <typename T>
-struct IsMLFloat16 : std::false_type {};
-
-template <>
-struct IsMLFloat16<MLFloat16> : std::true_type {};
-
 namespace detail {
 inline int64_t SizeFromDims(gsl::span<const int64_t> dims, gsl::span<const int64_t> strides = {}) {
   int64_t size = 1;
@@ -74,7 +68,7 @@ class RandomValueGenerator {
   // Random values generated are in the range [min, max).
   template <typename TFloat16>
   typename std::enable_if<
-      IsMLFloat16<TFloat16>::value,
+      std::is_same_v<TFloat16, MLFloat16>,
       std::vector<TFloat16>>::type
   Uniform(gsl::span<const int64_t> dims, float min, float max) {
     std::vector<TFloat16> val(detail::SizeFromDims(dims));
