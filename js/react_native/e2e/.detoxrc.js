@@ -38,7 +38,7 @@ module.exports = {
     simulator: {
       type: 'ios.simulator',
       device: {
-        type: 'iPhoneRNTest'
+        type: 'iPhone 13'
       }
     },
     attached: {
