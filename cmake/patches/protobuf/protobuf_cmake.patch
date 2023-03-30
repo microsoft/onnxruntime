@@ -1,8 +1,8 @@
-diff --git a/cmake/CMakeLists.txt b/cmake/CMakeLists.txt
-index ac92442a1..e930cbd2e 100644
---- a/cmake/CMakeLists.txt
-+++ b/cmake/CMakeLists.txt
-@@ -240,9 +240,7 @@ if (MSVC)
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 04cb3303a..4025805cf 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -249,9 +249,7 @@ if (MSVC)
    # MSVC warning suppressions
    add_definitions(
      /wd4065 # switch statement contains 'default' but no 'case' labels
@@ -12,7 +12,7 @@ index ac92442a1..e930cbd2e 100644
      /wd4305 # 'identifier' : truncation from 'type1' to 'type2'
      /wd4307 # 'operator' : integral constant overflow
      /wd4309 # 'conversion' : truncation of constant value
-@@ -250,7 +248,6 @@ if (MSVC)
+@@ -259,7 +257,6 @@ if (MSVC)
      /wd4355 # 'this' : used in base member initializer list
      /wd4506 # no definition for inline function 'function'
      /wd4800 # 'type' : forcing value to bool 'true' or 'false' (performance warning)
@@ -20,12 +20,12 @@ index ac92442a1..e930cbd2e 100644
    )
    # Allow big object
    add_definitions(/bigobj)
-@@ -272,6 +269,8 @@ if (MSVC)
-   endif()
- 
-   configure_file(version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc @ONLY)
-+else (MSVC)
+@@ -289,7 +286,7 @@ if (MSVC)
+ else (MSVC)
+   # No version.rc file.
+   set(protobuf_version_rc_file)
+-
 +  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
- endif (MSVC)
- 
- 
+   # When building with "make", "lib" prefix will be added automatically by
+   # the build tool.
+   set(LIB_PREFIX)

@@ -53,8 +53,10 @@ endif()
 # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
 target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} ${json_SOURCE_DIR}/include)
 target_include_directories(ortcustomops PUBLIC ${onnxruntime_EXTENSIONS_PATH}/includes)
+if(OCOS_ENABLE_SPM_TOKENIZER)
+  onnxruntime_add_include_to_target(sentencepiece-static ${PROTOBUF_LIB})
+endif()
 onnxruntime_add_include_to_target(ocos_operators ${PROTOBUF_LIB})
-onnxruntime_add_include_to_target(sentencepiece-static ${PROTOBUF_LIB})
 add_dependencies(ocos_operators ${onnxruntime_EXTERNAL_DEPENDENCIES})
 add_dependencies(ortcustomops ${onnxruntime_EXTERNAL_DEPENDENCIES})
 

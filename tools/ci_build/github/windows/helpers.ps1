@@ -16,7 +16,11 @@ Get the name of a temporary folder under the native install directory
 #>
 function Get-TempDirectory {
   #TODO: what if the env does not exist?
-  return $Env:AGENT_TEMPDIRECTORY
+  if (-not [string]::IsNullOrWhitespace($Env:AGENT_TEMPDIRECTORY)){
+    return $Env:AGENT_TEMPDIRECTORY
+  } else {
+    return $Env:TEMP
+  }
 }
 
 function Get-TempPathFilename {
@@ -57,7 +61,9 @@ function Expand-Zip {
     [string] $OutputDirectory,
     [switch] $Force
   )
-
+  if ([string]::IsNullOrWhitespace($OutputDirectory)){
+     Write-Error "OutputDirectory cannot be empty"
+  }
   Write-Host "Extracting '$ZipPath' to '$OutputDirectory'"
   try {
     if ((Test-Path $OutputDirectory) -And (-Not $Force)) {
@@ -308,6 +314,7 @@ function Install-Pybind {
 
     param (
         [Parameter(Mandatory)][string]$cmake_path,
+        [Parameter(Mandatory)][string]$msbuild_path,
         [Parameter(Mandatory)][string]$src_root,
         [Parameter(Mandatory)][CMakeBuildType]$build_config,
         [Parameter(Mandatory)][string[]]$cmake_extra_args
@@ -336,13 +343,32 @@ function Install-Pybind {
         Write-Host -Object "CMake command failed. Exitcode: $exitCode"
         exit $exitCode
     }
-    $cmake_args = "--build", ".",  "--parallel", "--config", $build_config, "--target", "INSTALL"
-    $p = Start-Process -FilePath $cmake_path -ArgumentList $cmake_args -NoNewWindow -Wait -PassThru
+
+    $msbuild_args = "-nodeReuse:false", "-nologo", "-nr:false", "-maxcpucount", "-p:UseMultiToolTask=true", "-p:configuration=`"$build_config`""
+
+    if ($use_cache) {
+      $msbuild_args += "/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true"
+    }
+
+    $final_args = $msbuild_args + "pybind11.sln"
+    Write-Host $final_args
+
+    $p = Start-Process -FilePath $msbuild_path -ArgumentList $final_args -NoNewWindow -Wait -PassThru
     $exitCode = $p.ExitCode
     if ($exitCode -ne 0) {
-        Write-Host -Object "CMake command failed. Exitcode: $exitCode"
+        Write-Host -Object "Build pybind11.sln failed. Exitcode: $exitCode"
         exit $exitCode
     }
+
+    $final_args = $msbuild_args + "INSTALL.vcxproj"
+    $p = Start-Process -FilePath $msbuild_path -ArgumentList $final_args -NoNewWindow -Wait -PassThru
+    $exitCode = $p.ExitCode
+    if ($exitCode -ne 0) {
+        Write-Host -Object "Install pybind failed. Exitcode: $exitCode"
+        exit $exitCode
+    }
+    Write-Host "Installing pybind finished."
+
     popd
 }
 
@@ -365,6 +391,7 @@ function Install-Protobuf {
 
     param (
         [Parameter(Mandatory)][string]$cmake_path,
+        [Parameter(Mandatory)][string]$msbuild_path,
         [Parameter(Mandatory)][string]$src_root,
         [Parameter(Mandatory)][CMakeBuildType]$build_config,
         [Parameter(Mandatory)][string[]]$cmake_extra_args
@@ -381,9 +408,23 @@ function Install-Protobuf {
     }
     cd $protobuf_src_dir
     cd *
-    Get-Content $src_root\cmake\patches\protobuf\protobuf_cmake.patch | &'C:\Program Files\Git\usr\bin\patch.exe' --ignore-whitespace -p1
+	# Search patch.exe
+	$patch_path = 'C:\Program Files\Git\usr\bin\patch.exe'
+	if(-not (Test-Path $patch_path -PathType Leaf)){
+      $git_command_path = (Get-Command -CommandType Application git)[0].Path
+      Write-Host "Git command path:$git_command_path"
+      $git_installation_folder = Split-Path -Path (Split-Path -Path $git_command_path)
+      $patch_path = Join-Path -Path $git_installation_folder "usr\bin\patch.exe"
+	}
+    if(Test-Path $patch_path -PathType Leaf){
+      Write-Host "Patching protobuf ..."
+      Get-Content $src_root\cmake\patches\protobuf\protobuf_cmake.patch | &$patch_path --ignore-whitespace -p1
+    } else {
+      Write-Host "Skip patching protobuf since we cannot find patch.exe at $patch_path"
+    }
 
-    [string[]]$cmake_args = "cmake", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-DBUILD_SHARED_LIBS=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF"
+    # Run cmake to generate Visual Studio sln file
+    [string[]]$cmake_args = ".", "-Dprotobuf_DISABLE_RTTI=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-DBUILD_SHARED_LIBS=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF"
     $cmake_args += $cmake_extra_args
 
     $p = Start-Process -FilePath $cmake_path -ArgumentList $cmake_args -NoNewWindow -Wait -PassThru
@@ -392,16 +433,31 @@ function Install-Protobuf {
         Write-Host -Object "CMake command failed. Exitcode: $exitCode"
         exit $exitCode
     }
-    $cmake_args = "--build", ".",  "--parallel", "--config", $build_config, "--target", "INSTALL"
+
+    $msbuild_args = "-nodeReuse:false", "-nologo", "-nr:false", "-maxcpucount", "-p:UseMultiToolTask=true", "-p:configuration=`"$build_config`""
+
     if ($use_cache) {
-      $cmake_args += "--", "/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true"
+      $msbuild_args += "/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true"
     }
-    $p = Start-Process -FilePath $cmake_path -ArgumentList $cmake_args -NoNewWindow -Wait -PassThru
+
+    $final_args = $msbuild_args + "protobuf.sln"
+    Write-Host $final_args
+
+    $p = Start-Process -FilePath $msbuild_path -ArgumentList $final_args -NoNewWindow -Wait -PassThru
     $exitCode = $p.ExitCode
     if ($exitCode -ne 0) {
-        Write-Host -Object "CMake command failed. Exitcode: $exitCode"
+        Write-Host -Object "Build protobuf.sln failed. Exitcode: $exitCode"
         exit $exitCode
     }
+
+    $final_args = $msbuild_args + "INSTALL.vcxproj"
+    $p = Start-Process -FilePath $msbuild_path -ArgumentList $final_args -NoNewWindow -Wait -PassThru
+    $exitCode = $p.ExitCode
+    if ($exitCode -ne 0) {
+        Write-Host -Object "Install protobuf failed. Exitcode: $exitCode"
+        exit $exitCode
+    }
+    Write-Host "Installing protobuf finished."
     popd
 }
 
@@ -437,6 +493,18 @@ function Install-ONNX {
     }
     cd $onnx_src_dir
     cd *
+    [String]$requirements_txt_content = "protobuf==$protobuf_version`n"
+    foreach($line in Get-Content '.\requirements.txt') {
+      if($line -match "^protobuf"){
+        Write-Host "Replacing protobuf version to $protobuf_version"
+      } else{
+        $requirements_txt_content += "$line`n"
+      }
+    }
+
+    Set-Content -Path '.\requirements.txt' -Value $requirements_txt_content
+
+
     $Env:ONNX_ML=1
     if($build_config -eq 'Debug'){
        $Env:DEBUG='1'
