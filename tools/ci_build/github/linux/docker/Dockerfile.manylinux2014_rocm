@@ -140,11 +140,6 @@ RUN export OPENSSL_ROOT=openssl-1.1.1q && \
 COPY build_scripts/build-cpython.sh /build_scripts/
 
 
-FROM build_cpython AS build_cpython37
-COPY build_scripts/cpython-pubkeys.txt /build_scripts/cpython-pubkeys.txt
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.7.13
-
-
 FROM build_cpython AS build_cpython38
 COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.8.13
@@ -160,10 +155,8 @@ COPY build_scripts/install-pypy.sh \
      build_scripts/pypy.sha256 \
      build_scripts/finalize-python.sh \
      /build_scripts/
-RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.7 7.3.9
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.8 7.3.9
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.9 7.3.9
-COPY --from=build_cpython37 /opt/_internal /opt/_internal/
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
 RUN manylinux-entrypoint /build_scripts/finalize-python.sh
@@ -176,7 +169,6 @@ COPY --from=all_python /opt/_internal /opt/_internal/
 COPY build_scripts/finalize.sh \
      build_scripts/update-system-packages.sh \
      build_scripts/python-tag-abi-tag.py \
-     build_scripts/requirements3.7.txt \
      build_scripts/requirements3.8.txt \
      build_scripts/requirements3.9.txt \
      build_scripts/requirements-base-tools.txt \
@@ -190,7 +182,7 @@ CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
 
-ARG PYTHON_VERSION=3.7
+ARG PYTHON_VERSION=3.8
 ARG OPSET_VERSION=15
 ARG INSTALL_DEPS_EXTRA_ARGS
 
@@ -199,7 +191,6 @@ ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
     /tmp/scripts/manylinux/install_centos.sh && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.7 $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 $INSTALL_DEPS_EXTRA_ARGS && \
      rm -rf /tmp/scripts

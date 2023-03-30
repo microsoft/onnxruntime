@@ -17,6 +17,9 @@
 #
 # If you are using nightly package (or built from source), you can force MultiHeadAttention to run in float32:
 #    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:MultiHeadAttention
+#
+# ROCm EP doesn't support MultiHeadAttention, add --disable_attention to disable attention fusion:
+#    python optimize_pipeline.py -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16 --disable_attention
 
 import argparse
 import logging
@@ -51,6 +54,7 @@ def optimize_sd_pipeline(
     float16: bool,
     force_fp32_ops: List[str],
     enable_runtime_optimization: bool,
+    args,
 ):
     """Optimize onnx models used in stable diffusion onnx pipeline and optionally convert to float16.
 
@@ -123,7 +127,8 @@ def optimize_sd_pipeline(
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
         logger.info(f"Optimize {onnx_model_path}...")
 
-        fusion_options = FusionOptions(model_type)
+        args.model_type = model_type
+        fusion_options = FusionOptions.parse(args)
 
         if model_type in ["unet"]:
             # Some optimizations are not available in v1.14 or older version: packed QKV and BiasAdd
@@ -286,6 +291,8 @@ def parse_arguments():
     )
     parser.set_defaults(use_external_data_format=False)
 
+    FusionOptions.add_arguments(parser)
+
     args = parser.parse_args()
     return args
 
@@ -303,6 +310,7 @@ def main():
         args.float16,
         args.force_fp32_ops,
         args.inspect,
+        args,
     )
 
 

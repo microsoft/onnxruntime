@@ -37,7 +37,7 @@ def my_loss(x, target):
 def train_with_eager(args, model, optimizer, device, train_loader, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         data_cpu = data.reshape(data.shape[0], -1)
-        data = data_cpu.to(device)
+        data = data_cpu.to(device)  # noqa: PLW2901
 
         x = model(data)
         loss = my_loss(x.cpu(), target)

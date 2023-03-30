@@ -686,6 +686,13 @@ def parse_arguments():
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
+    if not is_windows():
+        parser.add_argument(
+            "--allow_running_as_root",
+            action="store_true",
+            help="Allow build to be run as root user. This is not allowed by default.",
+        )
+
     args = parser.parse_args()
     if args.android_sdk_path:
         args.android_sdk_path = os.path.normpath(args.android_sdk_path)
@@ -917,9 +924,6 @@ def generate_build_tree(
         "-Donnxruntime_TVM_USE_HASH=" + ("ON" if args.use_tvm_hash else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
-        # By default - we currently support only cross compiling for ARM/ARM64
-        # (no native compilation supported through this script).
-        "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm64ec or args.arm else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI="
@@ -985,6 +989,13 @@ def generate_build_tree(
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
+
+    # By default on Windows we currently support only cross compiling for ARM/ARM64
+    # (no native compilation supported through this script).
+    if args.arm64 or args.arm64ec or args.arm:
+        add_default_definition(cmake_extra_defines, "onnxruntime_CROSS_COMPILING", "ON")
+        if args.use_extensions:
+            add_default_definition(cmake_extra_defines, "OPENCV_SKIP_SYSTEM_PROCESSOR_DETECTION", "ON")
     if args.use_cache:
         cmake_args.append("-Donnxruntime_BUILD_CACHE=ON")
         if not (is_windows() and args.cmake_generator != "Ninja"):
@@ -2325,6 +2336,15 @@ def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
+
+    if not is_windows():
+        if not args.allow_running_as_root:
+            is_root_user = os.geteuid() == 0
+            if is_root_user:
+                raise BuildError(
+                    "Running as root is not allowed. If you really want to do that, use '--allow_running_as_root'."
+                )
+
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
     cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 

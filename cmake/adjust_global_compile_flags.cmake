@@ -279,15 +279,8 @@ if (MSVC)
 
   if (NOT GDK_PLATFORM)
     add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
-    if (onnxruntime_USE_WINML OR NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-        message("Building ONNX Runtime for Windows 8 and newer")
-        add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 8 and newer
-    else()
-        message("Building ONNX Runtime for Windows 7 and newer")
-        # For people who build ONNX Runtime from source, the result binary may still support Windows 7
-        # Windows 7 doesn't have OneCore. So if CMAKE_CXX_STANDARD_LIBRARIES is for OneCore, the build won't come here
-        add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
-    endif()
+    message("Building ONNX Runtime for Windows 10 and newer")
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000000)
   endif()
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")

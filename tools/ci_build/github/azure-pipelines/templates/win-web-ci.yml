@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'Win-CPU-2019'
+  default: 'onnxruntime-Win-CPU-2019'
 
 - name: PackageName
   displayName: 'Package name'
