@@ -1,0 +1,70 @@
+{
+    "blogs": [
+    {
+        "blog-title": "Improve BERT inference speed by combining the power of Optimum, OpenVINO™, ONNX Runtime, and Azure",
+        "blog-date": "January 25th, 2023",
+        "blog-blurb": "In this blog, we will discuss one of the ways to make huge models like BERT smaller and faster with OpenVINO™ Neural Networks Compression Framework (NNCF) and ONNX Runtime with OpenVINO™ Execution Provider through Azure Machine Learning.",
+		"blog-link": "https://cloudblogs.microsoft.com/opensource/2023/01/25/improve-bert-inference-speed-by-combining-the-power-of-optimum-openvino-onnx-runtime-and-azure/"
+    },
+    {
+        "blog-title": "Optimum + ONNX Runtime: Easier, Faster training for your Hugging Face models",
+        "blog-date": "January 24th, 2023",
+        "blog-blurb": "Hugging Face’s Optimum library, through its integration with ONNX Runtime for training, provides an open solution to improve training times by 35% or more for many popular Hugging Face models. We present details of both Hugging Face Optimum and the ONNX Runtime Training ecosystem, with performance numbers highlighting the benefits of using the Optimum library.",
+        "blog-link": "www.onnxruntime.ai"
+    },
+    {
+        "blog-title": "Live demos of machine learning models with ONNX and Hugging Face Spaces",
+        "blog-date": "June 6, 2022",
+        "blog-blurb": "Choosing which machine learning model to use, sharing a model with a colleague, and quickly trying out a model are all reasons why you may find yourself wanting to quickly run inference on a model. You can configure your environment and download Jupyter notebooks, but it would be nicer if there was a way to run a model with even less effort...",
+        "blog-link": "www.onnxruntime.ai"
+    },
+    {
+        "blog-title": "Optimizing and deploying transformer INT8 inference with ONNX Runtime-TensorRT on NVIDIA GPUs",
+        "blog-date": "May 2, 2022",
+        "blog-blurb": "Transformer-based models have revolutionized the natural language processing (NLP) domain. Ever since its inception, transformer architecture has been integrated into models like Bidirectional Encoder Representations from Transformers (BERT) and Generative Pre-trained Transformer (GPT) for performing tasks such as text generation or summarization and question and answering to name a few...",
+        "blog-link": "www.onnxruntime.ai"
+    },
+    {
+        "blog-title": "Scaling-up PyTorch inference: Serving billions of daily NLP inferences with ONNX Runtime",
+        "blog-date": "April 19, 2022",
+        "blog-blurb": "Scale, performance, and efficient deployment of state-of-the-art Deep Learning models are ubiquitous challenges as applied machine learning grows across the industry. We’re happy to see that the ONNX Runtime Machine Learning model inferencing solution we’ve built and use in high-volume Microsoft products and services also resonates with our open source community, enabling new capabilities that drive content relevance and productivity...",
+        "blog-link": "https://cloudblogs.microsoft.com/opensource/2022/04/19/scaling-up-pytorch-inference-serving-billions-of-daily-nlp-inferences-with-onnx-runtime/"
+    },
+    {
+        "blog-title": "Add AI to mobile applications with Xamarin and ONNX Runtime",
+        "blog-date": "December 14, 2021",
+        "blog-blurb": "ONNX Runtime now supports building mobile applications in C# with Xamarin. Support for Android and iOS is included in the ONNX Runtime release 1.10 NuGet package. This enables C# developers to build AI applications for Android and iOS to execute ONNX models on mobile devices with ONNX Runtime...",
+        "blog-link": "https://cloudblogs.microsoft.com/opensource/2021/12/14/add-ai-to-mobile-applications-with-xamarin-and-onnx-runtime/"
+    },
+    {
+        "blog-title": "ONNX Runtime Web—running your machine learning model in browser",
+        "blog-date": "September 2, 2021",
+        "blog-blurb": "We are introducing ONNX Runtime Web (ORT Web), a new feature in ONNX Runtime to enable JavaScript developers to run and deploy machine learning models in browsers. It also helps enable new classes of on-device computation. ORT Web will be replacing the soon to be deprecated onnx.js...",
+        "blog-link": "https://cloudblogs.microsoft.com/opensource/2021/09/02/onnx-runtime-web-running-your-machine-learning-model-in-browser/"
+    },
+    {
+        "blog-title": "Accelerate PyTorch transformer model training with ONNX Runtime – a deep dive",
+        "blog-date": "July 13, 2021",
+        "blog-blurb": "ONNX Runtime (ORT) for PyTorch accelerates training large scale models across multiple GPUs with up to 37% increase in training throughput over PyTorch and up to 86% speed up when combined with DeepSpeed...",
+        "blog-link": "https://techcommunity.microsoft.com/t5/azure-ai/accelerate-pytorch-transformer-model-training-with-onnx-runtime/ba-p/2540471"
+    },
+    {
+        "blog-title": "Accelerate PyTorch training with torch-ort",
+        "blog-date": "July 13, 2021",
+        "blog-blurb": "With a simple change to your PyTorch training script, you can now speed up training large language models with torch_ort.ORTModule, running on the target hardware of your choice. Training deep learning models requires ever-increasing compute and memory resources. Today we release torch_ort.ORTModule, to accelerate distributed training of PyTorch models, reducing the time and resources needed for training...",
+        "blog-link": "https://cloudblogs.microsoft.com/opensource/2021/07/13/accelerate-pytorch-training-with-torch-ort/"
+    },
+    {
+        "blog-title": "ONNX Runtime release 1.8.1 previews support for accelerated training on AMD GPUs with the AMD ROCm™ Open Software Platform",
+        "blog-date": "July 13, 2021",
+        "blog-blurb": "ONNX Runtime is an open-source project that is designed to accelerate machine learning across a wide range of frameworks, operating systems, and hardware platforms. Today, we are excited to announce a preview version of ONNX Runtime in release 1.8.1 featuring support for AMD Instinct™ GPUs facilitated by the AMD ROCm™ open software platform...",
+        "blog-link": "https://cloudblogs.microsoft.com/opensource/2021/07/13/onnx-runtime-release-1-8-1-previews-support-for-accelerated-training-on-amd-gpus-with-the-amd-rocm-open-software-platform/"
+    },
+    {
+        "blog-title": "Journey to optimize large scale transformer model inference with ONNX Runtime",
+        "blog-date": "June 30, 2021",
+        "blog-blurb": "Large-scale transformer models, such as GPT-2 and GPT-3, are among the most useful self-supervised transformer language models for natural language processing tasks such as language translation, question answering, passage summarization, text generation, and so on...",
+        "blog-link": "https://cloudblogs.microsoft.com/opensource/2021/06/30/journey-to-optimize-large-scale-transformer-model-inference-with-onnx-runtime/"
+    }
+]
+}

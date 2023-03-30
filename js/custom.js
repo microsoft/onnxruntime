@@ -70,6 +70,55 @@ $(document).ready(function () {
   carouselNormalization();
 
   $('.nav-tabs').responsiveTabs();
+
+  customElements.define(
+		"blog-item",
+		class extends HTMLElement {
+			constructor() {
+			super();
+			let template = document.getElementById("blog-item");
+			let templateContent = template.content;
+
+			const shadowRoot = this.attachShadow({ mode: "open" });
+			shadowRoot.appendChild(templateContent.cloneNode(true));
+      
+			}
+		}
+		);
+
+    var json = {
+      "items": [
+          {
+          "title": "sample x",
+          "date": "author x",
+          "blurb": "author x",
+          "link": "author x",
+          },
+          {
+          "title": "sample y",
+          "date": "author x",
+          "blurb": "author x",
+          "link": "author x",
+          }
+      ]
+  };
+  // pull json from blogs.json
+  var jsonList = $.getJSON("blogs.json", function (json) {
+    console.log(json);
+  });
+
+    // loop thru json items and create blog-item elements on the blogs page
+    for (var i = 0; i < json.items.length; i++) {
+      var blogItem = document.createElement("blog-item");
+      blogItem.setAttribute("title", json.items[i].title);
+      blogItem.setAttribute("date", json.items[i].date);
+      blogItem.setAttribute("blurb", json.items[i].blurb);
+      blogItem.setAttribute("link", json.items[i].link);
+      document.getElementById("blog-list").appendChild(blogItem);
+    }
+
+
+
 });
 
 function getStartedScroll() {
