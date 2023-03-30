@@ -91,7 +91,7 @@ jobs:
         --pod-version "${variables.ORT_POD_VERSION}" \
         --variant Full \
         --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
-      cd $(Build.BinariesDirectory)/ios_framework/framework_out
+      cd $(Build.BinariesDirectory)/staging/onnxruntime-c
       zip -r onnxruntime-c.zip .
 
     # TODO: update for the mobile build one as well
@@ -130,7 +130,7 @@ jobs:
   # TODO: Refine to set env variable in Podfile to avoid copying to the local_pods/
   - task: CopyFiles@2
     inputs:
-      sourceFolder: $(Build.BinariesDirectory)/ios_framework/framework_out
+      sourceFolder: $(Build.BinariesDirectory)/staging/onnxruntime-c
       # Mobile build:
       #  contents: onnxruntime-mobile-c.zip
       contents: onnxruntime-c.zip
