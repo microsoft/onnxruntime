@@ -1,0 +1,4 @@
+LIBRARY "fuse_select_filter.dll"
+EXPORTS
+ RegisterCustomOps @1
+ RegisterCustomOpsAltName @2

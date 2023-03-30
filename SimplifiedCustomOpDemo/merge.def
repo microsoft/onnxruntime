@@ -1,4 +1,4 @@
-LIBRARY "simple_custom_op.dll"
+LIBRARY "merge.dll"
 EXPORTS
  RegisterCustomOps @1
  RegisterCustomOpsAltName @2

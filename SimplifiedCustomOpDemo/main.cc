@@ -4,32 +4,28 @@
 #include <iterator>
 
 #ifdef WIN32
-#define FUSION_FILTER L"..\\..\\fusion_filter_2.onnx"
-#define STRING_MERGE L"..\\..\\str_merge.onnx"
-#define SIMPLE_CUSTOM_OP_LIB L"simple_custom_op.dll"
+#define MODEL_FUSE_SELECT_FILTER L"..\\..\\fuse_select_filter.onnx"
+#define MODEL_MERGE L"..\\..\\merge.onnx"
+#define LIB_SIMPLE_CUSTOM_OP L"fuse_select_filter.dll"
+#define LIB_MERGE L"merge.dll"
 #else
-#define FUSION_FILTER "../fusion_filter_2.onnx"
-#define STRING_MERGE "../str_merge.onnx"
-#define SIMPLE_CUSTOM_OP_LIB "./libsimple_custom_op.so"
+#define MODEL_FUSE_SELECT_FILTER "../fuse_select_filter.onnx"
+#define MODEL_MERGE "../merge.onnx"
+#define LIB_SIMPLE_CUSTOM_OP "./fuse_select_filter.so"
+#define LIB_MERGE "./merge.so"
 #endif
 
-void TestSelectFuseFilter() {
-  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "TestSelectFuseFilter");
+void TestFuseSelectFilter() {
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "TestFuseSelectFilter");
   const auto& ortApi = Ort::GetApi();
 
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-  session_options.RegisterCustomOpsLibrary(SIMPLE_CUSTOM_OP_LIB);
+  session_options.RegisterCustomOpsLibrary(LIB_SIMPLE_CUSTOM_OP);
   session_options.SetLogSeverityLevel(0);
 
-#ifdef WIN32
-  const wchar_t* model_path = FUSION_FILTER;
-#else
-  const char* model_path = FUSION_FILTER;
-#endif
-
-  Ort::Session session(env, model_path, session_options);
+  Ort::Session session(env, MODEL_FUSE_SELECT_FILTER, session_options);
 
   const char* input_names[] = {"vector_1", "vector_2", "alpha", "indices"};
   const char* output_names[] = {"vector_filtered"};
@@ -67,23 +63,17 @@ void TestSelectFuseFilter() {
   std::cout << std::endl;
 }
 
-void TestStrMerge() {
-  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "TestStrMerge");
+void TestMerge() {
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "TestMerge");
   const auto& ortApi = Ort::GetApi();
 
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-  session_options.RegisterCustomOpsLibrary(SIMPLE_CUSTOM_OP_LIB);
+  session_options.RegisterCustomOpsLibrary(LIB_MERGE);
   session_options.SetLogSeverityLevel(0);
 
-#ifdef WIN32
-  const wchar_t* model_path = STRING_MERGE;
-#else
-  const char* model_path = STRING_MERGE;
-#endif
-
-  Ort::Session session(env, model_path, session_options);
+  Ort::Session session(env, MODEL_MERGE, session_options);
 
   const char* input_names[] = {"str_in_1", "str_in_2"};
   const char* output_names[] = {"str_out"};
@@ -127,7 +117,7 @@ void TestStrMerge() {
 }
 
 int main() {
-  // TestSelectFuseFilter();
-  TestStrMerge();
+  TestFuseSelectFilter();
+  //TestMerge();
   std::cout << "done" << std::endl;
 }
