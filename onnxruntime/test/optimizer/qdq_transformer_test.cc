@@ -2998,7 +2998,7 @@ TEST(QDQTransformerTests, DropDQSelectorWithDQProducingGraphOutput) {
       ASSERT_NE(argmax_node_it, nodes.cend());
 
       // the DQ from Q -> DQ -> ArgMax should have been dropped, look for the Q -> ArgMax edge
-      ASSERT_EQ(argmax_node_it->GetInputEdgesCount(), 1);
+      ASSERT_EQ(argmax_node_it->GetInputEdgesCount(), static_cast<size_t>(1));
       EXPECT_EQ(argmax_node_it->InputEdgesBegin()->GetNode().OpType(), "QuantizeLinear");
     };
 
