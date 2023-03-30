@@ -27,6 +27,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
   bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const override;
 };
 
+#ifdef __APPLE__
 static bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape1;
@@ -37,13 +38,11 @@ static bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger&
   if (!GetShape(*input_defs[1], input_shape2, logger))
     return false;
 
-  return (input_shape1.size() == input_shape2.size() &&
-          std::equal(input_shape1.begin(), input_shape1.end(), input_shape2.begin()));
+  return input_shape1 == input_shape2;
 }
 
 // Add operator related
 
-#ifdef __APPLE__
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
   const auto& op_type(node.OpType());
