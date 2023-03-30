@@ -73,12 +73,10 @@ ignore = [
     "SIM116", # Don't use dict lookup to replace if-else
 ]
 ignore-init-module-imports = true
-unfixable = [
-    "F401", # Unused imports
-]
 
 [tool.ruff.per-file-ignores]
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.
 # Prefer inline ignores with `noqa: xxx`.
 # Eventually this list should become empty.
 "orttraining/orttraining/test/**" = ["N802"] # Function casing
+"__init__.py" = ["F401"] # We allow unused imports in __init__.py before we add __all__ to all init files
