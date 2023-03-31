@@ -93,6 +93,7 @@ class WhisperEncoderHelper:
         config = encoder.config
         encoder_inputs = WhisperEncoderInputs.create_dummy(
             batch_size=2,
+            feature_size=80,
             sequence_length=3000,
             feature_size=config.num_mel_bins,
             device=device,
@@ -114,7 +115,7 @@ class WhisperEncoderHelper:
                     "input_ids": {0: "batch_size", 1: "feature_size", 2: "sequence_length"},
                     "hidden_states": {0: "batch_size", 1: "sequence_length"},
                 },
-                opset_version=12,
+                opset_version=17,
                 do_constant_folding=True,
                 use_external_data_format=use_external_data_format,
                 verbose=verbose,

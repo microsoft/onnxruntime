@@ -122,7 +122,6 @@ class WhisperHelper:
                 onnx_model_path,
                 verbose,
                 use_external_data_format,
-                use_int32_inputs,
             )
         elif isinstance(model, WhisperEncoderDecoderInit):
             WhisperEncoderDecoderInitHelper.export_onnx(
