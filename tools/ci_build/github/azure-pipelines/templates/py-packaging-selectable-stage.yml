@@ -153,14 +153,15 @@ stages:
           modifyEnvironment: true
 
       - task: PythonScript@0
-        inputs: 'inline'
-        script: |
-          import sys
-          version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
-          import subprocess
-          subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', version])
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Install python modules'
+        inputs:
+          scriptSource: inline
+          script: |
+            import sys
+            version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+            import subprocess
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', version])
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Install python modules'
 
       - task: PowerShell@2
         displayName: 'Install ONNX'
@@ -418,14 +419,15 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - task: PythonScript@0
-        inputs: 'inline'
-        script: |
-          import sys
-          version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
-          import subprocess
-          subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', version])
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Install python modules'
+        inputs:
+          scriptSource: inline
+          script: |
+            import sys
+            version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+            import subprocess
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', version])
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Install python modules'
 
       - task: PowerShell@2
         displayName: 'Install ONNX'
