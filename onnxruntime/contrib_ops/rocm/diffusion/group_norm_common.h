@@ -12,10 +12,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-static inline int32_t divUp(int32_t m, int32_t n) {
-  return (m + n - 1) / n;
-}
-
 int32_t findMaxDivisor(int32_t n, int32_t maxAllowedDivisor) {
   int32_t maxDivisor = -1;
   for (int32_t i = 1; i <= std::sqrt(n); i++) {
@@ -57,7 +53,7 @@ struct GroupNormNHWCParams : OpParams {
 
     hw = h * w;
     const int32_t blocksPerHW = findMaxDivisor(hw, maxBlocksPerHW);
-    hwPerBlock = divUp(hw, blocksPerHW);
+    hwPerBlock = CeilDiv(hw, blocksPerHW);
     cPerGroup = c / groups;
     hwc = hw * c;
     invHWC = 1.F / (float)(hw * cPerGroup);

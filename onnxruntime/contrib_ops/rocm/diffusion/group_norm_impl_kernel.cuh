@@ -1,4 +1,7 @@
-#include "hip/hip_runtime.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// The ROCm kernel is modified from TensorRT 8.5.
 /*
  * SPDX-FileCopyrightText: Copyright (c) 1993-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
@@ -16,7 +19,6 @@
  * limitations under the License.
  */
 
-// The ROCM kernel is hipified from CUDA kernel.
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime_api.h>
 #include <hipcub/hipcub.hpp>

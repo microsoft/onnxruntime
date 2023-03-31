@@ -111,12 +111,16 @@ class GroupNormNHWCMetric(ke.BandwidthMetric):
     height: int
     width: int
     num_channels: int
+    groups: int
 
     def report(self):
-        prefix = f"{self.name:<50} {self.dtype}  height={self.height:<4} width={self.width:<4} num_channels={self.num_channels:<4} "
+        common = (
+            f"{self.dtype:<4} batch={self.batch_size:<4} height={self.height:<4} width={self.width:<4}"
+            + f"num_channels={self.num_channels:<6} groups={self.groups:<4} {self.name}"
+        )
         if self.duration > 0:
-            return prefix + f"{self.duration:.2f} us, {self.gbps:.2f} GB/s"
-        return prefix + "not supported"
+            return f"{self.duration:.2f} us, {self.gbps:.2f} GB/s  " + common
+        return "not supported          " + common
 
 
 def profile_group_norm_func(
@@ -158,7 +162,9 @@ def profile_group_norm_func(
         duration_ms = my_op.Profile()
     total_bytes = (input_x.size * 2 + gamma.size * 2) * dtype_to_bytes(dtype)
 
-    ke.report(GroupNormNHWCMetric(func, dtype, duration_ms, total_bytes, batch_size, height, width, num_channels))
+    ke.report(
+        GroupNormNHWCMetric(func, dtype, duration_ms, total_bytes, batch_size, height, width, num_channels, num_groups)
+    )
 
 
 def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, sort=True):
