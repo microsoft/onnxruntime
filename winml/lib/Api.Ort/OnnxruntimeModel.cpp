@@ -37,10 +37,8 @@ HRESULT CreateFeatureDescriptors(
                             engine_factory->UseOrtApi());
 
     OrtTypeInfo* type_info;
-    auto status = feature_helpers->GetTypeInfo(ort_model, i, &type_info);
-    if (status != nullptr) {
-      continue;
-    }
+    RETURN_HR_IF_NOT_OK_MSG(feature_helpers->GetTypeInfo(ort_model, i, &type_info),
+                            engine_factory->UseOrtApi());
 
     descriptor.type_info_ = UniqueOrtTypeInfo(type_info, ort_api->ReleaseTypeInfo);
 
