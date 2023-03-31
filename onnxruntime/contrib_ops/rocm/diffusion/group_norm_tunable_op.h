@@ -7,7 +7,7 @@
 #include "core/providers/rocm/rocm_common.h"
 #include "contrib_ops/rocm/diffusion/group_norm_common.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl.h"
-#include "contrib_ops/rocm/diffusion/group_norm_impl_kernel.h"
+#include "contrib_ops/rocm/diffusion/group_norm_impl_kernel.cuh"
 #include "contrib_ops/rocm/transformers/dump_rocm_tensor.h"
 
 namespace onnxruntime {
