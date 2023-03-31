@@ -14,10 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Install tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install rustc
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+            override: true
       - name: Run rust docs generation
         run: |
            cd rust
