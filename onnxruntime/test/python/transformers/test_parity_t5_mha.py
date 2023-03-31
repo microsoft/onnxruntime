@@ -344,12 +344,10 @@ class T5Attention(nn.Module):
                         base_offset = (b * num_heads * max_sequence_length * head_size) + (
                             h * max_sequence_length * head_size
                         )
-
                         input_base_offset = base_offset + (s * head_size) + (c * num_inner_elements)
                         output_base_offset = (
                             base_offset + (c * max_sequence_length * num_inner_elements) + (s * num_inner_elements)
                         )
-
                         for e in range(num_inner_elements):
                             ordered[output_base_offset + e] = key_cache[input_base_offset + e]
 
@@ -365,15 +363,9 @@ class T5Attention(nn.Module):
         past_key = torch.normal(
             mean=0.5, std=0.1, size=(self.batch_size, self.num_heads, self.kv_sequence_length, self.head_size)
         ).to(torch.float32)
-        # past_key = torch.zeros(
-        #     (self.batch_size, self.num_heads, self.kv_sequence_length, self.head_size), dtype=torch.float32
-        # )
-        # past_value = torch.normal(
-        #     mean=0.5, std=0.1, size=(self.batch_size, self.num_heads, self.kv_sequence_length, self.head_size)
-        # ).to(torch.float32)
-        past_value = torch.ones(
-            (self.batch_size, self.num_heads, self.kv_sequence_length, self.head_size), dtype=torch.float32
-        )
+        past_value = torch.normal(
+            mean=0.5, std=0.1, size=(self.batch_size, self.num_heads, self.kv_sequence_length, self.head_size)
+        ).to(torch.float32)
         past_key_value = (past_key, past_value)
         attention_mask = torch.ones((self.batch_size, self.kv_sequence_length)).to(torch.float32)
         position_bias_length = self.seq_len if not self.use_past else self.kv_sequence_length + self.seq_len
@@ -381,9 +373,9 @@ class T5Attention(nn.Module):
             mean=0.5, std=0.1, size=(1, self.num_heads, position_bias_length, position_bias_length)
         ).to(torch.float32)
         if self.use_decoder_masked_kernel:
-            position_bias = torch.normal(
-                mean=5, std=0.1, size=(1, self.num_heads, 1, position_bias_length)
-            ).to(torch.float32)
+            position_bias = torch.normal(mean=5, std=0.1, size=(1, self.num_heads, 1, position_bias_length)).to(
+                torch.float32
+            )
         return hidden_states, key_value_states, past_key_value, attention_mask, position_bias
 
     def torch_forward(
@@ -490,8 +482,6 @@ class T5Attention(nn.Module):
             position_bias_masked = position_bias[:, mask.bool()]
         else:
             position_bias_masked = position_bias
-
-        print("torch relative position bias: ", position_bias_masked)
 
         scores += position_bias_masked
         attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(
@@ -604,8 +594,8 @@ class T5Attention(nn.Module):
                     ort_inputs["key"] = reordered_past_key.reshape(torch_past_key.shape)
                     ort_inputs["value"] = torch_past_value
                 else:
-                    ort_inputs["key"] = np.ascontiguousarray(torch_past_key.detach().numpy())
-                    ort_inputs["value"] = np.ascontiguousarray(torch_past_value.detach().numpy())
+                    ort_inputs["key"] = np.ascontiguousarray(torch_past_key)
+                    ort_inputs["value"] = np.ascontiguousarray(torch_past_value)
             else:
                 ort_inputs["key"] = np.ascontiguousarray(key_states.detach().numpy())
                 ort_inputs["value"] = np.ascontiguousarray(value_states.detach().numpy())
@@ -631,7 +621,6 @@ class T5Attention(nn.Module):
                     ort_inputs["key_padding_mask"] = np.ascontiguousarray(torch_key_padding_mask.detach().numpy())
             if torch_position_bias is not None:
                 ort_inputs["relative_position_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
-                print("ort relative position bias", ort_inputs["relative_position_bias"])
 
         ort_output = ort_session.run(None, ort_inputs)
 
@@ -663,11 +652,6 @@ def compare_t5_cross_attention_decoder(batch_size, seq_len, num_heads, head_size
     ort_output = T5CrossAttention.ort_forward(
         hidden_states, key_value_states, past_key_value, attention_mask, position_bias=None, use_cache=False
     )
-
-    print("cross attention decoder output:")
-    print(torch_output[0])
-    print(ort_output[0])
-    print("ort_output[0] / torch_output[0] = ", ort_output[0] / torch_output[0])
 
     if ort_output is not None:
         assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
@@ -745,12 +729,6 @@ def compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size,
         hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
     )
 
-    print("self attention decoder output:")
-    print("torch output")
-    print(torch_output[0])
-    print("ort output")
-    print(ort_output[0])
-
     if ort_output is not None:
         assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
         if not use_dmmha:
@@ -759,35 +737,35 @@ def compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size,
 
 
 class TestT5MHAParity(unittest.TestCase):
-    # def setUp(self):
-    #     self.batch_size = 5
-    #     self.seq_len = 2
-    #     self.num_heads = 2
-    #     self.head_size = 4
-    #     self.kv_sequence_length = 3
+    def setUp(self):
+        self.batch_size = 5
+        self.seq_len = 2
+        self.num_heads = 2
+        self.head_size = 4
+        self.kv_sequence_length = 3
 
-    # def test_t5_cross_attention_decoder_init(self):
-    #     compare_t5_cross_attention_decoder_init(
-    #         self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
-    #     )
+    def test_t5_cross_attention_decoder_init(self):
+        compare_t5_cross_attention_decoder_init(
+            self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
+        )
 
-    # def test_t5_self_attention_decoder_init(self):
-    #     compare_t5_self_attention_decoder_init(
-    #         self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
-    #     )
+    def test_t5_self_attention_decoder_init(self):
+        compare_t5_self_attention_decoder_init(
+            self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
+        )
 
-    # def test_t5_cross_attention_decoder(self):
-    #     compare_t5_cross_attention_decoder(
-    #         self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
-    #     )
+    def test_t5_cross_attention_decoder(self):
+        compare_t5_cross_attention_decoder(
+            self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
+        )
 
-    # def test_t5_self_attention_decoder(self):
-    #     compare_t5_self_attention_decoder(
-    #         self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
-    #     )
+    def test_t5_self_attention_decoder(self):
+        compare_t5_self_attention_decoder(
+            self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
+        )
 
     def test_t5_cross_attention_decoder_masked_mha(self):
-        batch_size = 1
+        batch_size = 2
         seq_len = 1
         num_heads = 2
         head_size = 32
@@ -796,13 +774,13 @@ class TestT5MHAParity(unittest.TestCase):
             batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=True
         )
 
-    # def test_t5_self_attention_decoder_masked_mha(self):
-    #     batch_size = 1
-    #     seq_len = 1
-    #     num_heads = 16
-    #     head_size = 32
-    #     kv_sequence_length = 5
-    #     compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=True)
+    def test_t5_self_attention_decoder_masked_mha(self):
+        batch_size = 2
+        seq_len = 1
+        num_heads = 2
+        head_size = 32
+        kv_sequence_length = 2
+        compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=True)
 
 
 if __name__ == "__main__":
