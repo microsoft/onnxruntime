@@ -44,7 +44,10 @@ class MSELoss(blocks.Block):
             Returns a string of the output name from the loss
         """
 
-        return self._reduce(self._square(self._sub(loss_input_name, blocks.InputLike(loss_input_name)(target_name))))
+        if not _graph_utils.node_arg_exists(self.base, target_name):
+            target_name = blocks.InputLike(loss_input_name)(target_name)
+
+        return self._reduce(self._square(self._sub(loss_input_name, target_name)))
 
 
 class CrossEntropyLoss(blocks.Block):
@@ -84,15 +87,16 @@ class CrossEntropyLoss(blocks.Block):
         if self._weight is not None:
             self.base.graph.initializer.append(onnx.numpy_helper.from_array(self._weight, weight_name))
 
-        # create a new graph input. this is the labels input needed to compare
-        # the graph output against to calculate loss.
-        labels_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, scores_input_name))
-        labels_input.name = labels_name
-        labels_input.type.tensor_type.elem_type = onnx.TensorProto.INT32
-        # if the predictions are (num_examples x num_classes)
-        # labels should be (num_examples x 1)
-        del labels_input.type.tensor_type.shape.dim[1]
-        self.base.graph.input.append(labels_input)
+        if not _graph_utils.node_arg_exists(self.base, labels_name):
+            # Create a new graph input. This is the labels input needed to compare
+            # the graph output against to calculate loss.
+            labels_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, scores_input_name))
+            labels_input.name = labels_name
+            labels_input.type.tensor_type.elem_type = onnx.TensorProto.INT32
+            # If the predictions are (num_examples x num_classes)
+            # labels should be (num_examples x 1)
+            del labels_input.type.tensor_type.shape.dim[1]
+            self.base.graph.input.append(labels_input)
 
         loss_node_input_names = [scores_input_name, labels_name]
         if self._weight:
@@ -178,11 +182,12 @@ class BCEWithLogitsLoss(blocks.Block):
             onnx.helper.make_tensor(sub_ones_operand_name2, onnx.TensorProto.FLOAT, [1], [1.0])
         )
 
-        # Create a new graph input. This is the target input needed to compare
-        # the graph output against to calculate loss.
-        target_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, loss_input_name))
-        target_input.name = target_name
-        self.base.graph.input.append(target_input)
+        if not _graph_utils.node_arg_exists(self.base, target_name):
+            # Create a new graph input. This is the target input needed to compare
+            # the graph output against to calculate loss.
+            target_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, loss_input_name))
+            target_input.name = target_name
+            self.base.graph.input.append(target_input)
 
         sigmoid_output = self._sigmoid(loss_input_name)
         add_operand1 = self._mul(self._log(sigmoid_output), target_name)
@@ -235,4 +240,7 @@ class L1Loss(blocks.Block):
             Returns a string of the output name from the loss
         """
 
-        return self._reduce(self._abs(self._sub(loss_input_name, blocks.InputLike(loss_input_name)(target_name))))
+        if not _graph_utils.node_arg_exists(self.base, target_name):
+            target_name = blocks.InputLike(loss_input_name)(target_name)
+
+        return self._reduce(self._abs(self._sub(loss_input_name, target_name)))
