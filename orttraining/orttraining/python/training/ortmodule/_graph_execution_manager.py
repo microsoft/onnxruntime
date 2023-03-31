@@ -8,7 +8,7 @@ import inspect
 import io
 import os
 import warnings
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod  # noqa: F401
 from enum import IntFlag
 from functools import reduce
 
@@ -36,7 +36,7 @@ from .debug_options import DebugOptions, LogLevel
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
 
-class _RunStateInfo(object):
+class _RunStateInfo:
     def __init__(self, state, output_info):
         """
         :param state: State of partial run that contains intermediate tensors needed to resume the run later.
@@ -72,7 +72,7 @@ class GraphExecutionManager(GraphExecutionInterface):
     def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
         """Manages construction and execution of ONNX graphs"""
 
-        super(GraphExecutionManager, self).__init__(module._original_module)
+        super().__init__(module._original_module)
 
         # IMPORTANT: Debug and Fallback must the configured first
         self._debug_options = debug_options
@@ -167,7 +167,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                         "The model's forward method has **kwargs parameter which has EXPERIMENTAL support!", UserWarning
                     )
 
-        self.is_rocm_pytorch = True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False
+        self.is_rocm_pytorch = bool(torch.version.hip is not None and ROCM_HOME is not None)
 
         self._use_external_gpu_allocator = True
         # assign self._torch_alloc and self._torch_free if self._use_external_gpu_allocator is True
@@ -239,7 +239,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             run_info: A _RunStateInfo which contains extra information about the execution of the graph
         """
 
-        raise NotImplemented
+        raise NotImplementedError
 
     @abstractmethod
     def forward(self):
@@ -424,7 +424,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     **self._export_extra_kwargs,
                 )
         except Exception as e:
-            raise wrap_exception(
+            raise wrap_exception(  # noqa: B904
                 ORTModuleONNXModelException,
                 RuntimeError(
                     f"There was an error while exporting the PyTorch model to ONNX: "

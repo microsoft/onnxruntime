@@ -1,6 +1,6 @@
 import numpy as np
 import onnx
-from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 hidden_size = 4
 attention_head = 2

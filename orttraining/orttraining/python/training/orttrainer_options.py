@@ -1,14 +1,13 @@
 import cerberus
-import torch
 
 import onnxruntime as ort
+from onnxruntime.capi._pybind_state import PropagateCastOpsStrategy
 
-from . import PropagateCastOpsStrategy
 from .amp import loss_scaler
 from .optim import lr_scheduler
 
 
-class ORTTrainerOptions(object):
+class ORTTrainerOptions:
     r"""Settings used by ONNX Runtime training backend
 
     The parameters are hierarchically organized to facilitate configuration through semantic groups
@@ -462,7 +461,7 @@ class ORTTrainerOptions(object):
             fp16_enabled = opts.mixed_precision.enabled
     """
 
-    def __init__(self, options={}):
+    def __init__(self, options={}):  # noqa: B006
         # Keep a copy of original input for debug
         self._original_opts = dict(options)
 
@@ -483,7 +482,7 @@ class ORTTrainerOptions(object):
     def __repr__(self):
         return "{%s}" % str(
             ", ".join(
-                "'%s': %s" % (k, repr(v))
+                f"'{k}': {repr(v)}"
                 for (k, v) in self.__dict__.items()
                 if k not in ["_original_opts", "_validated_opts", "_main_class_name"]
             )
@@ -536,9 +535,9 @@ def _check_is_callable(field, value, error):
     try:
         # Python 3
         result = value is None or callable(value)
-    except:
+    except Exception:
         # Python 3 but < 3.2
-        if hasattr(value, "__call__"):
+        if hasattr(value, "__call__"):  # noqa: B004
             result = True
     if not result:
         error(field, "Must be callable or None")

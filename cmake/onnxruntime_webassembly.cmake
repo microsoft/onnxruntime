@@ -202,12 +202,10 @@ else()
                         -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
                         -s \"EXPORTED_FUNCTIONS=_malloc,_free\" \
                         -s MAXIMUM_MEMORY=4294967296 \
-                        -s WASM=1 \
                         -s EXIT_RUNTIME=0 \
                         -s ALLOW_MEMORY_GROWTH=1 \
                         -s MODULARIZE=1 \
                         -s EXPORT_ALL=0 \
-                        -s LLD_REPORT_UNDEFINED \
                         -s VERBOSE=0 \
                         -s FILESYSTEM=0 \
                         ${WASM_API_EXCEPTION_CATCHING} \

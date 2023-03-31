@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <pybind11/pybind11.h>
+
 #include "core/providers/shared_library/provider_api.h"
 #ifdef USE_CUDA
 #include <cuda_runtime_api.h>
@@ -31,6 +33,8 @@ using TuningContextT = onnxruntime::rocm::tunable::RocmTuningContext;
 #else
 #error "kernel explorer only supports CUDA or ROCM"
 #endif
+
+namespace onnxruntime {
 
 /// Wrapping around Op and TunableOp
 class IKernelExplorer {
@@ -78,3 +82,22 @@ class IKernelExplorer {
   StreamT stream_{0};
   int repeats_{100};
 };
+
+pybind11::module GetKernelExplorerModule();
+
+class KernelExplorerInit {
+ public:
+  explicit KernelExplorerInit(void (*init_func)(pybind11::module module)) {
+    init_func(GetKernelExplorerModule());
+  }
+};
+
+#define KE_REGISTER_IMPL(unique_id, module_name)                                    \
+  static void KeInitFunc##unique_id(pybind11::module module_name);                  \
+  static const KernelExplorerInit kKeInitializer##unique_id{KeInitFunc##unique_id}; \
+  void KeInitFunc##unique_id(pybind11::module module_name)
+
+#define KE_REGISTER_(unique_id, module_name) KE_REGISTER_IMPL(unique_id, module_name)
+#define KE_REGISTER(module_name) KE_REGISTER_(__COUNTER__, module_name)
+
+}  // namespace onnxruntime

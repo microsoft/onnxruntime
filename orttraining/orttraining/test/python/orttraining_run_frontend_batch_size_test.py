@@ -1,6 +1,6 @@
-import sys
 import collections
 import subprocess
+import sys
 
 Config = collections.namedtuple(
     "Config",

@@ -2,12 +2,13 @@
 # Licensed under the MIT License.
 # orttraining_test_checkpoint_storage.py
 
+import os
+import pickle
+import shutil
+
+import numpy as np
 import pytest
 import torch
-import numpy as np
-import os
-import shutil
-import pickle
 
 from onnxruntime.training import _checkpoint_storage
 
@@ -17,10 +18,7 @@ from onnxruntime.training import _checkpoint_storage
 def _equals(a, b):
     """Checks recursively if two dictionaries are equal"""
     if isinstance(a, dict):
-        for key in a:
-            if key not in b or not _equals(a[key], b[key]):
-                return False
-        return True
+        return all(not (key not in b or not _equals(a[key], b[key])) for key in a)
     else:
         if isinstance(a, bytes):
             a = a.decode()
@@ -42,12 +40,9 @@ def _numpy_types(obj_value):
     False if any other type
     """
     if not isinstance(obj_value, dict):
-        return type(obj_value).__module__ == np.__name__ or isinstance(obj_value, str) or isinstance(obj_value, bytes)
+        return isinstance(obj_value, (str, bytes)) or type(obj_value).__module__ == np.__name__
 
-    for _, value in obj_value.items():
-        if not _numpy_types(value):
-            return False
-    return True
+    return all(_numpy_types(value) for _, value in obj_value.items())
 
 
 def _get_dict(separated_key):
@@ -98,7 +93,7 @@ def _get_dict(separated_key):
     return test_dict, {"key": key} if len(separated_key) > 0 else dict(), expected_val
 
 
-class _CustomClass(object):
+class _CustomClass:
     """Custom object that encpsulates dummy values for loss, epoch and train_step"""
 
     def __init__(self):
@@ -252,7 +247,7 @@ def test_checkpoint_storage_for_custom_user_dict_succeeds(checkpoint_storage_tes
 
     loaded_dict = _checkpoint_storage.load(pytest.checkpoint_path)
     assert (loaded_dict["a"] == to_save["a"].numpy()).all()
-    try:
+    try:  # noqa: SIM105
         loaded_dict["user_dict"] = loaded_dict["user_dict"].decode()
     except AttributeError:
         pass
