@@ -152,8 +152,13 @@ stages:
           filename: 'C:\Program Files\Intel\openvino_2021.4.752\bin\setupvars.bat'
           modifyEnvironment: true
 
-      - script: |
-          python -m pip install -q setuptools wheel numpy==1.24.2
+      - task: PythonScript@0
+        inputs: 'inline'
+        script: |
+          import sys
+          version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+          import subprocess
+          subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', version])
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -412,8 +417,13 @@ stages:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - script: |
-          python -m pip install -q setuptools wheel numpy==1.24.2
+      - task: PythonScript@0
+        inputs: 'inline'
+        script: |
+          import sys
+          version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+          import subprocess
+          subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', version])
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
