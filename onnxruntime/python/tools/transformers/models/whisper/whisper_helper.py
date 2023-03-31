@@ -238,6 +238,7 @@ class WhisperHelper:
                 optimization_options = FusionOptions("bart")
             optimization_options.use_multi_head_attention = True
 
+
         m = optimize_model(
             onnx_model_path,
             model_type="bart",
@@ -264,12 +265,6 @@ class WhisperHelper:
         device: torch.device,
         use_int32_inputs: bool,
     ):
-        return True
         """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
-        #if isinstance(model, WhisperEncoder):
-        #    return WhisperEncoderHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-
-        #if isinstance(model, WhisperEncoderDecoderInit):
-        #    return WhisperEncoderDecoderInitHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-
-        return WhisperDecoderHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
+        # Not implemented for Whisper currently
+        return True

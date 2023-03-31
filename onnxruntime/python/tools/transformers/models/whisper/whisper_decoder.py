@@ -70,35 +70,6 @@ class WhisperDecoderInit(torch.nn.Module):
         )
         logits = self.decoder.proj_out(out[0])
         return logits, out.past_key_values, out.encoder_last_hidden_state
-    '''
-        if decoder_input_ids is None:
-            batch_size = encoder_attention_mask.shape[0]
-            decoder_input_ids = (
-                torch.ones(
-                    (batch_size, 1),
-                    dtype=torch.long,
-                    device=encoder_attention_mask.device,
-                )
-                * self.decoder_start_token_id
-            )
-
-        decoder_outputs = self.decoder(
-            input_ids=decoder_input_ids,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
-            use_cache=True,
-            return_dict=True,
-        )
-
-        sequence_output = decoder_outputs.last_hidden_state
-        present_key_values = decoder_outputs.past_key_values
-
-        sequence_output = sequence_output * (self.config.d_model**-0.5)
-
-        lm_logits = self.lm_head(sequence_output)
-        past_self, past_cross = PastKeyValuesHelper.group_by_self_or_cross(present_key_values)
-        return lm_logits, past_self, past_cross
-    '''
 
 class WhisperDecoder(torch.nn.Module):
     """A Whisper decoder with LM head and past key values"""
@@ -133,31 +104,6 @@ class WhisperDecoder(torch.nn.Module):
         logits = decoder_out[0]
         present_self, _ = PastKeyValuesHelper.group_by_self_and_cross(decoder_out.past_key_values)
         return logits, present_self
-        '''
-        past_key_values = PastKeyValuesHelper.group_by_layer(past, self.config.num_layers)
-
-        # This is a hack since only the third dimension of encoder_hidden_states is used here
-        dummy_encoder_hidden_states = encoder_attention_mask.unsqueeze(2)
-        decoder_outputs = self.decoder(
-            input_ids=decoder_input_ids,
-            past_key_values=past_key_values,
-            encoder_hidden_states=dummy_encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
-            use_cache=True,
-            return_dict=True,
-        )
-
-        sequence_output = decoder_outputs.last_hidden_state
-        present_key_values = decoder_outputs.past_key_values
-
-        sequence_output = sequence_output * (self.config.d_model**-0.5)
-
-        lm_logits = self.lm_head(sequence_output)
-        present_self, _ = PastKeyValuesHelper.group_by_self_or_cross(present_key_values)
-
-        # Do not return present_cross since they are identical to corresponding past_cross input
-        return lm_logits, present_self
-        '''
 
 
 class WhisperDecoderInputs:

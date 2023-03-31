@@ -20,9 +20,7 @@ def chain_model(args):
     add_attention_mask(decoder_model)
 
     config = WhisperConfig.from_pretrained(args.model_name_or_path)
-    eos_token_id = config.eos_token_id
     pad_token_id = config.pad_token_id
-    decoder_start_token_id = config.decoder_start_token_id
 
     beam_inputs = [
         "input_features",
