@@ -16,16 +16,19 @@ namespace contrib {
 /**
  * @brief Pooling operator for type FP16, layout NHWC.
  * Only max pool and average pool supported.
- * 
+ *
  * Single threadded operation for now.
- * 
+ *
  * TODO!! implemente thread partition similar with
  * fp16 conv operator
 */
 class NhwcPoolFp16 : public OpKernel {
  public:
-  explicit NhwcPoolFp16(const OpKernelInfo& info, const std::string& pooltype, bool is_max_pool)
-      : OpKernel(info), pool_attrs_(info, pooltype, info.node().SinceVersion()), is_max_pool_(is_max_pool) {}
+  explicit NhwcPoolFp16(const OpKernelInfo& info)
+      : OpKernel(info),
+      pool_attrs_(info, info.GetKernelDef().OpName(), info.node().SinceVersion()),
+      is_max_pool_(info.GetKernelDef().OpName() == "MaxPool")
+  {}
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -139,18 +142,6 @@ Status NhwcPoolFp16::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-class NhwcMaxPoolFp16 : public NhwcPoolFp16 {
- public:
-  explicit NhwcMaxPoolFp16(const OpKernelInfo& info)
-      : NhwcPoolFp16(info, "MaxPool", true /*maxpool*/) {}
-};
-
-class NhwcAvgPoolFp16 : public NhwcPoolFp16 {
- public:
-  explicit NhwcAvgPoolFp16(const OpKernelInfo& info)
-      : NhwcPoolFp16(info, "AveragePool", false /*not maxpool*/) {}
-};
-
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     MaxPool,
     kMSInternalNHWCDomain,
@@ -159,7 +150,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-    NhwcMaxPoolFp16);
+    NhwcPoolFp16);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     AveragePool,
@@ -169,7 +160,17 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-    NhwcAvgPoolFp16);
+    NhwcPoolFp16);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    GlobalAveragePool,
+    kMSInternalNHWCDomain,
+    1,
+    MLFloat16,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    NhwcPoolFp16);
 
 
 #endif
