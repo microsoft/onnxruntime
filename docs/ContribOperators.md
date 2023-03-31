@@ -1107,6 +1107,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Multihead attention that supports input sequence length of 1.
   Similar to DecoderMaskedSelfAttention but this op excludes QKV MatMul and Bias.
+  This op supports both Self and Cross Attention.
 
 #### Version
 
