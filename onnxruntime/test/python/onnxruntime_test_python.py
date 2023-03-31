@@ -9,6 +9,7 @@ import platform
 import sys
 import threading
 import unittest
+from pathlib import Path
 
 import numpy as np
 from helper import get_name
@@ -97,6 +98,10 @@ class TestInferenceSession(unittest.TestCase):
         # no-op on non-Windows builds
         # may be no-op on certain Windows builds based on build configuration
         onnxrt.enable_telemetry_events()
+
+    def testDeserializationFromPathObject(self):  # noqa: N802
+        # path object is allowed
+        onnxrt.InferenceSession(Path(get_name("mul_1.onnx")))
 
     def testSetProviders(self):  # noqa: N802
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
