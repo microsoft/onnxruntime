@@ -25,61 +25,31 @@ stages:
 - stage: Packages_Somking_Test
   dependsOn: []
   jobs:
-    - job: MacOS_py_Wheels
-      timeoutInMinutes: 30
-      workspace:
-        clean: all
-      pool:
-        vmImage: 'macOS-12'
-      variables:
-        MACOSX_DEPLOYMENT_TARGET: '10.15'
-      strategy:
-        matrix:
-          Python38:
-            PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
-          Python310:
-            PythonVersion: '3.10'
-      steps:
-      - task: UsePythonVersion@0
-        displayName: 'Use Python'
-        inputs:
-          versionSpec: $(PythonVersion)
-
-      - task: DownloadPipelineArtifact@2
-        displayName: 'Download Pipeline Artifact'
-        inputs:
-          artifactName: 'onnxruntime'
-          targetPath: '$(Build.BinariesDirectory)/whl'
-          itemPattern: '*/*mac*x86_64.whl'
-          # The public ADO project
-          ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
-            buildType: current
-          # The private ADO project
-          ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
-            project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
-            definition: 841
-            preferTriggeringPipeline: true
-            runVersion: 'latest'
-            buildType: specific
-
-      - script: |
-          set -ex
-          cd $(Build.BinariesDirectory)
-          files=(whl/*.whl)
-          FILE_NAME="${files[0]}"
-          FILE_NAME=$(basename $FILE_NAME)
-          PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
-          python3 -m pip install --find-links $(Build.BinariesDirectory)/whl $PYTHON_PACKAGE_NAME
-          pip show $PYTHON_PACKAGE_NAME
-          python -c "import onnxruntime as ort; print(ort.__version__)"
-        displayName: Test Package Installation
-
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
-
+    - template: templates/py-package-smoking-test.yml
+      parameters:
+        job_name: Test_MAC_Wheels
+        machine_pool:
+          vmImage: 'macOS-12'
+        itemPattern: '*/*mac*x86_64.whl'
+    - template: templates/py-package-smoking-test.yml
+      parameters:
+        job_name: Test_WIN_64_Wheels
+        itemPattern: '*/*win_amd64.whl'
+        machine_pool:
+          vmImage: 'windows-2022'
+    - template: templates/py-package-smoking-test.yml
+      parameters:
+        job_name: Test_WIN_32_Wheels
+        itemPattern: '*/*win32.whl'
+        python_arch: 'x86'
+        machine_pool:
+          vmImage: 'windows-2022'
+    - template: templates/py-package-smoking-test.yml
+      parameters:
+        job_name: Test_LINUX_x86_64_Wheels
+        itemPattern: '*/*manylinux*x86_64.whl'
+        machine_pool:
+          vmImage: 'ubuntu-22.04'
 
 # ****The following Stage depend on all previous tags. ***
 
@@ -106,7 +76,7 @@ stages:
     - Linux_Test_GPU_x86_64_stage
   jobs:
   - job: Final
-    #Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
+    # Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
     condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
     timeoutInMinutes: 60
     variables:

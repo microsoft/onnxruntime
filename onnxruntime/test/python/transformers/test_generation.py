@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.  See License.txt in the project root for
@@ -74,9 +73,8 @@ class TestBeamSearchGpt(unittest.TestCase):
         self.assertTrue(init_decoder_found)
 
     def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True, is_greedy=False):
-
         if append_arguments:
-            arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+            arguments = " ".join([*self.default_arguments, extra_arguments]).split()
         else:
             arguments = extra_arguments.split()
 
@@ -159,12 +157,12 @@ class TestBeamSearchGpt(unittest.TestCase):
     @pytest.mark.slow
     def test_beam_search_use_decoder_masked_self_attention(self):
         if self.enable_cuda:
-            self.run_beam_search(f"--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu")
+            self.run_beam_search("--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu")
 
     @pytest.mark.slow
     def test_beam_search_use_decoder_masked_self_attention_fp16(self):
         if self.enable_cuda:
-            self.run_beam_search(f"--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu -p fp16")
+            self.run_beam_search("--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu -p fp16")
 
     @pytest.mark.slow
     def test_external_data(self):
@@ -235,7 +233,7 @@ class TestBeamSearchT5(unittest.TestCase):
 
     def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True):
         if append_arguments:
-            arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+            arguments = " ".join([*self.default_arguments, extra_arguments]).split()
         else:
             arguments = extra_arguments.split()
 

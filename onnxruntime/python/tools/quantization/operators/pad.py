@@ -1,4 +1,3 @@
-import numpy as np
 import onnx
 
 from ..quant_utils import (

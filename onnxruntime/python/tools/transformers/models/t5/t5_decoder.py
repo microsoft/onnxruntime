@@ -93,7 +93,6 @@ class T5Decoder(torch.nn.Module):
         self.config = config
 
     def forward(self, decoder_input_ids, encoder_attention_mask, *past):
-
         past_key_values = PastKeyValuesHelper.group_by_layer(past, self.config.num_layers)
 
         # This is a hack since only the third dimension of encoder_hidden_states is used here
@@ -154,7 +153,6 @@ class T5DecoderInputs:
         Returns:
             T5DecoderInputs: dummy inputs for decoder
         """
-        hidden_size: int = config.d_model
         num_attention_heads: int = config.num_heads
         num_layers: int = config.num_layers
         vocab_size: int = config.vocab_size
@@ -263,7 +261,7 @@ class T5DecoderHelper:
 
         input_past_names = past_names if isinstance(decoder, T5Decoder) else []
         output_present_names = present_self_names if isinstance(decoder, T5Decoder) else present_names
-        output_names = ["logits"] + output_present_names
+        output_names = ["logits", *output_present_names]
 
         # Shape of input tensors (sequence_length==1):
         #    input_ids: (batch_size, sequence_length)
@@ -381,7 +379,7 @@ class T5DecoderHelper:
             past_decode_sequence_length,
         ) in test_cases[:max_cases]:
             if isinstance(model, T5DecoderInit):
-                past_decode_sequence_length = 0
+                past_decode_sequence_length = 0  # noqa: PLW2901
 
             inputs = T5DecoderInputs.create_dummy(
                 model.config,

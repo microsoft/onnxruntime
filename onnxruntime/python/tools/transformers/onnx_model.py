@@ -31,7 +31,7 @@ class OnnxModel:
     def disable_shape_inference(self):
         self.enable_shape_infer = False
 
-    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):
+    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):  # noqa: B006
         if self.enable_shape_infer:
             if self.shape_infer_helper is None or update:
                 self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
@@ -39,7 +39,7 @@ class OnnxModel:
             try:
                 if self.shape_infer_helper.infer(dynamic_axis_mapping):
                     return self.shape_infer_helper
-            except:  # noqa
+            except Exception:
                 self.enable_shape_infer = False  # disable shape inference to suppress same error message.
                 print("failed in shape inference", sys.exc_info()[0])
 
@@ -243,7 +243,7 @@ class OnnxModel:
 
         return output_name_to_node[input]
 
-    def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=[]):
+    def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=[]):  # noqa: B006
         """
         Find parent node based on constraints on op_type.
 
@@ -272,7 +272,7 @@ class OnnxModel:
         parent_op_type,
         input_index=None,
         output_name_to_node=None,
-        exclude=[],
+        exclude=[],  # noqa: B006
         return_indice=None,
     ):
         """
@@ -318,7 +318,7 @@ class OnnxModel:
 
     def match_parent_paths(self, node, paths, output_name_to_node):
         for i, path in enumerate(paths):
-            assert isinstance(path, List) or isinstance(path, Tuple)
+            assert isinstance(path, (List, Tuple))
             return_indice = []
             matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
             if matched:

@@ -2,7 +2,7 @@ import onnx
 from onnx import TensorProto, helper
 
 
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     initializers = [
         helper.make_tensor(
             "weight",

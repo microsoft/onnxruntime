@@ -1,6 +1,6 @@
 import numpy as np
 import onnx
-from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 # Gelu formula: x * 0.5 * (1.0 + tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
 
@@ -10,7 +10,7 @@ gelu_use_graph_input = True  # change it to False to let Gelu don't have graph i
 X = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "seqlen", 64])
 Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "seqlen", 64])
 
-bias_np_vals = (0.01 * np.arange(64)).astype(np.float32).reshape((64))
+bias_np_vals = (0.01 * np.arange(64)).astype(np.float32).reshape(64)
 bias_initializer = numpy_helper.from_array(bias_np_vals, "input_bias")
 
 a_weight_np_vals = np.asarray([0.044714998453855515]).astype(np.float32).reshape(())

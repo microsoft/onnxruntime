@@ -101,7 +101,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;
   typedef typename ToHipType<T>::MappedType HipT;
 
-  return LaunchSkipLayerNormKernel<HipT>(
+  return LaunchSkipLayerNormKernel<HipT, float, HipT>(
       GetTuningContext(),
       Stream(ctx),
       reinterpret_cast<HipT*>(output->MutableData<T>()),

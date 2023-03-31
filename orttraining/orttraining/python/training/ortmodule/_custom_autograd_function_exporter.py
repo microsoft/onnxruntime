@@ -11,12 +11,12 @@ import torch.utils.checkpoint
 from packaging import version
 from torch.onnx import symbolic_helper
 
-from onnxruntime.capi._pybind_state import register_torch_autograd_function, register_miscellaneous_const_input
+from onnxruntime.capi._pybind_state import register_miscellaneous_const_input, register_torch_autograd_function
 from onnxruntime.training import ortmodule
 
 from . import _logger
-from ._fallback import ORTModuleONNXModelException, wrap_exception
 from ._custom_op_symbolic_registry import pytorch_type_to_onnx
+from ._fallback import ORTModuleONNXModelException, wrap_exception
 
 # Some autograd.Function's shouldn't be exported as PythonOp.
 # If CheckpointFunction is exported as PythonOp, the checkpointed computation
@@ -51,7 +51,7 @@ def _full_name(klass):
     return module + "." + klass.__qualname__
 
 
-def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:  # noqa: F811
     try:
         return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
     except AttributeError:
@@ -220,7 +220,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
     except Exception as e:
         sys.stdout.flush()
         sys.stderr.flush()
-        raise wrap_exception(ORTModuleONNXModelException, e)
+        raise wrap_exception(ORTModuleONNXModelException, e)  # noqa: B904
 
 
 # Starting from PyTorch 1.11, there has been a change to symbolic function signature
