@@ -816,14 +816,12 @@ def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, confi
         src_model_dir = os.path.join(build_dir, dest_model_dir_name)
         if os.path.exists(source_onnx_model_dir) and not os.path.exists(src_model_dir):
             log.debug(f"creating shortcut {source_onnx_model_dir} -> {src_model_dir}")
-            run_subprocess(["mklink", "/D", "/J", src_model_dir, source_onnx_model_dir], shell=True)
         for config in configs:
             config_build_dir = get_config_build_dir(build_dir, config)
             os.makedirs(config_build_dir, exist_ok=True)
             dest_model_dir = os.path.join(config_build_dir, dest_model_dir_name)
             if os.path.exists(source_onnx_model_dir) and not os.path.exists(dest_model_dir):
                 log.debug(f"creating shortcut {source_onnx_model_dir} -> {dest_model_dir}")
-                run_subprocess(["mklink", "/D", "/J", dest_model_dir, source_onnx_model_dir], shell=True)
             elif os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
                 log.debug(f"creating shortcut {src_model_dir} -> {dest_model_dir}")
                 run_subprocess(["mklink", "/D", "/J", dest_model_dir, src_model_dir], shell=True)

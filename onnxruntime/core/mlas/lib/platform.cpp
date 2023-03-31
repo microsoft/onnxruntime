@@ -527,6 +527,8 @@ Return Value:
     // XNNPack requires 64-bit alignment on x86 64-bit or 32-bit CPUs except Android/iOS
     // MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT is 32 so sometimes it is not enough
     return std::max(retval, 64);
+#else
+    return retval;
 #endif
 }
 
