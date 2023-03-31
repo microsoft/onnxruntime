@@ -186,22 +186,22 @@ public:
         {
             if (kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1)
             {
-                auto unpaddedKeyBoundsShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
+                const auto unpaddedKeyBoundsShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
                 ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape.size() == 1);
                 ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape[0] == batchSize || unpaddedKeyBoundsShape[0] == batchSize * 3 + 2);
+
+                maskType = unpaddedKeyBoundsShape[0] == batchSize
+                    ? DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH
+                    : DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END;
 
                 uint32_t desiredShape[2] = {1, batchSize};
                 m_inputTensorDescs[dmlMaskIndex] = TensorDesc(
                     m_inputTensorDescs[dmlMaskIndex].GetDmlDataType(),
                     desiredShape);
-
-                maskType = unpaddedKeyBoundsShape[0] == batchSize
-                    ? DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH
-                    : DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END;
             }
             else
             {
-                auto keyPaddingMaskTensorShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
+                const auto keyPaddingMaskTensorShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
                 ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape.size() == 2);
                 ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[0] == batchSize);
                 ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[1] == kvSequenceLength);
