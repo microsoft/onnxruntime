@@ -2008,10 +2008,7 @@ namespace Windows::AI::MachineLearning::Adapter
             assert(m_impl->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
             ML_CHECK_BOOL(m_impl->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
             auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
-            auto outputTensorSeq = m_impl->Output<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
-            outputTensorSeq->SetType(inputTensorSeq->DataType());
             ML_CHECK_BOOL(inputTensorSeq != nullptr);
-            ML_CHECK_BOOL(outputTensorSeq != nullptr);
             *inputCount = static_cast<uint32_t>(inputTensorSeq->Size());
             *dataType = ToMLTensorDataType(inputTensorSeq->DataType());
             return S_OK;
