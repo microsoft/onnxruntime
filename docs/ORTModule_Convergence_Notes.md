@@ -2,7 +2,8 @@
 
 ## 1. Discovering
 
-Convergence issues can be identified by: Large discrepancies in core training metrics including training loss, evaluation loss, model specific AUC metrics.
+Convergence issues can be identified by:
+- Large discrepancies in core training metrics including training loss, evaluation loss, model specific AUC metrics.
 - Runtime failures (for example loss scaler reaches the minimum triggering an exception).
 
 Before looking into further, we should clarify a few things (if possible):
