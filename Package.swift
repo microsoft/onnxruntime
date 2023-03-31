@@ -14,12 +14,13 @@
 //
 // NOTE: The direct consumption creates a somewhat complicated setup to 'release' a new version of the ORT SPM package.
 //  Steps:
-//   - release new ORT version, including the iOS pod file for the native ORT library
+//   - release new ORT version, including the iOS pod archive for the native ORT library
 //   - update the `url:` field in this file to point to the onnxruntime-c pod archive for the release.
-//     - use tools/tools/ci_build/github/apple/update_swift_package_manager_config.py
+//     - use tools/ci_build/github/apple/update_swift_package_manager_config.py
 //   - once Package.swift is updated and checked in, move the release tag to the new version
 //
-// Once that done, a user pointing to the release branch will see a 'url:' value that points to the correct pod archive.
+// Once those steps are completed, a user pointing to Package.swift from the release branch will see a 'url:' value
+// that points to the correct pod archive for the release.
 
 import PackageDescription
 
