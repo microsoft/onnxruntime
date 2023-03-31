@@ -22,10 +22,13 @@ public:
     void Compute(const MLOperatorKernelContext& kernelContext)
     {
         std::vector<IMLOperatorTensor*> inputTensors = GetInputTensors(kernelContext);
-        std::vector<IMLOperatorTensor*> outputTensors = GetInputTensors(kernelContext);
+        std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensors(kernelContext);
 
         if (kernelContext.IsSequenceInputTensor(0))
         {
+            auto dataType = kernelContext.GetSequenceInputDataType(0);
+            kernelContext.PrepareSequenceOutput(0, dataType);
+
             const uint32_t numTensors = kernelContext.GetSequenceInputCount(0);
             inputTensors.reserve(numTensors);
 
