@@ -78,7 +78,7 @@ class TestOpSoftmax(unittest.TestCase):
         model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, output_model_path)
 
-    def quantize_softmax_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_softmax_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "softmax_fp32.onnx"
         self.construct_model_conv_softmax(
@@ -163,9 +163,9 @@ class TestOpSoftmax(unittest.TestCase):
                 dqnode_cnt += 1
             elif node.op_type == "Softmax":
                 softmax_cnt += 1
-        self.assertEqual(3, qnode_cnt, "Expected 3 QuantizeLinear nodes, found {}".format(qnode_cnt))
-        self.assertEqual(4, dqnode_cnt, "Expected 4 DequantizeLinear nodes, found {}".format(dqnode_cnt))
-        self.assertEqual(1, softmax_cnt, "Expected 1 Softmax node, found {}".format(softmax_cnt))
+        self.assertEqual(3, qnode_cnt, f"Expected 3 QuantizeLinear nodes, found {qnode_cnt}")
+        self.assertEqual(4, dqnode_cnt, f"Expected 4 DequantizeLinear nodes, found {dqnode_cnt}")
+        self.assertEqual(1, softmax_cnt, f"Expected 1 Softmax node, found {softmax_cnt}")
         if extra_options.get("ActivationSymmetric", False):
             for tensor in result_model.graph.initializer:
                 if tensor.name in qnode_zeropoints:
@@ -173,7 +173,7 @@ class TestOpSoftmax(unittest.TestCase):
                     self.assertEqual(
                         0,
                         np_value,
-                        "QuantizeLinear node zero point value must be 0, found {} instead!".format(np_value),
+                        f"QuantizeLinear node zero point value must be 0, found {np_value} instead!",
                     )
 
         qnode_io_qtypes = {

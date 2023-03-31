@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import Enum  # noqa: F401
 
 import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper
 
 
-def GenerateModel(model_name, has_casts=False):
+def GenerateModel(model_name, has_casts=False):  # noqa: N802
     nodes = [  # SimplifiedLayerNorm subgraph
         helper.make_node("Pow", ["cast_A" if has_casts else "A", "pow_in_2"], ["pow_out"], "pow"),
         helper.make_node("ReduceMean", ["pow_out"], ["rd2_out"], "reduce", axes=[-1], keepdims=1),

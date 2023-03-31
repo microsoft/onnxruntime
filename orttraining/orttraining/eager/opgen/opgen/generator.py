@@ -17,7 +17,7 @@ class Outputs:
         self.name = None
 
     def __str__(self):
-        return self.name if self.name else f"<unbound output>"
+        return self.name if self.name else "<unbound output>"
 
 
 class AttrType:
@@ -69,7 +69,7 @@ class ONNXOp:
 
         for i in self.inputs:
             if isinstance(i, ONNXOp):
-                i = i.eval(ctx)
+                i = i.eval(ctx)  # noqa: PLW2901
             evaluated_inputs.append(i)
 
         self.inputs = evaluated_inputs
@@ -180,8 +180,7 @@ class ORTGen:
 
         if len(self._mapped_ops) > 0:
             raise Exception(
-                "Torch operation(s) could not be parsed for mapping: "
-                + ", ".join([f"'{o}'" for o in self._mapped_ops.keys()])
+                "Torch operation(s) could not be parsed for mapping: " + ", ".join([f"'{o}'" for o in self._mapped_ops])
             )
 
     def _write_file_prelude(self, writer: opgenwriter.SourceWriter):
@@ -223,7 +222,7 @@ class ORTGen:
         writer.write(")")
 
     def _write_cpu_fall_back(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
-        onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
+        onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func  # noqa: F841
         # return at::native::call_fallback_fn<
         #  &at::native::cpu_fallback,
         #  ATEN_OP(eq_Tensor)>::call(self, other);
@@ -282,10 +281,10 @@ class ORTGen:
             if attr.type.startswith("at::ScalarType::"):
                 writer.write(f", {attr.type}")
             elif attr.type == AttrType.TENSOR:
-                writer.write(f", true")
+                writer.write(", true")
             elif attr.type != AttrType.STRING:
                 raise FunctionGenerationError(
-                    cpp_func,
+                    cpp_func,  # noqa: F821
                     f'Unsure how how to map ONNX op "{onnx_op.name}" attribute '
                     + f'"{attr_name}" of type "{attr.type}" to a call to '
                     + "create_ort_attribute. Please teach generator.py.",
@@ -344,9 +343,9 @@ class ORTGen:
             if isinstance(op_input, Outputs):
                 if op_input.count != 1:
                     raise FunctionGenerationError(cpp_func, "multiple outputs not supported")
-                op_input = f"{op_input}[0]"
+                op_input = f"{op_input}[0]"  # noqa: PLW2901
             else:
-                op_input = f"ort_input_{onnx_op_index}_{op_input}"
+                op_input = f"ort_input_{onnx_op_index}_{op_input}"  # noqa: PLW2901
             writer.writeline(f"std::move({op_input}),")
         writer.pop_indent()
         writer.write(f"}}, {onnx_op.outputs}, {attrs_arg_ptr}")
@@ -432,9 +431,9 @@ class ORTGen:
             isinstance(cpp_func.return_type, ast.TemplateType)
             and cpp_func.return_type.identifier_tokens[-1].value == "std::tuple"
         ):
-            raise Exception(f"")
-        tensorRef = "Tensor&," * len(in_place_params)
-        tensorRef = tensorRef[: len(tensorRef) - 1]
+            raise Exception("")
+        tensorRef = "Tensor&," * len(in_place_params)  # noqa: N806
+        tensorRef = tensorRef[: len(tensorRef) - 1]  # noqa: N806
         writer.write(f"return std::tuple<{tensorRef}>(")
         for index, key in enumerate(sorted(in_place_params)):
             if index > 0:
@@ -486,7 +485,7 @@ class ORTGen:
             not isinstance(first_param.parameter_type.desugar(), ast.ConcreteType)
             or "Tensor" not in first_param.parameter_type.desugar().identifier_tokens[0].value
         ):
-            raise FunctionGenerationError(cpp_func, "First parameter must be an at::Tensor")
+            raise FunctionGenerationError(cpp_func, "First parameter must be an at::Tensor")  # noqa: F821
 
     # Generates code to get an ORT Invoker for the device from the first param.
     # The Invoker will be used and reused in _write_function_body_onnx_op_invocation.
@@ -776,7 +775,7 @@ class ORTGen:
                 try:
                     op_namespace = op_name[0 : op_name.index("::")]
                     op_namewithoutnamespace = op_name[len(op_namespace) + 2 :]
-                except:
+                except Exception:
                     op_namespace = None
                     op_namewithoutnamespace = op_name
 
@@ -802,12 +801,12 @@ class ORTGen:
         # Parse the Torch schema from the JSON comment that follows each C++ decl
         # and link associated Torch and C++ decls (functions, parameters, returns)
         for cpp_func in tu:
-            hasSchema = False
+            hasSchema = False  # noqa: N806
             if cpp_func.semicolon and cpp_func.semicolon.trailing_trivia:
                 for trivia in cpp_func.semicolon.trailing_trivia:
                     if trivia.kind == lexer.TokenKind.SINGLE_LINE_COMMENT:
                         yield self._parse_and_link_torch_function_decl(cpp_func, trivia)
-                        hasSchema = True
+                        hasSchema = True  # noqa: N806
                         break
 
             if not hasSchema:
@@ -816,7 +815,7 @@ class ORTGen:
                 yield cpp_func
 
     def _parse_and_link_torch_function_decl(self, cpp_func: ast.FunctionDecl, torch_schema_comment_trivia: lexer.Token):
-        metadata = json.loads(torch_schema_comment_trivia.value.lstrip("//"))
+        metadata = json.loads(torch_schema_comment_trivia.value.lstrip("//"))  # noqa: B005
         schema = metadata["schema"]
 
         schema_parser = parser.torch_create_from_string(schema)

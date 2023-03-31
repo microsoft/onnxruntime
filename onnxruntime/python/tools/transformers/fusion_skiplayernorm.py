@@ -42,7 +42,7 @@ class FusionSkipLayerNormalization(Fusion):
             return
 
         for add_input in add.input:
-            if self.model.get_initializer(add_input) != None:
+            if self.model.get_initializer(add_input) is not None:
                 return
 
         # The number of input node of add should be 2
@@ -150,6 +150,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
 
         # bias should be one dimension
         bias_index = -1
+        bias_weight = None
         for i, input in enumerate(add.input):
             initializer = self.model.get_initializer(input)
             if initializer is None:
@@ -158,15 +159,15 @@ class FusionBiasSkipLayerNormalization(Fusion):
             bias_weight = NumpyHelper.to_array(initializer)
             break
         if bias_weight is None:
-            logger.debug(f"Bias weight not found")
+            logger.debug("Bias weight not found")
             return
         if len(bias_weight.shape) != 1:
-            logger.debug(f"Bias weight is not 1D")
+            logger.debug("Bias weight is not 1D")
             return
 
         subgraph_nodes = [node, add]
         if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, node.output, input_name_to_nodes, output_name_to_node):
-            logger.debug(f"Skip fusing SkipLayerNormalization with Bias since it is not safe")
+            logger.debug("Skip fusing SkipLayerNormalization with Bias since it is not safe")
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)

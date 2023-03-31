@@ -19,7 +19,7 @@ class VaeOnnxModel(UnetOnnxModel):
         assert (num_heads == 0 and hidden_size == 0) or (num_heads > 0 and hidden_size % num_heads == 0)
         super().__init__(model, num_heads=num_heads, hidden_size=hidden_size)
 
-    def fuse_attention(self, options: Optional[FusionOptions] = None):
+    def fuse_multi_head_attention(self, options: Optional[FusionOptions] = None):
         # Self Attention
         self_attention_fusion = FusionAttentionVae(self, self.hidden_size, self.num_heads)
         self_attention_fusion.apply()

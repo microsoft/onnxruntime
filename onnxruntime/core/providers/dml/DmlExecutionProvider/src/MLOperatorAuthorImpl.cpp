@@ -5,6 +5,8 @@
 
 #include "core/framework/customregistry.h"
 #include "core/framework/execution_frame.h"
+#include "core/framework/TensorSeq.h"
+
 #include "core/session/onnxruntime_c_api.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 
@@ -269,30 +271,89 @@ namespace Windows::AI::MachineLearning::Adapter
     return onnxruntime::DataTypeImpl::GetTensorType<x>(); \
   }
 
+#define ML_SEQUENCE_TENSOR_TYPE_CASE(x)                           \
+  if (type == MLTypeTraits<x>::TensorType)                        \
+  {                                                               \
+    return onnxruntime::DataTypeImpl::GetSequenceTensorType<x>(); \
+  }
+
+#define ML_PRIMITIVE_TYPE_CASE(x)                   \
+  if (type == MLTypeTraits<x>::TensorType)          \
+  {                                                 \
+    return onnxruntime::DataTypeImpl::GetType<x>(); \
+  }
+
 #pragma warning(push)
 #pragma warning(disable:4702)
-    onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type)
+    onnxruntime::MLDataType ToMLDataType(::MLOperatorEdgeType edgeType, ::MLOperatorTensorDataType type)
     {
-        if (type == MLOperatorTensorDataType::String)
-            return onnxruntime::DataTypeImpl::GetTensorType<std::string>();
+        if (edgeType == ::MLOperatorEdgeType::Tensor)
+        {
+            if (type == MLOperatorTensorDataType::String)
+                return onnxruntime::DataTypeImpl::GetTensorType<std::string>();
 
-        ML_TENSOR_TYPE_CASE(float);
-        ML_TENSOR_TYPE_CASE(uint8_t);
-        ML_TENSOR_TYPE_CASE(int8_t);
-        ML_TENSOR_TYPE_CASE(uint16_t);
-        ML_TENSOR_TYPE_CASE(int16_t);
-        ML_TENSOR_TYPE_CASE(int32_t);
-        ML_TENSOR_TYPE_CASE(int64_t);
-        ML_TENSOR_TYPE_CASE(bool);
-        ML_TENSOR_TYPE_CASE(double);
-        ML_TENSOR_TYPE_CASE(uint32_t);
-        ML_TENSOR_TYPE_CASE(uint64_t);
-        ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
+            ML_TENSOR_TYPE_CASE(float);
+            ML_TENSOR_TYPE_CASE(uint8_t);
+            ML_TENSOR_TYPE_CASE(int8_t);
+            ML_TENSOR_TYPE_CASE(uint16_t);
+            ML_TENSOR_TYPE_CASE(int16_t);
+            ML_TENSOR_TYPE_CASE(int32_t);
+            ML_TENSOR_TYPE_CASE(int64_t);
+            ML_TENSOR_TYPE_CASE(bool);
+            ML_TENSOR_TYPE_CASE(double);
+            ML_TENSOR_TYPE_CASE(uint32_t);
+            ML_TENSOR_TYPE_CASE(uint64_t);
+            ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
-        ORT_THROW_HR(E_NOTIMPL);
-        return onnxruntime::DataTypeImpl::GetTensorType<float>();
+            ORT_THROW_HR(E_NOTIMPL);
+            return onnxruntime::DataTypeImpl::GetTensorType<float>();
+        }
+        else if (edgeType == ::MLOperatorEdgeType::SequenceTensor)
+        {
+            if (type == MLOperatorTensorDataType::String)
+                return onnxruntime::DataTypeImpl::GetSequenceTensorType<std::string>();
+
+            ML_SEQUENCE_TENSOR_TYPE_CASE(float);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(uint8_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(int8_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(uint16_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(int16_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(int32_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(int64_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(bool);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(double);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(uint32_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(uint64_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
+
+            ORT_THROW_HR(E_NOTIMPL);
+            return onnxruntime::DataTypeImpl::GetSequenceTensorType<float>();
+        }
+        else if (edgeType == ::MLOperatorEdgeType::Primitive)
+        {
+            if (type == MLOperatorTensorDataType::String)
+                return onnxruntime::DataTypeImpl::GetType<std::string>();
+
+            ML_PRIMITIVE_TYPE_CASE(float);
+            ML_PRIMITIVE_TYPE_CASE(uint8_t);
+            ML_PRIMITIVE_TYPE_CASE(int8_t);
+            ML_PRIMITIVE_TYPE_CASE(uint16_t);
+            ML_PRIMITIVE_TYPE_CASE(int16_t);
+            ML_PRIMITIVE_TYPE_CASE(int32_t);
+            ML_PRIMITIVE_TYPE_CASE(int64_t);
+            ML_PRIMITIVE_TYPE_CASE(bool);
+            ML_PRIMITIVE_TYPE_CASE(double);
+            ML_PRIMITIVE_TYPE_CASE(uint32_t);
+            ML_PRIMITIVE_TYPE_CASE(uint64_t);
+            ML_PRIMITIVE_TYPE_CASE(onnxruntime::MLFloat16);
+
+            ORT_THROW_HR(E_NOTIMPL);
+            return onnxruntime::DataTypeImpl::GetType<float>();
+        }
 #pragma warning(pop)
+        ORT_THROW_HR(E_NOTIMPL);
     }
+
 
 #pragma warning(push)
 #pragma warning(disable:4702)
@@ -358,12 +419,22 @@ namespace Windows::AI::MachineLearning::Adapter
         MLOperatorEdgeDescription ret = {};
 
         ML_CHECK_BOOL(type->value_case() == onnx::TypeProto::kTensorType ||
+            type->value_case() == onnx::TypeProto::kSequenceType ||
             type->value_case() == onnx::TypeProto::VALUE_NOT_SET);
 
         if (type->value_case() == onnx::TypeProto::kTensorType)
         {
             ret.edgeType = MLOperatorEdgeType::Tensor;
             const onnx::TypeProto_Tensor tensorType = type->tensor_type();
+            if (tensorType.has_elem_type())
+            {
+                ret.tensorDataType = ToMLTensorDataType(onnx::TensorProto_DataType(tensorType.elem_type()));
+            }
+        }
+        else if (type->value_case() == onnx::TypeProto::kSequenceType)
+        {
+            ret.edgeType = MLOperatorEdgeType::SequenceTensor;
+            const auto& tensorType = type->sequence_type().elem_type().tensor_type();
             if (tensorType.has_elem_type())
             {
                 ret.tensorDataType = ToMLTensorDataType(onnx::TensorProto_DataType(tensorType.elem_type()));
@@ -377,61 +448,117 @@ namespace Windows::AI::MachineLearning::Adapter
 #pragma warning(disable:4702)
     std::string ToTypeString(MLOperatorEdgeDescription desc)
     {
-        if (desc.edgeType != MLOperatorEdgeType::Tensor)
+        if (desc.edgeType == MLOperatorEdgeType::Tensor)
         {
-            ORT_THROW_HR(E_NOTIMPL);
+            switch (desc.tensorDataType)
+            {
+            case MLOperatorTensorDataType::Float:
+                return "tensor(float)";
+
+            case MLOperatorTensorDataType::UInt8:
+                return "tensor(uint8)";
+
+            case MLOperatorTensorDataType::Int8:
+                return "tensor(int8)";
+
+            case MLOperatorTensorDataType::UInt16:
+                return "tensor(uint16)";
+
+            case MLOperatorTensorDataType::Int16:
+                return "tensor(int16)";
+
+            case MLOperatorTensorDataType::Int32:
+                return "tensor(int32)";
+
+            case MLOperatorTensorDataType::Int64:
+                return "tensor(int64)";
+
+            case MLOperatorTensorDataType::String:
+                return "tensor(string)";
+
+            case MLOperatorTensorDataType::Bool:
+                return "tensor(bool)";
+
+            case MLOperatorTensorDataType::Float16:
+                return "tensor(float16)";
+
+            case MLOperatorTensorDataType::Double:
+                return "tensor(double)";
+
+            case MLOperatorTensorDataType::UInt32:
+                return "tensor(uint32)";
+
+            case MLOperatorTensorDataType::UInt64:
+                return "tensor(uint64)";
+
+            case MLOperatorTensorDataType::Complex64:
+                return "tensor(complext64)";
+
+            case MLOperatorTensorDataType::Complex128:
+                return "tensor(complext128)";
+
+            default:
+                ORT_THROW_HR(E_NOTIMPL);
+                return "";
+            }
         }
-
-        switch (desc.tensorDataType)
+        else if (desc.edgeType == MLOperatorEdgeType::SequenceTensor)
         {
-        case MLOperatorTensorDataType::Float:
-            return "tensor(float)";
+            switch (desc.tensorDataType)
+            {
+            case MLOperatorTensorDataType::Float:
+                return "seq(tensor(float))";
 
-        case MLOperatorTensorDataType::UInt8:
-            return "tensor(uint8)";
+            case MLOperatorTensorDataType::UInt8:
+                return "seq(tensor(uint8))";
 
-        case MLOperatorTensorDataType::Int8:
-            return "tensor(int8)";
+            case MLOperatorTensorDataType::Int8:
+                return "seq(tensor(int8))";
 
-        case MLOperatorTensorDataType::UInt16:
-            return "tensor(uint16)";
+            case MLOperatorTensorDataType::UInt16:
+                return "seq(tensor(uint16))";
 
-        case MLOperatorTensorDataType::Int16:
-            return "tensor(int16)";
+            case MLOperatorTensorDataType::Int16:
+                return "seq(tensor(int16))";
 
-        case MLOperatorTensorDataType::Int32:
-            return "tensor(int32)";
+            case MLOperatorTensorDataType::Int32:
+                return "seq(tensor(int32))";
 
-        case MLOperatorTensorDataType::Int64:
-            return "tensor(int64)";
+            case MLOperatorTensorDataType::Int64:
+                return "seq(tensor(int64))";
 
-        case MLOperatorTensorDataType::String:
-            return "tensor(string)";
+            case MLOperatorTensorDataType::String:
+                return "seq(tensor(string))";
 
-        case MLOperatorTensorDataType::Bool:
-            return "tensor(bool)";
+            case MLOperatorTensorDataType::Bool:
+                return "seq(tensor(bool))";
 
-        case MLOperatorTensorDataType::Float16:
-            return "tensor(float16)";
+            case MLOperatorTensorDataType::Float16:
+                return "seq(tensor(float16))";
 
-        case MLOperatorTensorDataType::Double:
-            return "tensor(double)";
+            case MLOperatorTensorDataType::Double:
+                return "seq(tensor(double))";
 
-        case MLOperatorTensorDataType::UInt32:
-            return "tensor(uint32)";
+            case MLOperatorTensorDataType::UInt32:
+                return "seq(tensor(uint32))";
 
-        case MLOperatorTensorDataType::UInt64:
-            return "tensor(uint64)";
+            case MLOperatorTensorDataType::UInt64:
+                return "seq(tensor(uint64))";
 
-        case MLOperatorTensorDataType::Complex64:
-            return "tensor(complext64)";
+            case MLOperatorTensorDataType::Complex64:
+                return "seq(tensor(complext64))";
 
-        case MLOperatorTensorDataType::Complex128:
-            return "tensor(complext128)";
+            case MLOperatorTensorDataType::Complex128:
+                return "seq(tensor(complext128))";
 
-        default:
+            default:
+                ORT_THROW_HR(E_NOTIMPL);
+                return "";
+            }
+        }
+        else
+        {
             ORT_THROW_HR(E_NOTIMPL);
-            return "";
         }
 #pragma warning(pop)
     }
@@ -446,9 +573,10 @@ namespace Windows::AI::MachineLearning::Adapter
         bool isInternalOperator,
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
-        MLOperatorTensorGetter& constantInputGetter
+        MLOperatorTensorGetter& constantInputGetter,
+        const onnxruntime::OpKernelContext* kernelContext
         )
-    :   OpNodeInfoWrapper(kerneInfo, inputShapeOverrides, defaultAttributes, requiredConstantCpuInputs, constantInputGetter),
+    :   OpNodeInfoWrapper(kerneInfo, inputShapeOverrides, defaultAttributes, requiredConstantCpuInputs, constantInputGetter, kernelContext),
         m_inferredOutputShapes(inferredOutputShapes),
         m_allowInputShapeQuery(allowInputShapeQuery),
         m_allowOutputShapeQuery(allowOutputShapeQuery),
@@ -738,8 +866,7 @@ namespace Windows::AI::MachineLearning::Adapter
             *edgeDesc = ToMLEdgeDesc(type);
 
             assert(edgeDesc->edgeType != MLOperatorEdgeType::Undefined);
-            assert((edgeDesc->edgeType != MLOperatorEdgeType::Tensor /*&& edgeDesc->edgeType != MLOperatorEdgeType::TensorSequence*/) ||
-                    edgeDesc->tensorDataType != MLOperatorTensorDataType::Undefined);
+            assert(edgeDesc->tensorDataType != MLOperatorTensorDataType::Undefined);
 
             return S_OK;
         }
@@ -808,6 +935,66 @@ namespace Windows::AI::MachineLearning::Adapter
     }
 
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
+    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+
+            memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
+            if (inputIndex >= GetInputCount())
+            {
+                return E_INVALIDARG;
+            }
+
+            // Input shapes are determined either from the override or from the underlying proto
+            if (m_kernelContext)
+            {
+                assert(m_kernelContext->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
+                auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
+                ML_CHECK_BOOL(inputTensorSeq != nullptr);
+                const auto& elemTensor = inputTensorSeq->Get(sequenceIndex);
+                const auto& shape = elemTensor.Shape();
+                for (uint32_t i = 0; i < dimensionCount; ++i)
+                {
+                    dimensions[i] = static_cast<uint32_t>(shape[i]);
+                }
+            }
+            else if (m_inputShapesOverride)
+            {
+                if (m_inputShapesOverride->GetShape(inputIndex).size() != dimensionCount)
+                {
+                    return E_INVALIDARG;
+                }
+
+                for (uint32_t i = 0; i < dimensionCount; ++i)
+                {
+                    dimensions[i] = m_inputShapesOverride->GetShape(inputIndex)[i];
+                }
+            }
+            else
+            {
+                const auto* inputType = m_impl->GetInputType(inputIndex);
+                assert(inputType->has_sequence_type());
+                ML_CHECK_BOOL(inputType->has_sequence_type());
+
+                const auto& elemType = inputType->sequence_type().elem_type();
+
+                for (uint32_t i = 0; i < dimensionCount; ++i)
+                {
+                    // Shape inference is only done when all dimensions of all inputs have known values,
+                    // so the input tensors will always have shapes at this point.
+                    assert(elemType.tensor_type().shape().dim(i).has_dim_value());
+                    dimensions[i] = static_cast<uint32_t>(elemType.tensor_type().shape().dim(i).dim_value());
+                }
+            }
+
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
     bool STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::IsInputValid(uint32_t inputIndex) const noexcept
     {
         if (IsClosed())
@@ -866,6 +1053,78 @@ namespace Windows::AI::MachineLearning::Adapter
     }
 
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
+    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetSequenceInputInfo(
+        uint32_t inputIndex,
+        uint32_t* inputCount,
+        MLOperatorTensorDataType* dataType) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+
+            ML_CHECK_BOOL(inputIndex < GetInputCount());
+            ML_CHECK_BOOL(m_kernelContext != nullptr);
+
+            // Input shapes are determined either from the input tensor, override or from the underlying proto
+            assert(m_kernelContext->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
+            ML_CHECK_BOOL(m_kernelContext->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
+            auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
+            ML_CHECK_BOOL(inputTensorSeq != nullptr);
+            *inputCount = static_cast<uint32_t>(inputTensorSeq->Size());
+            *dataType = ToMLTensorDataType(inputTensorSeq->DataType());
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
+    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex, uint32_t* dimensionCount) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+
+            *dimensionCount = 0;
+
+            if (inputIndex >= GetInputCount())
+            {
+                return E_INVALIDARG;
+            }
+
+            // Input shapes are determined either from the input tensor, override or from the underlying proto
+            if (m_kernelContext)
+            {
+                assert(m_kernelContext->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
+                auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
+                ML_CHECK_BOOL(inputTensorSeq != nullptr);
+                const auto& elemTensor = inputTensorSeq->Get(sequenceIndex);
+                *dimensionCount = static_cast<uint32_t>(elemTensor.Shape().NumDimensions());
+            }
+            else if (m_inputShapesOverride)
+            {
+                *dimensionCount = gsl::narrow_cast<uint32_t>(m_inputShapesOverride->GetShape(inputIndex).size());
+            }
+            else
+            {
+                const auto* inputType = m_impl->GetInputType(inputIndex);
+                assert(inputType->has_sequence_type());
+                ML_CHECK_BOOL(inputType->has_sequence_type());
+
+                const auto& elemType = inputType->sequence_type().elem_type();
+
+                // Shape inference is only done when all dimensions of all inputs have known values,
+                // so the input tensors will always have shapes at this point.
+                assert(elemType.tensor_type().has_shape());
+
+                *dimensionCount = elemType.tensor_type().shape().dim_size();
+            }
+
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
     HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetConstantInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept
     {
         ORT_TRY
@@ -877,8 +1136,10 @@ namespace Windows::AI::MachineLearning::Adapter
 
             ORT_THROW_HR_IF(E_INVALIDARG, !inputRequiredAsConstant);
 
-            ComPtr<IMLOperatorTensor> tensorWrapper = m_constantInputGetter(inputIndex);
+            auto constantInput = m_constantInputGetter(inputIndex);
+            ORT_THROW_HR_IF(E_INVALIDARG, !std::holds_alternative<ComPtr<IMLOperatorTensor>>(constantInput));
 
+            auto tensorWrapper = std::get<ComPtr<IMLOperatorTensor>>(constantInput);
             if (tensorWrapper == nullptr)
             {
                 // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
@@ -1008,13 +1269,13 @@ namespace Windows::AI::MachineLearning::Adapter
 
     uint32_t STDMETHODCALLTYPE OpKernelInfoWrapper::GetWideNameBufferSizeInBytes() const noexcept
     {
-        const auto& name = m_impl->node().Name(); 
+        const auto& name = m_impl->node().Name();
         if (name.empty())
         {
             // Include null terminator.
             return sizeof(wchar_t);
         }
-        
+
         int requiredSizeInChars = MultiByteToWideChar(CP_UTF8, 0, name.data(), static_cast<int>(name.size()), nullptr, 0);
         assert(requiredSizeInChars > 0);
 
@@ -1042,19 +1303,19 @@ namespace Windows::AI::MachineLearning::Adapter
 
         if (charsCopiedIfSucceeded > 0)
         {
-            // The return value is only > 0 if ALL characters copied successfully. 
+            // The return value is only > 0 if ALL characters copied successfully.
             // Write null terminator at the end of copied chars, which may not be at the end of the buffer.
             outputName[charsCopiedIfSucceeded] = L'\0';
             return S_OK;
         }
 
-        // An error must have occurred in MultiByteToWideChar. 
+        // An error must have occurred in MultiByteToWideChar.
         assert(charsCopiedIfSucceeded <= 0);
         auto lastError = GetLastError();
 
         if (lastError == ERROR_INSUFFICIENT_BUFFER)
         {
-            // The buffer was too small, but MultiByteToWideChar will have copied as many chars as possible. 
+            // The buffer was too small, but MultiByteToWideChar will have copied as many chars as possible.
             // Truncate and overwrite last char with null terminator. Don't treat this as an error.
             outputName[bufferSizeInChars - 1] = L'\0';
             return S_OK;
@@ -1101,7 +1362,7 @@ namespace Windows::AI::MachineLearning::Adapter
         gsl::span<const uint32_t> requiredConstantCpuInputs,
         MLOperatorTensorGetter& constantInputGetter
         )
-    :   OpNodeInfoWrapper(protoHelper, nullptr, defaultAttributes, requiredConstantCpuInputs, constantInputGetter),
+    :   OpNodeInfoWrapper(protoHelper, nullptr, defaultAttributes, requiredConstantCpuInputs, constantInputGetter, nullptr),
         m_inferredOutputShapes(inferredOutputShapes),
         m_internalOperator(isInternalOperator),
         m_graphNodeCreateInfo(graphNodeCreateInfo)
@@ -1225,7 +1486,7 @@ namespace Windows::AI::MachineLearning::Adapter
             if (operatorGraphDesc->nodesAsOpDesc)
             {
                 m_graphNodeCreateInfo->nodesAsOperatorDesc = std::vector<std::unique_ptr<AbstractOperatorDesc>>();
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
                 {
                     auto* node = operatorGraphDesc->nodesAsOpDesc[nodeIndex];
                     assert(node != nullptr);
@@ -1236,7 +1497,7 @@ namespace Windows::AI::MachineLearning::Adapter
             else
             {
                 m_graphNodeCreateInfo->nodesAsIDMLOperator = std::vector<Microsoft::WRL::ComPtr<IDMLOperator>>();
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
                 {
                     auto* node = operatorGraphDesc->nodesAsIDMLOperator[nodeIndex];
                     assert(node != nullptr);
@@ -1495,21 +1756,36 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         if (m_winmlProvider->TransitionsRequiredForOperator(m_internalOperator))
         {
+            uint32_t totalInputTensorCount = 0;
+            for (auto inputTensor : m_inputTensors)
+            {
+                totalInputTensorCount += static_cast<uint32_t>(inputTensor.size());
+            }
             std::vector<IUnknown*> resourcesToTransition;
-            resourcesToTransition.reserve(m_inputTensors.size() + m_outputTensors.size() + m_temporaryAllocations.size());
+            resourcesToTransition.reserve(totalInputTensorCount + m_outputTensors.size() + m_temporaryAllocations.size());
 
             for (uint32_t i = 0; i < m_inputTensors.size(); ++i)
             {
-                ComPtr<IMLOperatorTensor> tensor;
-                ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
-
-                if (tensor)
+                for (uint32_t j = 0; j < m_inputTensors[i].size(); ++j)
                 {
-                    ComPtr<IUnknown> resource;
-                    tensor->GetDataInterface(resource.GetAddressOf());
-                    if (resource)
+                    ComPtr<IMLOperatorTensor> tensor;
+                    if (m_inputTensors[i].size() == 1)
                     {
-                        resourcesToTransition.push_back(resource.Get());
+                        ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
+                    }
+                    else
+                    {
+                        ORT_THROW_IF_FAILED(GetSequenceInputTensor(i, j, tensor.GetAddressOf()));
+                    }
+
+                    if (tensor)
+                    {
+                        ComPtr<IUnknown> resource;
+                        tensor->GetDataInterface(resource.GetAddressOf());
+                        if (resource)
+                        {
+                            resourcesToTransition.push_back(resource.Get());
+                        }
                     }
                 }
             }
@@ -1550,8 +1826,8 @@ namespace Windows::AI::MachineLearning::Adapter
         // Pre-size tensor arrays.    Member methods return pointers to these which
         // are stored in these arrays, which would become stale if the vectors reallocate
         // their internal storage.
-        m_inputTensors.resize(context->InputCount());
-        m_outputTensors.resize(context->OutputCount());
+        m_inputTensors.resize(context->InputCount(), std::vector<ComPtr<TensorWrapper>>(1));
+        m_outputTensors.resize(context->OutputCount(), std::vector<ComPtr<TensorWrapper>>(1));
 
         const void* executionHandle = m_provider->GetExecutionHandle();
         if (executionHandle)
@@ -1593,25 +1869,37 @@ namespace Windows::AI::MachineLearning::Adapter
             TransitionResourcesForOperatorIfRequired(false);
         }
 
-        for (auto& tensor : m_inputTensors)
+        for (auto& tensors : m_inputTensors)
         {
-            if (tensor)
+            for (auto& tensor : tensors)
             {
-                tensor->Close();
+                if (tensor)
+                {
+                    tensor->Close();
+                }
             }
         }
 
-        for (auto& tensor : m_outputTensors)
+        for (auto& tensors : m_outputTensors)
         {
-            if (tensor)
+            for (auto& tensor : tensors)
             {
-                tensor->Close();
+                if (tensor)
+                {
+                    tensor->Close();
+                }
             }
         }
 
         ClearTempAllocations();
 
         Closable::Close();
+    }
+
+    bool STDMETHODCALLTYPE OpKernelContextWrapper::IsSequenceInputTensor(uint32_t inputIndex) const noexcept
+    {
+        assert(inputIndex < gsl::narrow_cast<uint32_t>(m_impl->InputCount()));
+        return m_impl->InputType(inputIndex)->IsTensorSequenceType();
     }
 
     HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept
@@ -1624,9 +1912,9 @@ namespace Windows::AI::MachineLearning::Adapter
             ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
 
             auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
-            if (m_inputTensors[inputIndex]->GetInterface() == nullptr)
+            if (m_inputTensors[inputIndex][0] == nullptr)
             {
-                auto inputTensor = m_impl->Input<onnxruntime::Tensor>(inputIndex);
+                auto inputTensor = m_impl->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(inputIndex));
                 if (inputTensor != nullptr)
                 {
                     ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
@@ -1635,14 +1923,176 @@ namespace Windows::AI::MachineLearning::Adapter
                         m_winmlProvider.Get(),
                         m_internalOperator);
 
-                    opKernelContextWrapper->m_inputTensors[inputIndex] = tensorWrapper;
+                    opKernelContextWrapper->m_inputTensors[inputIndex][0] = tensorWrapper;
                 }
             }
 
-            if (opKernelContextWrapper->m_inputTensors[inputIndex] != nullptr)
+            if (opKernelContextWrapper->m_inputTensors[inputIndex][0] != nullptr)
             {
-                opKernelContextWrapper->m_inputTensors[inputIndex].CopyTo(tensor);
+                opKernelContextWrapper->m_inputTensors[inputIndex][0].CopyTo(tensor);
             }
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetSequenceInputTensor(uint32_t inputIndex, uint32_t sequenceIndex, IMLOperatorTensor** tensor) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+            *tensor = nullptr;
+
+            auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
+
+            ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
+            if (sequenceIndex >= m_inputTensors[inputIndex].size())
+            {
+                opKernelContextWrapper->m_inputTensors[inputIndex].resize(static_cast<size_t>(sequenceIndex)+1);
+            }
+
+            if (m_inputTensors[inputIndex][sequenceIndex] == nullptr)
+            {
+                auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
+                ML_CHECK_BOOL(inputTensorSeq != nullptr);
+
+                auto elemTensor = const_cast<onnxruntime::Tensor*>(&inputTensorSeq->Get(sequenceIndex));
+                if (elemTensor != nullptr)
+                {
+                    ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                        elemTensor,
+                        IsAllocationInterface(elemTensor->Location()),
+                        m_winmlProvider.Get(),
+                        m_internalOperator);
+
+                    opKernelContextWrapper->m_inputTensors[inputIndex][sequenceIndex] = tensorWrapper;
+                }
+            }
+
+            if (opKernelContextWrapper->m_inputTensors[inputIndex][sequenceIndex] != nullptr)
+            {
+                opKernelContextWrapper->m_inputTensors[inputIndex][sequenceIndex].CopyTo(tensor);
+            }
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::PrepareSequenceOutput(
+        uint32_t outputIndex,
+        MLOperatorTensorDataType dataType) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+
+            auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
+
+            ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
+            auto outputTensorSeq = m_impl->Output<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(outputIndex));
+            ML_CHECK_BOOL(outputTensorSeq != nullptr);
+
+            auto mlDataType = ToMLDataType(MLOperatorEdgeType::Primitive, dataType);
+            outputTensorSeq->SetType(mlDataType);
+
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetSequenceOutputTensor(
+        uint32_t outputIndex,
+        uint32_t sequenceIndex,
+        MLOperatorTensorDataType dataType,
+        uint32_t dimensions,
+        const uint32_t* dimensionSizes,
+        bool gpuOutput,
+        IMLOperatorTensor** tensor) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+            *tensor = nullptr;
+
+            auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
+
+            ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
+            if (sequenceIndex >= m_outputTensors[outputIndex].size())
+            {
+                opKernelContextWrapper->m_outputTensors[outputIndex].resize(sequenceIndex+1);
+            }
+
+            // Verify that the provided shape matches the shape determined using the kernel's shape inference function.
+            if (m_outputTensors[outputIndex][sequenceIndex] == nullptr)
+            {
+                auto outputTensorSeq = m_impl->Output<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(outputIndex));
+                ML_CHECK_BOOL(outputTensorSeq != nullptr);
+
+                auto mlDataType = ToMLDataType(MLOperatorEdgeType::Primitive, dataType);
+
+                if (outputTensorSeq->Size() == 0)
+                {
+                    outputTensorSeq->SetType(mlDataType);
+                }
+
+                onnxruntime::AllocatorPtr alloc;
+                if (gpuOutput)
+                {
+                    auto status = m_impl->GetTempSpaceAllocator(&alloc);
+                    ORT_THROW_HR_IF(E_INVALIDARG, !status.IsOK());
+                }
+                else
+                {
+                    auto status = m_impl->GetTempSpaceCPUAllocator(&alloc);
+                    ORT_THROW_HR_IF(E_INVALIDARG, !status.IsOK());
+                }
+
+                std::vector<int64_t> shapeDims(dimensions);
+                for (uint32_t i = 0; i < dimensions; ++i)
+                {
+                    shapeDims[i] = dimensionSizes[i];
+                }
+
+                auto target_tensor = onnxruntime::Tensor(mlDataType, onnxruntime::TensorShape(shapeDims), alloc);
+                outputTensorSeq->Add(std::move(target_tensor));
+
+                auto elemTensor = const_cast<onnxruntime::Tensor*>(&outputTensorSeq->Get(sequenceIndex));
+                if (elemTensor != nullptr)
+                {
+                    ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                        elemTensor,
+                        IsAllocationInterface(elemTensor->Location()),
+                        m_winmlProvider.Get(),
+                        m_internalOperator);
+
+                    opKernelContextWrapper->m_outputTensors[outputIndex][sequenceIndex] = tensorWrapper;
+                }
+            }
+
+            if (opKernelContextWrapper->m_outputTensors[outputIndex][sequenceIndex] != nullptr)
+            {
+                opKernelContextWrapper->m_outputTensors[outputIndex][sequenceIndex].CopyTo(tensor);
+            }
+
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetSequenceInputInfo(uint32_t inputIndex, uint32_t* inputCount, MLOperatorTensorDataType* dataType) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+
+            ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
+
+            assert(m_impl->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
+            ML_CHECK_BOOL(m_impl->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
+            auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
+            ML_CHECK_BOOL(inputTensorSeq != nullptr);
+            *inputCount = static_cast<uint32_t>(inputTensorSeq->Size());
+            *dataType = ToMLTensorDataType(inputTensorSeq->DataType());
             return S_OK;
         }
         ORT_CATCH_RETURN
@@ -1682,7 +2132,7 @@ namespace Windows::AI::MachineLearning::Adapter
             ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
 
             // Verify that the provided shape matches the shape determined using the kernel's shape inference function.
-            if (m_outputTensors[outputIndex]->GetInterface() == nullptr)
+            if (m_outputTensors[outputIndex][0] == nullptr)
             {
                 if (m_outputShapes)
                 {
@@ -1708,18 +2158,18 @@ namespace Windows::AI::MachineLearning::Adapter
                         m_winmlProvider.Get(),
                         m_internalOperator);
 
-                    const_cast<OpKernelContextWrapper*>(this)->m_outputTensors[outputIndex] = tensorWrapper;
+                    const_cast<OpKernelContextWrapper*>(this)->m_outputTensors[outputIndex][0] = tensorWrapper;
                 }
             }
 
-            m_outputTensors[outputIndex].CopyTo(tensor);
+            m_outputTensors[outputIndex][0].CopyTo(tensor);
 
             return S_OK;
         }
         ORT_CATCH_RETURN
     }
 
-    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::AllocateTemporaryData(size_t size, IUnknown** abiAllocation) const
+    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::AllocateTemporaryData(size_t size, IUnknown** abiAllocation) const noexcept
     {
         ORT_TRY
         {
@@ -1779,7 +2229,7 @@ namespace Windows::AI::MachineLearning::Adapter
         {
             ComPtr<IMLOperatorTensor> tensor;
             ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
-            ret.push_back(m_inputTensors[i].Get());
+            ret.push_back(m_inputTensors[i][0].Get());
         }
 
         return ret;
@@ -1801,7 +2251,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 outputShapes.GetShape(i).data(),
                 tensor.GetAddressOf()));
 
-            ret.push_back(m_outputTensors[i].Get());
+            ret.push_back(m_outputTensors[i][0].Get());
         }
 
         return ret;
@@ -1896,7 +2346,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 isInternalOperator,
                 m_defaultAttributes,
                 m_requiredConstantCpuInputs,
-                constantInputGetter);
+                constantInputGetter,
+                nullptr /*const onnxruntime::OpKernelContext* m_kernelContext*/);
 
             ORT_THROW_IF_FAILED(operatorFactory->CreateKernel(kernelInfoWrapper.Get(), m_kernel.GetAddressOf()));
             kernelInfoWrapper->Close();
@@ -1921,21 +2372,57 @@ namespace Windows::AI::MachineLearning::Adapter
 
         MLOperatorTensorGetter constantInputGetter = [context, winmlProviderCapture, internalOpCapture](uint32_t index)
         {
-            Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = nullptr;
-            const onnxruntime::Tensor* tensor = context->Input<onnxruntime::Tensor>(static_cast<int>(index));
-            if (tensor != nullptr)
+            auto inputType = context->InputType(gsl::narrow_cast<int>(index));
+
+            if (inputType != nullptr)
             {
-                tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
-                    const_cast<onnxruntime::Tensor*>(tensor),
-                    tensor ? IsAllocationInterface(tensor->Location()) : false,
-                    winmlProviderCapture.Get(),
-                    internalOpCapture);
+                if (inputType->IsTensorType())
+                {
+                    Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = nullptr;
+
+                    const auto* tensor = context->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(index));
+                    if (tensor != nullptr)
+                    {
+                        tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                            const_cast<onnxruntime::Tensor*>(tensor),
+                            IsAllocationInterface(tensor->Location()),
+                            winmlProviderCapture.Get(),
+                            internalOpCapture);
+                    }
+
+                    return tensorWrapper;
+                }
+                else if (inputType->IsTensorSequenceType())
+                {
+                    std::vector<Microsoft::WRL::ComPtr<IMLOperatorTensor>> tensorWrappers;
+
+                    const auto* tensorSequence = context->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(index));
+                    if (tensorSequence != nullptr)
+                    {
+                        tensorWrappers.reserve(tensorSequence->Size());
+
+                        for (uint32_t sequenceIndex = 0; sequenceIndex < tensorSequence->Size(); ++sequenceIndex)
+                        {
+                            auto& tensor = tensorSequence->Get(sequenceIndex);
+                            auto tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                                const_cast<onnxruntime::Tensor*>(&tensor),
+                                IsAllocationInterface(tensor.Location()),
+                                winmlProviderCapture.Get(),
+                                internalOpCapture);
+                        }
+                    }
+                }
+                else
+                {
+                    assert(false);
+                    ORT_THROW_HR(E_INVALIDARG);
+                }
             }
 
-            return tensorWrapper;
+            return Microsoft::WRL::ComPtr<IMLOperatorTensor>();
         };
 
-        auto inferShapesAndCreateKernel = [&](const EdgeShapes& inputShapes, EdgeShapes& outputShapes) -> ComPtr<IMLOperatorKernel> {
+        auto inferShapesAndCreateKernel = [&, context](const EdgeShapes& inputShapes, EdgeShapes& outputShapes) -> ComPtr<IMLOperatorKernel> {
             // If the output size is not dynamic, infer it using the kernel. The result of inference is stored in m_inferredOutputShapes.
             if (m_requiresOutputShapesAtCreation)
             {
@@ -1954,7 +2441,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 m_internalOperator,
                 m_defaultAttributes,
                 m_requiredConstantCpuInputs,
-                constantInputGetter);
+                constantInputGetter,
+                context /*const onnxruntime::OpKernelContext* m_kernelContext*/);
 
             ComPtr<IMLOperatorKernel> ret;
             ORT_THROW_IF_FAILED(m_operatorFactory->CreateKernel(kernelInfoWrapper.Get(), ret.GetAddressOf()));
@@ -1975,29 +2463,16 @@ namespace Windows::AI::MachineLearning::Adapter
                 m_constantInputTensorContentsOfKernel.resize(context->InputCount());
                 for (uint32_t index : m_requiredConstantCpuInputs)
                 {
-                    const onnxruntime::Tensor* weakTensor = context->Input<onnxruntime::Tensor>(static_cast<int>(index));
-
-                    // Skip optional constant tensors.
-                    if (weakTensor != nullptr)
+                    if (index >= m_constantInputTensorContentsOfKernel.size())
                     {
-                        MLOperatorTensor tensor = MLOperatorTensor(constantInputGetter(index).Get());
-
-                        if (index >= static_cast<uint32_t>(context->InputCount()))
-                        {
-                            continue;
-                        }
-                        m_constantInputTensorContentsOfKernel[index].isValid = (tensor.GetInterface() != nullptr);
-
-                        if (tensor.GetInterface() != nullptr)
-                        {
-                            m_constantInputTensorContentsOfKernel[index].shape = tensor.GetShape();
-                            m_constantInputTensorContentsOfKernel[index].type = tensor.GetTensorDataType();
-                            m_constantInputTensorContentsOfKernel[index].data.resize(tensor.GetUnalignedTensorByteSize());
-                        }
-                        m_constantInputTensorContentsOfKernel[index].data.assign(
-                            reinterpret_cast<const std::byte*>(tensor.GetByteData()),
-                            reinterpret_cast<const std::byte*>(tensor.GetByteData()) + tensor.GetUnalignedTensorByteSize());
+                        continue;
                     }
+
+                    auto constantInput = constantInputGetter(index);
+
+                    std::visit([this, context, index](auto&& arg) {
+                        FillConstantInputs(arg, context, index);
+                    }, constantInput);
                 }
 
                 m_kernel = inferShapesAndCreateKernel(m_inputShapesOfKernelInference, m_inferredOutputShapes);
@@ -2016,24 +2491,14 @@ namespace Windows::AI::MachineLearning::Adapter
                     continue;
                 }
 
-                const TensorContent& lastValue = m_constantInputTensorContentsOfKernel[index];
-                MLOperatorTensor currentValue(constantInputGetter(index).Get());
+                auto constantInput = constantInputGetter(index);
+                requiredCpuInputsChanged = std::visit([this, index](auto&& arg){
+                    return RequiredCpuInputChanged(arg, index);
+                }, constantInput);
 
-                if (lastValue.isValid != (currentValue.GetInterface() != nullptr))
+                if (requiredCpuInputsChanged)
                 {
                     break;
-                }
-
-                if (lastValue.isValid)
-                {
-                    if (lastValue.shape != currentValue.GetShape() ||
-                        lastValue.type != currentValue.GetTensorDataType() ||
-                        currentValue.GetUnalignedTensorByteSize() != lastValue.data.size() ||
-                        (memcmp(lastValue.data.data(), currentValue.GetByteData(), lastValue.data.size()) != 0))
-                    {
-                        requiredCpuInputsChanged = true;
-                        break;
-                    }
                 }
             }
 
@@ -2082,11 +2547,132 @@ namespace Windows::AI::MachineLearning::Adapter
         return onnxruntime::Status();
     }
 
+    bool AbiOpKernel::RequiredCpuInputChanged(const ComPtr<IMLOperatorTensor>& constantTensor, uint32_t index) const
+    {
+        assert(std::holds_alternative<TensorContent>(m_constantInputTensorContentsOfKernel[index]));
+
+        auto lastValue = std::get<TensorContent>(m_constantInputTensorContentsOfKernel[index]);
+        MLOperatorTensor currentValue(constantTensor.Get());
+
+        if (lastValue.isValid != (currentValue.GetInterface() != nullptr))
+        {
+            return false;
+        }
+
+        if (lastValue.isValid)
+        {
+            if (lastValue.shape != currentValue.GetShape() ||
+                lastValue.type != currentValue.GetTensorDataType() ||
+                currentValue.GetUnalignedTensorByteSize() != lastValue.data.size() ||
+                (memcmp(lastValue.data.data(), currentValue.GetByteData(), lastValue.data.size()) != 0))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool AbiOpKernel::RequiredCpuInputChanged(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensorSequence, uint32_t index) const
+    {
+        assert(std::holds_alternative<std::vector<TensorContent>>(m_constantInputTensorContentsOfKernel[index]));
+        auto lastValues = std::get<std::vector<TensorContent>>(m_constantInputTensorContentsOfKernel[index]);
+
+        for (uint32_t sequenceIndex = 0; sequenceIndex < constantTensorSequence.size(); ++sequenceIndex)
+        {
+            const auto& lastValue = lastValues[sequenceIndex];
+            MLOperatorTensor currentValue(constantTensorSequence[sequenceIndex].Get());
+
+            if (lastValue.isValid != (currentValue.GetInterface() != nullptr))
+            {
+                return false;
+            }
+
+            if (lastValue.isValid)
+            {
+                if (lastValue.shape != currentValue.GetShape() ||
+                    lastValue.type != currentValue.GetTensorDataType() ||
+                    currentValue.GetUnalignedTensorByteSize() != lastValue.data.size() ||
+                    (memcmp(lastValue.data.data(), currentValue.GetByteData(), lastValue.data.size()) != 0))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    void AbiOpKernel::FillConstantInputs(const ComPtr<IMLOperatorTensor>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const
+    {
+        // Skip optional constant tensors.
+        if (constantTensor != nullptr)
+        {
+            MLOperatorTensor tensor = MLOperatorTensor(constantTensor.Get());
+
+            if (index >= static_cast<uint32_t>(context->InputCount()))
+            {
+                return;
+            }
+
+            TensorContent tensorContent{};
+            tensorContent.isValid = (tensor.GetInterface() != nullptr);
+
+            if (tensor.GetInterface() != nullptr)
+            {
+                tensorContent.shape = tensor.GetShape();
+                tensorContent.type = tensor.GetTensorDataType();
+                tensorContent.data.resize(tensor.GetUnalignedTensorByteSize());
+            }
+
+            tensorContent.data.assign(
+                reinterpret_cast<const std::byte*>(tensor.GetByteData()),
+                reinterpret_cast<const std::byte*>(tensor.GetByteData()) + tensor.GetUnalignedTensorByteSize());
+
+            m_constantInputTensorContentsOfKernel[index] = std::move(tensorContent);
+        }
+    }
+
+    void AbiOpKernel::FillConstantInputs(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensorSequence, onnxruntime::OpKernelContext* context, uint32_t index) const
+    {
+        std::vector<TensorContent> tensorContent(constantTensorSequence.size());
+
+        for (uint32_t i = 0; i < constantTensorSequence.size(); ++i)
+        {
+            const ComPtr<IMLOperatorTensor>& constantTensor = constantTensorSequence[i];
+
+            // Skip optional constant tensors.
+            if (constantTensor == nullptr)
+            {
+                continue;
+            }
+
+            MLOperatorTensor tensor = MLOperatorTensor(constantTensor.Get());
+
+            if (index >= static_cast<uint32_t>(context->InputCount()))
+            {
+                continue;
+            }
+            tensorContent[i].isValid = (tensor.GetInterface() != nullptr);
+
+            if (tensor.GetInterface() != nullptr)
+            {
+                tensorContent[i].shape = tensor.GetShape();
+                tensorContent[i].type = tensor.GetTensorDataType();
+                tensorContent[i].data.resize(tensor.GetUnalignedTensorByteSize());
+            }
+            tensorContent[i].data.assign(
+                reinterpret_cast<const std::byte*>(tensor.GetByteData()),
+                reinterpret_cast<const std::byte*>(tensor.GetByteData()) + tensor.GetUnalignedTensorByteSize());
+        }
+
+        m_constantInputTensorContentsOfKernel[index] = std::move(tensorContent);
+    }
+
     bool AbiOpKernel::InputTensorShapesDefined() const
     {
         onnxruntime::ProtoHelperNodeContext protoContext(Node());
         onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> info(&protoContext);
-
         return InputTensorShapesDefinedOnNode(info);
     }
 
@@ -2100,14 +2686,34 @@ namespace Windows::AI::MachineLearning::Adapter
             auto inputType = context->InputType(static_cast<int>(i));
             if (inputType != nullptr && inputType->IsTensorType())
             {
-                const onnxruntime::Tensor* tensor = context->Input<onnxruntime::Tensor>(static_cast<int>(i));
-                if (tensor)
+                if (context->InputType(gsl::narrow_cast<int>(i))->IsTensorSequenceType())
                 {
-                    ret.GetMutableShape(i).resize(tensor->Shape().GetDims().size());
-                    for (size_t j = 0; j < ret.GetMutableShape(i).size(); ++j)
+                    auto inputTensorSeq = context->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(i));
+                    for (uint32_t sequenceIndex = 0; sequenceIndex < inputTensorSeq->Size(); ++sequenceIndex)
                     {
-                        ret.GetMutableShape(i)[j] = gsl::narrow_cast<uint32_t>(tensor->Shape().GetDims()[j]);
+                        const auto& tensor = inputTensorSeq->Get(sequenceIndex);
+                        ret.GetMutableShape(i).resize(tensor.Shape().GetDims().size());
+                        for (size_t j = 0; j < ret.GetMutableShape(i).size(); ++j)
+                        {
+                            ret.GetMutableShape(i)[j] = gsl::narrow_cast<uint32_t>(tensor.Shape().GetDims()[j]);
+                        }
                     }
+                }
+                else if (context->InputType(gsl::narrow_cast<int>(i))->IsTensorType())
+                {
+                    const onnxruntime::Tensor* tensor = context->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(i));
+                    if (tensor)
+                    {
+                        ret.GetMutableShape(i).resize(tensor->Shape().GetDims().size());
+                        for (size_t j = 0; j < ret.GetMutableShape(i).size(); ++j)
+                        {
+                            ret.GetMutableShape(i)[j] = gsl::narrow_cast<uint32_t>(tensor->Shape().GetDims()[j]);
+                        }
+                    }
+                }
+                else
+                {
+                    ORT_THROW_HR(E_INVALIDARG);
                 }
             }
         }
@@ -2164,6 +2770,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
             if (outputProto->value_case() != onnx::TypeProto::kTensorType)
             {
+                assert(outputShapes.GetShape(outputIndex).empty());
                 ML_CHECK_BOOL(outputShapes.GetShape(outputIndex).empty());
                 continue;
             }
@@ -2173,6 +2780,7 @@ namespace Windows::AI::MachineLearning::Adapter
             if (tensorType.has_shape())
             {
                 const auto& shape = tensorType.shape();
+                assert(static_cast<size_t>(shape.dim_size()) == outputShapes.GetShape(outputIndex).size());
                 ML_CHECK_BOOL(static_cast<size_t>(shape.dim_size()) == outputShapes.GetShape(outputIndex).size());
 
                 for (uint32_t output_dim = 0; output_dim < outputShapes.GetShape(outputIndex).size(); ++output_dim)
@@ -2181,6 +2789,7 @@ namespace Windows::AI::MachineLearning::Adapter
                     {
                         int64_t expected_size = shape.dim(output_dim).dim_value();
                         int64_t actual_size = outputShapes.GetShape(outputIndex)[output_dim];
+                        assert(expected_size == actual_size);
                         ML_CHECK_BOOL(expected_size == actual_size);
                     }
                 }
@@ -2227,7 +2836,6 @@ namespace Windows::AI::MachineLearning::Adapter
 
             MLOperatorEdgeDescription edgeDesc;
             ORT_THROW_IF_FAILED(GetOutputEdgeDescription(outputIndex, &edgeDesc));
-            ML_CHECK_BOOL(edgeDesc.edgeType == MLOperatorEdgeType::Undefined || edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
             // In the process of calling mutable_tensor_type, the type may switch from undefined to tensor.
             // This is done here in case the dimension count is zero (scalar)
@@ -2389,7 +2997,7 @@ namespace Windows::AI::MachineLearning::Adapter
     }
 
     std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(
-        const onnx::TensorProto& initializer, 
+        const onnx::TensorProto& initializer,
         const onnxruntime::Path& modelPath)
     {
         std::unique_ptr<std::byte[]> unpackedTensor;

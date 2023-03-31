@@ -118,10 +118,12 @@ TEST_P(ModelTest, Run) {
     return;
   }
 
-  if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
+  if ((model_info->GetONNXOpSetVersion() == 10 || model_info->GetONNXOpSetVersion() >= 18) && provider_name == "dnnl") {
     // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
-    SkipTest(" dnnl doesn't support opset 10");
+    std::ostringstream oss;
+    oss << " dnnl doesn't support opset " << model_info->GetONNXOpSetVersion();
+    SkipTest(oss.str());
     return;
   }
 
@@ -683,7 +685,7 @@ TEST_P(ModelTest, Run) {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
           OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
-                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0};
+                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0, 0, 0, 0};
           ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
           OrtTensorRTProviderOptionsV2* ep_option = nullptr;

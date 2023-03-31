@@ -50,6 +50,10 @@ Options:
                                  This flag can be used with a number as value, specifying the total count of test cases to run. The test cases may be used multiple times. Default value is 10.
  -c, --file-cache              Enable file cache.
 
+*** Session Options ***
+ -u=<...>, --optimized-model-file-path=<...>        Specify whether to dump the optimized model.
+ -o=<...>, --graph-optimization-level=<...>    Specify graph optimization level.
+                                                 Default is 'all'. Valid values are 'disabled', 'basic', 'extended', 'all'.
 *** Logging Options ***
 
  --log-verbose=<...>           Set log level to verbose
@@ -148,6 +152,16 @@ export interface TestRunnerCliArgs {
    * Specify the times that test cases to run
    */
   times?: number;
+
+  /**
+   * whether to dump the optimized model
+   */
+  optimizedModelFilePath?: string;
+
+  /**
+   * Specify graph optimization level
+   */
+  graphOptimizationLevel: 'disabled'|'basic'|'extended'|'all';
 
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
@@ -378,6 +392,19 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logConfig.push({category: 'TestRunner.Perf', config: {minimalSeverity: 'verbose'}});
   }
 
+  // Option: -u, --optimized-model-file-path
+  const optimizedModelFilePath = args['optimized-model-file-path'] || args.u || undefined;
+  if (typeof optimizedModelFilePath !== 'undefined' && typeof optimizedModelFilePath !== 'string') {
+    throw new Error('Flag "optimized-model-file-path" need to be either empty or a valid file path.');
+  }
+
+  // Option: -o, --graph-optimization-level
+  const graphOptimizationLevel = args['graph-optimization-level'] || args.o || 'all';
+  if (typeof graphOptimizationLevel !== 'string' ||
+      ['disabled', 'basic', 'extended', 'all'].indexOf(graphOptimizationLevel) === -1) {
+    throw new Error(`graph optimization level is invalid: ${graphOptimizationLevel}`);
+  }
+
   // Option: -c, --file-cache
   const fileCache = parseBooleanArg(args['file-cache'] || args.c, false);
 
@@ -405,6 +432,8 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logConfig,
     profile,
     times: perf ? times : undefined,
+    optimizedModelFilePath,
+    graphOptimizationLevel: graphOptimizationLevel as TestRunnerCliArgs['graphOptimizationLevel'],
     fileCache,
     cpuOptions,
     webglOptions,

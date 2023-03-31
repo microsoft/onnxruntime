@@ -18,18 +18,27 @@ void DnnlSoftmaxGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node)
   auto softmax_bwd_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), src_mem.get_desc(), eng);
   auto softmax_bwd_diff_dst_mem = sp.GetMemoryAndReshape(node.Input(IN_dY), diff_dst_mem.get_desc(), eng);
 
-  auto axis = ReadAxis(node);
+  int axis;
+  {
+    auto axis64 = ReadAxis(node);
+    if (axis64 < 0)
+      axis64 = src_mem.get_desc().get_dims().size() + axis64;
 
-  if (axis < 0)
-    axis = src_mem.get_desc().dims().size() + axis;
+    axis = static_cast<int>(axis64);
+  }
+
+  auto fws_dst_md = dnnl::memory::desc(diff_dst_mem.get_desc().get_dims(),
+                                       diff_dst_mem.get_desc().get_data_type(),
+                                       dnnl::memory::format_tag::any);
 
   //create hints on the fly
-  auto hints_d = dnnl::softmax_forward::desc(dnnl::prop_kind::forward_training, softmax_bwd_src_mem.get_desc(), (int) axis);
-  auto hints_pd = dnnl::softmax_forward::primitive_desc(hints_d, eng);
+  auto hints_pd = dnnl::softmax_forward::primitive_desc(eng, dnnl::prop_kind::forward_training, 
+                                                        dnnl::algorithm::softmax_accurate,
+                                                        softmax_bwd_src_mem.get_desc(), fws_dst_md, axis);
 
-  auto softmax_bwd_d = dnnl::softmax_backward::desc(softmax_bwd_diff_dst_mem.get_desc(), softmax_bwd_src_mem.get_desc(), (int) axis);
-
-  auto softmax_bwd_pd = dnnl::softmax_backward::primitive_desc(softmax_bwd_d, eng, hints_pd);
+  auto softmax_bwd_pd = dnnl::softmax_backward::primitive_desc(eng, dnnl::algorithm::softmax_accurate, 
+                                                              fws_dst_md, softmax_bwd_diff_dst_mem.get_desc(),
+                                                              softmax_bwd_src_mem.get_desc(), axis, hints_pd);
 
   auto softmax_bwd_diff_src_mem = dnnl::memory(softmax_bwd_pd.diff_src_desc(), eng);
 

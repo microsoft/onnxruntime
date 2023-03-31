@@ -88,10 +88,7 @@ else
   popd
 fi
 
-GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
 cd /tmp/src
-unzip gradle-6.3-bin.zip
-mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_os_deps\.sh/install_protobuf\.sh}

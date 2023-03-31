@@ -63,7 +63,12 @@ RocmTuningResultsValidator::RocmTuningResultsValidator(ROCMExecutionProvider* ep
 
 std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
   std::ostringstream oss;
-  oss << "USE_CK=" << USE_COMPOSABLE_KERNEL << "|";
+#ifdef USE_COMPOSABLE_KERNEL
+  oss << "USE_CK=" << 1 << "|";
+#else
+  oss << "USE_CK=" << 0 << "|";
+#endif
+
 #ifdef USE_ROCBLAS_EXTENSION_API
   oss << "USE_ROCBLAS_EXTENSION_API=" << 1 << "|";
 #else

@@ -42,6 +42,7 @@ class Sampling : public IControlFlowKernel {
   // device helpers that is same for both GPT and encoder-decoder models.
   void SetDeviceHelpers(
       const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+      const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
       const GenerationDeviceHelper::TopkFunc& topk_func,
       const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
       const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<float>& process_logits_func,
@@ -49,6 +50,7 @@ class Sampling : public IControlFlowKernel {
       const GenerationDeviceHelper::InitGreedyStateFunc<float>& init_greedy_state_func,
       const GenerationDeviceHelper::InitGreedyStateFunc<MLFloat16>& init_greedy_state_fp16_func) {
     add_to_feeds_func_ = add_to_feeds_func;
+    reorder_past_state_func_ = reorder_past_state_func;
     topk_func_ = topk_func;
     device_copy_func_ = device_copy_func;
     process_logits_func_ = process_logits_func;
@@ -67,6 +69,7 @@ class Sampling : public IControlFlowKernel {
  private:
   // Device specific functions
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
+  GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
   GenerationDeviceHelper::TopkFunc topk_func_;
   GenerationDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
 

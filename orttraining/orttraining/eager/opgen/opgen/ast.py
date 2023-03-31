@@ -2,11 +2,12 @@
 # Licensed under the MIT License.
 
 import io
-from typing import TextIO, List, Union
+from typing import List, TextIO, Union
+
 from opgen.lexer import Token
 
 
-class Node(object):
+class Node:
     def __init__(self):
         self.tokens = []
 

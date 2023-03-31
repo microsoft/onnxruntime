@@ -77,6 +77,20 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
+#if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
+#if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
+#if !defined(__APPLE__)
+// Had to temporary disable fp16 under APPLE ARM64, as compiling
+// the source files require a hardware specific compilation flag.
+// When building an universial binary for APPLE, this flag would
+// cause trouble for x64 target.
+
+#define MLAS_F16VEC_INTRINSICS_SUPPORTED
+
+#endif // 
+#endif // ARM64
+#endif // Visual Studio 16 or earlier does not support fp16 intrinsic
+
 //
 // Basic Linear Algebra Subprograms (BLAS) types.
 //
@@ -144,6 +158,7 @@ enum MLAS_ACTIVATION_KIND {
     MlasLogisticActivation,
     MlasClipActivation,
     MlasHardSigmoidActivation,
+    MlasActivationKindCount,
 };
 
 struct MLAS_ACTIVATION {
@@ -553,7 +568,7 @@ private:
 /**
  * @brief Supply matrices shape and data type information to quantized gemm functions
  *
- ** NOTE: AIsSigned == true is not supported on non-ARM devices for now. 
+ ** NOTE: AIsSigned == true is not supported on non-ARM devices for now.
  **       AIsSigned == true is supported on ARM devices when BIsSigned is also true.
  *
 */
@@ -641,10 +656,10 @@ struct MLAS_SYMM_QGEMM_DATA_PARAMS {
  * @param [IN] Shape        A single shape descriptor for all multiplicatons.
                             Currently A and B must be signed, and accumulation
                             mode not supported
- * @param [IN] DataParams   Array of data descriptors, one for each mutliplication
+ * @param [IN] DataParams   Array of data descriptors, one for each multiplication
  *                          B must be prepacked
  * @param [IN] BatchN       Number of multiplications
- * @param [IN] ThreadPool 
+ * @param [IN] ThreadPool
 */
 void
 MLASCALL
@@ -701,8 +716,8 @@ MlasGemmPackB(
 
 /**
  * @brief For symmetric quantized GEMM, returns size of the
- *        packing buffer needed for right hand side        
- * @param N              Number of columns 
+ *        packing buffer needed for right hand side
+ * @param N              Number of columns
  * @param K              Number of rows
  * @param AIsSigned      Whether left hand size is signed int8_t
  * @return  size of the packing buffer,
@@ -712,7 +727,7 @@ size_t
 MLASCALL
 MlasSymmQgemmPackBSize(
     size_t N,
-    size_t K, 
+    size_t K,
     bool AIsSigned
     );
 
@@ -866,17 +881,17 @@ MlasConvSymDepthwiseGetKernelOutputCnt(
 
 /**
  * @brief Returns the stride M of depthwise conv kernel
- * 
- * Most optimized path is Symmetric conv. See 
+ *
+ * Most optimized path is Symmetric conv. See
  * MlasConvSymDepthwiseGetKernelOutputCnt(bool)
- * 
+ *
  * These kernels are implemented in qdwconv.cpp using
  * intrincic, all of them with stride val 1. We use
  * a slightly bigger value to improve cache reuse.
  *
  * This needs to be changed if we optimize depthwise
  * kernels.
- * 
+ *
  * @return
 */
 inline
@@ -1037,6 +1052,15 @@ MLASCALL
 MlasTranspose(
     const int8_t* Input,
     int8_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
+    const uint16_t* Input,
+    uint16_t* Output,
     size_t M,
     size_t N
     );
@@ -1379,16 +1403,18 @@ using MLAS_FP16 = onnxruntime::MLFloat16;
 
 constexpr size_t FP16_SIZE = sizeof(uint16_t);
 
-
+/**
+ * @brief Whether current CPU supports FP16 acceleration.
+*/
 bool MLASCALL
 MlasFp16AccelerationSupported();
 
 /**
  * @brief Interface for half gemm post processors.
- * 
+ *
  * Example implementation of this interface includes activations,
  * conversion from half precision to single precision, etc.
- * 
+ *
  * Half GEMM is computed tile by tile. When a tile of result matrix
  * is produced, the method Process() is called to process this tile.
  * Parameters of this method describe the location and shape of the
@@ -1411,16 +1437,14 @@ public:
 };
 
 /**
- * @brief Convert half gemm result matrix to single precision float matrix
+ * @brief Half precision activation functions
 */
-class MLAS_HALF_GEMM_2FLOAT_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
+class MLAS_HALF_GEMM_ACTIVATION_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
 public:
-    MLAS_HALF_GEMM_2FLOAT_PROCESSOR(
-        float* Output,    /**< address of the output matrix, row major */
-        size_t RowStride  /**< row stride of the output matrix */
-    ) :
-            Output_(Output),
-            RowStride_(RowStride)
+    MLAS_HALF_GEMM_ACTIVATION_PROCESSOR(
+        const MLAS_ACTIVATION& Activation
+        ) :
+            Activation_(Activation)
     {}
 
     void
@@ -1434,8 +1458,52 @@ public:
         ) const override;
 
 private:
+    const MLAS_ACTIVATION& Activation_;
+};
+
+inline
+void
+MlasFp16Activation(
+    const MLAS_ACTIVATION* Activation,
+    MLAS_FP16* Buffer,
+    size_t M,
+    size_t N,
+    size_t ldc
+    )
+{
+    MLAS_HALF_GEMM_ACTIVATION_PROCESSOR proc(*Activation);
+    proc.Process(Buffer, 0, 0, M, N, ldc);
+}
+
+
+/**
+ * @brief Convert half gemm result matrix to single precision float matrix
+*/
+class MLAS_HALF_GEMM_2FLOAT_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
+public:
+    MLAS_HALF_GEMM_2FLOAT_PROCESSOR(
+        const MLAS_ACTIVATION& Activation,
+        float* Output,    /**< address of the output matrix, row major */
+        size_t RowStride  /**< row stride of the output matrix */
+    ) : Activation_(Activation),
+        Output_(Output),
+        RowStride_(RowStride)
+    {}
+
+    void
+    Process(
+        MLAS_FP16* C,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc
+        ) const override;
+
+private:
+    const MLAS_ACTIVATION& Activation_;
     float* Output_;
-    size_t RowStride_;
+    const size_t RowStride_;
 };
 
 
@@ -1459,17 +1527,17 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
 /**
  * @brief Half precision Batched GEMM:  C = A * B + Bias
  *        Either A or B can be fp32 or fp16
- * 
+ *
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same across all parameter blocks.
- * 
+ *
  * @param[in]  M       row size of matrix A and C
  * @param[in]  N       column size of matrix B and C
  * @param[in]  K       column size of matrix A and row size of matrix B
  * @param[in]  BatchN  number of batches
  * @param[inout]  DataParams  An array (size BatchN) of parameter blocks
- * @param[in]  ThreadPool 
- * @return 
+ * @param[in]  ThreadPool
+ * @return
 */
 void
 MLASCALL
@@ -1485,7 +1553,7 @@ MlasHalfGemmBatch(
 /**
  * @brief For half precision GEMM, returns size of the
  *        packing buffer needed for right hand side
- * @param[in] N   Number of columns 
+ * @param[in] N   Number of columns
  * @param[in] K   Number of rows
  * @param[in] float2half  Whether the input is float that
  *                        needs to be converted to half precision
@@ -1503,11 +1571,11 @@ MlasHalfGemmPackBSize(
 /**
  * @brief For half precision GEMM, pack the right hand
  *        side matrix B
- * 
+ *
  * @param[in]  N        Number of columns
  * @param[in]  K        Number of rows
- * @param[in]  B        Address of matrix B 
- * @param[in]  ldb      leading dimension of input matrix B 
+ * @param[in]  B        Address of matrix B
+ * @param[in]  ldb      leading dimension of input matrix B
  * @param[out] PackedB  Address of the packed matrix
 */
 void
@@ -1523,11 +1591,11 @@ MlasHalfGemmPackB(
 /**
  * @brief For half precision GEMM, convert the float matrix B
  *        to half precision and pack it into a packing buffer
- * 
+ *
  * @param[in]  N        Number of columns
  * @param[in]  K        Number of rows
- * @param[in]  B        Address of matrix B 
- * @param[in]  ldb      leading dimension of input matrix B 
+ * @param[in]  B        Address of matrix B
+ * @param[in]  ldb      leading dimension of input matrix B
  * @param[out] PackedB  Address of the packed matrix
 */
 void
@@ -1539,3 +1607,82 @@ MlasHalfGemmConvertPackB(
     size_t ldb,
     void* PackedB
     );
+
+/**
+ * @brief Indirect Depthwise convolution for fp16
+ * @param Input         Supplies the indirect buffer for NHWC input
+ * @param Filter        Supplies the address for filter tensor
+ * @param Output        Supplies the address for the result tensor
+ * @param Channels      # of input channels
+ * @param OutputCount   # of output pixels
+ * @param KernelSize    # kernel size
+ * @return 
+*/
+void
+MLASCALL
+MlasConvDepthwise(
+    const MLAS_FP16* const* Input,
+    const MLAS_FP16* Filter,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize,
+    MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
+    );
+
+
+inline
+void
+MlasTranspose(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t M,
+    size_t N
+    )
+{
+    MlasTranspose(
+        reinterpret_cast<const uint16_t*>(Input),
+        reinterpret_cast<uint16_t*>(Output),
+        M, N);
+}
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+/**
+ * @brief Max Pooling for fp16 NHWC
+ * @param Input         Indirect buffer to activations
+ * @param Output        Address of the result tensor
+ * @param Channels      C in NHWC
+ * @param OutputCount   Number of output pixels
+ * @param KernelSize    Size of the kernel
+ * @return 
+*/
+void
+MLASCALL
+MlasNhwcMaxPool(
+    const MLAS_FP16* const* Input,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+/**
+ * @brief Avg Pooling for fp16 nhwc
+ * @param Input         Indirect buffer to activations
+ * @param Output        Address of the output data
+ * @param Channels      C in NHWC
+ * @param OutputCount   Number of output pixels
+ * @param KernelSize    size of the kernel
+ * @return 
+*/
+void
+MLASCALL
+MlasNhwcAvgPool(
+    const MLAS_FP16* const* Input,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+#endif

@@ -19,7 +19,7 @@ void DnnlCast::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto src_mem = sp.GetMemory(node.Input(IN_INPUT));
   auto src_tag = node.Input(IN_INPUT).Format();
   auto src_md = src_mem.get_desc();
-  auto src_dims = src_md.dims();
+  auto src_dims = src_md.get_dims();
 
   // dst characteristics
   dnnl::memory::data_type dst_type; 
@@ -71,7 +71,7 @@ void DnnlCast::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 
   // Generate the dst memory descriptor
-  auto dst_md = dnnl::memory::desc(src_md.dims(), dst_type, dst_tag);
+  auto dst_md = dnnl::memory::desc(src_md.get_dims(), dst_type, dst_tag);
 
   // Create the reorder primitive descriptor.
   auto reorder_pd = dnnl::reorder::primitive_desc(dnnl_engine, src_md, dnnl_engine, dst_md);

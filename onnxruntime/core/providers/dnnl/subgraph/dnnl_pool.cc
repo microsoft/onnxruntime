@@ -22,9 +22,9 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto pool_src_mem = sp.GetMemory(node.Input(IN_X));
 #endif  // ENABLE_TRAINING
   auto src_md = pool_src_mem.get_desc();
-  auto src_dims = pool_src_mem.get_desc().dims();
+  auto src_dims = pool_src_mem.get_desc().get_dims();
 
-  #ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING
   auto prop_kind = dnnl::prop_kind::forward;
 #else
   auto prop_kind = dnnl::prop_kind::forward_inference;
@@ -43,20 +43,16 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto strides = GetStrides(node, shape);
 
   auto dst_mem_dims = InferOutputDims(node, src_dims, kernel_shape, strides);
-  dnnl::memory::desc dst_md = dnnl::memory::desc(dst_mem_dims, node.Input(IN_X).Type(), dnnl::memory::format_tag::any);
+  dnnl::memory::desc dst_md = dnnl::memory::desc(dst_mem_dims, node.Input(OUT_Y).Type(), dnnl::memory::format_tag::any);
 
   auto padding = InferPadding(node, src_dims, kernel_shape, strides);
   auto padding_left = GetPaddingLeft(padding);
   auto padding_right = GetPaddingRight(padding);
 
+  auto dilation = dnnl::memory::dims(kernel_shape.size(), 0);
 
-
-  auto pool_desc = dnnl::pooling_forward::desc(prop_kind, algo,
-                                               src_md, dst_md,
-                                               strides, kernel_shape,
-                                               padding_left, padding_right);
-
-  auto pool_pd = dnnl::pooling_forward::primitive_desc(pool_desc, dnnl_engine);
+  auto pool_pd = dnnl::pooling_forward::primitive_desc(dnnl_engine, prop_kind, algo, src_md, dst_md, strides,
+                                                       kernel_shape, dilation, padding_left, padding_right);
 
 #ifndef ENABLE_TRAINING
   // If using GPU this will move the memory from the CPU to the GPU.

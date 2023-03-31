@@ -58,6 +58,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           const bool& terminate_flag,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
-                                          const OrtValueCachePtr& cache);
+                                          const OrtValueCachePtr& cache,
+                                          int32_t partial_graph_index);
 #endif
 }  // namespace onnxruntime

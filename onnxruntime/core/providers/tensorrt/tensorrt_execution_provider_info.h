@@ -17,10 +17,10 @@ struct TensorrtExecutionProviderInfo {
   void* user_compute_stream{nullptr};
   bool has_trt_options{false};
   int max_partition_iterations{1000};
-  int min_subgraph_size{1};  
+  int min_subgraph_size{1};
   size_t max_workspace_size{1 << 30};
   bool fp16_enable{false};
-  bool int8_enable{false}; 
+  bool int8_enable{false};
   std::string int8_calibration_table_name{""};
   bool int8_use_native_calibration_table{false};
   bool dla_enable{false};
@@ -33,6 +33,9 @@ struct TensorrtExecutionProviderInfo {
   bool force_sequential_engine_build{false};
   bool context_memory_sharing_enable{false};
   bool layer_norm_fp32_fallback{false};
+  bool timing_cache_enable{false};
+  bool force_timing_cache{false};
+  bool detailed_build_log{false};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

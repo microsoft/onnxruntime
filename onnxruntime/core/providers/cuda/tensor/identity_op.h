@@ -68,6 +68,7 @@ class IdentityOp final : public CudaKernel {
                       "IdentityOp cuda: unable to get an allocator.");
       }
       auto X_size = X->Size();
+      Y->Reserve(X_size);
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),

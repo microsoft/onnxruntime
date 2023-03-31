@@ -164,7 +164,7 @@ In both cases (CPU, GPU) there are the following options for cmake generator: "V
 - Install python wheel package for ONNX Runtime:<br>
 Default path to the package is `<path_to_onnxruntime_root>/build/Windows/Release/Release/dist`. Note that it is different in comparison with path to the package on Linux. Before installation check names of wheel packages and use corresponding one. It can be looked like the following:
 ```cmd
-python -m pip install .\onnxruntime\build\Windows\Release\Release\dist\onnxruntime_tvm-1.6.0-cp37-cp37m-win_amd64.whl
+python -m pip install .\onnxruntime\build\Windows\Release\Release\dist\onnxruntime_tvm-1.6.0-cp38-cp38-win_amd64.whl
 ```
 - Install python wheel package for TVM due to its python API is used inside TVM EP:<br>
 It can be looked like the following:

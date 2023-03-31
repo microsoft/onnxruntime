@@ -56,7 +56,10 @@ struct ROCMExecutionProviderInfo {
   // arena config.
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
-  bool miopen_conv_use_max_workspace{false};
+
+  // By default, try to use as much as possible memory for algo search.
+  // If set to false, use fix workspace size (32M) for Conv algo search, the final algo might not be the best.
+  bool miopen_conv_use_max_workspace{true};
 
   rocm::TunableOpInfo tunable_op{};
 

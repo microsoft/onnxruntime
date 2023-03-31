@@ -3,7 +3,7 @@
 
 import unittest
 
-from opgen.lexer import StringReader, Lexer, Token, TokenKind, SourceLocation
+from opgen.lexer import Lexer, SourceLocation, StringReader, Token, TokenKind  # noqa: F401
 
 
 class LexerTestCase(unittest.TestCase):
@@ -69,7 +69,7 @@ class LexerTestCase(unittest.TestCase):
             assert_number(number)
 
         for number in ["1.2.3", "e1", "-e1", "123e0.5"]:
-            self.assertRaises(BaseException, lambda: assert_number(number))
+            self.assertRaises(BaseException, lambda: assert_number(number))  # noqa: B023
 
         lexer = self.create_lexer("1.2.3.4e5.6")
         self.assertEqual(Token((0, 1, 1), TokenKind.NUMBER, "1.2"), lexer.lex())
