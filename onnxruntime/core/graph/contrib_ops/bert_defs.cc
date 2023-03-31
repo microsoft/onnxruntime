@@ -552,6 +552,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* DecoderMaskedMultiHeadAttention_ver1_doc = R"DOC(
 Multihead attention that supports input sequence length of 1.
 Similar to DecoderMaskedSelfAttention but this op excludes QKV MatMul and Bias.
+This op supports both Self and Cross Attention.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(

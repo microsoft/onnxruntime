@@ -13,6 +13,7 @@ namespace cuda {
 struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
   int beam_width = 1;
 
+  // Weather to use multihead attention(excludes matmul and bias)
   bool is_mha = false;
   bool is_cross_attention = false;
 
