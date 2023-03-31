@@ -10,17 +10,17 @@
 #pragma clang diagnostic ignored "-Wdocumentation"
 #endif  // defined(__clang__)
 
-#include "onnxruntime_c_api.h"
-#include "onnxruntime_cxx_api.h"
+#include "onnxruntime/onnxruntime_c_api.h"
+#include "onnxruntime/onnxruntime_cxx_api.h"
 
-#if __has_include("coreml_provider_factory.h")
+#if __has_include("onnxruntime/coreml_provider_factory.h")
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 1
 #else
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 0
 #endif
 
 #if ORT_OBJC_API_COREML_EP_AVAILABLE
-#include "coreml_provider_factory.h"
+#include "onnxruntime/coreml_provider_factory.h"
 #endif
 
 #if defined(__clang__)

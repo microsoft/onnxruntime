@@ -32,9 +32,9 @@ include_dirs = [
 # pod source files
 source_files = [
     "objectivec/include/*.h",
-    "objectivec/src/*.h",
-    "objectivec/src/*.m",
-    "objectivec/src/*.mm",
+    "objectivec/*.h",
+    "objectivec/*.m",
+    "objectivec/*.mm",
 ]
 
 # pod public header files

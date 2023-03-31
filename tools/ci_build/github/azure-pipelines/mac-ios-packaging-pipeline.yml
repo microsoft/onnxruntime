@@ -195,6 +195,29 @@ jobs:
         "$(ORT_SHOULD_UPLOAD_ARCHIVES)"
     displayName: "Assemble artifacts"
 
+  - script: |
+      set -e -x
+      ls -R "$(Build.ArtifactStagingDirectory)"
+    displayName: "List staged artifacts"
+
+  # Package.swift needs to point to a file relative to it. Do a copy to simplify things
+  - script: |
+      cp "$(Build.ArtifactStagingDirectory)/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip" swift/
+      python tools/ci_build/github/apple/update_swift_package_manager_config.py \
+        --spm_config Package.swift \
+        --ort_package "swift/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip"
+      echo "Updated Package.swift:"
+      cat Package.swift
+    displayName: "Update Package.swift to use onnxruntime-c pod from build"
+
+  # xcodebuild will implicitly use Package.swift and build/run the .testTarget (tests in swift/onnxTests).
+  # once that's done cleanup the copy of the pod zip file
+  - script: |
+      set -e -x
+      xcodebuild test -scheme onnxruntime -destination 'platform=iOS Simulator,name=iPhone 14'
+      rm swift/*.zip
+    displayName: "Test Package.swift usage"
+
   - publish: "$(Build.ArtifactStagingDirectory)"
     artifact: ios_packaging_artifacts
     displayName: "Publish artifacts"

@@ -58,3 +58,11 @@ compile_commands.json
 rust/**/target
 rust/**/Cargo.lock
 rust/onnxruntime/synset.txt
+# Swift Package Manager
+Packages/
+Package.pins
+Package.resolved
+.build/
+.swiftpm/
+# local java builds
+/java/bin
