@@ -11,8 +11,8 @@ import os
 import sys
 
 import torch
-from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
 from whisper_chain import chain_model
+from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
@@ -135,7 +135,12 @@ def parse_arguments():
     )
     parser.set_defaults(chain_model=True)
 
-    parser.add_argument("--beam_output_model", type=str, default="whisper_beamsearch.onnx", help="default name is whisper_beamsearch.onnx.")
+    parser.add_argument(
+        "--beam_output_model",
+        type=str,
+        default="whisper_beamsearch.onnx",
+        help="default name is whisper_beamsearch.onnx.",
+    )
 
     parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
 
@@ -158,7 +163,7 @@ def export_onnx_models(
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
     use_int32_inputs: bool = True,
-    use_multihead_attn_fusion = False
+    use_multihead_attn_fusion=False,
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -216,7 +221,7 @@ def export_onnx_models(
                     use_external_data_format,
                     auto_mixed_precision=not disable_auto_mixed_precision,
                     use_gpu=use_gpu,
-                    use_multihead_attn_fusion=use_multihead_attn_fusion
+                    use_multihead_attn_fusion=use_multihead_attn_fusion,
                 )
             else:
                 logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
@@ -274,10 +279,10 @@ def main():
         args.overwrite,
         args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
-        args.use_multihead_attn_fusion
+        args.use_multihead_attn_fusion,
     )
 
-    if (args.chain_model):
+    if args.chain_model:
         logger.info("Chaining model ... :")
         args.beam_model_output_dir = WhisperHelper.get_onnx_path(
             output_dir,
@@ -286,9 +291,9 @@ def main():
             new_folder=False,
         )
         for path in output_paths:
-            if ("encoder_decoder" in path):
+            if "encoder_decoder" in path:
                 args.encoder_path = path
-            elif ("decoder" in path):
+            elif "decoder" in path:
                 args.decoder_path = path
         chain_model(args)
         output_paths.append(args.beam_model_output_dir)

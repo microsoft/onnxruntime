@@ -1,15 +1,17 @@
 import onnx
 from onnx import TensorProto, helper
-
 from transformers import WhisperConfig
+
 
 def add_attention_mask(model):
     # Add attention mask - required by BeamSearch but unused in Pytorch
-    mask = helper.make_tensor_value_info('encoder_attention_mask', TensorProto.INT32, shape=['batch', 'feature_size', 'sequence'])
+    mask = helper.make_tensor_value_info(
+        "encoder_attention_mask", TensorProto.INT32, shape=["batch", "feature_size", "sequence"]
+    )
     model.graph.input.insert(1, mask)
 
-def chain_model(args):
 
+def chain_model(args):
     # Load encoder/decoder and insert necessary (but unused) graph inputs expected by BeamSearch op
     encoder_model = onnx.load(args.encoder_path, load_external_data=True)
     encoder_model.graph.name = "encoderdecoderinit subgraph"
@@ -52,7 +54,9 @@ def chain_model(args):
     )
 
     # beam graph inputs
-    input_features = helper.make_tensor_value_info("input_features", TensorProto.FLOAT, ["batch_size", "feature_size", "sequence_length"])
+    input_features = helper.make_tensor_value_info(
+        "input_features", TensorProto.FLOAT, ["batch_size", "feature_size", "sequence_length"]
+    )
     max_length = helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
     min_length = helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
     num_beams = helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
@@ -80,15 +84,18 @@ def chain_model(args):
     )
     graph_outputs = [sequences]
 
-    #Initializers/opsets
+    # Initializers/opsets
     initializers = []
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
-
     beam_graph = helper.make_graph([node], "beam-search-test", graph_inputs, graph_outputs, initializers)
-    beam_model = helper.make_model(
-        beam_graph, producer_name="pytorch", opset_imports=opset_import
-    )
+    beam_model = helper.make_model(beam_graph, producer_name="pytorch", opset_imports=opset_import)
 
-    onnx.save(beam_model, args.beam_model_output_dir, save_as_external_data=True, all_tensors_to_one_file=True, convert_attribute=True)
+    onnx.save(
+        beam_model,
+        args.beam_model_output_dir,
+        save_as_external_data=True,
+        all_tensors_to_one_file=True,
+        convert_attribute=True,
+    )
     onnx.checker.check_model(args.beam_model_output_dir, full_check=True)

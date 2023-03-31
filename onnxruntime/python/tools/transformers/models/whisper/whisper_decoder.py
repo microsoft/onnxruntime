@@ -14,15 +14,15 @@ from typing import List, Union
 import numpy
 import onnx
 import torch
-from whisper_encoder import WhisperEncoderInputs
 from transformers import WhisperConfig, file_utils
+from whisper_encoder import WhisperEncoderInputs
 
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from io_binding_helper import TypeHelper  # noqa: E402
+from models.t5.past_helper import PastKeyValuesHelper  # noqa: E402
 from onnx_model import OnnxModel  # noqa: E402
-from models.t5.past_helper import PastKeyValuesHelper # noqa: E402
 from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -71,6 +71,7 @@ class WhisperDecoderInit(torch.nn.Module):
         logits = self.decoder.proj_out(out[0])
         return logits, out.past_key_values, out.encoder_last_hidden_state
 
+
 class WhisperDecoder(torch.nn.Module):
     """A Whisper decoder with LM head and past key values"""
 
@@ -81,7 +82,6 @@ class WhisperDecoder(torch.nn.Module):
         self.config = config
 
     def forward(self, decoder_input_ids, encoder_attention_mask, *past):
-
         encoder_outputs = file_utils.ModelOutput()
         dummy_encoder_hidden_states = torch.randn((decoder_input_ids.shape[0], 3000, int(self.config.d_model)))
         encoder_outputs["last_hidden_state"] = dummy_encoder_hidden_states
@@ -96,7 +96,7 @@ class WhisperDecoder(torch.nn.Module):
             None,
             encoder_outputs=encoder_outputs,
             decoder_input_ids=decoder_input_ids,
-            #decoder_attention_mask=encoder_attention_mask,
+            # decoder_attention_mask=encoder_attention_mask,
             past_key_values=past_key_values,
             use_cache=True,
             return_dict=True,
@@ -141,9 +141,8 @@ class WhisperDecoderInputs:
         Returns:
             WhisperDecoderInputs: dummy inputs for decoder
         """
-        hidden_size: int = config.d_model
         num_attention_heads: int = config.encoder_attention_heads
-        num_layers: int = config.decoder_layers# + config.encoder_layers
+        num_layers: int = config.decoder_layers  # + config.encoder_layers
         vocab_size: int = config.vocab_size
 
         # Use head_size, use hidden_size / num_attention_heads here.
@@ -192,7 +191,9 @@ class WhisperDecoderInputs:
         else:
             past = None
 
-        encoder_attention_mask = torch.zeros((encoder_inputs.input_ids.shape[0], 1, encoder_inputs.input_ids.shape[1], encoder_inputs.input_ids.shape[1])).type(torch.int8)
+        encoder_attention_mask = torch.zeros(
+            (encoder_inputs.input_ids.shape[0], 1, encoder_inputs.input_ids.shape[1], encoder_inputs.input_ids.shape[1])
+        ).type(torch.int8)
         return WhisperDecoderInputs(decoder_input_ids, encoder_attention_mask, past)
 
     def to_list(self) -> List:
@@ -245,8 +246,8 @@ class WhisperDecoderHelper:
         )
         input_list = inputs.to_list()
 
-        #Fix past disappearing bug - duplicate first past entry
-        #input_list.insert(2, input_list[2])
+        # Fix past disappearing bug - duplicate first past entry
+        # input_list.insert(2, input_list[2])
 
         past_names = PastKeyValuesHelper.get_past_names(decoder.config.decoder_layers, present=False)
         present_names = PastKeyValuesHelper.get_past_names(decoder.config.decoder_layers, present=True)
@@ -254,7 +255,7 @@ class WhisperDecoderHelper:
 
         input_past_names = past_names if isinstance(decoder, WhisperDecoder) else []
         output_present_names = present_self_names if isinstance(decoder, WhisperDecoder) else present_names
-        output_names = ["logits"] + output_present_names
+        output_names = ["logits", *output_present_names]
 
         # Shape of input tensors (sequence_length==1):
         #    input_ids: (batch_size, sequence_length)
@@ -272,15 +273,10 @@ class WhisperDecoderHelper:
         input_names.extend(input_past_names)
 
         dynamic_axes = {
-            "input_ids": {
-                0: "batch_size"
-            },
+            "input_ids": {0: "batch_size"},
             "encoder_attention_mask": {0: "batch_size", 1: "encode_sequence_length"},
             "encoder_hidden_states": {0: "batch_size", 1: "encode_sequence_length / 2"},
-            "logits": {
-                0: "batch_size",
-                1: 'sequence_length'
-            },
+            "logits": {0: "batch_size", 1: "sequence_length"},
         }
 
         for name in input_past_names:

@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Dict, List, Union
 
 import torch
+from transformers import WhisperForConditionalGeneration
 from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
-from transformers import WhisperForConditionalGeneration
 
 from onnxruntime import InferenceSession
 
@@ -25,12 +25,18 @@ from optimizer import optimize_model
 
 logger = logging.getLogger(__name__)
 
-PRETRAINED_WHISPER_MODELS = ["whisper-tiny", "whisper-tiny.en",
-                        "whisper-small", "whisper-small.en",
-                        "whisper-medium", "whisper-medium.en",
-                        "whisper-base", "whisper-base.en",
-                        "whisper-large", "whisper-large-v2",
-                        ]
+PRETRAINED_WHISPER_MODELS = [
+    "whisper-tiny",
+    "whisper-tiny.en",
+    "whisper-small",
+    "whisper-small.en",
+    "whisper-medium",
+    "whisper-medium.en",
+    "whisper-base",
+    "whisper-base.en",
+    "whisper-large",
+    "whisper-large-v2",
+]
 
 
 class WhisperHelper:
@@ -65,10 +71,7 @@ class WhisperHelper:
 
     @staticmethod
     def load_model(
-        model_name_or_path: str,
-        cache_dir: str,
-        device: torch.device,
-        merge_encoder_and_decoder_init: bool = True
+        model_name_or_path: str, cache_dir: str, device: torch.device, merge_encoder_and_decoder_init: bool = True
     ) -> Dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
@@ -221,7 +224,7 @@ class WhisperHelper:
         use_external_data_format: bool = False,
         auto_mixed_precision: bool = True,
         use_gpu: bool = False,
-        use_multihead_attn_fusion = False
+        use_multihead_attn_fusion=False,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
@@ -232,11 +235,10 @@ class WhisperHelper:
             optimization_options = FusionOptions("bart")
             optimization_options.enable_skip_layer_norm = False
 
-        if (use_multihead_attn_fusion):
-            if (optimization_options is None):
+        if use_multihead_attn_fusion:
+            if optimization_options is None:
                 optimization_options = FusionOptions("bart")
             optimization_options.use_multi_head_attention = True
-
 
         m = optimize_model(
             onnx_model_path,
