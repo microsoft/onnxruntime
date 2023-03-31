@@ -64,7 +64,7 @@ import openvino.utils as utils
 utils.add_openvino_libs_to_path()
 
 ```
-OpenVINO™ Execution Provider with Onnx Runtime on Linux installed from PyPi.org come with prebuilt OpenVINO™ libs and supports flag CXX11_ABI=0. So there is no need to install OpenVINO™ separately. 
+OpenVINO™ Execution Provider with Onnx Runtime on Linux installed from PyPi.org come with prebuilt OpenVINO™ libs and supports flag CXX11_ABI=0. So there is no need to install OpenVINO™ separately.
 
 To enable CX11_ABI=1 flag, build Onnx Runtime python wheel packages from source. For build instructions, please see the [BUILD page](../build/eps.md#openvino).
 OpenVINO™ Execution Provider wheels on Linux built from source will not have prebuilt  OpenVINO™ libs so we must set the OpenVINO™ Environment Variable using the full installer package of OpenVINO™:
@@ -125,19 +125,15 @@ From the application point of view, this is just another device that handles all
 For more information on Auto-Device plugin of OpenVINO™, please refer to the
 [Intel OpenVINO™ Auto Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_AUTO.html).
 
-### Model caching feature for OpenVINO™ Execution Provider
-
-The model caching setting enables blobs with CPU and iGPU.
-
 ### OpenCL queue throttling for GPU devices
 
 Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtime_ocl_gpu_prop_cpp_api.html?highlight=throttling) for GPU devices. Reduces CPU utilization when using GPUs with OpenVINO EP.
 
 ### Model caching
 
-OpenVINO™ supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html).  
+OpenVINO™ supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html).
 
-From OpenVINO™ 2022.1 version, model caching feature is supported on Myriadx(VPU), CPU and kernel caching on iGPU. 
+From OpenVINO™ 2022.1 version, model caching feature is supported on CPU and kernel caching on iGPU.
 
 From OpenVINO™ 2022.3 version, the model caching feature is also supported on iGPU as preview.
 
@@ -149,9 +145,7 @@ This feature also allows user to save kernel caching as cl_cache files for model
 
 #### <b> Enabling Model Caching via Runtime options using c++/python API's.</b>
 
-This flow can be enabled by setting the runtime config option 'use_compiled_network' to True while using the c++/python API'S. This config option acts like a switch to on and off the feature.
-
-The blobs are saved and loaded from a directory named 'ov_compiled_blobs' relative to the executable path by default. This path however can be overridden using the runtime config option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs (CPU, iGPU) or cl_cache(iGPU) files from when already using the use_compiled_network(model caching) setting.
+This flow can be enabled by setting the runtime config option 'cache_dir' specifying the path to dump and load the blobs (CPU, iGPU) or cl_cache(iGPU) while using the c++/python API'S.
 
 Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
 
@@ -229,8 +223,7 @@ options.device_type = "CPU_FP32";
 options.enable_vpu_fast_compile = 0;
 options.device_id = "";
 options.num_of_threads = 8;
-options.use_compiled_network = false;
-options.blob_dump_path = "";
+options.cache_dir = "";
 options.context = 0x123456ff;
 options.enable_opencl_throttling = false;
 SessionOptionsAppendExecutionProvider_OpenVINO(session_options, &options);
@@ -246,8 +239,7 @@ The following table lists all the available configuration options and the Key-Va
 | device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvino.ai/latest/classInferenceEngine_1_1Core.html). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
 | enable_vpu_fast_compile | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices. During initialization of the VPU device with compiled model, Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format. This in-turn speeds up model initialization time. However, enabling this option may slowdown inference due to some of the optimizations not being fully applied, so caution is to be exercised while enabling this option. |
 | num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. |
-| use_compiled_network | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices for both Linux and Windows and it enables save/load blob functionality. It can be used to directly import pre-compiled blobs if exists or dump a pre-compiled blob at the executable path. |
-| blob_dump_path | string | Any valid string path on the hardware target | string | Explicitly specify the path where you would like to dump and load the blobs for the save/load blob feature when use_compiled_network setting is enabled . This overrides the default path.|
+| cache_dir | string | Any valid string path on the hardware target | string | Explicitly specify the path to save and load the blobs enabling model caching feature.|
 | context | string | OpenCL Context | void* | This option is only alvailable when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
 | enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU devices (reduces CPU utilization when using GPU). |
 | enable_dynamic_shapes | string | True/False | boolean | This option if enabled works for dynamic shaped models whose shape will be set dynamically based on the infer input image/data shape at run time in CPU. This gives best result for running multiple inferences with varied shaped images/data. |
@@ -310,8 +302,8 @@ The table below shows the ONNX layers supported and validated using OpenVINO™ 
 Atom, Core, and Xeon processors. GPU refers to the Intel Integrated Graphics. Intel Discrete Graphics
 
 | **ONNX Layers** | **CPU** | **GPU** |
-| --- | --- | --- | 
-| Abs | Yes | Yes | 
+| --- | --- | --- |
+| Abs | Yes | Yes |
 | Acos | Yes | Yes |
 | Acosh | Yes | Yes |
 | Add | Yes | Yes |
@@ -538,7 +530,7 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO™ Exe
 
 ## OpenVINO™ Execution Provider Samples Tutorials
 
-In order to showcase what you can do with the OpenVINO™ Execution Provider for ONNX Runtime, we have created a few samples that shows how you can get that performance boost you’re looking for with just one additional line of code. 
+In order to showcase what you can do with the OpenVINO™ Execution Provider for ONNX Runtime, we have created a few samples that shows how you can get that performance boost you’re looking for with just one additional line of code.
 
 ### Python API
 [Object detection with tinyYOLOv2 in Python](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/OpenVINO_EP/tiny_yolo_v2_object_detection)
@@ -561,8 +553,3 @@ In order to showcase what you can do with the OpenVINO™ Execution Provider for
 
 ### Tutorial on how to use OpenVINO™ Execution Provider for ONNX Runtime python wheel packages
 [Python Pip Wheel Packages](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/openvino-execution-provider-for-onnx-runtime.html)
-
-## Accelerate inference for PyTorch models with OpenVINO Execution Provider (Preview)
-
-ONNX Runtime for PyTorch is now extended to support PyTorch model inference using ONNX Runtime.
-It is available via the torch-ort-infer python package. This preview package enables OpenVINO™ Execution Provider for ONNX Runtime by default for accelerating inference on various Intel® CPUs, Intel® integrated GPUs, and Intel® Movidius™ Vision Processing Units - referred to as VPU. For more details, see [torch-ort-infer](https://github.com/pytorch/ort#accelerate-inference-for-pytorch-models-with-onnx-runtime-preview).
