@@ -7,11 +7,8 @@
 
 namespace onnxruntime {
 
-// data types for execution provider options which only be used internally
-
-// This struct is same as OrtCustomOpDomain defined in inference_session.h,
-// but we don't want to include it since it contains many session related definitions 
-// which may cuase compile error if we do it.
+// This struct is same as OrtCustomOpDomain defined in inference_session.h and only be used by EP internally.
+// We don't want to include inference_session.h in EP since it contains many session related definitions which may cause compile error.
 struct OrtProviderCustomOpDomain {
   std::string domain_;
   std::vector<const OrtCustomOp*> custom_ops_;

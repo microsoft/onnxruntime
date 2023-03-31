@@ -29,7 +29,7 @@ class Node;
 #include "core/framework/allocatormgr.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
-#include "core/framework/provider_options_internal.h"
+#include "core/framework/provider_data_types_internal.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
 
