@@ -12,6 +12,7 @@ import torch
 import onnxruntime
 import onnxruntime.training.onnxblock as onnxblock
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.training import artifacts
 
 # PyTorch Module definitions
 
@@ -816,3 +817,57 @@ def test_grad_clipping_execution():
         # assert all the gradients are close
         for ort_grad, pt_param in zip(ort_outs[0], pt_model.parameters()):
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
+
+
+def test_eval_model_has_no_training_mode_dropout():
+    class DropoutModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.dropout = torch.nn.Dropout(p=0.5)
+
+        def forward(self, x):
+            return self.dropout(x)
+
+    model = DropoutModel()
+    onnx_model = _get_onnx_model(model, (torch.randn(1, 3, 224, 224),))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(onnx_model, loss=artifacts.LossType.CrossEntropyLoss, artifact_directory=temp_dir)
+
+        eval_model = onnx.load(os.path.join(temp_dir, "eval_model.onnx"))
+
+        flag = False
+        for node in eval_model.graph.node:
+            if node.op_type == "Dropout":
+                assert not node.input[2]
+                flag = True
+
+        assert flag
+
+
+def test_eval_model_has_no_training_mode_batchnorm():
+    class BatchNormModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.batchnorm = torch.nn.BatchNorm2d(100)
+
+        def forward(self, x):
+            return self.batchnorm(x)
+
+    model = BatchNormModel()
+    onnx_model = _get_onnx_model(model, (torch.randn(20, 100, 35, 45),))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(onnx_model, loss=artifacts.LossType.CrossEntropyLoss, artifact_directory=temp_dir)
+
+        eval_model = onnx.load(os.path.join(temp_dir, "eval_model.onnx"))
+
+        flag = False
+        for node in eval_model.graph.node:
+            if node.op_type == "BatchNormalization":
+                for attr in node.attribute:
+                    if attr.name == "training_mode":
+                        assert attr.i == 0
+                        flag = True
+
+        assert flag
