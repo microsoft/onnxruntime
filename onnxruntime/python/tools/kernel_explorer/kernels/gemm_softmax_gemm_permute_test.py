@@ -55,26 +55,26 @@ def get_mask_dim_id(dim):
     return f"mask_{dim}d"
 
 
-def maybe_pack_Q_K_V_BNSH_for_device_on_host(Q, K, V, dtype, qkv_format):  # noqa: N806
-    Q = Q.astype(dtype)
-    K = K.astype(dtype)
-    V = V.astype(dtype)
+def maybe_pack_q_k_v_bnsh_for_device_on_host(q, k, v, dtype, qkv_format):
+    q = q.astype(dtype)
+    k = k.astype(dtype)
+    v = v.astype(dtype)
     if qkv_format == ke.qkv_format.Q_K_V_BNSH:
-        return Q, K, V
+        return q, k, v
 
     # BNSH to BSNH
-    Q = np.swapaxes(Q, 2, 1)
-    K = np.swapaxes(K, 2, 1)
-    V = np.swapaxes(V, 2, 1)
+    q = np.swapaxes(q, 2, 1)
+    k = np.swapaxes(k, 2, 1)
+    v = np.swapaxes(v, 2, 1)
 
     if qkv_format == ke.qkv_format.Q_K_V_BSNH:
-        return np.ascontiguousarray(Q), np.ascontiguousarray(K), np.ascontiguousarray(V)
+        return np.ascontiguousarray(q), np.ascontiguousarray(k), np.ascontiguousarray(v)
 
     if qkv_format == ke.qkv_format.QKV_BSN3H:
-        return np.ascontiguousarray(np.stack([Q, K, V], axis=-2)), None, None
+        return np.ascontiguousarray(np.stack([q, k, v], axis=-2)), None, None
 
     if qkv_format == ke.qkv_format.Q_KV_BSNH_BSN2H:
-        return np.ascontiguousarray(Q), np.ascontiguousarray(np.stack([K, V], axis=-2)), None
+        return np.ascontiguousarray(q), np.ascontiguousarray(np.stack([k, v], axis=-2)), None
 
     raise NotImplementedError
 
@@ -109,15 +109,15 @@ def _test_gemm_softmax_gemm_permute(
             raise ValueError
 
     np.random.seed(42)
-    Q = multinormal_distribution(np.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)  # noqa: N806
-    K = multinormal_distribution(np.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)  # noqa: N806
-    V = multinormal_distribution(np.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)  # noqa: N806
+    q = multinormal_distribution(np.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)
+    k = multinormal_distribution(np.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)
+    v = multinormal_distribution(np.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)
     if bias_shape is not None:
         attn_bias = np.random.uniform(-0.5, 0.5, size=bias_shape)
     if mask_shape is not None:
         attn_mask = (np.random.randint(0, 100, size=mask_shape) < 95).astype(np.int32)
 
-    pre_softmax_attn_scores = Q @ np.swapaxes(K, 2, 3)
+    pre_softmax_attn_scores = q @ np.swapaxes(k, 2, 3)
     pre_softmax_attn_scores = pre_softmax_attn_scores * scale
     if attn_bias is not None:
         pre_softmax_attn_scores = pre_softmax_attn_scores + attn_bias
@@ -130,15 +130,15 @@ def _test_gemm_softmax_gemm_permute(
             converted_mask = (1 - attn_mask.reshape(mask_shape_broadcasted)) * filter_value
         pre_softmax_attn_scores = pre_softmax_attn_scores + converted_mask
     attn_scores = softmax(pre_softmax_attn_scores, axis=-1)
-    attn = attn_scores @ V
+    attn = attn_scores @ v
     ref = np.swapaxes(attn, 2, 1)  # permute 0213
 
     out = np.empty(out_shape, dtype=dtype)
-    host_Q, host_K, host_V = maybe_pack_Q_K_V_BNSH_for_device_on_host(Q, K, V, dtype, qkv_format)  # noqa: N806
+    host_q, host_k, host_v = maybe_pack_q_k_v_bnsh_for_device_on_host(q, k, v, dtype, qkv_format)
     host_attn_bias = attn_bias.astype(dtype) if attn_bias is not None else None
-    dev_Q = ke.DeviceArray(host_Q)  # noqa: N806
-    dev_K = ke.DeviceArray(host_K) if host_K is not None else None  # noqa: N806
-    dev_V = ke.DeviceArray(host_V) if host_V is not None else None  # noqa: N806
+    dev_q = ke.DeviceArray(host_q)
+    dev_k = ke.DeviceArray(host_k) if host_k is not None else None
+    dev_v = ke.DeviceArray(host_v) if host_v is not None else None
     dev_out = ke.DeviceArray(out)
     dev_attn_bias = ke.DeviceArray(host_attn_bias) if host_attn_bias is not None else None
     dev_attn_mask = ke.DeviceArray(attn_mask) if attn_mask is not None else None
@@ -153,9 +153,9 @@ def _test_gemm_softmax_gemm_permute(
         mask_dim,
         scale,
         qkv_format,
-        dev_Q,
-        dev_K,
-        dev_V,
+        dev_q,
+        dev_k,
+        dev_v,
         dev_attn_bias,
         dev_attn_mask,
         dev_out,
@@ -322,20 +322,20 @@ def profile_gemm_softmax_gemm_permute_func(
             raise ValueError
 
     np.random.seed(42)
-    Q = multinormal_distribution(np.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)  # noqa: N806
-    K = multinormal_distribution(np.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)  # noqa: N806
-    V = multinormal_distribution(np.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)  # noqa: N806
+    q = multinormal_distribution(np.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)
+    k = multinormal_distribution(np.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)
+    v = multinormal_distribution(np.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)
     if bias_shape is not None:
         attn_bias = np.random.uniform(-2, 2, size=bias_shape)
     if mask_shape is not None:
         attn_mask = (np.random.randint(0, 100, size=mask_shape) < 95).astype(np.int32)
 
     out = np.empty(out_shape, dtype=dtype)
-    host_Q, host_K, host_V = maybe_pack_Q_K_V_BNSH_for_device_on_host(Q, K, V, dtype, qkv_format)  # noqa: N806
+    host_q, host_k, host_v = maybe_pack_q_k_v_bnsh_for_device_on_host(q, k, v, dtype, qkv_format)
     host_attn_bias = attn_bias.astype(dtype) if attn_bias is not None else None
-    dev_Q = ke.DeviceArray(host_Q)  # noqa: N806
-    dev_K = ke.DeviceArray(host_K) if host_K is not None else None  # noqa: N806
-    dev_V = ke.DeviceArray(host_V) if host_V is not None else None  # noqa: N806
+    dev_q = ke.DeviceArray(host_q)
+    dev_k = ke.DeviceArray(host_k) if host_k is not None else None
+    dev_v = ke.DeviceArray(host_v) if host_v is not None else None
     dev_out = ke.DeviceArray(out)
     dev_attn_bias = ke.DeviceArray(host_attn_bias) if host_attn_bias is not None else None
     dev_attn_mask = ke.DeviceArray(attn_mask) if attn_mask is not None else None
@@ -350,9 +350,9 @@ def profile_gemm_softmax_gemm_permute_func(
         mask_dim,
         scale,
         qkv_format,
-        dev_Q,
-        dev_K,
-        dev_V,
+        dev_q,
+        dev_k,
+        dev_v,
         dev_attn_bias,
         dev_attn_mask,
         dev_out,

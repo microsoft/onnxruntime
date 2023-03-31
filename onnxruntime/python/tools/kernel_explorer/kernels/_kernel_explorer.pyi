@@ -6,7 +6,7 @@ class blas_op:  # noqa: N801
     T: int
     N: int
 
-class qkv_format:
+class qkv_format:  # noqa: N801
     Q_K_V_BNSH: int
     Q_K_V_BSNH: int
     QKV_BSN3H: int
