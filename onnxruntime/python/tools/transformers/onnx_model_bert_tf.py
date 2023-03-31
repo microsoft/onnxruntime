@@ -374,7 +374,7 @@ class BertOnnxModelTF(BertOnnxModel):
             if normalize_node.op_type == "LayerNormalization":
                 add_before_layernorm = self.match_parent(normalize_node, "Add", 0)
                 if add_before_layernorm is not None:
-                    normalize_node = add_before_layernorm
+                    normalize_node = add_before_layernorm  # noqa: PLW2901
                 else:
                     continue
             parent = self.get_parent(normalize_node, 1)

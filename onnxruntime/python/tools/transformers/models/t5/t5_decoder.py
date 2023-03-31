@@ -379,7 +379,7 @@ class T5DecoderHelper:
             past_decode_sequence_length,
         ) in test_cases[:max_cases]:
             if isinstance(model, T5DecoderInit):
-                past_decode_sequence_length = 0
+                past_decode_sequence_length = 0  # noqa: PLW2901
 
             inputs = T5DecoderInputs.create_dummy(
                 model.config,

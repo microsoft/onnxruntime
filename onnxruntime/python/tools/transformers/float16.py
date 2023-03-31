@@ -354,7 +354,7 @@ def convert_float_to_float16(
                     next_level.append(n)
                 q.t.CopyFrom(convert_tensor_float_to_float16(q.t, min_positive_val, max_finite_val))
                 for n in q.tensors:
-                    n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)
+                    n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)  # noqa: PLW2901
             # if q is graph, process input, output and value_info (ValueInfoProto)
             if isinstance(q, onnx_proto.GraphProto):
                 # Note that float initializers tracked by fp32_initializers will be processed later.

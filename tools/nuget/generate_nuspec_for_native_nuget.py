@@ -50,7 +50,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
 
         for cpu_arch in ["x86", "x64", "arm", "arm64"]:
             if child.name == get_package_name("win", cpu_arch, ep):
-                child = child / "lib"
+                child = child / "lib"  # noqa: PLW2901
                 for child_file in child.iterdir():
                     suffixes = [".dll", ".lib", ".pdb"] if include_pdbs else [".dll", ".lib"]
                     if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name):
@@ -59,9 +59,9 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
                         )
         for cpu_arch in ["x86_64", "arm64"]:
             if child.name == get_package_name("osx", cpu_arch, ep):
-                child = child / "lib"
+                child = child / "lib"  # noqa: PLW2901
                 if cpu_arch == "x86_64":
-                    cpu_arch = "x64"
+                    cpu_arch = "x64"  # noqa: PLW2901
                 for child_file in child.iterdir():
                     # Check if the file has digits like onnxruntime.1.8.0.dylib. We can skip such things
                     is_versioned_dylib = re.match(r".*[\.\d+]+\.dylib$", child_file.name)
@@ -71,11 +71,11 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
                         )
         for cpu_arch in ["x64", "aarch64"]:
             if child.name == get_package_name("linux", cpu_arch, ep):
-                child = child / "lib"
+                child = child / "lib"  # noqa: PLW2901
                 if cpu_arch == "x86_64":
-                    cpu_arch = "x64"
+                    cpu_arch = "x64"  # noqa: PLW2901
                 elif cpu_arch == "aarch64":
-                    cpu_arch = "arm64"
+                    cpu_arch = "arm64"  # noqa: PLW2901
                 for child_file in child.iterdir():
                     if not child_file.is_file():
                         continue

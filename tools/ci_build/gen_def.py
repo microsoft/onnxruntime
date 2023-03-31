@@ -26,7 +26,7 @@ for c in args.config:
     file_name = os.path.join(args.src_root, "core", "providers", c, "symbols.txt")
     with open(file_name) as file:
         for line in file:
-            line = line.strip()
+            line = line.strip()  # noqa: PLW2901
             if line in symbols:
                 print("dup symbol: %s", line)
                 exit(-1)

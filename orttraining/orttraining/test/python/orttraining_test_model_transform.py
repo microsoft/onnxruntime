@@ -42,7 +42,7 @@ def find_weight_index(model, name):
     for index, w in enumerate(model.graph.initializer):
         if w.name == name:
             return index
-        index += 1
+        index += 1  # noqa: PLW2901
     return None
 
 
