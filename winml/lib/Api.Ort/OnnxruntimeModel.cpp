@@ -373,7 +373,7 @@ STDMETHODIMP OnnruntimeModel::JoinModel(_In_ IModel* other_model,
                                         _In_ const char* const join_node_prefix) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   auto ort_api = engine_factory_->UseOrtApi();
-  
+
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->JoinModels(ort_model_.get(),
                                                        static_cast<OnnruntimeModel*>(other_model)->ort_model_.get(),
                                                        output_names,

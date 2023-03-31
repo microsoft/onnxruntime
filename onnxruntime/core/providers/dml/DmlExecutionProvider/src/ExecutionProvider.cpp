@@ -512,7 +512,7 @@ namespace Dml
             }
 
             dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(*dst[i])));
-            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes.back() != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
 
             dstDatas.push_back(dst[i]->GetData());
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src[i]).GetDataInterface().Get());
@@ -621,7 +621,23 @@ namespace Dml
             "SequenceEmpty",
             "SequenceLength",
             "SequenceErase",
-            "SequenceInsert",
+            "SequenceInsert"
+        };
+
+        for (auto& sequence_op : sequence_ops)
+        {
+            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool IsDmlSequenceOperator(const onnxruntime::Node& node)
+    {
+        auto sequence_ops = std::array<char*, 1>{
+            "ConcatFromSequence"
         };
 
         for (auto& sequence_op : sequence_ops)
@@ -683,9 +699,12 @@ namespace Dml
             }
 
             // Allow nodeArgs that are SequenceTensor when they are actually implemented by CPU Kernels.
-            if (edgeType == MLOperatorEdgeType::SequenceTensor && IsCpuOnDmlOperator(node))
+            if (edgeType == MLOperatorEdgeType::SequenceTensor)
             {
-                // Leave nodeContainsSupportedDataTypes alone.
+                if (!IsCpuOnDmlOperator(node) && !IsDmlSequenceOperator(node))
+                {
+                    nodeContainsSupportedDataTypes = false;
+                }
                 return;
             }
 
