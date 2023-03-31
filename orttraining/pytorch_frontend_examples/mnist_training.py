@@ -4,20 +4,20 @@
 
 ## Model testing is not complete.
 
-from __future__ import print_function
 import argparse
+import os
+
+import numpy as np  # noqa: F401
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
+import torch.optim as optim  # noqa: F401
+from mpi4py import MPI
 from torchvision import datasets, transforms
-import numpy as np
-import os
 
 from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
-from mpi4py import MPI
 
-try:
+try:  # noqa: SIM105
     from onnxruntime.capi._pybind_state import set_cuda_device_id
 except ImportError:
     pass
@@ -25,7 +25,7 @@ except ImportError:
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNet, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, num_classes)
@@ -193,7 +193,7 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         train_with_trainer(args, trainer, device, train_loader, epoch)
-        import pdb
+        import pdb  # noqa: F401
 
         test_with_trainer(args, trainer, device, test_loader)
 

@@ -36,9 +36,6 @@ jobs:
       Repository: 'onnxruntimecpubuildaten'
       UseImageCacheContainerRegistry: false
       UsePipelineCache: true
-      DockerCacheKeys: 'tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu, tools/ci_build/github/linux/docker/manylinux*,
-        tools/ci_build/github/linux/docker/scripts/**/*, tools/ci_build/github/linux/docker/build_scripts/**/*,
-        !tools/ci_build/github/linux/docker/scripts/deps.txt'
 
   - task: Cache@2
     inputs:

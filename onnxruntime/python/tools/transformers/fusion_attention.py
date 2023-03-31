@@ -112,7 +112,7 @@ class FusionAttention(Fusion):
         num_heads: int,
         attention_mask: AttentionMask,
         use_multi_head_attention: bool = False,
-        search_op_types: List[str] = ["SkipLayerNormalization", "LayerNormalization"],
+        search_op_types: List[str] = ["SkipLayerNormalization", "LayerNormalization"],  # noqa: B006
     ):
         attention_op_name = "MultiHeadAttention" if use_multi_head_attention else "Attention"
         super().__init__(model, attention_op_name, search_op_types)
@@ -454,7 +454,7 @@ class FusionAttention(Fusion):
                 return
 
         other_inputs = []
-        for i, input in enumerate(start_node.input):
+        for _i, input in enumerate(start_node.input):
             if input not in output_name_to_node:
                 continue
 

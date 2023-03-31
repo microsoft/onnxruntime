@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/rocm/gemm_softmax_gemm_permute.h"
-
 #include "pybind11/stl.h"
 
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh"
@@ -286,7 +284,7 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
 #define REGISTER_TUNABLE(dtype) \
   REGISTER_COMMON("GemmSoftmaxGemmPermuteTunable_" #dtype, GemmSoftmaxGemmPermuteTunable, dtype)
 
-void InitGemmSoftmaxGemmPermute(py::module m) {
+KE_REGISTER(m) {
   REGISTER_GENERIC(half);
 
 #ifdef USE_COMPOSABLE_KERNEL

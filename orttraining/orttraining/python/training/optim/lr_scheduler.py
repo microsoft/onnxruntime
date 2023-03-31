@@ -1,7 +1,7 @@
 import math
 
 
-class _LRScheduler(object):
+class _LRScheduler:
     r"""Base class for implementing custom learning rate schedulers
 
     Schedulers can be either stateful or stateless.
@@ -273,10 +273,9 @@ class PolyWarmupLRScheduler(_LRScheduler):
         self._num_warmup_steps = warmup * total_steps
 
     def _warmup_poly(self, train_step_info):
-
         assert (
             train_step_info.optimizer_config.lr > self.lr_end
-        ), f"lr_end ({lr_end}) must be be smaller than initial lr ({train_step_info.optimizer_config.lr})"
+        ), f"lr_end ({lr_end}) must be be smaller than initial lr ({train_step_info.optimizer_config.lr})"  # noqa: F821
 
         if train_step_info.optimization_step < self._num_warmup_steps:
             return float(train_step_info.optimization_step) / float(max(1, self._num_warmup_steps))

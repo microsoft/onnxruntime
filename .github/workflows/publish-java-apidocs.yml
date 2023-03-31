@@ -1,21 +1,25 @@
 name: Update Java API Docs
+
+# Run when the Java API changes or every month so that the artifact does not expire
 on:
   push:
     branches:
       - main
     paths:
       - java
+  schedule:
+    - cron: '0 0 1 * *'
   workflow_dispatch:
 
 concurrency:
   group: "apidocs-java"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  publish:
+  build:
     name: Generate Java docs
     runs-on: ubuntu-latest
     steps:
@@ -31,15 +35,16 @@ jobs:
           build-root-directory: java
           gradle-executable: java/gradlew
           arguments: javadoc
-      - name: Get source commit
-        id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
       - name: Log source commit
-        run: echo $(git rev-parse --short HEAD) > java/build/docs/javadoc/version.txt
-      - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4
+        run: git rev-parse --short HEAD > java/build/docs/javadoc/source-version.txt
+      - name: Move Java docs into site
+        run: |
+          rm -rf _site/docs/api/java
+          mkdir -p _site/docs/api
+          mv java/build/docs/javadoc _site/docs/api/java
+      - name: Upload new site
+        uses: actions/upload-artifact@v3
         with:
-          branch: gh-pages
-          folder: java/build/docs/javadoc
-          target-folder: docs/api/java
-          clean: true
+          name: onnxruntime-java-apidocs
+          path: _site
+          retention-days: 60

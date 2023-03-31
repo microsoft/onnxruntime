@@ -455,7 +455,7 @@ def compare_t5_cross_attention_decoder(batch_size, seq_len, num_heads, head_size
         head_size=head_size,
         use_past=True,
     )
-    T5CrossAttention = T5Attention(config, is_static_kv=True)
+    T5CrossAttention = T5Attention(config, is_static_kv=True)  # noqa: N806
 
     hidden_states, key_value_states, past_key_value, attention_mask, _ = T5CrossAttention.create_inputs()
     torch_output = T5CrossAttention.torch_forward(
@@ -479,7 +479,7 @@ def compare_t5_cross_attention_decoder_init(batch_size, seq_len, num_heads, head
         head_size=head_size,
         use_past=False,
     )
-    T5CrossAttention = T5Attention(config, is_static_kv=True)
+    T5CrossAttention = T5Attention(config, is_static_kv=True)  # noqa: N806
 
     hidden_states, key_value_states, _, attention_mask, _ = T5CrossAttention.create_inputs()
     torch_output = T5CrossAttention.torch_forward(
@@ -505,7 +505,7 @@ def compare_t5_self_attention_decoder_init(batch_size, seq_len, num_heads, head_
         head_size=head_size,
         use_past=False,
     )
-    T5CrossAttention = T5Attention(config, is_static_kv=False)
+    T5CrossAttention = T5Attention(config, is_static_kv=False)  # noqa: N806
 
     hidden_states, _, _, _, position_bias = T5CrossAttention.create_inputs()
     torch_output = T5CrossAttention.torch_forward(
@@ -531,7 +531,7 @@ def compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size,
         head_size=head_size,
         use_past=True,
     )
-    T5CrossAttention = T5Attention(config, is_static_kv=False)
+    T5CrossAttention = T5Attention(config, is_static_kv=False)  # noqa: N806
 
     hidden_states, _, past_key_value, _, position_bias = T5CrossAttention.create_inputs()
     torch_output = T5CrossAttention.torch_forward(

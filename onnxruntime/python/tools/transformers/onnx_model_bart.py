@@ -97,7 +97,7 @@ class FusionBartEncoderAttention(FusionAttention):
             return
 
         other_inputs = []
-        for i, input in enumerate(normalize_node.input):
+        for _i, input in enumerate(normalize_node.input):
             if input not in output_name_to_node:
                 continue
             if input == qkv_nodes[0].output[0]:
@@ -159,7 +159,6 @@ class FusionBartEncoderAttention(FusionAttention):
             return
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
-
             mask_nodes = []
             mask_index = None
             attention_last_node = reshape_qkv_2

@@ -8,7 +8,7 @@ import torch
 
 
 def _parse_inputs_for_onnx_export(all_input_parameters, inputs, kwargs):
-    # extracted from https://github.com/microsoft/onnxruntime/blob/239c6ad3f021ff7cc2e6247eb074bd4208dc11e2/orttraining/orttraining/python/training/ortmodule/_io.py#L433  # noqa
+    # extracted from https://github.com/microsoft/onnxruntime/blob/239c6ad3f021ff7cc2e6247eb074bd4208dc11e2/orttraining/orttraining/python/training/ortmodule/_io.py#L433
 
     def _add_input(name, input):
         """Returns number of expanded inputs that _add_input processed"""
@@ -87,7 +87,7 @@ def _parse_inputs_for_onnx_export(all_input_parameters, inputs, kwargs):
 
 def _flatten_module_input(names, args, kwargs):
     """Flatten args and kwargs in a single tuple of tensors."""
-    # extracted from https://github.com/microsoft/onnxruntime/blob/239c6ad3f021ff7cc2e6247eb074bd4208dc11e2/orttraining/orttraining/python/training/ortmodule/_io.py#L110  # noqa
+    # extracted from https://github.com/microsoft/onnxruntime/blob/239c6ad3f021ff7cc2e6247eb074bd4208dc11e2/orttraining/orttraining/python/training/ortmodule/_io.py#L110
 
     def is_primitive_type(value):
         return type(value) in {int, bool, float}

@@ -34,11 +34,11 @@ from packaging import version
 import onnxruntime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from fusion_options import FusionOptions
-from onnx_model_clip import ClipOnnxModel
-from onnx_model_unet import UnetOnnxModel
-from onnx_model_vae import VaeOnnxModel
-from optimizer import optimize_by_onnxruntime, optimize_model
+from fusion_options import FusionOptions  # noqa: E402
+from onnx_model_clip import ClipOnnxModel  # noqa: E402
+from onnx_model_unet import UnetOnnxModel  # noqa: E402
+from onnx_model_vae import VaeOnnxModel  # noqa: E402
+from optimizer import optimize_by_onnxruntime, optimize_model  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

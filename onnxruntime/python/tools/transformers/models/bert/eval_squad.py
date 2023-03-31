@@ -138,13 +138,13 @@ def output_summary(results: List[Dict[str, Any]], csv_filename: str, metric_name
             "use_io_binding",
         ]
 
-        model_list = list(set([result["onnx_path"] for result in results]))
+        model_list = list({result["onnx_path"] for result in results})
         model_list.sort()
 
-        batch_sizes = list(set([result["batch_size"] for result in results]))
+        batch_sizes = list({result["batch_size"] for result in results})
         batch_sizes.sort()
 
-        sequence_lengths = list(set([result["sequence_length"] for result in results]))
+        sequence_lengths = list({result["sequence_length"] for result in results})
         sequence_lengths.sort()
 
         key_names = []

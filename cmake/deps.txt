@@ -34,7 +34,7 @@ pytorch_cpuinfo;https://github.com/pytorch/cpuinfo/archive/5916273f79a21551890fd
 re2;https://github.com/google/re2/archive/refs/tags/2022-06-01.zip;aa77313b76e91b531ee7f3e45f004c6a502a5374
 safeint;https://github.com/dcleblanc/SafeInt/archive/ff15c6ada150a5018c5ef2172401cb4529eac9c0.zip;913a4046e5274d329af2806cb53194f617d8c0ab
 tensorboard;https://github.com/tensorflow/tensorboard/archive/373eb09e4c5d2b3cc2493f0949dc4be6b6a45e81.zip;67b833913605a4f3f499894ab11528a702c2b381
-cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v2.11.0.zip;be70c559f07251ba7f33c789dba98872b444c10f
+cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v3.0.0.zip;0f95b3c1fc1bd1175c4a90b2c9e39074d1bccefd
 # below are deps introduced by triton client, might remove after 1.14 release
 openssl;https://github.com/openssl/openssl/archive/refs/tags/openssl-3.0.7.zip;dda8fc81308555410505eb4a9eab3e1da0436a1d
 rapidjson;https://github.com/Tencent/rapidjson/archive/refs/tags/v1.1.0.zip;0fe7b4f7b83df4b3d517f4a202f3a383af7a0818

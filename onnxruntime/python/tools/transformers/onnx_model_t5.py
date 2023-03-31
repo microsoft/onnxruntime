@@ -54,7 +54,6 @@ class FusionT5Attention(FusionAttention):
         num_heads: int,
         hidden_size: int,
     ) -> Union[NodeProto, None]:
-
         assert num_heads > 0
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
@@ -587,7 +586,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
             return
 
         pow_node = sim_ln_nodes[-2]
-        if not self.model.find_constant_input(pow_node, 2.0) == 1:
+        if self.model.find_constant_input(pow_node, 2.0) != 1:
             return
 
         root_input = pow_node.input[0]
