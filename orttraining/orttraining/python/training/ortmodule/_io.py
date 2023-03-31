@@ -14,6 +14,7 @@ import torch
 from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception  # noqa: F401
 from ._utils import warn_of_constant_inputs
 
+from ._logger import LogLevel, suppress_os_stream_output
 
 class _OutputIdentityOp(torch.autograd.Function):
     """Internal class used to prepend Identity ops in model's outputs
@@ -573,12 +574,12 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
     )
 
 
-def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
+def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs, log_level):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
     is_deepcopy = False
-    with torch.no_grad():
+    with torch.no_grad(), suppress_os_stream_output(log_level=log_level):
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy, sample_kwargs_copy = deepcopy_model_input(*inputs, **kwargs)
         try:
