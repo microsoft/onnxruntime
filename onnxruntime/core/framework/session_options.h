@@ -79,7 +79,7 @@ struct SessionOptions {
   // enable the memory arena on CPU
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.
-  bool enable_cpu_mem_arena = true;
+  bool enable_cpu_mem_arena = false;
 
   // the prefix of the profile file. The current time will be appended to the file name.
   std::basic_string<ORTCHAR_T> profile_file_prefix = ORT_TSTR("onnxruntime_profile_");
