@@ -14,7 +14,8 @@ import torch
 from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception  # noqa: F401
 from ._utils import warn_of_constant_inputs
 
-from ._logger import LogLevel, suppress_os_stream_output
+from ._logger import suppress_os_stream_output
+
 
 class _OutputIdentityOp(torch.autograd.Function):
     """Internal class used to prepend Identity ops in model's outputs
