@@ -14,7 +14,6 @@ from typing import List, Optional
 import numpy
 import onnx
 import torch
-from past_helper import PastKeyValuesHelper
 from transformers import WhisperConfig
 from whisper_decoder import WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderInputs

@@ -93,7 +93,6 @@ class WhisperEncoderHelper:
         config = encoder.config
         encoder_inputs = WhisperEncoderInputs.create_dummy(
             batch_size=2,
-            feature_size=80,
             sequence_length=3000,
             feature_size=config.num_mel_bins,
             device=device,

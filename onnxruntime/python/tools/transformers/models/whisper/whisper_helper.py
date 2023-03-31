@@ -224,7 +224,6 @@ class WhisperHelper:
         use_external_data_format: bool = False,
         auto_mixed_precision: bool = True,
         use_gpu: bool = False,
-        use_multihead_attn_fusion=False,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
@@ -234,11 +233,6 @@ class WhisperHelper:
         if is_float16:
             optimization_options = FusionOptions("bart")
             optimization_options.enable_skip_layer_norm = False
-
-        if use_multihead_attn_fusion:
-            if optimization_options is None:
-                optimization_options = FusionOptions("bart")
-            optimization_options.use_multi_head_attention = True
 
         m = optimize_model(
             onnx_model_path,
