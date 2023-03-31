@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime_api.h>
 #include "core/providers/rocm/cu_inc/common.cuh"
@@ -28,7 +30,7 @@ void groupNormNHWCSum(const GroupNormNHWCParams<T>* params) {
   // The number of blocks to compute all the channels.
   grid.x = params->c / params->cPerBlock;
   // The number of blocks to compute all the activations in a given instance.
-  grid.y = divUp(params->hw, params->hwPerBlock);
+  grid.y = CeilDiv(params->hw, params->hwPerBlock);
   // The number of instances.
   grid.z = params->n;
 
@@ -57,7 +59,7 @@ template <typename T, int ThreadsPerBlock, int VecSize>
 Status GroupNormNHWCSumOp(const GroupNormNHWCParams<T>* params) {
   dim3 grid;
   grid.x = params->c / params->cPerBlock;
-  grid.y = divUp(params->hw, params->hwPerBlock);
+  grid.y = CeilDiv(params->hw, params->hwPerBlock);
   grid.z = params->n;
 
   groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>
@@ -79,7 +81,7 @@ void groupNormNHWCScale(const GroupNormNHWCParams<T>* params) {
   // The number of blocks to compute all the channels.
   grid.x = params->c / params->cPerBlock;
   // The number of blocks to compute all the activations in a given instance.
-  grid.y = divUp(params->hw, params->hwPerBlock);
+  grid.y = CeilDiv(params->hw, params->hwPerBlock);
   // The number of instances.
   grid.z = params->n;
 
@@ -109,7 +111,7 @@ template <typename T, int ThreadsPerBlock, int VecSize>
 Status GroupNormNHWCScaleOp(const GroupNormNHWCParams<T>* params) {
   dim3 grid;
   grid.x = params->c / params->cPerBlock;
-  grid.y = divUp(params->hw, params->hwPerBlock);
+  grid.y = CeilDiv(params->hw, params->hwPerBlock);
   grid.z = params->n;
 
   groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>

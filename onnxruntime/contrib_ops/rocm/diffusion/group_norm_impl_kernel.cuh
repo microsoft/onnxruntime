@@ -19,6 +19,8 @@
  * limitations under the License.
  */
 
+#pragma once
+
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime_api.h>
 #include <hipcub/hipcub.hpp>

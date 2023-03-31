@@ -5,12 +5,15 @@
 
 #include <string>
 
+#include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
+
+using onnxruntime::rocm::CeilDiv;
 
 int32_t findMaxDivisor(int32_t n, int32_t maxAllowedDivisor) {
   int32_t maxDivisor = -1;
