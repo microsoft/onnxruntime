@@ -557,7 +557,7 @@ Similar to DecoderMaskedSelfAttention but this op excludes QKV MatMul and Bias.
 ONNX_MS_OPERATOR_SET_SCHEMA(
     DecoderMaskedMultiHeadAttention, 1,
     OpSchema()
-        .SetDoc(DecoderMaskedSelfAttention_ver1_doc)
+        .SetDoc(DecoderMaskedMultiHeadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("past_present_share_buffer",
               "Corresponding past and present are same tensor, its size is "
