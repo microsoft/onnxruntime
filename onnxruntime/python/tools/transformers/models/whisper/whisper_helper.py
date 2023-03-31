@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, Tuple, Union
 
 import torch
 from transformers import WhisperForConditionalGeneration
@@ -19,9 +19,9 @@ from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncod
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from float16 import float_to_float16_max_diff
-from onnx_model import OnnxModel
-from optimizer import optimize_model
+from float16 import float_to_float16_max_diff  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
+from optimizer import optimize_model  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -149,12 +149,12 @@ class WhisperHelper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: List[str] = [
+        op_block_list: Tuple[str] = (
             "SimplifiedLayerNormalization",
             "SkipSimplifiedLayerNormalization",
             "Relu",
             "Add",
-        ],
+        ),
     ):
         """Convert model to mixed precision.
            It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
@@ -204,7 +204,7 @@ class WhisperHelper:
 
         parameters = {
             "keep_io_types": keep_io_types,
-            "op_block_list": op_block_list,
+            "op_block_list": list(op_block_list),
             "node_block_list": node_block_list,
             "force_fp16_initializers": is_weight_fp16_precision,
         }

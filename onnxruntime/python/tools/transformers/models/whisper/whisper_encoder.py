@@ -79,7 +79,7 @@ class WhisperEncoderHelper:
         device: torch.device,
         onnx_model_path: str,
         verbose: bool = True,
-        use_external_data_format: bool = False
+        use_external_data_format: bool = False,
     ):
         """Export encoder to ONNX
 

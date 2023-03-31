@@ -367,13 +367,15 @@ class WhisperDecoderHelper:
             past_decode_sequence_length,
         ) in test_cases[:max_cases]:
             if isinstance(model, WhisperDecoderInit):
-                past_decode_sequence_length = 0
+                dec_seq_len = 0
+            else:
+                dec_seq_len = past_decode_sequence_length
 
             inputs = WhisperDecoderInputs.create_dummy(
                 model.config,
                 batch_size,
                 encode_sequence_length,
-                past_decode_sequence_length,
+                dec_seq_len,
                 device=device,
                 float16=float16,
                 use_int32_inputs=use_int32_inputs,
