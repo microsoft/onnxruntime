@@ -173,8 +173,19 @@ class MLOperatorTensorShapeDescription
         Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescriptionPrivate> private_impl;
         m_impl.As(&private_impl);
         uint32_t inputCount = 0;
-        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputCount(inputIndex, &inputCount));
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
         return inputCount;
+    }
+
+    MLOperatorTensorDataType GetSequenceInputDataType(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescriptionPrivate> private_impl;
+        m_impl.As(&private_impl);
+        uint32_t inputCount = 0;
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
+        return dataType;
     }
 
     uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
@@ -604,6 +615,12 @@ public:
         return shapeDesc.GetSequenceInputCount(inputIndex);
     }
 
+    MLOperatorTensorDataType GetSequenceInputDataType(uint32_t inputIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetSequenceInputDataType(inputIndex);
+    }
+
     uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
     {
         auto shapeDesc = GetTensorShapeDescription();
@@ -689,8 +706,19 @@ public:
         Microsoft::WRL::ComPtr<IMLOperatorShapeInferenceContextPrivate> private_impl;
         m_impl.As(&private_impl);
         uint32_t inputCount = 0;
-        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputCount(inputIndex, &inputCount));
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
         return inputCount;
+    }
+
+    MLOperatorTensorDataType GetSequenceInputDataType(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorShapeInferenceContextPrivate> private_impl;
+        m_impl.As(&private_impl);
+        uint32_t inputCount = 0;
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
+        return dataType;
     }
 
     uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
@@ -798,8 +826,19 @@ public:
         Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
         m_impl.As(&operatorKernelContext);
         uint32_t inputCount = 0;
-        ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceInputCount(inputIndex, &inputCount));
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
         return inputCount;
+    }
+
+    MLOperatorTensorDataType GetSequenceInputDataType(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+        uint32_t inputCount = 0;
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
+        return dataType;
     }
 
     MLOperatorTensor GetSequenceInputTensor(uint32_t inputIndex, uint32_t sequenceIndex) const
@@ -811,6 +850,13 @@ public:
         ORT_THROW_HR_IF(E_INVALIDARG, !operatorKernelContext->IsSequenceInputTensor(inputIndex));
         ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceInputTensor(inputIndex, sequenceIndex, &tensor));
         return tensor.Get();
+    }
+
+    void PrepareSequenceOutput(uint32_t outputIndex, MLOperatorTensorDataType dataType) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+        ORT_THROW_IF_FAILED(operatorKernelContext->PrepareSequenceOutput(outputIndex, dataType));
     }
 
     MLOperatorTensor GetSequenceOutputTensor(
