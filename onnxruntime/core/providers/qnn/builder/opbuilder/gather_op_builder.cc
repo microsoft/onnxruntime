@@ -43,6 +43,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
   const auto& inputs = node_unit.Inputs();
+  ORT_RETURN_IF(inputs.size() != 2, "Gather should has 2 inputs at least!");
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
 
   // Process indices
@@ -64,13 +65,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   if (is_initializer_input) {
     const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
-  }
-
-  // Gather indices only support int32
-  if (qnn_data_type == QNN_DATATYPE_INT_64) {
-    if (!is_initializer_input) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Gather indices only support int32 type.");
-    } else {
+    if (qnn_data_type == QNN_DATATYPE_INT_64) {
       // Convert initializer from int64 to int32
       size_t size = unpacked_tensor.size() / sizeof(int64_t);
       const int64_t* gather_indices_int64 = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
@@ -79,9 +74,15 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       std::transform(gather_indices_int64, gather_indices_int64 + size, gather_indices_int32,
                      [](int64_t item) { return SafeInt<uint32_t>(item); });
       qnn_data_type = QNN_DATATYPE_INT_32;
+    } else {
+      qnn_data_type = QNN_DATATYPE_INT_32;
+      gather_indices = std::move(unpacked_tensor);
     }
-  } else {
-    gather_indices = std::move(unpacked_tensor);
+  }
+
+  // Gather indices only support int32
+  if (qnn_data_type == QNN_DATATYPE_INT_64 && !is_initializer_input) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Gather indices only support int32 type.");
   }
 
   // For Quantized model, Gather indices use int32 without quantization
