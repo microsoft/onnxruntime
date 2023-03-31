@@ -450,6 +450,19 @@ enum DML_RANDOM_GENERATOR_TYPE
 
 #endif // DML_TARGET_VERSION >= 0x3000
 
+#if DML_TARGET_VERSION >= 0x5300
+
+enum DML_MULTI_HEAD_ATTENTION_MASK_TYPE
+{
+    DML_MULTI_HEAD_ATTENTION_MASK_TYPE_NONE,
+    DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH,
+    DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_END_START,
+    DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END,
+    DML_MULTI_HEAD_ATTENTION_MASK_TYPE_BOOLEAN,
+};
+
+#endif // DML_TARGET_VERSION >= 0x5300
+
 // ===================================================================================================================
 //   Operator descriptions
 // ===================================================================================================================
@@ -1948,7 +1961,6 @@ struct DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC
     _Maybenull_ const DML_TENSOR_DESC* StackedQueryKeyValueTensor;
     _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
     _Maybenull_ const DML_TENSOR_DESC* MaskTensor;
-    _Maybenull_ const DML_TENSOR_DESC* UnpaddedKeyBoundsTensor;
     _Maybenull_ const DML_TENSOR_DESC* RelativePositionBiasTensor;
     _Maybenull_ const DML_TENSOR_DESC* PastKeyTensor;
     _Maybenull_ const DML_TENSOR_DESC* PastValueTensor;
@@ -1958,6 +1970,7 @@ struct DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC
     FLOAT Scale;
     FLOAT MaskFilterValue;
     UINT HeadCount;
+    DML_MULTI_HEAD_ATTENTION_MASK_TYPE MaskType;
 };
 
 #endif // DML_TARGET_VERSION >= 0x5300

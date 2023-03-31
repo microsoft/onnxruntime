@@ -58,8 +58,7 @@ public:
             mhaStackedKeyValueIndex,
             mhaStackedQueryKeyValueIndex,
             mhaBiasIndex,
-            mhaKeyPaddingMaskIndex,
-            mhaUnpaddedKeyBoundsIndex,
+            mhaMaskIndex,
             mhaRelativePositionBiasIndex,
             mhaPastKeyIndex,
             mhaPastValueIndex,
@@ -87,20 +86,15 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 2);
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() >= 1);
 
-        bool maskIsUnpaddedBounds =
-            kernelCreationContext.IsInputValid(maskIndex) &&
-            kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1;
-
         const uint32_t dmlInputIndex = inputIndex;
         const uint32_t dmlWeightsIndex = weightsIndex;
         const uint32_t dmlBiasIndex = biasIndex;
-        const uint32_t dmlKeyPaddingMaskIndex = maskIndex;
-        const uint32_t dmlUnpaddedKeyBoundsIndex = maskIndex;
+        const uint32_t dmlMaskIndex = maskIndex;
         const uint32_t dmlRelativePositionBiasIndex = relativePositionBiasIndex;
 
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
-        const bool hasMask = kernelCreationContext.IsInputValid(maskIndex) && !maskIsUnpaddedBounds;
-        const bool hasUnpaddedBounds = kernelCreationContext.IsInputValid(maskIndex) && maskIsUnpaddedBounds;
+        const bool hasMask = kernelCreationContext.IsInputValid(maskIndex);
+        const bool hasUnpaddedBounds = hasMask && kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1;
         const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
 
         DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, std::nullopt, std::nullopt, 1);
@@ -159,42 +153,51 @@ public:
 
         MLOperatorTensorDataType maskTensorDataType = MLOperatorTensorDataType::Undefined;
         bool hasMaxSequenceMask = false;
+        DML_MULTI_HEAD_ATTENTION_MASK_TYPE maskType = DML_MULTI_HEAD_ATTENTION_MASK_TYPE_NONE;
         if (hasMask)
         {
-            auto maskIndexTensorShape = m_inputTensorDescs[dmlKeyPaddingMaskIndex].GetSizes();
-            ML_CHECK_VALID_ARGUMENT(maskIndexTensorShape.size() > 1 && maskIndexTensorShape.size() <= 4);
-
-            std::vector<uint32_t> reshapedMaskIndexTensorShape(maskIndexTensorShape.begin(), maskIndexTensorShape.end());
-            if (maskIndexTensorShape.size() == 4 && maskIndexTensorShape[2] != sequenceLength)
+            if (hasUnpaddedBounds)
             {
-                hasMaxSequenceMask = true;
-                ML_CHECK_VALID_ARGUMENT(maskIndexTensorShape[2] == maskIndexTensorShape[3]);
-                const uint32_t maxSequenceLength = maskIndexTensorShape[2];
-                uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, maxSequenceLength, maxSequenceLength};
-                maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(maskIndex).tensorDataType;
-                m_inputTensorDescs[dmlKeyPaddingMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
+                auto unpaddedKeyBoundsShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
+                ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape.size() == 1);
+
+                const uint32_t batchGroupCount = unpaddedKeyBoundsShape[0] / batchSize;
+                ML_CHECK_VALID_ARGUMENT(batchGroupCount == 1 || batchGroupCount == 2);
+
+                uint32_t desiredShape[2] = {batchGroupCount, batchSize};
+                m_inputTensorDescs[dmlMaskIndex] = TensorDesc(
+                    m_inputTensorDescs[dmlMaskIndex].GetDmlDataType(),
+                    desiredShape);
+
+                maskType = batchGroupCount == 1
+                    ? DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH
+                    : DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_END_START;
             }
             else
             {
-                uint32_t maskIndexDimensionCount = gsl::narrow_cast<uint32_t>(maskIndexTensorShape.size());
-                reshapedMaskIndexTensorShape.insert(reshapedMaskIndexTensorShape.begin() + 1, 4 - maskIndexDimensionCount, 1);
-                uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, sequenceLength, sequenceLength};
-                maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(maskIndex).tensorDataType;
-                m_inputTensorDescs[dmlKeyPaddingMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
+                auto maskIndexTensorShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
+                ML_CHECK_VALID_ARGUMENT(maskIndexTensorShape.size() > 1 && maskIndexTensorShape.size() <= 4);
+
+                maskType = DML_MULTI_HEAD_ATTENTION_MASK_TYPE_BOOLEAN;
+                std::vector<uint32_t> reshapedMaskIndexTensorShape(maskIndexTensorShape.begin(), maskIndexTensorShape.end());
+                if (maskIndexTensorShape.size() == 4 && maskIndexTensorShape[2] != sequenceLength)
+                {
+                    hasMaxSequenceMask = true;
+                    ML_CHECK_VALID_ARGUMENT(maskIndexTensorShape[2] == maskIndexTensorShape[3]);
+                    const uint32_t maxSequenceLength = maskIndexTensorShape[2];
+                    uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, maxSequenceLength, maxSequenceLength};
+                    maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(maskIndex).tensorDataType;
+                    m_inputTensorDescs[dmlMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
+                }
+                else
+                {
+                    uint32_t maskIndexDimensionCount = gsl::narrow_cast<uint32_t>(maskIndexTensorShape.size());
+                    reshapedMaskIndexTensorShape.insert(reshapedMaskIndexTensorShape.begin() + 1, 4 - maskIndexDimensionCount, 1);
+                    uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, sequenceLength, sequenceLength};
+                    maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(maskIndex).tensorDataType;
+                    m_inputTensorDescs[dmlMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
+                }
             }
-
-        }
-
-        if (hasUnpaddedBounds)
-        {
-            auto unpaddedKeyBoundsShape = m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex].GetSizes();
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape.size() == 1);
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape[0] % batchSize == 0);
-
-            uint32_t desiredShape[2] = {unpaddedKeyBoundsShape[0] / batchSize, batchSize};
-            m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex] = TensorDesc(
-                m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex].GetDmlDataType(),
-                desiredShape);
         }
 
         if (hasRelativePositionBias)
@@ -332,7 +335,7 @@ public:
         {
             maskSliceOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(maskTensorDataType, maskSliceOutputShape);
             namedMaskSliceOutputTensorDesc = maskSliceOutputTensorDesc.GetDmlDesc();
-            maskSlicedOperatorDesc.InputTensor = &inputDescs[dmlKeyPaddingMaskIndex];
+            maskSlicedOperatorDesc.InputTensor = &inputDescs[dmlMaskIndex];
             maskSlicedOperatorDesc.OutputTensor = &namedMaskSliceOutputTensorDesc;
             maskSlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(maskSliceOutputShape.size());
             maskSlicedOperatorDesc.InputWindowOffsets = maskSliceOffsets.data();
@@ -352,15 +355,15 @@ public:
         }
         else
         {
-            mhaOperatorDesc.MaskTensor = hasMask ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
+            mhaOperatorDesc.MaskTensor = hasMask ? &inputDescs[dmlMaskIndex] : nullptr;
         }
 
-        mhaOperatorDesc.UnpaddedKeyBoundsTensor = hasUnpaddedBounds ? &inputDescs[dmlUnpaddedKeyBoundsIndex] : nullptr;
         mhaOperatorDesc.RelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
         mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
         mhaOperatorDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
         mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
         mhaOperatorDesc.HeadCount = numHeads;
+        mhaOperatorDesc.MaskType = maskType;
         const DML_OPERATOR_DESC mhaDesc = { DML_OPERATOR_MULTI_HEAD_ATTENTION, &mhaOperatorDesc };
 
         // Construct the graph
@@ -428,10 +431,18 @@ public:
 
         if (hasMask)
         {
-            if (hasMaxSequenceMask)
+            if (hasUnpaddedBounds)
+            {
+                DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
+                maskToMhaEdge.GraphInputIndex = dmlMaskIndex;
+                maskToMhaEdge.ToNodeIndex = mhaNodeIndex;
+                maskToMhaEdge.ToNodeInputIndex = mhaMaskIndex;
+                inputEdges.push_back(maskToMhaEdge);
+            }
+            else if (hasMaxSequenceMask)
             {
                 DML_INPUT_GRAPH_EDGE_DESC maskToMaskSliceEdge = {};
-                maskToMaskSliceEdge.GraphInputIndex = dmlKeyPaddingMaskIndex;
+                maskToMaskSliceEdge.GraphInputIndex = dmlMaskIndex;
                 maskToMaskSliceEdge.ToNodeIndex = maskSliceNodeIndex;
                 maskToMaskSliceEdge.ToNodeInputIndex = 0;
                 inputEdges.push_back(maskToMaskSliceEdge);
@@ -440,26 +451,17 @@ public:
                 maskSliceToMhaEdge.FromNodeIndex = maskSliceNodeIndex;
                 maskSliceToMhaEdge.FromNodeOutputIndex = 0;
                 maskSliceToMhaEdge.ToNodeIndex = mhaNodeIndex;
-                maskSliceToMhaEdge.ToNodeInputIndex = mhaKeyPaddingMaskIndex;
+                maskSliceToMhaEdge.ToNodeInputIndex = mhaMaskIndex;
                 intermediateEdges.push_back(maskSliceToMhaEdge);
             }
             else
             {
                 DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
-                maskToMhaEdge.GraphInputIndex = dmlKeyPaddingMaskIndex;
+                maskToMhaEdge.GraphInputIndex = dmlMaskIndex;
                 maskToMhaEdge.ToNodeIndex = mhaNodeIndex;
-                maskToMhaEdge.ToNodeInputIndex = mhaKeyPaddingMaskIndex;
+                maskToMhaEdge.ToNodeInputIndex = mhaMaskIndex;
                 inputEdges.push_back(maskToMhaEdge);
             }
-        }
-
-        if (hasUnpaddedBounds)
-        {
-            DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
-            maskToMhaEdge.GraphInputIndex = dmlUnpaddedKeyBoundsIndex;
-            maskToMhaEdge.ToNodeIndex = mhaNodeIndex;
-            maskToMhaEdge.ToNodeInputIndex = mhaUnpaddedKeyBoundsIndex;
-            inputEdges.push_back(maskToMhaEdge);
         }
 
         if (hasRelativePositionBias)

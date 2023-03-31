@@ -17,7 +17,7 @@ public:
             keyIndex,
             valueIndex,
             biasIndex,
-            keyPaddingMaskIndex,
+            maskIndex,
             relativePositionBiasIndex,
             pastKeyIndex,
             pastValueIndex,
@@ -33,8 +33,7 @@ public:
             dmlStackedKeyValueIndex,
             dmlStackedQueryKeyValueIndex,
             dmlBiasIndex,
-            dmlKeyPaddingMaskIndex,
-            dmlUnpaddedKeyBoundsIndex,
+            dmlMaskIndex,
             dmlRelativePositionBiasIndex,
             dmlPastKeyIndex,
             dmlPastValueIndex,
@@ -55,13 +54,12 @@ public:
         const bool keyValueIsPast = kernelCreationContext.IsInputValid(keyIndex) && kernelCreationContext.GetInputTensorDimensionCount(keyIndex) == 4;
         const bool hasValue = kernelCreationContext.IsInputValid(valueIndex) && !keyValueIsPast;
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
-        const bool hasKeyPaddingMask = kernelCreationContext.IsInputValid(keyPaddingMaskIndex);
+        const bool hasMask = kernelCreationContext.IsInputValid(maskIndex);
         const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
         const bool hasPastKey = keyValueIsPast || kernelCreationContext.IsInputValid(pastKeyIndex);
         const bool hasPastValue = keyValueIsPast || kernelCreationContext.IsInputValid(pastValueIndex);
         const bool hasPresentKeyOutput = kernelCreationContext.IsOutputValid(outputPresentKeyIndex);
         const bool hasPresentValueOutput = kernelCreationContext.IsOutputValid(outputPresentValueIndex);
-        const bool maskIsUnpaddedBounds = hasKeyPaddingMask && kernelCreationContext.GetInputTensorDimensionCount(keyPaddingMaskIndex) == 1;
         const bool stackedQkv = kernelCreationContext.GetInputTensorDimensionCount(queryIndex) == 5;
         const bool stackedKv = kernelCreationContext.IsInputValid(keyIndex) && kernelCreationContext.GetInputTensorDimensionCount(keyIndex) == 5;
         const bool hasKey = !stackedKv && !keyValueIsPast && kernelCreationContext.IsInputValid(keyIndex);
@@ -74,8 +72,7 @@ public:
             stackedKv ? std::optional<uint32_t>(keyIndex) : std::nullopt,
             stackedQkv ? std::optional<uint32_t>(queryIndex) : std::nullopt,
             biasIndex,
-            maskIsUnpaddedBounds ? std::nullopt : std::optional<uint32_t>(keyPaddingMaskIndex),
-            maskIsUnpaddedBounds ? std::optional<uint32_t>(keyPaddingMaskIndex) : std::nullopt,
+            hasMask ? std::optional<uint32_t>(maskIndex) : std::nullopt,
             relativePositionBiasIndex,
             keyValueIsPast ? keyIndex : pastKeyIndex,
             keyValueIsPast ? valueIndex : pastValueIndex,
@@ -184,32 +181,41 @@ public:
             ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlBiasIndex].GetSizes()[0] == hiddenSize + hiddenSize + vHiddenSize);
         }
 
-        if (hasKeyPaddingMask && !maskIsUnpaddedBounds)
+        DML_MULTI_HEAD_ATTENTION_MASK_TYPE maskType = DML_MULTI_HEAD_ATTENTION_MASK_TYPE_NONE;
+        if (hasMask)
         {
-            auto keyPaddingMaskTensorShape = m_inputTensorDescs[dmlKeyPaddingMaskIndex].GetSizes();
-            ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape.size() == 2);
-            ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[0] == batchSize);
-            ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[1] == kvSequenceLength);
+            if (kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1)
+            {
+                auto unpaddedKeyBoundsShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
+                ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape.size() == 1);
+                ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape[0] == batchSize || unpaddedKeyBoundsShape[0] == batchSize * 3 + 2);
 
-            const uint32_t actualShape[4] = {batchSize, 1, 1, kvSequenceLength};
-            const uint32_t desiredShape[4] = {batchSize, numHeads, sequenceLength, kvSequenceLength};
+                uint32_t desiredShape[2] = {1, batchSize};
+                m_inputTensorDescs[dmlMaskIndex] = TensorDesc(
+                    m_inputTensorDescs[dmlMaskIndex].GetDmlDataType(),
+                    desiredShape);
 
-            m_inputTensorDescs[dmlKeyPaddingMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(
-                m_inputTensorDescs[dmlKeyPaddingMaskIndex].GetMlOperatorDataType(),
-                desiredShape,
-                actualShape);
-        }
+                maskType = unpaddedKeyBoundsShape[0] == batchSize
+                    ? DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH
+                    : DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END;
+            }
+            else
+            {
+                auto keyPaddingMaskTensorShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
+                ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape.size() == 2);
+                ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[0] == batchSize);
+                ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[1] == kvSequenceLength);
 
-        if (hasKeyPaddingMask && maskIsUnpaddedBounds)
-        {
-            auto unpaddedKeyBoundsShape = m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex].GetSizes();
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape.size() == 1);
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape[0] == batchSize);
+                const uint32_t actualShape[4] = {batchSize, 1, 1, kvSequenceLength};
+                const uint32_t desiredShape[4] = {batchSize, numHeads, sequenceLength, kvSequenceLength};
 
-            uint32_t desiredShape[2] = {1, batchSize};
-            m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex] = TensorDesc(
-                m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex].GetDmlDataType(),
-                desiredShape);
+                m_inputTensorDescs[dmlMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(
+                    m_inputTensorDescs[dmlMaskIndex].GetMlOperatorDataType(),
+                    desiredShape,
+                    actualShape);
+
+                maskType = DML_MULTI_HEAD_ATTENTION_MASK_TYPE_BOOLEAN;
+            }
         }
 
         if (hasRelativePositionBias)
@@ -251,8 +257,7 @@ public:
         mhaDesc.StackedKeyValueTensor = stackedKv ? &inputDescs[dmlStackedKeyValueIndex] : nullptr;
         mhaDesc.StackedQueryKeyValueTensor = stackedQkv ? &inputDescs[dmlStackedQueryKeyValueIndex] : nullptr;
         mhaDesc.BiasTensor = hasBias ? &inputDescs[dmlBiasIndex] : nullptr;
-        mhaDesc.MaskTensor = (hasKeyPaddingMask && !maskIsUnpaddedBounds) ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
-        mhaDesc.UnpaddedKeyBoundsTensor = (hasKeyPaddingMask && maskIsUnpaddedBounds) ? &inputDescs[dmlUnpaddedKeyBoundsIndex] : nullptr;
+        mhaDesc.MaskTensor = hasMask ? &inputDescs[dmlMaskIndex] : nullptr;
         mhaDesc.RelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
         mhaDesc.PastKeyTensor = hasPastKey ? &inputDescs[dmlPastKeyIndex] : nullptr;
         mhaDesc.PastValueTensor = hasPastValue ? &inputDescs[dmlPastValueIndex] : nullptr;
@@ -262,6 +267,7 @@ public:
         mhaDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
         mhaDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
         mhaDesc.HeadCount = numHeads;
+        mhaDesc.MaskType = maskType;
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MULTI_HEAD_ATTENTION, &mhaDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
