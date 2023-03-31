@@ -357,6 +357,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
   inline static bool IsSupportedQkvFormat(const AttentionParameters* attn) {
     switch (attn->qkv_format) {
       case Q_K_V_BNSH:
+      case Q_K_V_BSNH:
       case Q_KV_BSNH_BSN2H:
       case QKV_BSN3H:
         return true;
