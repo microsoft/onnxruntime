@@ -21,23 +21,17 @@ jobs:
       - name: Run rust docs generation
         run: |
            cd rust
-           cargo doc --no-deps
-      - name: Set commit ID
-        id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
-      - uses: actions/checkout@v2
-        with:
-          ref: gh-pages
-          clean: false
-      - name: Move API docs into target area
+           RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo +nightly doc --no-deps
+      - name: Log source commit
+        run: git rev-parse --short HEAD > build/rust/html/source-version.txt
+      - name: Move Rust docs into site
         run: |
-          rm -rf docs/api/rust
-          mv rust/target/doc docs/api/rust
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v3
+          rm -rf _site/docs/api/rust
+          mkdir -p _site/docs/api
+          mv rust/html _site/docs/api/rust
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v3
         with:
-          branch: gh-pages-rustdocs-pr
-          base: gh-pages
-          title: '[Automated]: Update Rust API docs'
-          commit-message: 'Update Rust API docs to commit ${{ steps.vars.outputs.sha_short }}'
-          add-paths: docs/api/rust
+          name: onnxruntime-rust-apidocs
+          path: _site
+          retention-days: 60
