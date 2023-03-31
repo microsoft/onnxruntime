@@ -6,6 +6,7 @@ import collections
 import collections.abc
 import os
 import warnings
+from pathlib import Path
 
 from onnxruntime.capi import _pybind_state as C
 
@@ -346,6 +347,9 @@ class InferenceSession(Session):
 
         if isinstance(path_or_bytes, str):
             self._model_path = path_or_bytes
+            self._model_bytes = None
+        elif isinstance(path_or_bytes, Path):
+            self._model_path = str(path_or_bytes)
             self._model_bytes = None
         elif isinstance(path_or_bytes, bytes):
             self._model_path = None
