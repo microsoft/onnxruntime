@@ -150,6 +150,16 @@ COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.9.13
 
 
+FROM build_cpython AS build_cpython310
+COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.5
+
+
+FROM build_cpython AS build_cpython311
+COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.11.2
+
+
 FROM build_cpython AS all_python
 COPY build_scripts/install-pypy.sh \
      build_scripts/pypy.sha256 \
@@ -159,6 +169,8 @@ RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.8 7.3.9
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.9 7.3.9
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
+COPY --from=build_cpython310 /opt/_internal /opt/_internal/
+COPY --from=build_cpython311 /opt/_internal /opt/_internal/
 RUN manylinux-entrypoint /build_scripts/finalize-python.sh
 
 
@@ -171,6 +183,8 @@ COPY build_scripts/finalize.sh \
      build_scripts/python-tag-abi-tag.py \
      build_scripts/requirements3.8.txt \
      build_scripts/requirements3.9.txt \
+     build_scripts/requirements3.10.txt \
+     build_scripts/requirements3.11.txt \
      build_scripts/requirements-base-tools.txt \
      /build_scripts/
 COPY build_scripts/requirements-tools/* /build_scripts/requirements-tools/
@@ -193,6 +207,7 @@ RUN cd /tmp/scripts && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 $INSTALL_DEPS_EXTRA_ARGS && \
+    /tmp/scripts/install_python_deps.sh -d gpu -p 3.10 $INSTALL_DEPS_EXTRA_ARGS && \
      rm -rf /tmp/scripts
 
 # remove protobuf to prevent ambiguity which is used for onnxruntime build
