@@ -3,17 +3,15 @@
 
 import copy
 import os
-import sys
 import unittest
 
 import numpy as np
 import onnx
-import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from helper import get_name
-from numpy.testing import assert_allclose, assert_array_equal
+from numpy.testing import assert_allclose
 from torchvision import datasets, transforms
 
 import onnxruntime
@@ -140,7 +138,7 @@ def create_ort_trainer(
     return model, model_desc, device
 
 
-def runBertTrainingTest(
+def runBertTrainingTest(  # noqa: N802
     gradient_accumulation_steps,
     use_mixed_precision,
     allreduce_post_accumulation,
@@ -170,7 +168,7 @@ def runBertTrainingTest(
     next_sentence_labels_batches = []
     batch_size = 16
     num_batches = 8
-    for batch in range(num_batches):
+    for _batch in range(num_batches):
         input_ids_batches = [
             *input_ids_batches,
             generate_sample_batch(model_desc.inputs_[0], batch_size, device),
@@ -267,7 +265,7 @@ def runBertTrainingTest(
 class MNISTWrapper:
     class NeuralNet(nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(MNISTWrapper.NeuralNet, self).__init__()
+            super().__init__()
             self.fc1 = nn.Linear(input_size, hidden_size)
             self.relu = nn.ReLU()
             self.fc2 = nn.Linear(hidden_size, num_classes)
@@ -282,7 +280,7 @@ class MNISTWrapper:
 
     class NeuralNetWithLoss(nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(MNISTWrapper.NeuralNetWithLoss, self).__init__()
+            super().__init__()
             self.fc1 = nn.Linear(input_size, hidden_size)
             self.relu = nn.ReLU()
             self.fc2 = nn.Linear(hidden_size, num_classes)
@@ -293,14 +291,14 @@ class MNISTWrapper:
             out = self.fc2(out)
             return F.nll_loss(F.log_softmax(out, dim=1), target), out
 
-    def my_loss(x, target):
+    def my_loss(x, target):  # noqa: N805
         return F.nll_loss(F.log_softmax(x, dim=1), target)
 
     def train_with_trainer(self, learningRate, trainer, device, train_loader, epoch):
         actual_losses = []
         for batch_idx, (data, target) in enumerate(train_loader):
-            data, target = data.to(device), target.to(device)
-            data = data.reshape(data.shape[0], -1)
+            data, target = data.to(device), target.to(device)  # noqa: PLW2901
+            data = data.reshape(data.shape[0], -1)  # noqa: PLW2901
 
             loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
@@ -325,8 +323,8 @@ class MNISTWrapper:
         correct = 0
         with torch.no_grad():
             for data, target in test_loader:
-                data, target = data.to(device), target.to(device)
-                data = data.reshape(data.shape[0], -1)
+                data, target = data.to(device), target.to(device)  # noqa: PLW2901
+                data = data.reshape(data.shape[0], -1)  # noqa: PLW2901
                 output = F.log_softmax(trainer.eval_step((data), fetches=["probability"]), dim=1)
                 test_loss += F.nll_loss(output, target, reduction="sum").item()  # sum up batch loss
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
@@ -415,7 +413,7 @@ class MNISTWrapper:
         model_desc,
         device,
         onnx_opset_ver=12,
-        frozen_weights=[],
+        frozen_weights=[],  # noqa: B006
         internal_loss_fn=False,
         get_lr_this_step=None,
         optimizer="SGDOptimizer",
@@ -442,7 +440,7 @@ class MNISTWrapper:
 
 
 class TestOrtTrainer(unittest.TestCase):
-    def run_mnist_training_and_testing(onnx_opset_ver):
+    def run_mnist_training_and_testing(onnx_opset_ver):  # noqa: N805
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -451,7 +449,7 @@ class TestOrtTrainer(unittest.TestCase):
         model, model_desc = mnist.get_model()
         trainer = mnist.get_trainer(model, model_desc, device, onnx_opset_ver=onnx_opset_ver)
 
-        learningRate = 0.01
+        learningRate = 0.01  # noqa: N806
         args_epochs = 2
         expected_losses = [
             2.312044143676758,
@@ -518,10 +516,10 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="test accuracy mismatch",
         )
 
-    def testMNISTTrainingAndTestingOpset12(self):
+    def testMNISTTrainingAndTestingOpset12(self):  # noqa: N802
         TestOrtTrainer.run_mnist_training_and_testing(onnx_opset_ver=12)
 
-    def testMNISTResumeTrainingAndTesting(self):
+    def testMNISTResumeTrainingAndTesting(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -529,7 +527,7 @@ class TestOrtTrainer(unittest.TestCase):
         train_loader, test_loader = mnist.get_loaders()
         model, model_desc = mnist.get_model()
 
-        learningRate = 0.01
+        learningRate = 0.01  # noqa: N806
         args_epochs = 2
         args_checkpoint_epoch = 1
         # should match those in test without checkpointing
@@ -590,7 +588,7 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="test accuracy mismatch",
         )
 
-    def testMNISTStateDict(self):
+    def testMNISTStateDict(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -602,8 +600,7 @@ class TestOrtTrainer(unittest.TestCase):
         state_dict = trainer.state_dict()
         assert state_dict == {}
 
-        learningRate = 0.02
-        epoch = 0
+        learningRate = 0.02  # noqa: N806
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -620,7 +617,7 @@ class TestOrtTrainer(unittest.TestCase):
             "bias_buffer",
         }
 
-    def testMNISTSaveAsONNX(self):
+    def testMNISTSaveAsONNX(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
         onnx_file_name = "mnist.onnx"
@@ -635,8 +632,7 @@ class TestOrtTrainer(unittest.TestCase):
         trainer.save_as_onnx(onnx_file_name)
         assert not os.path.exists(onnx_file_name)
 
-        learningRate = 0.02
-        epoch = 0
+        learningRate = 0.02  # noqa: N806
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -647,7 +643,7 @@ class TestOrtTrainer(unittest.TestCase):
         trainer.save_as_onnx(onnx_file_name)
         assert os.path.exists(onnx_file_name)
 
-    def testMNISTDevice(self):
+    def testMNISTDevice(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -658,8 +654,7 @@ class TestOrtTrainer(unittest.TestCase):
         for model_device in [torch.device("cpu"), torch.device("cuda")]:
             model.to(model_device)
             trainer = mnist.get_trainer(model, model_desc, device)
-            learningRate = 0.02
-            epoch = 0
+            learningRate = 0.02  # noqa: N806
 
             data, target = next(iter(train_loader))
             data, target = data.to(device), target.to(device)
@@ -667,7 +662,7 @@ class TestOrtTrainer(unittest.TestCase):
 
             loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
-    def testMNISTInitializerNames(self):
+    def testMNISTInitializerNames(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -676,8 +671,7 @@ class TestOrtTrainer(unittest.TestCase):
         model, model_desc = mnist.get_model()
 
         trainer = mnist.get_trainer(model, model_desc, device)
-        learningRate = 0.02
-        epoch = 0
+        learningRate = 0.02  # noqa: N806
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -685,11 +679,11 @@ class TestOrtTrainer(unittest.TestCase):
 
         loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
-        assert (set([n.name for n in trainer.onnx_model_.graph.initializer]) - set(["bias_buffer"])) == set(
-            [n for n, t in model.named_parameters()]
-        )
+        assert ({n.name for n in trainer.onnx_model_.graph.initializer} - {"bias_buffer"}) == {
+            n for n, t in model.named_parameters()
+        }
 
-    def testMNISTInitializerNamesWithInternalLoss(self):
+    def testMNISTInitializerNamesWithInternalLoss(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -698,7 +692,7 @@ class TestOrtTrainer(unittest.TestCase):
         model, model_desc = mnist.get_model_with_internal_loss()
 
         def get_lr_this_step(global_step):
-            learningRate = 0.02
+            learningRate = 0.02  # noqa: N806
             return torch.tensor([learningRate])
 
         trainer = mnist.get_trainer(
@@ -708,7 +702,6 @@ class TestOrtTrainer(unittest.TestCase):
             internal_loss_fn=True,
             get_lr_this_step=get_lr_this_step,
         )
-        epoch = 0
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -716,11 +709,9 @@ class TestOrtTrainer(unittest.TestCase):
 
         loss, _ = trainer.train_step(data, target)
 
-        assert set([n.name for n in trainer.onnx_model_.graph.initializer]) == set(
-            [n for n, t in model.named_parameters()]
-        )
+        assert {n.name for n in trainer.onnx_model_.graph.initializer} == {n for n, t in model.named_parameters()}
 
-    def testMNISTFrozenWeight(self):
+    def testMNISTFrozenWeight(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -730,8 +721,7 @@ class TestOrtTrainer(unittest.TestCase):
 
         trainer = mnist.get_trainer(model, model_desc, device, frozen_weights=["fc1.weight"])
 
-        learningRate = 0.02
-        epoch = 0
+        learningRate = 0.02  # noqa: N806
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -748,7 +738,7 @@ class TestOrtTrainer(unittest.TestCase):
         fc2_trainstep_2 = trainer.state_dict()["fc2.weight"]
         assert np.array_equal(fc1_trainstep_1, fc1_trainstep_2) and not np.array_equal(fc2_trainstep_1, fc2_trainstep_2)
 
-    def testMNISTTorchBuffer(self):
+    def testMNISTTorchBuffer(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -758,8 +748,7 @@ class TestOrtTrainer(unittest.TestCase):
 
         trainer = mnist.get_trainer(model, model_desc, device)
 
-        learningRate = 0.02
-        epoch = 0
+        learningRate = 0.02  # noqa: N806
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -778,7 +767,7 @@ class TestOrtTrainer(unittest.TestCase):
             bias_buffer_trainstep_1, bias_buffer_trainstep_2
         )
 
-    def testMNISTFrozenWeightCheckpoint(self):
+    def testMNISTFrozenWeightCheckpoint(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -788,8 +777,7 @@ class TestOrtTrainer(unittest.TestCase):
 
         trainer = mnist.get_trainer(model, model_desc, device, frozen_weights=["fc1.weight"])
 
-        learningRate = 0.02
-        epoch = 0
+        learningRate = 0.02  # noqa: N806
 
         # do one train step
         data, target = next(iter(train_loader))
@@ -818,7 +806,7 @@ class TestOrtTrainer(unittest.TestCase):
         loaded_state_dict = trainer.state_dict()
         assert state_dict.keys() == loaded_state_dict.keys()
 
-    def testMNISTTrainingCheckpoint(self):
+    def testMNISTTrainingCheckpoint(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -834,11 +822,10 @@ class TestOrtTrainer(unittest.TestCase):
             frozen_weights=["fc1.weight"],
         )
 
-        learningRate = 0.02
-        epoch = 0
+        learningRate = 0.02  # noqa: N806
 
         # do 5 train step
-        for i in range(5):
+        for _i in range(5):
             data, target = next(iter(train_loader))
             data, target = data.to(device), target.to(device)
             data = data.reshape(data.shape[0], -1)
@@ -873,7 +860,7 @@ class TestOrtTrainer(unittest.TestCase):
         for key in state_dict:
             assert np.array_equal(state_dict[key], loaded_state_dict[key])
 
-    def testBertTrainingBasic(self):
+    def testBertTrainingBasic(self):  # noqa: N802
         expected_losses = [
             11.027887,
             11.108191,
@@ -907,7 +894,7 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="evaluation loss mismatch",
         )
 
-    def testBertTrainingGradientAccumulation(self):
+    def testBertTrainingGradientAccumulation(self):  # noqa: N802
         expected_losses = [
             11.027887,
             11.108191,
@@ -942,7 +929,7 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="evaluation loss mismatch",
         )
 
-    def testBertCheckpointingBasic(self):
+    def testBertCheckpointingBasic(self):  # noqa: N802
         model, _, _ = create_ort_trainer(
             gradient_accumulation_steps=1,
             use_mixed_precision=False,
@@ -976,7 +963,7 @@ class TestOrtTrainer(unittest.TestCase):
         for k, v in loaded_sd.items():
             assert torch.all(torch.eq(v, sd[k]))
 
-    def testWrapModelLossFnStateDict(self):
+    def testWrapModelLossFnStateDict(self):  # noqa: N802
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -1011,7 +998,7 @@ class TestOrtTrainer(unittest.TestCase):
             return F.nll_loss(F.log_softmax(x, dim=1), label)
 
         def get_lr_this_step(global_step):
-            learningRate = 0.02
+            learningRate = 0.02  # noqa: N806
             return torch.tensor([learningRate])
 
         ort_trainer = ORTTrainer(

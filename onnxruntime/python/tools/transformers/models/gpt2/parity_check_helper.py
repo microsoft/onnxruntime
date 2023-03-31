@@ -19,7 +19,7 @@ from onnx import TensorProto, numpy_helper
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import create_onnxruntime_session
+from benchmark_helper import create_onnxruntime_session  # noqa: E402
 
 NON_ZERO_VALUE = str(1)
 ZERO_VALUE = str(0)
@@ -95,7 +95,7 @@ def post_processing(outputs_path, outputs_path_other):
             tensor = TensorProto()
             tensor.ParseFromString(f.read())
             array = numpy_helper.to_array(tensor)
-            with open(filename_other, "rb") as f:
+            with open(filename_other, "rb") as f:  # noqa: PLW2901
                 tensor_other = TensorProto()
                 tensor_other.ParseFromString(f.read())
                 array_other = numpy_helper.to_array(tensor_other)
@@ -107,7 +107,7 @@ def post_processing(outputs_path, outputs_path_other):
                 record[Path(filename).name.split(".")[0]] = diff
                 if_close[Path(filename).name.split(".")[0]] = numpy.allclose(array, array_other, rtol=1e-04, atol=1e-04)
 
-    results = [f"Node\tDiff\tClose"]
+    results = ["Node\tDiff\tClose"]
     for k, v in sorted(record.items(), key=lambda x: x[1], reverse=True):
         results.append(f"{k}\t{v}\t{if_close[k]}")
     for line in results:

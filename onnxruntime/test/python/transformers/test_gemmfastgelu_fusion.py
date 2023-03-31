@@ -43,7 +43,7 @@ def float_tensor(name: str, shape: List[int], random=False):
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights)
 
 
-def create_MatMul_FastGelu_withoutBias(batch_size, m, n, k):
+def create_MatMul_FastGelu_withoutBias(batch_size, m, n, k):  # noqa: N802
     # MatMul + FastGelu
     nodes = [
         helper.make_node("MatMul", ["input", "matmul_weight"], ["fastgelu_input"], "matmul"),
@@ -77,7 +77,7 @@ def create_MatMul_FastGelu_withoutBias(batch_size, m, n, k):
     return helper.make_model(graph)
 
 
-def create_MatMul_FastGelu_withBias(batch_size, m, n, k):
+def create_MatMul_FastGelu_withBias(batch_size, m, n, k):  # noqa: N802
     # MatMul + FastGelu
     nodes = [
         helper.make_node("MatMul", ["input", "matmul_weight"], ["fastgelu_input"], "matmul"),

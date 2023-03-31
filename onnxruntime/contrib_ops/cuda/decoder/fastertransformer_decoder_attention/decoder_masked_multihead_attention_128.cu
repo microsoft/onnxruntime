@@ -1,6 +1,6 @@
 /*
  * The implementation of this file is based on code provided by https://github.com/NVIDIA/FasterTransformer
- * 
+ *
  * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,7 +26,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace decoder_masked_multihead_attention_details;
+using namespace decoder_masked_self_attention_details;
 
 #define MMHA_LAUNCH_KERNEL(                                                                        \
     T, head_size, THDS_PER_KEY, THDS_PER_VALUE, THDS_PER_BLOCK)                                    \
@@ -40,7 +40,7 @@ using namespace decoder_masked_multihead_attention_details;
       <<<grid, THDS_PER_BLOCK, dynamic_block_memory, stream>>>(params)
 
 template <typename T, int head_size>
-void mmha_launch_kernel(const DecoderMaskedMultiheadAttentionParams& params, cudaStream_t stream) {
+void mmha_launch_kernel(const DecoderMaskedSelfAttentionParams& params, cudaStream_t stream) {
   constexpr int THREADS_PER_VALUE = ThreadsPerValue<T, head_size>::value;
   int total_sequence_length = params.total_sequence_length;
 
@@ -54,9 +54,9 @@ void mmha_launch_kernel(const DecoderMaskedMultiheadAttentionParams& params, cud
 }
 
 // Instantiate templates
-template void mmha_launch_kernel<float, 128>(const DecoderMaskedMultiheadAttentionParams& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, 128>(const DecoderMaskedSelfAttentionParams& params, cudaStream_t stream);
 
-template void mmha_launch_kernel<uint16_t, 128>(const DecoderMaskedMultiheadAttentionParams& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, 128>(const DecoderMaskedSelfAttentionParams& params, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -19,7 +18,7 @@ from onnxruntime.quantization import quantize_dynamic
 class TestOpAttention(unittest.TestCase):
     def input_feeds(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})

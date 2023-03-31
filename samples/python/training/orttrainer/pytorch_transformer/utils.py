@@ -1,4 +1,3 @@
-import io
 import os
 
 import torch
@@ -41,15 +40,15 @@ def prepare_data(device="cpu", train_batch_size=20, eval_batch_size=20, data_dir
         download_from_url(url, root=download_path), to_path=extract_path
     )
     tokenizer = get_tokenizer("basic_english")
-    vocab = build_vocab_from_iterator(map(tokenizer, iter(io.open(train_filepath, encoding="utf8"))))
+    vocab = build_vocab_from_iterator(map(tokenizer, iter(open(train_filepath, encoding="utf8"))))  # noqa: SIM115
 
     def data_process(raw_text_iter):
         data = [torch.tensor([vocab[token] for token in tokenizer(item)], dtype=torch.long) for item in raw_text_iter]
         return torch.cat(tuple(filter(lambda t: t.numel() > 0, data)))
 
-    train_data = data_process(iter(io.open(train_filepath, encoding="utf8")))
-    val_data = data_process(iter(io.open(valid_filepath, encoding="utf8")))
-    test_data = data_process(iter(io.open(test_filepath, encoding="utf8")))
+    train_data = data_process(iter(open(train_filepath, encoding="utf8")))  # noqa: SIM115
+    val_data = data_process(iter(open(valid_filepath, encoding="utf8")))  # noqa: SIM115
+    test_data = data_process(iter(open(test_filepath, encoding="utf8")))  # noqa: SIM115
 
     device = torch.device(device)
 

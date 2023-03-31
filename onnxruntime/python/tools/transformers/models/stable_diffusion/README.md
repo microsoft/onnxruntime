@@ -17,10 +17,6 @@ ONNX Runtime uses the following optimizations to speed up Stable Diffusion in CU
 * BiasAdd fuses Add bias and residual.
 * Reduce Transpose nodes by graph transformation.
 
-Some CUDA kernels (Flash Attention, GroupNorm, SplitGelu and BiasAdd etc.) were originally implemented in TensorRT by Nvidia.
-
-Compare to TensorRT, ONNX Runtime has some advantages on stable diffusion: (1) Supports older GPUs like V100. (2) Uses less GPU memory. (3) Supports float32 models and Stable Diffusion 2.* models.
-
 To show the impact of each optimization on latency and GPU memory, we did an experiment on RTX 3060 GPU:
 
 | Optimizations                                                                      | Average Latency (batch_size=1) | Memory in MB (batch_size=1) | Average Latency (batch_size=8) | Memory in MB (batch_size=8) |
@@ -86,7 +82,12 @@ pip uninstall onnxruntime-gpu
 pip install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
 ```
 
-The diffusers need a patch to work with ort-nightly-gpu: add `"ort-nightly-gpu",` below [this line](https://github.com/huggingface/diffusers/blob/1586186eea36e6a9b6f16c90ee32921c316c4b57/src/diffusers/utils/import_utils.py#L155).
+Need install diffusers from source until v0.15 is released.
+```
+git clone https://github.com/huggingface/diffusers
+cd diffusers
+pip install -e .
+```
 
 ### Export ONNX pipeline
 
@@ -137,7 +138,7 @@ Let's create a new environment to run PyTorch 2.0:
 ```
 conda create -n pt2 python=3.10
 conda activate pt2
-pip3 install numpy --pre torch --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cu117
+pip install torch --index-url https://download.pytorch.org/whl/cu117
 pip install -r requirements.txt
 python benchmark.py -e torch -b 1 --enable_torch_compile
 ```
@@ -159,14 +160,31 @@ Common settings for below test results:
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
 | onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 4.8             | 4,117               | 4,625                |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 1          | 5.6             | 4,330               | 4,050                |
+| torch       | 2.0.0+cu117             | default               | 1          | 5.6             | 4,325               | 4,047                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 6.0             | 9,124               | 9,130                |
 | onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 17.7            | 6,659               | 6,659                |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 4          | 20.2            | 6,425               | 6,911                |
+| torch       | 2.0.0+cu117             | default               | 4          | 20.1            | 6,421               | 6,907                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 21.6            | 10,407              | 10,409               |
 | onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 33.5            | 6,663               | 6,663                |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 8          | 39.8            | 10,894              | 10,782               |
+| torch       | 2.0.0+cu117             | default               | 8          | 39.5            | 10,767              | 10,813               |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 41.1            | 10,825              | 9,255                |
+
+
+#### Results of A100-SXM4-40GB (in Ubuntu 20.04)
+| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
+| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 1.1             | 6,883               | 7,395                |
+| torch       | 2.0.0+cu117             | default               | 1          | 1.5             | 13,828              | 4,400                |
+| torch       | 2.0.0+cu117             | compile               | 1          | 1.8             | 13,892              | 4,386                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 3.7             | 7,381               | 7,381                |
+| torch       | 2.0.0+cu117             | default               | 4          | 3.9             | 31,278              | 6,870                |
+| torch       | 2.0.0+cu117             | compile               | 4          | 3.4             | 31,364              | 6,880                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 6.9             | 7,411               | 7,411                |
+| torch       | 2.0.0+cu117             | default               | 8          | 7.6             | 31,660              | 10,122               |
+| torch       | 2.0.0+cu117             | compile               | 8          | 6.5             | 31,800              | 10,308               |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 16         | 13.6            | 11,479              | 11,479               |
+| torch       | 2.0.0+cu117             | default               | 16         | 14.8            | 32,306              | 16,520               |
+| torch       | 2.0.0+cu117             | compile               | 16         | 12.6            | 32,636              | 16,898               |
 
 #### Results of V100-PCIE-16GB (in Ubuntu 20.04)
 
@@ -174,17 +192,17 @@ Results from Standard_NC6s_v3 Azure virtual machine:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 2.7             | 6,646               | 7,152                |
-| torch       | 2.0.0.dev20230220+cu117 | compile               | 1          | 3.1             | 13,461              | 4,051                |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 1          | 2.7             | 13,461              | 4,041                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 2.7             | 12,646              | 7,152                |
+| torch       | 2.0.0+cu117             | compile               | 1          | 3.2             | 13,317              | 3,909                |
+| torch       | 2.0.0+cu117             | default               | 1          | 2.7             | 13,343              | 3,921                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 3.5             | 14,979              | 10,449               |
 | onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 8.4             | 7,114               | 7,114                |
-| torch       | 2.0.0.dev20230220+cu117 | compile               | 4          | 8.0             | 14,015              | 7,085                |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 4          | 8.8             | 13,985              | 6,749                |
+| torch       | 2.0.0+cu117             | compile               | 4          | 8.0             | 13,897              | 6,821                |
+| torch       | 2.0.0+cu117             | default               | 4          | 8.7             | 13,873              | 6,607                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 9.1             | 12,969              | 8,421                |
 | onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 15.9            | 7,120               | 7,120                |
-| torch       | 2.0.0.dev20230220+cu117 | compile               | 8          | 15.6            | 14,819              | 11,055               |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 8          | 16.9            | 14,603              | 10,563               |
+| torch       | 2.0.0+cu117             | compile               | 8          | 15.5            | 14,669              | 10,355               |
+| torch       | 2.0.0+cu117             | default               | 8          | 17.0            | 14,469              | 9,657                |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 17.4            | 15,593              | 9,133                |
 
 
@@ -199,16 +217,22 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
 | onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 5.6             | 4,925               | 4,925                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 6.9             | 14,845              | 10,317               |
-| torch       | 2.0.0.dev20230226+cu117 | compile               | 1          | 6.0             | 13,125              | 3,977                |
-| torch       | 2.0.0.dev20230226+cu117 | default               | 1          | 6.3             | 13,127              | 3,979                |
+| torch       | 2.0.0+cu117             | compile               | 1          | 6.0             | 12,989              | 3,841                |
+| torch       | 2.0.0+cu117             | default               | 1          | 6.4             | 12,987              | 3,841                |
 | onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 23.0            | 6,977               | 6,977                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 25.8            | 12,819              | 8,269                |
-| torch       | 2.0.0.dev20230226+cu117 | compile               | 4          | 22.1            | 14,751              | 6,697                |
-| torch       | 2.0.0.dev20230226+cu117 | default               | 4          | 25.0            | 14,535              | 6,481                |
+| torch       | 2.0.0+cu117             | compile               | 4          | 22.2            | 14,637              | 6,583                |
+| torch       | 2.0.0+cu117             | default               | 4          | 25.2            | 14,409              | 6,355                |
 | onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 46.4            | 6,779               | 6,779                |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 51.4            | 14,827              | 9,001                |
-| torch       | 2.0.0.dev20230226+cu117 | compile               | 8          | 45.6            | 12,675              | 10,249               |
-| torch       | 2.0.0.dev20230226+cu117 | default               | 8          | 50.5            | 12,077              | 9,653                |
+| torch       | 2.0.0+cu117             | compile               | 8          | 46.5            | 12,595              | 10,171               |
+| torch       | 2.0.0+cu117             | default               | 8          | 50.7            | 11,955              | 9,531                |
+
+### Credits
+
+Some CUDA kernels (Flash Attention, GroupNorm, SplitGelu and BiasAdd etc.) were originally implemented in [TensorRT](https://github.com/nviDIA/TensorRT) by Nvidia.
+We use Memory efficient attention from [CUTLASS](https://github.com/NVIDIA/cutlass). The kernels were developed by Meta xFormers.
+The ONNX export script and pipeline for stable diffusion was developed by Huggingface [diffusers](https://github.com/huggingface/diffusers) library.
 
 ### Future Works
 
@@ -218,8 +242,8 @@ There are other optimizations might improve the performance or reduce memory foo
 * Use CUDA graph to speed up inference.
 * Export the whole pipeline into a single ONNX model. Currently, there are multiple ONNX models (CLIP, VAE and U-Net etc). Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator. The end result is more efficient and less memory footprint.
 * For Stable Diffusion 2.1, we force Attention in fp32 to avoid black image. That slows down the inference significantly. We could potentially change attention kernel (like fp32 accumulation) to avoid the issue.
-* Reduce GPU memory footprint by actively deleting buffers for intermediate results
-* Reduce GPU memory footprint by CPU RAM Offloading
+* Reduce GPU memory footprint by actively deleting buffers for intermediate results.
+* Reduce GPU memory footprint by providing options for CPU RAM Offloading.
 * Attention fusion in CLIP
 * Safety Checker Optimization
 * Leverage FP8 in latest GPU
