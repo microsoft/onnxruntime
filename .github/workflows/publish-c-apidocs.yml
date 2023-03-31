@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - include/onnxruntime/core/session
+      - include/onnxruntime/core/session/**
   schedule:
     - cron: '0 0 1 * *'
   workflow_dispatch:
