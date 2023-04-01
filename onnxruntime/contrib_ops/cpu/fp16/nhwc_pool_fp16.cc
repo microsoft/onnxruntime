@@ -54,11 +54,21 @@ Status NhwcPoolFp16::Compute(OpKernelContext* context) const {
   // Compute the output size and effective padding for this pooling operation.
   TensorShapeVector output_dims({N});
   TensorShapeVector pads = pool_attrs_.pads;
+  TensorShapeVector kernel_shape = pool_attrs_.kernel_shape;
+  TensorShapeVector strides = pool_attrs_.strides;
+  TensorShapeVector dilations = pool_attrs_.dilations;
+  if (pool_attrs_.global_pooling) {
+    const auto& input_dims = input_shape.GetDims();
+    kernel_shape.assign(input_dims.begin() + 1, input_dims.end() - 1);
+    pads.resize(kernel_shape.size() * 2, 0);
+    strides.resize(kernel_shape.size(), 1);
+    dilations.resize(kernel_shape.size(), 1);
+  }
   int64_t kernel_size = 1;
   int64_t input_image_size = 1;
   int64_t output_image_size = 1;
   for (size_t dim = 0; dim < spatial_dims; ++dim) {
-    int64_t kernel = pool_attrs_.kernel_shape[dim];
+    int64_t kernel = kernel_shape[dim];
     int64_t input_dim = input_shape[dim + 1];
 
     kernel_size *= kernel;
@@ -66,11 +76,11 @@ Status NhwcPoolFp16::Compute(OpKernelContext* context) const {
 
     int64_t output_dim = 0;
     pool_attrs_.ComputeSizePadDilations(input_dim,
-                                        pool_attrs_.strides[dim],
+                                        strides[dim],
                                         kernel,
                                         &pads.at(dim),
                                         &pads.at(spatial_dims + dim),
-                                        pool_attrs_.dilations[dim],
+                                        dilations[dim],
                                         &output_dim);
     output_dims.push_back(output_dim);
 
@@ -107,9 +117,9 @@ Status NhwcPoolFp16::Compute(OpKernelContext* context) const {
           C,
           input_shape.GetDims().data() + 1,
           output_dims.data() + 1,
-          pool_attrs_.kernel_shape.data(),
-          pool_attrs_.strides.data(),
-          pool_attrs_.dilations.data(),
+          kernel_shape.data(),
+          strides.data(),
+          dilations.data(),
           pads.data(),
           static_cast<ptrdiff_t>(spatial_dims),
           output_start,
