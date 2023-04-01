@@ -360,7 +360,6 @@ namespace Dml
 
             if (activationName == "Softmax")
             {
-
                 const uint32_t onnxDimCount = gsl::narrow_cast<uint32_t>(kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0).size());
                 int onnxAxis = HandleNegativeAxis(kernelInfo.GetOptionalAttribute<int>(AttrName::GraphFusedAxis, -1), onnxDimCount);
 
