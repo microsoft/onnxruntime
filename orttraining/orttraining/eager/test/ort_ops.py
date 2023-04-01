@@ -41,7 +41,7 @@ class OrtOpTests(unittest.TestCase):
         assert ort_result.dtype == torch.float32
         assert torch.allclose(cpu_result, ort_result.cpu())
 
-        ## verify setting out to type int while inputs are float cause an error as casting float to int is not allowed.
+        # verify setting out to type int while inputs are float cause an error as casting float to int is not allowed.
         cpu_out_tensor = torch.tensor([], dtype=torch.int)
         ort_out_tensor = cpu_out_tensor.to(device)
         with self.assertRaises(RuntimeError):
@@ -605,19 +605,23 @@ class OrtOpTests(unittest.TestCase):
     # ["det"          ]]
 
     # The function renames the test function: ops/math_sign_ops (e.g. abs)+ the test name(e.g. out), results in: test_abs_out
-    def rename_func(testcase_func, param_num, param):
+    def rename_func(testcase_func, param_num, param):  # noqa: N805
         return f"test_{parameterized.to_safe_name(str(param.args[0]))}{testcase_func.__name__[7:]}"
 
     # @parameterized.expand generate test methods for ops and using name_func we renaming the test to be test_{ops}
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op(self, test_name, tensor_test=torch.rand(6)):
+    def test_op(self, test_name, tensor_test=None):
+        if tensor_test is None:
+            tensor_test = torch.rand(6)
         cpu_result = getattr(torch, test_name)(tensor_test)
         ort_result = getattr(torch, test_name)(tensor_test.to(self.get_device()))
 
         assert torch.allclose(cpu_result, ort_result.cpu(), equal_nan=True)
 
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op_inplace(self, test_name, tensor_test=torch.rand(6)):
+    def test_op_inplace(self, test_name, tensor_test=None):
+        if tensor_test is None:
+            tensor_test = torch.rand(6)
         device = self.get_device()
 
         cpu_tensor = tensor_test
@@ -629,8 +633,10 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_tensor, ort_tensor.cpu(), equal_nan=True)
 
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op_out(self, test_name, tensor_test=torch.rand(6)):
-        ##relu -don't have output
+    def test_op_out(self, test_name, tensor_test=None):
+        if tensor_test is None:
+            tensor_test = torch.rand(6)
+        # relu doesn't have output
         if test_name == "relu":
             self.skipTest(f"no {test_name}_output")
         ### troubleshoot later: the following tests are Failing.

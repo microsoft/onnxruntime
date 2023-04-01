@@ -26,7 +26,7 @@ mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.79.0.zip;c8f04e3
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.13.1.zip;7a2517d3e7442109d540de2c86f29cd76d34cf28
 #use the commit where it's several commits after 8.5-GA branch (https://github.com/onnx/onnx-tensorrt/commit/369d6676423c2a6dbf4a5665c4b5010240d99d3c)
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/369d6676423c2a6dbf4a5665c4b5010240d99d3c.zip;62119892edfb78689061790140c439b111491275
-protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.20.2.zip;9f71dad95fb83438e88822a9969fc93773fd8c48
+protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa
 psimd;https://github.com/Maratyszcza/psimd/archive/072586a71b55b7f8c584153d223e95687148a900.zip;1f5454b01f06f9656b77e4a5e2e31d7422487013
 pthreadpool;https://github.com/Maratyszcza/pthreadpool/archive/1787867f6183f056420e532eec640cba25efafea.zip;e43e80781560c5ab404a4da20f34d846f5f5d101
 pybind11;https://github.com/pybind/pybind11/archive/refs/tags/v2.10.1.zip;769b6aa67a77f17a770960f604b727645b6f6a13

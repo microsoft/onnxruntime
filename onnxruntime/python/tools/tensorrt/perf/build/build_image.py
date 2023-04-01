@@ -82,11 +82,7 @@ def is_valid_ver_str(version: str, min_comps: int = 0, max_comps: int = 0) -> bo
     if num_comps > max_comps > 0:
         return False
 
-    for num in ver_nums:
-        if not num.isdecimal():
-            return False
-
-    return True
+    return all(num.isdecimal() for num in ver_nums)
 
 
 def docker_build_trt(args: argparse.Namespace):

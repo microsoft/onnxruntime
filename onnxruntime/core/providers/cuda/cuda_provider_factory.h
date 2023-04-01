@@ -20,7 +20,6 @@ class NvtxRangeCreator;
 }
 
 struct ProviderInfo_CUDA {
-
   virtual OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) = 0;
   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
 
@@ -33,8 +32,8 @@ struct ProviderInfo_CUDA {
   virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
+  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
 
   virtual void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) = 0;
   virtual void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) = 0;
@@ -60,7 +59,7 @@ struct ProviderInfo_CUDA {
   virtual bool TestAll() = 0;
 #endif
 
-protected:
+ protected:
   ~ProviderInfo_CUDA() = default;  // Can only be destroyed through a subclass instance
 };
 

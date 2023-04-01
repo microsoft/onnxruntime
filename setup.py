@@ -113,7 +113,7 @@ manylinux_tags = [
 is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
 
 
-class build_ext(_build_ext):
+class build_ext(_build_ext):  # noqa: N801
     def build_extension(self, ext):
         dest_file = self.get_ext_fullpath(ext.name)
         logger.info("copying %s -> %s", ext.sources[0], dest_file)
@@ -123,7 +123,7 @@ class build_ext(_build_ext):
 try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
-    class bdist_wheel(_bdist_wheel):
+    class bdist_wheel(_bdist_wheel):  # noqa: N801
         """Helper functions to create wheel package"""
 
         if is_openvino and is_manylinux:
@@ -138,7 +138,7 @@ try:
                     if glibc_major == "2" and glibc_minor == "17":
                         plat = "manylinux_2_17_x86_64.manylinux2014_x86_64"
                     else:  # For manylinux2014 and above, no alias is required
-                        plat = "manylinux_%s_%s_x86_64" % (glibc_major, glibc_minor)
+                        plat = f"manylinux_{glibc_major}_{glibc_minor}_x86_64"
                 tags = next(sys_tags())
                 return (tags.interpreter, tags.abi, plat)
 
@@ -198,7 +198,7 @@ try:
                 logger.info("copying %s -> %s", source, dest)
                 copyfile(source, dest)
                 result = subprocess.run(
-                    ["patchelf", "--print-needed", dest], check=True, stdout=subprocess.PIPE, universal_newlines=True
+                    ["patchelf", "--print-needed", dest], check=True, stdout=subprocess.PIPE, text=True
                 )
                 dependencies = [
                     "librccl.so",
@@ -229,7 +229,7 @@ try:
                         ["patchelf", "--print-needed", dest],
                         check=True,
                         stdout=subprocess.PIPE,
-                        universal_newlines=True,
+                        text=True,
                     )
                     cuda_dependencies = [
                         "libcublas.so",
@@ -266,7 +266,7 @@ try:
                         ["patchelf", "--print-needed", dest],
                         check=True,
                         stdout=subprocess.PIPE,
-                        universal_newlines=True,
+                        text=True,
                     )
                     tensorrt_dependencies = ["libnvinfer.so", "libnvinfer_plugin.so", "libnvonnxparser.so"]
                     args = ["patchelf", "--debug"]
@@ -286,7 +286,7 @@ try:
                         ["patchelf", "--print-needed", dest],
                         check=True,
                         stdout=subprocess.PIPE,
-                        universal_newlines=True,
+                        text=True,
                     )
                     cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
                     args = ["patchelf", "--debug"]
@@ -306,7 +306,7 @@ try:
                         ["patchelf", "--set-rpath", "$ORIGIN", dest, "--force-rpath"],
                         check=True,
                         stdout=subprocess.PIPE,
-                        universal_newlines=True,
+                        text=True,
                     )
 
                 self._rewrite_ld_preload(to_preload)
@@ -315,7 +315,7 @@ try:
                 self._rewrite_ld_preload(to_preload_cann)
 
             else:
-                if "onnxruntime-azure" == package_name:
+                if package_name == "onnxruntime-azure":
                     self._rewrite_ld_preload_azure()
 
             _bdist_wheel.run(self)
@@ -417,7 +417,7 @@ if is_manylinux:
                 ["patchelf", "--set-rpath", "$ORIGIN", y, "--force-rpath"],
                 check=True,
                 stdout=subprocess.PIPE,
-                universal_newlines=True,
+                text=True,
             )
             dl_libs.append(x)
         dl_libs.append(providers_openvino)
@@ -451,7 +451,7 @@ if not path.exists(README):
 
 if not path.exists(README):
     raise FileNotFoundError("Unable to find 'README.rst'")
-with open(README, "r", encoding="utf-8") as fdesc:
+with open(README, encoding="utf-8") as fdesc:
     long_description = fdesc.read()
 
 # Include files in onnxruntime/external if --enable_external_custom_op_schemas build.sh command
@@ -634,18 +634,18 @@ if nightly_build:
             try:
                 datetime.datetime.strptime(date_str, "%Y%m%d")
                 return True
-            except:  # noqa
+            except Exception:
                 return False
 
         def reformat_run_count(count_str):
             try:
                 count = int(count_str)
                 if count >= 0 and count < 1000:
-                    return "{:03}".format(count)
+                    return f"{count:03}"
                 elif count >= 1000:
                     raise RuntimeError(f"Too many builds for the same day: {count}")
                 return ""
-            except:  # noqa
+            except Exception:
                 return ""
 
         build_suffix_is_date_format = check_date_format(build_suffix[:8])
@@ -682,7 +682,7 @@ if local_version:
 if wheel_name_suffix:
     if not (enable_training and wheel_name_suffix == "gpu"):
         # for training packages, local version is used to indicate device types
-        package_name = "{}-{}".format(package_name, wheel_name_suffix)
+        package_name = f"{package_name}-{wheel_name_suffix}"
 
 cmd_classes = {}
 if bdist_wheel is not None:
@@ -708,16 +708,16 @@ if enable_training:
 
         version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
         with open(version_path, "w") as f:
-            f.write("package_name = '{}'\n".format(package_name))
-            f.write("__version__ = '{}'\n".format(version_number))
+            f.write(f"package_name = '{package_name}'\n")
+            f.write(f"__version__ = '{version_number}'\n")
 
             if cuda_version:
-                f.write("cuda_version = '{}'\n".format(cuda_version))
+                f.write(f"cuda_version = '{cuda_version}'\n")
 
                 # cudart_versions are integers
                 cudart_versions = find_cudart_versions(build_env=True)
                 if cudart_versions and len(cudart_versions) == 1:
-                    f.write("cudart_version = {}\n".format(cudart_versions[0]))
+                    f.write(f"cudart_version = {cudart_versions[0]}\n")
                 else:
                     print(
                         "Error getting cudart version. ",
@@ -726,7 +726,7 @@ if enable_training:
                         else "found multiple cudart libraries",
                     )
             elif rocm_version:
-                f.write("rocm_version = '{}'\n".format(rocm_version))
+                f.write(f"rocm_version = '{rocm_version}'\n")
 
     save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
 

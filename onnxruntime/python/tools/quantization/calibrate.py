@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft, Intel Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -81,7 +80,7 @@ class CalibraterBase:
         self.infer_session = None
         self.execution_providers = ["CPUExecutionProvider"]
 
-    def set_execution_providers(self, execution_providers=["CPUExecutionProvider"]):
+    def set_execution_providers(self, execution_providers=["CPUExecutionProvider"]):  # noqa: B006
         """
         reset the execution providers to execute the collect_data. It triggers to re-creating inference session.
         """
@@ -110,15 +109,15 @@ class CalibraterBase:
         value_infos = {vi.name: vi for vi in model.graph.value_info}
         value_infos.update({ot.name: ot for ot in model.graph.output})
         value_infos.update({it.name: it for it in model.graph.input})
-        initializer = set(init.name for init in model.graph.initializer)
+        initializer = {init.name for init in model.graph.initializer}
 
         tensors_to_calibrate = set()
-        tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
+        tensor_type_to_calibrate = {TensorProto.FLOAT, TensorProto.FLOAT16}
 
         for node in model.graph.node:
             if not self.op_types_to_calibrate or node.op_type in self.op_types_to_calibrate:
                 for tensor_name in itertools.chain(node.input, node.output):
-                    if tensor_name in value_infos.keys():
+                    if tensor_name in value_infos:
                         vi = value_infos[tensor_name]
                         if (
                             vi.type.HasField("tensor_type")
@@ -176,7 +175,7 @@ class MinMaxCalibrater(CalibraterBase):
         :param moving_average: compute the moving average of the minimum and maximum values instead of the global minimum and maximum.
         :param averaging_constant: constant smoothing factor to use when computing the moving average.
         """
-        super(MinMaxCalibrater, self).__init__(
+        super().__init__(
             model,
             op_types_to_calibrate=op_types_to_calibrate,
             augmented_model_path=augmented_model_path,
@@ -186,7 +185,7 @@ class MinMaxCalibrater(CalibraterBase):
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
-        self.model_original_outputs = set(output.name for output in self.model.graph.output)
+        self.model_original_outputs = {output.name for output in self.model.graph.output}
         self.moving_average = moving_average
         if moving_average and (averaging_constant < 0 or averaging_constant > 1):
             raise ValueError("Invalid averaging constant, which should not be < 0 or > 1.")
@@ -292,9 +291,9 @@ class MinMaxCalibrater(CalibraterBase):
             added_output_names[i].rpartition("_")[0] for i in range(0, len(added_output_names), 2)
         ]  # output names
 
-        merged_added_output_dict = dict(
-            (i, merged_output_dict[i]) for i in merged_output_dict if i not in self.model_original_outputs
-        )
+        merged_added_output_dict = {
+            i: merged_output_dict[i] for i in merged_output_dict if i not in self.model_original_outputs
+        }
 
         pairs = []
         for i in range(0, len(added_output_names), 2):
@@ -350,7 +349,7 @@ class HistogramCalibrater(CalibraterBase):
         :param num_quantized_bins: number of quantized bins. Default 128.
         :param percentile: A float number between [0, 100]. Default 99.99.
         """
-        super(HistogramCalibrater, self).__init__(
+        super().__init__(
             model,
             op_types_to_calibrate=op_types_to_calibrate,
             augmented_model_path=augmented_model_path,
@@ -360,7 +359,7 @@ class HistogramCalibrater(CalibraterBase):
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
-        self.model_original_outputs = set(output.name for output in self.model.graph.output)
+        self.model_original_outputs = {output.name for output in self.model.graph.output}
         self.collector = None
         self.method = method
         self.num_bins = num_bins
@@ -413,7 +412,7 @@ class HistogramCalibrater(CalibraterBase):
             for k, v in d.items():
                 merged_dict.setdefault(k, []).append(v)
 
-        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i in self.tensors_to_calibrate)
+        clean_merged_dict = {i: merged_dict[i] for i in merged_dict if i in self.tensors_to_calibrate}
 
         if not self.collector:
             self.collector = HistogramCollector(
@@ -460,7 +459,7 @@ class EntropyCalibrater(HistogramCalibrater):
         :param num_bins: number of bins to create a new histogram for collecting tensor values.
         :param num_quantized_bins: number of quantized bins. Default 128.
         """
-        super(EntropyCalibrater, self).__init__(
+        super().__init__(
             model,
             op_types_to_calibrate,
             augmented_model_path,
@@ -494,7 +493,7 @@ class PercentileCalibrater(HistogramCalibrater):
         :param num_quantized_bins: number of quantized bins. Default 128.
         :param percentile: A float number between [0, 100]. Default 99.99.
         """
-        super(PercentileCalibrater, self).__init__(
+        super().__init__(
             model,
             op_types_to_calibrate,
             augmented_model_path,
@@ -568,8 +567,8 @@ class HistogramCollector(CalibrationDataCollector):
         Collect histogram on absolute value
         """
         for tensor, data_arr in name_to_arr.items():
-            data_arr = np.asarray(data_arr)
-            data_arr = data_arr.flatten()
+            data_arr = np.asarray(data_arr)  # noqa: PLW2901
+            data_arr = data_arr.flatten()  # noqa: PLW2901
             if data_arr.size > 0:
                 min_value = np.min(data_arr)
                 max_value = np.max(data_arr)
@@ -577,7 +576,7 @@ class HistogramCollector(CalibrationDataCollector):
                 min_value = 0
                 max_value = 0
 
-            data_arr = np.absolute(data_arr)  # only consider absolute value
+            data_arr = np.absolute(data_arr)  # only consider absolute value  # noqa: PLW2901
 
             if tensor not in self.histogram_dict:
                 # first time it uses num_bins to compute histogram.
@@ -605,8 +604,8 @@ class HistogramCollector(CalibrationDataCollector):
         Collect histogram on real value
         """
         for tensor, data_arr in name_to_arr.items():
-            data_arr = np.asarray(data_arr)
-            data_arr = data_arr.flatten()
+            data_arr = np.asarray(data_arr)  # noqa: PLW2901
+            data_arr = data_arr.flatten()  # noqa: PLW2901
 
             if data_arr.size > 0:
                 min_value = np.min(data_arr)
@@ -633,7 +632,6 @@ class HistogramCollector(CalibrationDataCollector):
                 )
 
     def merge_histogram(self, old_histogram, data_arr, new_min, new_max, new_threshold):
-
         (old_hist, old_hist_edges, old_min, old_max, old_threshold) = old_histogram
 
         if new_threshold <= old_threshold:
@@ -668,7 +666,7 @@ class HistogramCollector(CalibrationDataCollector):
     def compute_collection_result(self):
         if not self.histogram_dict or len(self.histogram_dict) == 0:
             raise ValueError("Histogram has not been collected. Please run collect() first.")
-        print("Finding optimal threshold for each tensor using {} algorithm ...".format(self.method))
+        print(f"Finding optimal threshold for each tensor using {self.method} algorithm ...")
 
         if self.method == "entropy":
             return self.compute_entropy()
@@ -686,9 +684,9 @@ class HistogramCollector(CalibrationDataCollector):
 
         thresholds_dict = {}  # per tensor thresholds
 
-        print("Number of tensors : {}".format(len(histogram_dict)))
-        print("Number of histogram bins : {}".format(self.num_bins))
-        print("Percentile : ({},{})".format(100.0 - percentile, percentile))
+        print(f"Number of tensors : {len(histogram_dict)}")
+        print(f"Number of histogram bins : {self.num_bins}")
+        print(f"Percentile : ({100.0 - percentile},{percentile})")
 
         for tensor, histogram in histogram_dict.items():
             hist = histogram[0]
@@ -728,13 +726,13 @@ class HistogramCollector(CalibrationDataCollector):
 
         thresholds_dict = {}  # per tensor thresholds
 
-        print("Number of tensors : {}".format(len(histogram_dict)))
+        print(f"Number of tensors : {len(histogram_dict)}")
         print(
             "Number of histogram bins : {} (The number may increase depends on the data it collects)".format(
                 self.num_bins
             )
         )
-        print("Number of quantized bins : {}".format(self.num_quantized_bins))
+        print(f"Number of quantized bins : {self.num_quantized_bins}")
 
         for tensor, histogram in histogram_dict.items():
             optimal_threshold = self.get_entropy_threshold(histogram, num_quantized_bins)
@@ -847,9 +845,8 @@ def create_calibrator(
     augmented_model_path="augmented_model.onnx",
     calibrate_method=CalibrationMethod.MinMax,
     use_external_data_format=False,
-    extra_options={},
+    extra_options={},  # noqa: B006
 ):
-
     calibrator = None
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm
@@ -899,4 +896,4 @@ def create_calibrator(
         calibrator.create_inference_session()
         return calibrator
 
-    raise ValueError("Unsupported calibration method {}".format(calibrate_method))
+    raise ValueError(f"Unsupported calibration method {calibrate_method}")
