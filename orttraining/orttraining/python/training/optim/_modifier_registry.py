@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from ._apex_amp_modifier import ApexAMPModifier
 from ._ds_modifier import DeepSpeedZeROModifier
 from ._megatron_modifier import LegacyMegatronLMModifier
-from ._apex_amp_modifier import ApexAMPModifier
 
 OptimizerModifierTypeRegistry = {
     "megatron.fp16.fp16.FP16_Optimizer": LegacyMegatronLMModifier,
