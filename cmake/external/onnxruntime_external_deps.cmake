@@ -360,6 +360,9 @@ FetchContent_Declare(
 
 if (CPUINFO_SUPPORTED)
   onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
+  if (pytorch_cpuinfo_SOURCE_DIR)
+    add_library(cpuinfo::cpuinfo ALIAS cpuinfo)
+  endif()
 endif()
 
 

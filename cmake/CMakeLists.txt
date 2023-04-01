@@ -748,7 +748,7 @@ endif()
 
 function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
-      onnxruntime_add_include_to_target(${target_name} cpuinfo)
+      onnxruntime_add_include_to_target(${target_name} cpuinfo::cpuinfo)
     endif()
     if(onnxruntime_ENABLE_EAGER_MODE)
       target_compile_definitions(${target_name} PRIVATE ENABLE_EAGER_MODE)
