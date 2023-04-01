@@ -95,7 +95,7 @@ def post_processing(outputs_path, outputs_path_other):
             tensor = TensorProto()
             tensor.ParseFromString(f.read())
             array = numpy_helper.to_array(tensor)
-            with open(filename_other, "rb") as f:
+            with open(filename_other, "rb") as f:  # noqa: PLW2901
                 tensor_other = TensorProto()
                 tensor_other.ParseFromString(f.read())
                 array_other = numpy_helper.to_array(tensor_other)

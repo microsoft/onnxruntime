@@ -5,6 +5,7 @@
 
 #include <string>
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/graph/basic_types.h"
 
@@ -76,6 +77,12 @@ class SelectorManager {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SelectorManager);
 };
+
+// Checks whether the provided DQ nodes are valid for forming a QDQ node group with the provided target node.
+// Returns successful status if so, failed status with reason otherwise.
+Status ValidateNodeGroupDQNodes(const GraphViewer& graph_viewer,
+                                const Node& target_node,
+                                gsl::span<const Node* const> dq_nodes);
 
 }  // namespace QDQ
 }  // namespace onnxruntime

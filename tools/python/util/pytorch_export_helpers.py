@@ -66,7 +66,7 @@ def _parse_inputs_for_onnx_export(all_input_parameters, inputs, kwargs):
             # All positional non-*args and non-**kwargs are processed here
             name = input_parameter.name
             inp = None
-            input_idx += var_positional_idx
+            input_idx += var_positional_idx  # noqa: PLW2901
             is_positional = True
             if input_idx < len(inputs) and inputs[input_idx] is not None:
                 inp = inputs[input_idx]

@@ -4,7 +4,6 @@ from _test_commons import _load_pytorch_transformer_model
 
 from onnxruntime import set_seed
 from onnxruntime.training import optim, orttrainer
-from onnxruntime.training import orttrainer_options as orttrainer_options
 
 ###############################################################################
 # Testing starts here #########################################################

@@ -112,7 +112,7 @@ class ONNXExporterTest(unittest.TestCase):
             if test_with_inputs is not None:
                 for test_input in test_with_inputs:
                     if isinstance(test_input, torch.Tensor):
-                        test_input = (test_input,)
+                        test_input = (test_input,)  # noqa: PLW2901
                     test_input_copy = copy.deepcopy(test_input)
                     output = model(*test_input_copy)
                     if isinstance(output, torch.Tensor):

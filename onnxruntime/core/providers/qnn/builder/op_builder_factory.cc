@@ -19,7 +19,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Abs", *this);
     CreateSimpleOpBuilder("And", *this);
     CreateSimpleOpBuilder("Ceil", *this);
-    CreateSimpleOpBuilder("Cast", *this);
     CreateSimpleOpBuilder("Cos", *this);
     CreateSimpleOpBuilder("Div", *this);
     CreateSimpleOpBuilder("Equal", *this);
@@ -52,6 +51,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("LogSoftmax", *this);
     CreateSimpleOpBuilder("MatMul", *this);
     CreateSimpleOpBuilder("Concat", *this);
+  }
+
+  {
+    CreateCastOpBuilder("Cast", *this);
   }
 
   {

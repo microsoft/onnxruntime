@@ -14,7 +14,7 @@ else
 fi
 
 if [ ! -d "/opt/conda/bin" ]; then
-    PYTHON_EXES=("/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10")
+    PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10")
 else
     PYTHON_EXES=("/opt/conda/bin/python")
 fi
