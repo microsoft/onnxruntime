@@ -309,7 +309,7 @@ def _fx_to_torchscript(
         new_kwargs = {}
         for k, v in node.kwargs.items():
             if isinstance(v, torch.device):
-                v = v.type
+                v = v.type  # noqa: PLW2901
             new_kwargs[k] = v
         node.kwargs = new_kwargs
     for node in fx_module.graph.nodes:

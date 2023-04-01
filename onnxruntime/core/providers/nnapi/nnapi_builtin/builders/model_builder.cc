@@ -543,7 +543,6 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
     bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
                                          [](bool is_supported) { return is_supported; });
-    // TODO, To allow fallback to CPU if it's not strict CPU_DISABLED mode
     if (!all_ops_supported) {
       // There are some ops not supported by the list of the target devices
       // Fail the Compile
@@ -551,11 +550,10 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       // TODO, add some logic to not fail for some cases
       // Such as, if there are some acceptable fall back to CPU (nnapi-reference)
       // and CPU is not in the target devices list
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "The model cannot run using the current set of target devices, ",
-                             GetDevicesDescription(nnapi_target_devices_));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "The model cannot run using the current set of target devices, ",
+                               GetDevicesDescription(nnapi_target_devices_));
     }
-
     // Workaround bugs in NNAPI drives on some phones
     // where ops are passed checking by 'ANeuralNetworksModel_getSupportedOperationsForDevices'
     // but failed at compilation.
@@ -587,12 +585,12 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
         optype_support_status[stat_name].second++;
       }
     }
-    size_t total_ops = 0;
+    size_t fallback_ops = 0;
     std::string fallback_op_detail, normal_op_detail;
 
     for (const auto& [op, ops_status] : optype_support_status) {
       auto& [support_cnt, unspport_cnt] = ops_status;
-      total_ops += support_cnt + unspport_cnt;
+      fallback_ops += unspport_cnt;
       if (support_cnt > 0) {
         normal_op_detail += MakeString(support_cnt, "x ", op, ", ");
       }
@@ -601,7 +599,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       }
     }
 
-    LOGS_DEFAULT(VERBOSE) << total_ops << " Ops [" << fallback_op_detail << "] out of " << num_nnapi_ops_
+    LOGS_DEFAULT(VERBOSE) << fallback_ops << " Ops [" << fallback_op_detail << "] out of " << num_nnapi_ops_
                           << " are falling-back to " << kNnapiCpuDeviceName << ", and ["
                           << normal_op_detail << "] is running in accelerators.";
   }

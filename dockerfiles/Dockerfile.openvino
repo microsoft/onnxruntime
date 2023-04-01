@@ -27,7 +27,7 @@ RUN ln -s cmake-* cmake-dir
 RUN python3 -m pip install wheel
 ENV PATH=${WORKDIR_PATH}/cmake-dir/bin:$PATH
 RUN pip3 install onnx
-RUN cd onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel
+RUN cd onnxruntime && ./build.sh --allow_running_as_root --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel
 
 #Steps to download sources
 RUN cat /etc/apt/sources.list | sed 's/^# deb-src/deb-src/g' > ./temp; mv temp /etc/apt/sources.list

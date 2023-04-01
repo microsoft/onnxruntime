@@ -65,7 +65,7 @@ def generate_summaries_per_step(args):
                 # Open merge_filename_for_sub_dir in write mode
                 with merge_filename_for_sub_dir.open(mode="w", encoding="utf-8") as outfile:
                     for filename in tensor_name_in_order:
-                        filename = filename.rstrip("\n")
+                        filename = filename.rstrip("\n")  # noqa: PLW2901
                         full_filename = dump_step_path / filename
                         if not full_filename.exists():
                             # Be noted that some tensor handled in PyTorch might be missing in ORT graph

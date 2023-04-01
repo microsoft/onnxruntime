@@ -54,6 +54,10 @@ select = [
     "RUF", # Ruff-specific rules
     "SIM", # flake8-simplify
     "UP", # pyupgrade
+    "PLE", # pylint errors
+    "PLW", # pylint warnings
+    "PLC", # pylint conventions
+    "NPY", # numpy
 ]
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.
 # Always include a comment to explain why.
@@ -62,6 +66,7 @@ ignore = [
     "N803", # Argument casing
     "N812", # Allow import torch.nn.functional as F
     "N999", # Module names
+    "NPY002", # np.random.Generator may not always fit our use cases
     "SIM102", # We don't perfer always combining if branches
     "SIM108", # We don't encourage ternary operators
     "SIM114", # Don't combine if branches for debugability

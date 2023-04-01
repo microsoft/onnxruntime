@@ -80,6 +80,12 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, QGemm);
 // ******** End: Quantization ******************* //
 
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSInternalNHWCDomain, 11, MLFloat16, MaxPool);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSInternalNHWCDomain, 11, MLFloat16, AveragePool);
+#endif
+
+
 // This section includes all op kernel declarations for former experimental ops which have now been removed from onnx.
 // To maintain backward compatibility these are added as contrib ops.
 // Note: the domain for all contrib ops should be MSDomain. However since these ops started out as onnx domain ops
@@ -143,6 +149,27 @@ Status RegisterNchwcKernels(KernelRegistry& kernel_registry) {
 
   return Status::OK();
 }
+
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
+  static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSInternalNHWCDomain, 11, MLFloat16, MaxPool)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSInternalNHWCDomain, 11, MLFloat16, AveragePool)>,
+  };
+
+  for (auto& function_table_entry : function_table) {
+    KernelCreateInfo info = function_table_entry();
+    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+      ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
+    }
+  }
+
+  return Status::OK();
+}
+#endif
+
+
 
 Status RegisterQuantizationKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -269,6 +296,12 @@ Status RegisterCpuContribKernels(KernelRegistry& kernel_registry) {
   }
 
   ORT_RETURN_IF_ERROR(RegisterQuantizationKernels(kernel_registry));
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  if (MlasFp16AccelerationSupported()) {
+    ORT_RETURN_IF_ERROR(RegisterFp16Kernels(kernel_registry));
+  }
+#endif
 
   return Status::OK();
 }
