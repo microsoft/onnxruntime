@@ -10,7 +10,7 @@ class Format(Enum):
     Format3 = 3
 
 
-def GenerateModel(format, model_name, multi_output_add=False, add_output_in_graph_output=False):
+def GenerateModel(format, model_name, multi_output_add=False, add_output_in_graph_output=False):  # noqa: N802
     nodes = [  # LayerNorm subgraph
         helper.make_node("ReduceMean", ["ln_in"], ["rd1_out"], "reduce1", axes=[-1], keepdims=1),
         helper.make_node("Sub", ["ln_in", "rd1_out"], ["sb1_out"], "sub1"),

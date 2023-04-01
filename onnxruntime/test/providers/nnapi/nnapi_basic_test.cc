@@ -327,13 +327,11 @@ TEST(NnapiExecutionProviderTest, TestQDQResizeNCHW) {
   // NNAPI EP does not support the default setting of Resize Op
   // Use bi-linear and asymmetric for NNAPI EP only
   auto Mode = ExpectedEPNodeAssignment::None;
-#if defined(__ANDROID__)
   const auto* nnapi_handle = NnApiImplementation();
   if (nnapi_handle && nnapi::GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(
                           *nnapi_handle, nnapi::TargetDeviceOption::ALL_DEVICES) >= ANEURALNETWORKS_FEATURE_LEVEL_3) {
     Mode = ExpectedEPNodeAssignment::All;
   }
-#endif
   RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
                                          {1, 3, 32, 32} /* sizes_data */,
                                          "linear" /* mode */,

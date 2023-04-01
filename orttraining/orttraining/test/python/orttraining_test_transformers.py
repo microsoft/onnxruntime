@@ -1,27 +1,19 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import unittest
-import shutil
-import pytest
-import os
 import random
-import numpy as np
-from numpy.testing import assert_allclose
-from transformers import BertConfig, BertForPreTraining, BertModel
+import unittest
 
-from orttraining_test_data_loader import ids_tensor, BatchArgsOption
-from orttraining_test_utils import run_test, get_lr
+import numpy as np
+import torch
+from numpy.testing import assert_allclose
+from orttraining_test_data_loader import BatchArgsOption, ids_tensor
+from orttraining_test_utils import get_lr, run_test
+from transformers import BertConfig, BertForPreTraining
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler
-
-import torch
+from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer  # noqa: F401
 
 
 class BertModelTest(unittest.TestCase):
-    class BertModelTester(object):
+    class BertModelTester:
         def __init__(
             self,
             parent,
@@ -218,8 +210,8 @@ class BertModelTest(unittest.TestCase):
             option_allreduce_post_accumulation,
             option_gradient_accumulation_steps,
             option_split_batch,
-            option_use_internal_get_lr_this_step=[True],
-            option_use_internal_loss_scaler=[True],
+            option_use_internal_get_lr_this_step=[True],  # noqa: B006
+            option_use_internal_loss_scaler=[True],  # noqa: B006
         ):
             seed = 42
             random.seed(seed)

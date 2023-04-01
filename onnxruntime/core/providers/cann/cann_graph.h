@@ -12,6 +12,7 @@
 #include "core/providers/cann/cann_common.h"
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_utils.h"
+#include "core/providers/cann/cann_execution_provider_info.h"
 
 namespace onnxruntime {
 namespace cann {
@@ -72,7 +73,7 @@ struct CannModelPreparation {
 std::vector<NodeIndex> SupportONNXModel(const GraphViewer& graph_viewer);
 Status ParserONNXModel(std::string string_model, ge::Graph& graph);
 Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc_name, std::string file_name,
-                      ge::ModelBufferData& model);
+                      CANNExecutionProviderInfo& info, ge::ModelBufferData& model);
 
 }  // namespace cann
 }  // namespace onnxruntime

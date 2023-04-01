@@ -1,7 +1,7 @@
 import os
 
 import onnx
-from onnx import AttributeProto, GraphProto, TensorProto, helper, shape_inference
+from onnx import AttributeProto, GraphProto, TensorProto, helper, shape_inference  # noqa: F401
 
 _this_dir = os.path.abspath(os.path.dirname(__file__))
 
