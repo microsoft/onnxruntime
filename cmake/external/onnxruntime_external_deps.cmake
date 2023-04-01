@@ -236,7 +236,10 @@ if (NOT WIN32)
   #nsync tests failed on Mac Build
   set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
   onnxruntime_fetchcontent_makeavailable(google_nsync)
-  set(nsync_SOURCE_DIR ${google_nsync_SOURCE_DIR})
+  if (google_nsync_SOURCE_DIR)
+    add_library(nsync::nsync_cpp ALIAS nsync_cpp)
+    target_include_directories(nsync_cpp PUBLIC ${google_nsync_SOURCE_DIR}/public)
+  endif()
 endif()
 
 if(onnxruntime_USE_CUDA)
