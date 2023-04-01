@@ -2435,6 +2435,7 @@ def main():
         args.enable_training_ops = True
 
     configs = set(args.config)
+    configs = {'Debug'}
 
     # setup paths and directories
     # cmake_path and ctest_path can be None. For example, if a person only wants to run the tests, he/she doesn't need
