@@ -500,7 +500,8 @@ def parse_arguments():
     )
     parser.add_argument("--use_tensorrt", action="store_true", help="Build with TensorRT")
     parser.add_argument(
-        "--use_tensorrt_builtin_parser", action="store_true", default=True, help="Use TensorRT builtin parser")
+        "--use_tensorrt_builtin_parser", action="store_true", default=True, help="Use TensorRT builtin parser"
+    )
     parser.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS parser")
     parser.add_argument(
         "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
