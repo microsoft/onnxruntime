@@ -668,7 +668,6 @@ if (onnxruntime_USE_TENSORRT)
       HINTS  ${TENSORRT_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
     set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN} ${TENSORRT_LIBRARY_NVONNXPARSER})
-    MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   else()
     FetchContent_Declare(
       onnx_tensorrt
@@ -696,7 +695,7 @@ if (onnxruntime_USE_TENSORRT)
   endif()
 
   include_directories(${TENSORRT_INCLUDE_DIR})
-
+  MESSAGE(STATUS "Found TensorRT libs at ${TENSORRT_LIBRARY}")
   set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
