@@ -95,6 +95,19 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   } else if (op_type == "PRelu") {
     auto* prelu = layer->mutable_activation()->mutable_prelu();
     ORT_RETURN_IF_ERROR(AddPReluWeight(model_builder, node, logger, *prelu));
+  } else if (op_type == "LeakyRelu") {
+    const auto& attributes = node.GetAttributes();
+    auto alpha_attr = attributes.find("alpha");
+
+    if (alpha_attr != attributes.end()) {
+      auto alpha = (*alpha_attr).second.f();
+      auto *leaky_relu = layer->mutable_activation()->mutable_leakyrelu();
+      leaky_relu->set_alpha(alpha);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "ActivationOpBuilder::AddToModelBuilderImpl, alpha not present in LeakyReLU",
+                             node.Index());
+    }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -187,6 +200,7 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
           "Tanh",
           "Relu",
           "PRelu",
+          "LeakyRelu",
       };
 
   op_registrations.builders.push_back(std::make_unique<ActivationOpBuilder>());
