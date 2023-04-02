@@ -725,9 +725,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
-static void VerifyConstantFoldingWithDequantizeLinear(int quantize_linear_count,
-                                                      int dequantize_linear_count,
-                                                      int conv_count,
+static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<std::string, int>& expected_op_count,
                                                       Graph& graph,
                                                       SessionOptions& session_options,
                                                       const Logger& logger) {
@@ -748,9 +746,15 @@ static void VerifyConstantFoldingWithDequantizeLinear(int quantize_linear_count,
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["QuantizeLinear"] == quantize_linear_count);
-  ASSERT_TRUE(op_to_count["DequantizeLinear"] == dequantize_linear_count);
-  ASSERT_TRUE(op_to_count["Conv"] == conv_count);
+  for (const auto& entry : expected_op_count) {
+    if (entry.second == 0) {
+      ASSERT_TRUE(op_to_count.find(entry.first) == op_to_count.end())
+          << entry.first << " should not exist in the graph";
+    } else {
+      ASSERT_TRUE(op_to_count[entry.first] == entry.second)
+          << entry.first << " mismatch. Expected:" << entry.second << " Got:" << op_to_count[entry.first];
+    }
+  }
 }
 
 TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
@@ -763,17 +767,66 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   ASSERT_TRUE(op_to_count["DequantizeLinear"] == 3);
   ASSERT_TRUE(op_to_count["Conv"] == 1);
 
+  std::unordered_map<std::string, int> expected_op_counts = {{"QuantizeLinear", 1},
+                                                             {"DequantizeLinear", 3},
+                                                             {"Conv", 1}};
+
   SessionOptions session_options;
   // Check DequantizeLinear aren't constant folded for default setting.
-  VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
 
   // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0"));
-  VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
 
   // set SessionOptionsEnableQuantQDQ to disable it
+  expected_op_counts["DequantizeLinear"] = 1;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
-  VerifyConstantFoldingWithDequantizeLinear(1, 1, 1, graph, session_options, *logger_);
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+}
+
+// model with 2 QDQ node units that can be constant folded as they are simple DQ -> Node -> Q where DQ and Node have
+// single consumer and do not produce graph outputs. Node is deterministic.
+// there are also other DQ nodes that should be ignored.
+TEST_F(GraphTransformationTests, ConstantFoldingQDQNodeUnit) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["QuantizeLinear"] == 3);
+  ASSERT_TRUE(op_to_count["DequantizeLinear"] == 4);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 1);
+  ASSERT_TRUE(op_to_count["Transpose"] == 1);
+
+  SessionOptions session_options;
+
+  // 2 QDQ node units should be constant folded and go away
+  std::unordered_map<std::string, int> expected_op_counts = {{"QuantizeLinear", 1},
+                                                             {"DequantizeLinear", 2},
+                                                             {"Transpose", 0},
+                                                             {"Unsqueeze", 0}};
+
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+}
+
+// Simple QDQ Node Unit but shouldn't be constant folded as the node in the middle produces a graph output
+TEST_F(GraphTransformationTests, ConstantFoldingQDQNodeUnitGraphOutput) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.graph_output.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["QuantizeLinear"] == 2);
+  ASSERT_TRUE(op_to_count["DequantizeLinear"] == 3);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 1);
+
+  std::unordered_map<std::string, int> expected_op_counts = {{"QuantizeLinear", 2},
+                                                             {"DequantizeLinear", 3},
+                                                             {"Unsqueeze", 1}};
+
+  SessionOptions session_options;
+  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
 }
 
 TEST_F(GraphTransformationTests, ConstantFolding_RemoveDanglingInputNodesToConstantFoldedNode) {

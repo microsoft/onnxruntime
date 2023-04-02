@@ -20,7 +20,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(LayerNormTest, BERTLayerNorm) {
-  OpTester tester("LayerNormalization", 1 /*opset_version*/);
+  OpTester tester("LayerNormalization", 17 /*opset_version*/);
   tester.AddAttribute<int64_t>("axis", -1);
   tester.AddAttribute<float>("epsilon", 1e-12f);
 
@@ -40,12 +40,11 @@ TEST(LayerNormTest, BERTLayerNorm) {
   tester.AddInput<float>("B", B_dims, B_data);
 
   tester.AddReferenceOutputs("testdata/layernorm.onnx");
-
   tester.Run();
 }
 
 TEST(LayerNormTest, BERTLayerNorm_NoBias) {
-  OpTester tester("LayerNormalization", 1 /*opset_version*/);
+  OpTester tester("LayerNormalization", 17 /*opset_version*/);
   tester.AddAttribute<int64_t>("axis", -1);
   tester.AddAttribute<float>("epsilon", 1e-12f);
 
@@ -59,8 +58,6 @@ TEST(LayerNormTest, BERTLayerNorm_NoBias) {
   std::vector<int64_t> scale_dims{128};
   std::vector<float> scale_data = random.Uniform<float>(scale_dims, 0.0f, 1.0f);
   tester.AddInput<float>("Scale", scale_dims, scale_data);
-
-  tester.AddOptionalInputEdge<float>();
 
   tester.AddReferenceOutputs("testdata/layernorm_no_bias.onnx");
 
@@ -227,7 +224,7 @@ TEST(LayerNormTest, LayerNorm_InvalidScaleBias) {
   // implementation for which we don't control the check or error message.
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Size of X.shape()[axis:] == 6. Size of scale and bias (if provided) must match this",
-           {kDnnlExecutionProvider, kDmlExecutionProvider});
+           {kDnnlExecutionProvider, kDmlExecutionProvider, kTensorrtExecutionProvider});
 }
 
 #if defined(USE_DNNL)

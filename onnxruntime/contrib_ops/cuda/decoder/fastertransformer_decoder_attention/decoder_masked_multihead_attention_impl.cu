@@ -1,6 +1,6 @@
 /*
  * The implementation of this file is based on code provided by https://github.com/NVIDIA/FasterTransformer
- * 
+ *
  * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,8 @@
 // Modifications:
 // (1) Removed some code paths from the original implementation that had features which is not supported by
 //  corresponding ORT kernel - for example- CrossAttention support, FP8, INT8, supports, etc.
+// (2) When dealing with masked tokens, this kernel implementation deviates from FasterTransformer by applying
+// mask filter values. Appropriate commentary exists in the code below.
 
 #include "decoder_masked_multihead_attention_impl.h"
 #include "decoder_masked_multihead_attention_impl_utils.h"
@@ -31,7 +33,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace decoder_masked_multihead_attention_details;
+using namespace decoder_masked_self_attention_details;
 
 template <
     // The type of the inputs. Supported types: float and half.
@@ -44,7 +46,7 @@ template <
     int THREADS_PER_VALUE,
     // The number of threads in a threadblock.
     int THREADS_PER_BLOCK>
-__global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentionParams params) {
+__global__ void masked_multihead_attention_kernel(DecoderMaskedSelfAttentionParams params) {
   // This kernel contains some code that cannot be compiled on CUDA ARCH 5.3 or lower
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
   (void)(params);
@@ -286,7 +288,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
   // Iterate over the keys/timesteps to compute the various (Q*K^T)_{ti} values.
   bool has_beams = params.cache_indir != nullptr;
-
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
@@ -294,16 +295,24 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
-#pragma unroll
-    for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-      int jj = ii * params.max_sequence_length + ti;
 
-      if (ti < tlength) {
-        if (has_beams) {
+    if (has_beams) {
+#pragma unroll
+      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        int jj = ii * params.max_sequence_length + ti;
+
+        if (ti < tlength) {
           const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
           k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
-        } else {
+        }
+      }
+    } else {
+#pragma unroll
+      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        int jj = ii * params.max_sequence_length + ti;
+
+        if (ti < tlength) {
           k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
         }
@@ -314,9 +323,16 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
     // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
     float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
 
+    // This is a deviation from FasterTransformer kernel implementation
+    // but this aligns with ORT's other Attention kernels which strives to
+    // mimic PyTorch when dealing with mask filter values
+    if (is_masked) {
+      qk += params.mask_filter_value;
+    }
+
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
-      qk_max = is_masked ? qk_max : fmaxf(qk_max, qk);
+      qk_max = fmaxf(qk_max, qk);
       qk_smem[ti] = qk;
     }
   }
@@ -355,8 +371,10 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   // Compute the logits and start the sum.
   float sum = 0.f;
   for (int ti = tidx; ti <= tlength; ti += THREADS_PER_BLOCK) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
-    float logit = is_masked ? 0.f : __expf(qk_smem[ti] - qk_max);
+    // This is a deviation from FasterTransformer kernel implementation
+    // but this aligns with ORT's other Attention kernels which strives to
+    // mimic PyTorch when dealing with mask filter values
+    float logit = __expf(qk_smem[ti] - qk_max);
     sum += logit;
     qk_smem[ti] = logit;
   }
@@ -480,32 +498,32 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 // Template instantiation(s)
 
 // fp32 + head size = 64
-template void __global__ masked_multihead_attention_kernel<float, 64, 4, 16, 64>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 64, 4, 16, 64>(DecoderMaskedSelfAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<float, 64, 2, 16, 128>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 64, 2, 16, 128>(DecoderMaskedSelfAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<float, 64, 1, 16, 256>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 64, 1, 16, 256>(DecoderMaskedSelfAttentionParams params);
 
 // fp16 + head size = 64
-template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 4, 8, 64>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 4, 8, 64>(DecoderMaskedSelfAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 2, 8, 128>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 2, 8, 128>(DecoderMaskedSelfAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 1, 8, 256>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 1, 8, 256>(DecoderMaskedSelfAttentionParams params);
 
 // fp32 + head size = 128
-template void __global__ masked_multihead_attention_kernel<float, 128, 4, 32, 64>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 128, 4, 32, 64>(DecoderMaskedSelfAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<float, 128, 2, 32, 128>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 128, 2, 32, 128>(DecoderMaskedSelfAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<float, 128, 1, 32, 256>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<float, 128, 1, 32, 256>(DecoderMaskedSelfAttentionParams params);
 
 // fp16 + head size = 128
-template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 4, 16, 64>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 4, 16, 64>(DecoderMaskedSelfAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedSelfAttentionParams params);
 
-template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedMultiheadAttentionParams params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedSelfAttentionParams params);
 
 }  // namespace cuda
 }  // namespace contrib

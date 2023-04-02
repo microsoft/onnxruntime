@@ -67,10 +67,10 @@ size_t GetAttentionWorkspaceSize(
     int num_heads,
     int head_size,
     int sequence_length,
-    int past_sequence_length) {
+    int total_sequence_length) {
   size_t qkv_size = element_size * 3 * batch_size * sequence_length * num_heads * head_size;
   return qkv_size + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads,
-                                                sequence_length, past_sequence_length + sequence_length);
+                                                sequence_length, total_sequence_length);
 }
 
 inline int3 Get2DMaskStrides(int total_sequence_length) {

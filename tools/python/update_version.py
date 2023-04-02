@@ -103,7 +103,7 @@ def update_version():
         from util import is_windows, run
 
         if is_windows():
-            args = ["cmd", "/c"] + args
+            args = ["cmd", "/c", *args]
         run(*args, cwd=cwd)
 
     # check if node, npm and yarn are installed

@@ -136,7 +136,7 @@ def generate_sgd_single_weight_tests(run_step_count, device):
         target = torch.randn(batch_size, dimension_hidden, device=device, dtype=torch.float32)
         return input, target
 
-    json_file_name = f"sgd_test_single_weight.json"
+    json_file_name = "sgd_test_single_weight.json"
     generate_sgd_test_data(seed, _model_setup_func, _data_func, run_step_count, json_file_name, device)
 
 
@@ -154,7 +154,7 @@ def generate_sgd_multiple_weights_tests(run_step_count, device):
         target = torch.randn(batch_size, dim_out, device=device, dtype=torch.float32)
         return input, target
 
-    json_file_name = f"sgd_test_multiple_weights.json"
+    json_file_name = "sgd_test_multiple_weights.json"
     generate_sgd_test_data(seed, _model_setup_func, data_func, run_step_count, json_file_name, device)
 
 
