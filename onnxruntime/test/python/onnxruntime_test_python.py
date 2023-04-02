@@ -101,7 +101,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testDeserializationFromPathObject(self):  # noqa: N802
         # path object is allowed
-        onnxrt.InferenceSession(pathlib.Path(get_name("mul_1.onnx")), providers=onnxrt.get_available_providers())
+        onnxrt.InferenceSession(pathlib.Path(get_name("mul_1.onnx")), providers=available_providers)
 
     def testSetProviders(self):  # noqa: N802
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
