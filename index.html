@@ -159,7 +159,7 @@
 												<code>import onnxruntime as ort 
 import numpy as np
 ort_sess = ort.InferenceSession('model.onnx')
-outputs = ort_sess.run(None, {'input': text.numpy(),'offsets':  torch.tensor([0]).numpy()})
+outputs = ort_sess.run(None, {'input': text.numpy(),'offsets':  np.array([0], dtype=np.int64)})
 result = outputs[0].argmax(axis=1)
 print(result[0])
 </code><a href="docs/get-started/with-python" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
