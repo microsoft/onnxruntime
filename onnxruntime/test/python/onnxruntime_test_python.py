@@ -5,11 +5,11 @@
 import copy
 import gc
 import os
+import pathlib
 import platform
 import sys
 import threading
 import unittest
-from pathlib import Path
 
 import numpy as np
 from helper import get_name
@@ -101,7 +101,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testDeserializationFromPathObject(self):  # noqa: N802
         # path object is allowed
-        onnxrt.InferenceSession(Path(get_name("mul_1.onnx")), providers=onnxrt.get_available_providers())
+        onnxrt.InferenceSession(pathlib.Path(get_name("mul_1.onnx")), providers=onnxrt.get_available_providers())
 
     def testSetProviders(self):  # noqa: N802
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
