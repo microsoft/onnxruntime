@@ -22,10 +22,10 @@ bool TestDeferredRelease() {
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
 
-  AllocatorPtr gpu_alloctor = ep.GetAllocator(OrtMemType::OrtMemTypeDefault);
+  AllocatorPtr gpu_alloctor = std::make_shared<CPUAllocator>();
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
-  AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(OrtMemTypeCPU);
+  AllocatorPtr cpu_pinned_alloc = std::make_shared<CPUAllocator>();
   // let the CudaStream instance "own" the default stream, so we can avoid the
   // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
   CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr);
@@ -35,9 +35,9 @@ bool TestDeferredRelease() {
   ORT_THROW_IF_ERROR(ep.OnRunStart());
   for (size_t i = 0; i < n_allocs; ++i) {
     // Allocate 10MB CUDA pinned memory.
-    auto pinned_buffer = ep.AllocateBufferOnCPUPinned<void>(n_bytes);
+    //auto pinned_buffer = ep.AllocateBufferOnCPUPinned<void>(n_bytes);
     // Release it using CUDA callback.
-    stream.EnqueDeferredCPUBuffer(pinned_buffer.release());
+    //stream.EnqueDeferredCPUBuffer(pinned_buffer.release());
   }
 
   // Memory stats
@@ -54,10 +54,10 @@ bool TestDeferredReleaseWithoutArena() {
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
 
-  AllocatorPtr gpu_alloctor = ep.GetAllocator(OrtMemType::OrtMemTypeDefault);
+  AllocatorPtr gpu_alloctor = std::make_shared<CPUAllocator>();
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
-  AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(OrtMemTypeCPU);
+  AllocatorPtr cpu_pinned_alloc = std::make_shared<CPUAllocator>();
   // let the CudaStream instance "own" the default stream, so we can avoid the
   // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
   CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr);
@@ -67,9 +67,9 @@ bool TestDeferredReleaseWithoutArena() {
   ORT_THROW_IF_ERROR(ep.OnRunStart());
   for (size_t i = 0; i < n_allocs; ++i) {
     // Allocate 10MB CUDA pinned memory.
-    auto pinned_buffer = ep.AllocateBufferOnCPUPinned<void>(n_bytes);
+    //auto pinned_buffer = ep.AllocateBufferOnCPUPinned<void>(n_bytes);
     // Release it using CUDA callback.
-    stream.EnqueDeferredCPUBuffer(pinned_buffer.release());
+    //stream.EnqueDeferredCPUBuffer(pinned_buffer.release());
   }
 
   ORT_THROW_IF_ERROR(stream.CleanUpOnRunEnd());

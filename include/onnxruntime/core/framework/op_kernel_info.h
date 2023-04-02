@@ -27,7 +27,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
-                        const DataTransferManager& data_transfer_mgr);
+                        const DataTransferManager& data_transfer_mgr,
+                        AllocatorPtr device_allocator = nullptr, AllocatorPtr pinned_allocator = nullptr);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -43,6 +44,10 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
+  AllocatorPtr GetDeviceAllocator() const { return device_allocator_; }
+
+  AllocatorPtr GetPinnedAllocator() const { return pinned_allocator_; }
+
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
@@ -56,6 +61,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
+  AllocatorPtr device_allocator_;
+  AllocatorPtr pinned_allocator_;
 };
 
 }  // namespace onnxruntime

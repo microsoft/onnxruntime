@@ -161,11 +161,11 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
   return result;
 }
 
-Status AddToFeeds(const IExecutionProvider* execution_provider,
-                  Stream* ort_stream,
+Status AddToFeeds(Stream* ort_stream,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
                   IAllocatorUniquePtr<char>& buffer,
+                  AllocatorPtr gpu_allocator,
                   AllocatorPtr pinned_allocator,
                   const OrtMemoryInfo& location) {
 #ifdef ENABLE_NVTX_PROFILE
@@ -174,7 +174,6 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
 #endif
 
   // Copy tensors to GPU, then add to feeds
-  const CUDAExecutionProvider* provider = reinterpret_cast<const CUDAExecutionProvider*>(execution_provider);
   size_t total_bytes = 0;
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
@@ -208,7 +207,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
     }
   }
   if (!buffer) {
-    buffer = provider->GetScratchBuffer<char>(total_bytes, ort_stream, WaitCudaNotificationOnDevice);
+    buffer = IAllocator::MakeUniquePtr<char>(gpu_allocator, total_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
   }
   char* gpu_data = buffer.get();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_data, pinned_data, total_bytes, cudaMemcpyHostToDevice, stream));

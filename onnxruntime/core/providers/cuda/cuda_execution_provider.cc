@@ -2453,7 +2453,7 @@ std::vector<AllocatorPtr> CUDAExecutionProvider::CreatePreferredAllocators() {
       info_.external_allocator_info, info_.default_memory_arena_cfg));
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED);
       },
       // TODO: should we use info_.device_id instead of DEFAULT_CPU_ALLOCATOR_DEVICE_ID?
       // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__DEVICE.html#group__CUDART__DEVICE_1g159587909ffa0791bbe4b40187a4c6bb

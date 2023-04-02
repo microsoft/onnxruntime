@@ -32,7 +32,7 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
-#include "core/session/ort_env.h" 
+#include "core/session/ort_env.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -859,6 +859,8 @@ struct ProviderHostImpl : ProviderHost {
   Status OpKernelInfo__GetAttrsAsSpan(const OpKernelInfo* p, const std::string& name, gsl::span<const int64_t>& values) override {
     return p->GetAttrsAsSpan(name, values);
   }
+  AllocatorPtr OpKernelInfo__GetDeviceAllocator(const OpKernelInfo* p) override { return p->GetDeviceAllocator(); }
+  AllocatorPtr OpKernelInfo__GetPinnedAllocator(const OpKernelInfo* p) override { return p->GetPinnedAllocator(); }
 
   const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
   const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) override { return p->GetKernelDef(); }

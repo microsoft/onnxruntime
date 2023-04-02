@@ -133,14 +133,15 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
                                                  decoder_input_ids));
 
   const IExecutionProvider* provider = GetProvider();
+  AllocatorPtr default_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault));
   AllocatorPtr pinned_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
-  const OrtMemoryInfo& location = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault))->Info();
+  const OrtMemoryInfo& location = default_allocator->Info();
   ORT_RETURN_IF_ERROR(add_to_feeds_func(
-      provider,
       ort_stream,
       {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
       feeds,
       buffer,
+      default_allocator,
       pinned_allocator,
       location));
 

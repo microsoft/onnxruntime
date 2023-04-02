@@ -36,15 +36,6 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
       preferred_layout_{preferred_layout} {
 }
 
-// AllocatorPtr InternalTestingExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-//   // replicate setup that some EPs have with a local allocator
-//   if (mem_type == OrtMemTypeDefault) {
-//     return local_allocator_;
-//   } else {
-//     return IExecutionProvider::GetAllocator(mem_type);
-//   }
-// }
-
 InternalTestingExecutionProvider::~InternalTestingExecutionProvider() {}
 
 DataLayout InternalTestingExecutionProvider::GetPreferredLayout() const {

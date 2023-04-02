@@ -14,7 +14,8 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
                            const IExecutionProvider& execution_provider,
                            const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                            const OrtValueNameIdxMap& ort_value_name_idx_map,
-                           const DataTransferManager& data_transfer_mgr)
+                           const DataTransferManager& data_transfer_mgr,
+                           AllocatorPtr device_allocator, AllocatorPtr pinned_allocator)
     : OpNodeProtoHelper(&proto_helper_context_),
       node_(node),
       kernel_def_(kernel_def),
@@ -22,11 +23,11 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       constant_initialized_tensors_(constant_initialized_tensors),
       ort_value_name_idx_map_(ort_value_name_idx_map),
       data_transfer_mgr_(data_transfer_mgr),
-      proto_helper_context_(node) {}
+      proto_helper_context_(node), device_allocator_(device_allocator), pinned_allocator_(pinned_allocator) {}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
-                   other.ort_value_name_idx_map_, other.data_transfer_mgr_) {}
+                   other.ort_value_name_idx_map_, other.data_transfer_mgr_, other.device_allocator_, other.pinned_allocator_) {}
 
 const OrtDevice OpKernelInfo::GetDevice(OrtMemType mem_type) const {
   return execution_provider_->GetOrtDeviceByMemType(mem_type);

@@ -55,43 +55,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().template GetConstOnes<T>(count, stream);
   }
 
-  // !!!! TODO: this is a temporary workaround for GetScratchBuffer
-  // We should remove the GetScratchBuffer method and let the kernel get it from OpKernelContext
-  // !!!! Make sure remove this before merge.
-  AllocatorPtr GetAllocator(OrtMemType mem_type) const {
-    auto device = GetOrtDeviceByMemType(mem_type);
-    auto it = std::find_if(allocator_list_.begin(), allocator_list_.end(), [&](AllocatorPtr ptr) {
-      return ptr->Info().device.Hash() == device.Hash();
-    });
-    return it != allocator_list_.end() ? *it : nullptr;
-  }
-
-  // GPU scratch buffer need to be allocated on stream
-  template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
-  }
-
-  template <typename T>
-  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, true);
-  }
-
-  template <typename T>
-  IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    // Note that OrtMemTypeCPU and OrtMemTypeCPUOutput are the same. See onnxruntime_c_api.h.
-    // In some CUDA async
-    if (count_or_bytes == 0)
-      return nullptr;
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeCPU),
-                                        count_or_bytes);
-  }
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 

@@ -32,7 +32,7 @@
 #include "core/providers/xnnpack/xnnpack_provider_factory_creator.h"
 #endif
 #ifdef USE_CUDA
-include "core/providers/cuda/cuda_provider_factory_creator.h"
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
 #endif  // USE_CUDA
 
 

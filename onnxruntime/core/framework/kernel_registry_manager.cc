@@ -23,7 +23,9 @@ Status KernelRegistryManager::CreateKernel(const Node& node,
   OpKernelInfo kernel_info(node, *kernel_create_info.kernel_def, execution_provider,
                            session_state.GetConstantInitializedTensors(),
                            session_state.GetOrtValueNameIdxMap(),
-                           session_state.GetDataTransferMgr());
+                           session_state.GetDataTransferMgr(),
+                           session_state.GetAllocator(execution_provider.GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault)),
+                           session_state.GetAllocator(execution_provider.GetOrtDeviceByMemType(OrtMemType::OrtMemTypeCPU)));
 
   return kernel_create_info.kernel_create_func(session_state.GetMutableFuncMgr(), kernel_info, out);
 }

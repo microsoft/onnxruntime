@@ -60,11 +60,11 @@ using CreateGptInputsFunc = std::function<Status(
     OrtValue& expanded_attention_mask)>;
 
 using AddToFeedsFunc = std::function<Status(
-    const IExecutionProvider* provider,
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
     IAllocatorUniquePtr<char>& buffer,
+    AllocatorPtr gpu_allocator,
     AllocatorPtr pinned_allocator,
     const OrtMemoryInfo& location)>;
 
@@ -187,11 +187,11 @@ Status TopK(
     Tensor& output_indices);
 
 Status AddToFeeds(
-    const IExecutionProvider* execution_provider,
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
     IAllocatorUniquePtr<char>& buffer,
+    AllocatorPtr gpu_allocator,
     AllocatorPtr pinned_allocator,
     const OrtMemoryInfo& location);
 

@@ -65,12 +65,12 @@ Status GptSubgraph::CreateInitialFeeds(
                                              expanded_attention_mask));
 
   AllocatorPtr pinned_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
-  const OrtMemoryInfo& location = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault))->Info();
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
-                                        ort_stream,
+  const OrtMemoryInfo& location = default_allocator->Info();
+  ORT_RETURN_IF_ERROR(add_to_feeds_func(ort_stream,
                                         {expanded_input_ids, expanded_position_ids, expanded_attention_mask},
                                         feeds,
                                         buffer,
+                                        default_allocator,
                                         pinned_allocator,
                                         location));
 
