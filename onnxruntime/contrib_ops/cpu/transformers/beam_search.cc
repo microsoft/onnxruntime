@@ -230,6 +230,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
         *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
         *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
         add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+        reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
         topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
         process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
         init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
@@ -239,7 +240,9 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
         update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
         expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
         expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
-        expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>};
+        expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
+        cuda_device_prop_,
+        cuda_device_arch_};
     ORT_RETURN_IF_ERROR(impl.Initialize());
 
     return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -248,6 +251,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
         *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
         *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
         add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+        reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
         topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
         process_logits_fp16_func_,
         init_beam_state_fp16_func_,
@@ -257,7 +261,9 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
         update_decoder_feeds_fp16_func_,
         expand_buffer_int32_func_,
         expand_buffer_float_func_,
-        expand_buffer_float16_func_};
+        expand_buffer_float16_func_,
+        cuda_device_prop_,
+        cuda_device_arch_};
 
     ORT_RETURN_IF_ERROR(impl.Initialize());
 
