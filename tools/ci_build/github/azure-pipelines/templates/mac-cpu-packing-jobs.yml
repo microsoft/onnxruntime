@@ -94,11 +94,16 @@ jobs:
 
   - task: Cache@2
     inputs:
-      key: ' "$(TODAY)" | ccache  | onnxruntime | "$(Build.SourceVersion)" '
+      key: ' "$(TODAY)" | ccache  | onnxruntime | "$(LastKey)" '
       path: $(ORT_CACHE_DIR)
       restoreKeys: |
         "$(TODAY)" | ccache | onnxruntime
     displayName: ccache MacOS Build
+    env:
+      ${{if eq(Build.SourceName, 'merge')}}:
+        LastKey: $(Build.SourceName)
+      ${{ else }}:
+        LastKey: $(Build.SourceVesion)
     condition: eq(${{ parameters.WithCache }}, true)
 
   - ${{ if eq(parameters.MacosArch, 'universal2') }}:
