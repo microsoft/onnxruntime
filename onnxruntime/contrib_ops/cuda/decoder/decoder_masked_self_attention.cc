@@ -51,7 +51,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
 
   auto& device_prop = GetDeviceProp();
-  DecoderMaskedSelfAttentionParams parameters;
+  DecoderMaskedMultiHeadAttentionParams parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
@@ -186,6 +186,10 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   }
 
   switch (parameters.head_size) {
+    case 32:
+      mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
+      break;
+
     case 64:
       mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
       break;
