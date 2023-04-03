@@ -398,6 +398,265 @@ struct CustomOpKernel : OpKernel {
   void* op_kernel_;
 };
 
+KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op) {
+  const size_t input_count = op->GetInputTypeCount(op);
+  const size_t output_count = op->GetOutputTypeCount(op);
+  int undefined = 0;
+
+  KernelDefBuilder def_builder;
+  def_builder.SetName(op->GetName(op))
+      .SetDomain(domain)
+      .SinceVersion(1);
+
+  // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
+  // to work with newer versions (> 12) of the ORT binary.
+  if (op->version > 12) {
+    for (size_t i = 0; i < input_count; i++) {
+      def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
+    }
+  }
+
+  for (size_t i = 0; i < input_count; i++) {
+    const auto type = op->GetInputType(op, i);
+    if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+      def_builder.TypeConstraint("T" + std::to_string(undefined++), DataTypeImpl::AllTensorTypes());
+    } else {
+      def_builder.TypeConstraint("Input" + std::to_string(i), DataTypeImpl::TensorTypeFromONNXEnum((int)type)->AsTensorType());
+    }
+  }
+
+  for (size_t i = 0; i < output_count; i++) {
+    const auto type = op->GetOutputType(op, i);
+    if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+      def_builder.TypeConstraint("T0", DataTypeImpl::AllTensorTypes());
+    } else {
+      def_builder.TypeConstraint("Output" + std::to_string(i), DataTypeImpl::TensorTypeFromONNXEnum((int)type)->AsTensorType());
+    }
+  }
+
+  if (const char* provider_type = op->GetExecutionProviderType(op)) {
+    def_builder.Provider(provider_type);
+  } else {
+    def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+  }
+
+  KernelCreateFn kernel_create_fn = [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<CustomOpKernel>(info, *op);
+    return Status::OK();
+  };
+
+  return KernelCreateInfo(def_builder.Build(), kernel_create_fn);
+}
+
+ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustomOp* op) {
+  constexpr uint32_t min_ort_version_with_optional_io_support = 8;
+  constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
+
+  const size_t input_count = op->GetInputTypeCount(op);
+  const size_t output_count = op->GetOutputTypeCount(op);
+  int undefined = 0;
+
+  ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
+
+  for (size_t i = 0; i < input_count; i++) {
+    onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
+    bool is_homogeneous = true;
+    int min_arity = 1;
+
+    // The OrtCustomOp interface did not support the methods to query input/output characteristics before
+    // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
+    if (op->version >= min_ort_version_with_optional_io_support) {
+      const auto characteristic = op->GetInputCharacteristic(op, i);
+
+      // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
+      if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+        option = onnx::OpSchema::FormalParameterOption::Optional;
+      } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
+                 (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
+        ORT_ENFORCE(i == input_count - 1, "Only the last input to a custom op may be marked variadic.");
+        option = onnx::OpSchema::FormalParameterOption::Variadic;
+        min_arity = op->GetVariadicInputMinArity(op);
+        is_homogeneous = static_cast<bool>(op->GetVariadicInputHomogeneity(op));
+      }
+    }
+
+    const auto type = op->GetInputType(op, i);
+    if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
+      std::string type_str = "T" + std::to_string(undefined);
+      schema.Input(i, "Input" + std::to_string(i), "", type_str, option, is_homogeneous, min_arity);
+      schema.TypeConstraint(type_str, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+      undefined++;
+    } else {
+      std::string input_name = "Input" + std::to_string(i);
+      schema.Input(i, input_name, "", input_name, option, is_homogeneous, min_arity);
+      schema.TypeConstraint(input_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+    }
+  }
+
+  for (size_t i = 0; i < output_count; i++) {
+    onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
+    bool is_homogeneous = true;
+    int min_arity = 1;
+
+    // The OrtCustomOp interface did not support the methods to query input/output characteristics before
+    // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
+    if (op->version >= min_ort_version_with_optional_io_support) {
+      const auto characteristic = op->GetOutputCharacteristic(op, i);
+
+      // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
+      if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+        option = onnx::OpSchema::FormalParameterOption::Optional;
+      } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
+                 (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
+        ORT_ENFORCE(i == output_count - 1, "Only the last output to a custom op may be marked variadic.");
+        option = onnx::OpSchema::FormalParameterOption::Variadic;
+        min_arity = op->GetVariadicOutputMinArity(op);
+        is_homogeneous = static_cast<bool>(op->GetVariadicOutputHomogeneity(op));
+      }
+    }
+    const auto type = op->GetOutputType(op, i);
+    if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
+      if (op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED) {
+        ORT_ENFORCE(1 == undefined,
+                    "There must be one (and only one) dynamic typed input to the custom op. "
+                    "Its type info at runtime will be used to infer the type info of this dynamic typed output "
+                    "which is required for the success of the model loading step. "
+                    "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
+                    "cannot be inferred without which model loading cannot proceed.");
+      }
+      schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);
+    } else {
+      std::string output_name = "Output" + std::to_string(i);
+      schema.Output(i, output_name, "", output_name, option, is_homogeneous, min_arity);
+      schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+    }
+  }
+  schema.SetDomain(domain);
+  schema.SinceVersion(1);
+  schema.AllowUncheckedAttributes();
+  return schema;
+}
+
+Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* op) {
+  const size_t input_count = op->GetInputTypeCount(op);
+  const size_t output_count = op->GetOutputTypeCount(op);
+
+  // check inputs
+  const auto& input_parameters = schema.inputs();
+  ORT_RETURN_IF_NOT(input_parameters.size() == input_count, "input count does not match");
+  for (size_t i = 0; i < input_parameters.size(); ++i) {
+    const auto characteristic = op->GetInputCharacteristic(op, i);
+    const auto& formal_parameter = input_parameters[i];
+    if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+      ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Optional,
+                        "custom op schemas mismatch, expecting ", i + 1,
+                        i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                        " input to be of optional type");
+    } else if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC) {
+      ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Variadic,
+                        "custom op schemas mismatch, expecting ", i + 1,
+                        i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                        " input to be of variadic type");
+    } else {
+      ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Single,
+                        "custom op schemas mismatch, expecting ", i + 1,
+                        i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                        " input to be of single type");
+    }
+    ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicOutputHomogeneity(op) != 0),
+                      "custom op schemas mismatch, expecting ", i + 1,
+                      i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                      " input to keep same homogeneity");
+    ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
+                      "custom op schemas mismatch, expecting ", i + 1,
+                      i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                      " input to keep same arity");
+  }
+  // check outputs
+  const auto& output_parameters = schema.outputs();
+  ORT_RETURN_IF_NOT(output_parameters.size() == output_count, "output count does not match");
+  for (size_t i = 0; i < output_parameters.size(); ++i) {
+    const auto characteristic = op->GetOutputCharacteristic(op, i);
+    const auto& formal_parameter = output_parameters[i];
+    if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+      ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Optional,
+                        "custom op schemas mismatch, expecting ", i + 1,
+                        i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                        " output to be of optional type");
+    } else if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC) {
+      ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Variadic,
+                        "custom op schemas mismatch, expecting ", i + 1,
+                        i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                        " output to be of variadic type");
+    } else {
+      ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Single,
+                        "custom op schemas mismatch, expecting ", i + 1,
+                        i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                        " output to be of single type");
+    }
+    ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicOutputHomogeneity(op) != 0),
+                      "custom op schemas mismatch, expecting ", i + 1,
+                      i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                      " output to keep same homogeneity");
+    ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
+                      "custom op schemas mismatch, expecting ", i + 1,
+                      i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                      " output to keep same arity");
+  }
+  return Status::OK();
+}
+
+void InferOutputTypes(const InlinedVector<const KernelDef*>& kernel_defs,
+                      ONNX_NAMESPACE::InferenceContext& infer_ctx) {
+  for (const auto& kernel_def : kernel_defs) {
+    const auto& type_constraints = kernel_def->TypeConstraints();
+    if (type_constraints.count("T1")) {
+      continue;
+    }
+    auto num_inputs = infer_ctx.getNumInputs();
+    bool matched = true;
+    ONNXTensorElementDataType undef = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    for (size_t i = 0; i < num_inputs; ++i) {
+      auto input_name = "Input" + std::to_string(i);
+      auto input_type = infer_ctx.getInputType(i);
+      if (input_type) {
+        auto elem_type = static_cast<ONNXTensorElementDataType>(input_type->tensor_type().elem_type());
+        auto tc_iter = type_constraints.find(input_name);
+        if (tc_iter == type_constraints.end()) {
+          if (ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == undef) {
+            tc_iter = type_constraints.find("T0");
+            if (tc_iter == type_constraints.end()) {
+              matched = false;
+              break;
+            }
+            undef = elem_type;
+          } else {
+            matched = false;
+            break;
+          }
+        } else if (tc_iter->second.size() != 1 || tc_iter->second[0] != DataTypeImpl::TensorTypeFromONNXEnum(elem_type)) {
+          matched = false;
+          break;
+        }
+      }
+    }  // for
+    if (matched) {
+      auto num_outputs = infer_ctx.getNumOutputs();
+      for (size_t i = 0; i < num_outputs; i++) {
+        auto output_name = "Output" + std::to_string(i);
+        auto output_type = infer_ctx.getOutputType(i);
+        auto tc_iter = type_constraints.find(output_name);
+        if (tc_iter == type_constraints.end()) {
+          output_type->mutable_tensor_type()->set_elem_type(undef);
+        } else {
+          output_type->mutable_tensor_type()->set_elem_type(tc_iter->second[0]->GetTypeProto()->tensor_type().elem_type());
+        }
+      }
+      break;
+    }
+  }
+}
+
 common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domains,
                                     std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
@@ -405,8 +664,8 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
   for (const auto& domain : op_domains) {
 #if !defined(ORT_MINIMAL_BUILD)
     std::unordered_map<std::string, ONNX_NAMESPACE::OpSchema> schema_map;
+    std::unordered_map<std::string, InlinedVector<const KernelDef*>> kernel_def_map;
     using OnnxTypeVec = std::vector<ONNXTensorElementDataType>;
-    std::unordered_map<std::string, std::vector<OnnxTypeVec>> type_map;
 
     // Domain is not empty - add it to the DomainToVersion ONNX map
     // If domain is empty, it is assumed to be part of the ONNX domain
@@ -421,252 +680,27 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
     }
 
-    constexpr uint32_t min_ort_version_with_optional_io_support = 8;
-    constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
-
     for (const auto* op : domain->custom_ops_) {
-      const size_t input_count = op->GetInputTypeCount(op);
-      const size_t output_count = op->GetOutputTypeCount(op);
-      int undefined = 0;
+      // define kernel
+      auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
+      kernel_def_map[op->GetName(op)].push_back(kernel_create_info.kernel_def.get());
+      ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
+      // define schema
       auto schema_map_iter = schema_map.find(op->GetName(op));
       if (schema_map_iter == schema_map.end()) {
-        type_map.emplace(op->GetName(op), std::vector<OnnxTypeVec>{});
-        ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
-
-        for (size_t i = 0; i < input_count; i++) {
-          onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
-          bool is_homogeneous = true;
-          int min_arity = 1;
-
-          // The OrtCustomOp interface did not support the methods to query input/output characteristics before
-          // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
-          if (op->version >= min_ort_version_with_optional_io_support) {
-            const auto characteristic = op->GetInputCharacteristic(op, i);
-
-            // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
-            if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-              option = onnx::OpSchema::FormalParameterOption::Optional;
-            } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
-                       (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-              ORT_ENFORCE(i == input_count - 1, "Only the last input to a custom op may be marked variadic.");
-              option = onnx::OpSchema::FormalParameterOption::Variadic;
-              min_arity = op->GetVariadicInputMinArity(op);
-              is_homogeneous = static_cast<bool>(op->GetVariadicInputHomogeneity(op));
-            }
-          }
-
-          const auto type = op->GetInputType(op, i);
-          if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
-            std::string type_str = "T" + std::to_string(undefined);
-            schema.Input(i, "Input" + std::to_string(i), "", type_str, option, is_homogeneous, min_arity);
-            schema.TypeConstraint(type_str, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
-            undefined++;
-          } else {
-            std::string input_name = "Input" + std::to_string(i);
-            schema.Input(i, input_name, "", input_name, option, is_homogeneous, min_arity);
-            schema.TypeConstraint(input_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
-          }
-        }
-
-        for (size_t i = 0; i < output_count; i++) {
-          onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
-          bool is_homogeneous = true;
-          int min_arity = 1;
-
-          // The OrtCustomOp interface did not support the methods to query input/output characteristics before
-          // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
-          if (op->version >= min_ort_version_with_optional_io_support) {
-            const auto characteristic = op->GetOutputCharacteristic(op, i);
-
-            // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
-            if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-              option = onnx::OpSchema::FormalParameterOption::Optional;
-            } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
-                       (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-              ORT_ENFORCE(i == output_count - 1, "Only the last output to a custom op may be marked variadic.");
-              option = onnx::OpSchema::FormalParameterOption::Variadic;
-              min_arity = op->GetVariadicOutputMinArity(op);
-              is_homogeneous = static_cast<bool>(op->GetVariadicOutputHomogeneity(op));
-            }
-          }
-          const auto type = op->GetOutputType(op, i);
-          if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
-            if (op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED) {
-              ORT_ENFORCE(1 == undefined, "todo...");
-            }
-            schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);
-          } else {
-            std::string output_name = "Output" + std::to_string(i);
-            schema.Output(i, output_name, "", output_name, option, is_homogeneous, min_arity);
-            schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
-          }
-        }
-        schema.SetDomain(domain->domain_);
-        schema.SinceVersion(1);
-        schema.AllowUncheckedAttributes();
+        auto schema = CreateSchema(domain->domain_, op);
         schema_map.emplace(schema.Name(), schema);
-      } else {  // perform consistency check
-        const auto& schema = schema_map_iter->second;
-        // check inputs
-        const auto& input_parameters = schema.inputs();
-        ORT_RETURN_IF_NOT(input_parameters.size() == input_count, "input count does not match");
-        for (size_t i = 0; i < input_parameters.size(); ++i) {
-          const auto characteristic = op->GetInputCharacteristic(op, i);
-          const auto& formal_parameter = input_parameters[i];
-          if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Optional,
-                              "custom op schemas mismatch, expecting ", i + 1,
-                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                              " input to be of optional type");
-          } else if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC) {
-            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Variadic,
-                              "custom op schemas mismatch, expecting ", i + 1,
-                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                              " input to be of variadic type");
-          } else {
-            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Single,
-                              "custom op schemas mismatch, expecting ", i + 1,
-                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                              " input to be of single type");
-          }
-          ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicOutputHomogeneity(op) != 0),
-                            "custom op schemas mismatch, expecting ", i + 1,
-                            i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                            " input to keep same homogeneity");
-          ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
-                            "custom op schemas mismatch, expecting ", i + 1,
-                            i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                            " input to keep same arity");
-        }
-        // check outputs
-        const auto& output_parameters = schema.outputs();
-        ORT_RETURN_IF_NOT(output_parameters.size() == output_count, "output count does not match");
-        for (size_t i = 0; i < output_parameters.size(); ++i) {
-          const auto characteristic = op->GetOutputCharacteristic(op, i);
-          const auto& formal_parameter = output_parameters[i];
-          if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Optional,
-                              "custom op schemas mismatch, expecting ", i + 1,
-                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                              " output to be of optional type");
-          } else if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC) {
-            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Variadic,
-                              "custom op schemas mismatch, expecting ", i + 1,
-                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                              " output to be of variadic type");
-          } else {
-            ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Single,
-                              "custom op schemas mismatch, expecting ", i + 1,
-                              i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                              " output to be of single type");
-          }
-          ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicOutputHomogeneity(op) != 0),
-                            "custom op schemas mismatch, expecting ", i + 1,
-                            i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                            " output to keep same homogeneity");
-          ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
-                            "custom op schemas mismatch, expecting ", i + 1,
-                            i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                            " output to keep same arity");
-        }
-      }
-
-      type_map[op->GetName(op)].push_back({});
-      KernelDefBuilder def_builder;
-      def_builder.SetName(op->GetName(op))
-          .SetDomain(domain->domain_)
-          .SinceVersion(1);
-
-      // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
-      // to work with newer versions (> 12) of the ORT binary.
-      if (op->version > 12) {
-        for (size_t i = 0; i < input_count; i++) {
-          def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
-        }
-      }
-
-      for (int i = 0; i < undefined; ++i) {
-        def_builder.TypeConstraint("T" + std::to_string(i), DataTypeImpl::AllTensorTypes());
-      }
-
-      for (size_t i = 0; i < input_count; i++) {
-        const auto type = op->GetInputType(op, i);
-        type_map[op->GetName(op)].back().push_back(type);
-        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED != type) {
-          def_builder.TypeConstraint("Input" + std::to_string(i), DataTypeImpl::TensorTypeFromONNXEnum((int)type)->AsTensorType());
-        }
-      }
-
-      for (size_t i = 0; i < output_count; i++) {
-        const auto type = op->GetOutputType(op, i);
-        type_map[op->GetName(op)].back().push_back(type);
-        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED != type) {
-          def_builder.TypeConstraint("Output" + std::to_string(i), DataTypeImpl::TensorTypeFromONNXEnum((int)type)->AsTensorType());
-        }
-      }
-
-      if (const char* provider_type = op->GetExecutionProviderType(op)) {
-        def_builder.Provider(provider_type);
       } else {
-        def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+        ORT_RETURN_IF_ERROR(IsCompatible(schema_map_iter->second, op));
       }
-
-      KernelCreateFn kernel_create_fn = [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-        out = std::make_unique<CustomOpKernel>(info, *op);
-        return Status::OK();
-      };
-
-      KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
-      ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(create_info));
     }
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas;
     for (auto schema_iter : schema_map) {
       schemas.push_back(schema_iter.second);
-      auto type_iter = type_map.find(schema_iter.first);
-      ORT_ENFORCE(type_iter != type_map.end());
-      std::vector<OnnxTypeVec> type_vecs = type_iter->second;
-      ONNX_NAMESPACE::InferenceFunction infer_fn = [type_vecs](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
-        auto num_inputs = infer_ctx.getNumInputs();
-        std::vector<ONNXTensorElementDataType> input_types;
-        for (size_t i = 0; i < num_inputs; ++i) {
-          auto input_type = infer_ctx.getInputType(i);
-          if (input_type) {
-            input_types.push_back((ONNXTensorElementDataType)infer_ctx.getInputType(i)->tensor_type().elem_type());
-          } else {
-            input_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
-          }
-        }
-        auto num_outputs = infer_ctx.getNumOutputs();
-        for (const auto& type_vec : type_vecs) {
-          if (type_vec.size() != num_inputs + num_outputs) {
-            continue;
-          }
-          bool match = true;
-          ONNXTensorElementDataType undef = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-          for (size_t i = 0; i < num_inputs; i++) {
-            if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == input_types[i]) {
-              continue;
-            } else if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type_vec[i]) {
-              //assert all undef are unanimous
-              undef = input_types[i];
-            } else if (type_vec[i] != input_types[i]) {
-              match = false;
-              break;
-            }
-          }
-          if (match) {
-            for (size_t i = num_inputs; i < type_vec.size(); i++) {
-              auto* output_type = infer_ctx.getOutputType(i - num_inputs);
-              if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type_vec[i]) {
-                output_type->mutable_tensor_type()->set_elem_type(undef);
-              } else {
-                output_type->mutable_tensor_type()->set_elem_type(type_vec[i]);
-              }
-            }
-            break;
-          }
-        }
+      InlinedVector<const KernelDef*> kernel_defs = std::move(kernel_def_map[schema_iter.first]);
+      ONNX_NAMESPACE::InferenceFunction infer_fn = [kernel_defs](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
+        InferOutputTypes(kernel_defs, infer_ctx);
       };
       schemas.back().TypeAndShapeInferenceFunction(infer_fn);
     }
