@@ -647,7 +647,8 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
       int sequence_length = 1;
       int number_of_heads = 12;
       // Vary head_size / hidden_size
-      for (int hidden_size = 768; hidden_size <= 1536; hidden_size += 768) {
+      int hidden_sizes[3] = {384, 768, 1536};
+      for (int hidden_size : hidden_sizes) {
         int head_size = (hidden_size / number_of_heads);
         int total_sequence_length = sequence_length + past_sequence_length;
         int max_sequence_length = past_sequence_length + 1;  // Always keep >  past_sequence_length
@@ -760,7 +761,8 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
       int number_of_heads = 12;
 
       // Vary head_size / hidden_size
-      for (int hidden_size = 768; hidden_size <= 1536; hidden_size += 768) {
+      int hidden_sizes[3] = {384, 768, 1536};
+      for (int hidden_size : hidden_sizes) {
         int head_size = (hidden_size / number_of_heads);
         int total_sequence_length = sequence_length + past_sequence_length;
         int max_sequence_length = past_sequence_length + 1;  // Always keep >  past_sequence_length
