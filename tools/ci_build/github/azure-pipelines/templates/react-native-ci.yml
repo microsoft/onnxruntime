@@ -40,8 +40,8 @@ stages:
 
 - stage: ReactNative_CI
   displayName: React Native CI
-  # dependsOn:
-  # - Build_Android_AAR
+  dependsOn:
+  - Build_Android_AAR
   jobs:
   - job: ReactNative_CI
     pool:
