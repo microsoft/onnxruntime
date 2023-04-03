@@ -132,9 +132,9 @@ stages:
           scriptSource: inline
           script: |
             import sys
-            version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
             import subprocess
-            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', version])
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
           workingDirectory: '$(Build.BinariesDirectory)'
           displayName: 'Install python modules'
 
