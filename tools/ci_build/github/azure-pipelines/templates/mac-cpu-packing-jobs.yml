@@ -102,7 +102,7 @@ jobs:
   - task: Cache@2
     inputs:
       ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
-        key: ' "$(TODAY)" | ccache  | onnxruntime | merge '
+        key: ' "$(TODAY)" | ccache  | merge '
       ${{else}}:
         key: ' "$(TODAY)" | ccache  | onnxruntime | $(Build.SourceVersion) '
       path: $(ORT_CACHE_DIR)
