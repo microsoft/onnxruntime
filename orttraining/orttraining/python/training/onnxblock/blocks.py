@@ -5,7 +5,7 @@ import contextlib
 import copy
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional, List, Any
+from typing import Any, List, Optional
 
 import onnx
 
