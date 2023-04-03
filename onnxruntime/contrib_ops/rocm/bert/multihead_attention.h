@@ -23,10 +23,6 @@ class MultiHeadAttention final : public RocmKernel {
   int num_heads_;  // number of attention heads
   float mask_filter_value_;
   float scale_;
-  bool disable_fused_self_attention_;
-  bool disable_fused_cross_attention_;
-  mutable CumulatedSequenceLengthCache cumulated_sequence_length_q_cache_;
-  mutable CumulatedSequenceLengthCache cumulated_sequence_length_kv_cache_;
 };
 
 }  // namespace rocm

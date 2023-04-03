@@ -33,9 +33,7 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
-    : RocmKernel(info),
-      cumulated_sequence_length_q_cache_(),
-      cumulated_sequence_length_kv_cache_() {
+    : RocmKernel(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
@@ -43,21 +41,6 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
-
-  disable_fused_self_attention_ =
-      sizeof(T) != 2 ||
-      ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
-
-  disable_fused_cross_attention_ =
-      sizeof(T) != 2 ||
-      ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
-
-  // Allocate cache buffers
-  constexpr size_t cache_bytes = sizeof(int32_t) * (static_cast<size_t>(kCumulatedSequenceLengthCacheMaxBatchSize) + 1);
-  cumulated_sequence_length_q_cache_.buffer = GetTransientScratchBuffer<void>(cache_bytes);
-  cumulated_sequence_length_q_cache_.max_batch_size = kCumulatedSequenceLengthCacheMaxBatchSize;
-  cumulated_sequence_length_kv_cache_.buffer = GetTransientScratchBuffer<void>(cache_bytes);
-  cumulated_sequence_length_kv_cache_.max_batch_size = kCumulatedSequenceLengthCacheMaxBatchSize;
 }
 
 template <typename T>
