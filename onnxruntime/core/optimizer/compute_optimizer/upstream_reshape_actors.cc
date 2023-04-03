@@ -57,8 +57,8 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
     std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name());
 
-  int current_node_output_index = *info.node_ptr->data_producer_output_index;
-  const NodeArg* data_input_arg = current_node.OutputDefs()[data_producer_output_index];
+  int current_node_output_index = info.data_producer_output_index;
+  const NodeArg* data_input_arg = current_node.OutputDefs()[current_node_output_index];
 
   propagate_input_indices.clear();
   all_input_cmp_rets.clear();
@@ -171,7 +171,7 @@ bool MatMulReshapeActor::PreCheck(
     std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter MatMulReshapeActor::PreCheck for node " + current_node.Name());
 
-  int current_node_output_index = *info.node_ptr->data_producer_output_index;
+  int current_node_output_index = info.data_producer_output_index;
   const NodeArg* data_input_arg = current_node.OutputDefs()[current_node_output_index];
 
   propagate_input_indices.clear();
@@ -234,7 +234,7 @@ bool LayerNormalizationReshapeActor::PreCheck(
     return false;
   }
 
-  int current_node_output_index = *info.node_ptr->data_producer_output_index;
+  int current_node_output_index = info.data_producer_output_index;
   const NodeArg* data_input_arg = current_node.OutputDefs()[current_node_output_index];
 
   propagate_input_indices.clear();
