@@ -18,30 +18,71 @@ Before looking into this further, we should clarify a few things (if possible):
 
 ## 2. Collect Activation Statistics
 
-Add codes:
+### Add a few lines of code, run script to collect statistics:
+
+<table>
+<tr>
+<th>Baseline</th>
+<th>ORTModule</th>
+</tr>
+<tr>
+<td>
+<sub>
 
 ```diff
 +	from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
 +	sub_manager = SubscriberManager()
-+	sub_manager.subscribe(model, [StatisticsSubscriber("pt_out", override_output_dir=True)])
++	sub_manager.subscribe(model, [StatisticsSubscriber(output_dir="pt_out", override_output_dir=True)])
 ```
-Run training script to the steps that trigger the divergence. A folder named `pt_out` is created in the current working directory. For each step, there is a folder containing summaries for every activation tensor.
-Add a few lines of code:
+
+</sub>
+<td>
+<sub>
+
 ```diff
 	model = ORTModule(model)
 +	from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
 +	sub_manager = SubscriberManager()
-+	sub_manager.subscribe(model, [StatisticsSubscriber("ort_out", override_output_dir=True)])
++	sub_manager.subscribe(model, [StatisticsSubscriber(output_dir="ort_out", override_output_dir=True)])
 ```
 
-> `StatisticsSubscriber` can be subscribed before OR after wrapping ORTModule.
+</sub>
+</td>
+</tr>
+<tr>
+<td>
+<sub>
+
+
+Run training script to the steps that trigger the divergence. A folder named `pt_out` is created in the current working directory. For each step, there is a folder containing summaries for every activation tensor.
+
+
+</sub>
+<td>
+<sub>
+
 
 Run training script to the steps that trigger the divergence. Similarly, a folder named `ort_out` is created in the current working directory.
 
-Run command to generate per-step summary
+> `StatisticsSubscriber` can be subscribed before OR after wrapping ORTModule.
+</sub>
+</td>
+</tr>
+</table>
+
+
+Arguments:
+- output_dir: the directory in all activation statistics files will be stored.
+- start_step [optional]: the first step that runs subscriber actions.
+- end_step [optional]: the end step (exclusively) that runs subscriber actions.
+- override_output_dir: whether `output_dir` can be overridden if it already exists.
+
+Check [DebugOptions implementation](../orttraining/orttraining/python/training/utils/hooks/_statistics_subscriber.py)  for more information.
+
+### Run command to generate per-step summary
 
 ```bash
 python -m onnxruntime.training.utils.hooks.merge_activation_summary --pt_dir pt_out --ort_dir ort_out --output_dir /tmp/output
 ```
 
-Manually compare the generated per-step summary to find the first big diff.
+### Manually compare the generated per-step summary to find the first big diff.
