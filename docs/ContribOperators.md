@@ -430,7 +430,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
-<dd>The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)</dd>
+<dd>Input sequence used as a prompt for the generation. Can be int32 tokens (Shape is (batch_size, sequence_length)) or spectrogram float data (Shape is (batch_size, feature_size, sequence_length))</dd>
 <dt><tt>max_length</tt> : I</dt>
 <dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
 <dt><tt>min_length</tt> (optional) : I</dt>
