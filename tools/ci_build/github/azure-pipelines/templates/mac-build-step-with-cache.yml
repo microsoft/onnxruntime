@@ -28,11 +28,13 @@ steps:
     inputs:
       ${{ if eq(parameters.ChangeEveryCommit, true) }}:
         key:  ' "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}} | "$(Build.SourceVersion)" '
+        restoreKeys: |
+          "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}}
       ${{ else }}:
         key:  ' ${{parameters.AdditionalKey}} '
+        restoreKeys: |
+          ${{parameters.AdditionalKey}}
       path: ${{ parameters.CACHE_DIR }}
-      restoreKeys: |
-        "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}}
     displayName: ccache task
 
   - ${{ parameters.BuildStep }}
