@@ -10,7 +10,7 @@ parameters:
 - name: AdditionalKey
   type: string
 
-- name: CACHE_DIR
+- name: CacheDir
   type: string
 
 - name: ChangeEveryCommit
@@ -21,7 +21,7 @@ steps:
   - script: |
       which ccache || brew install ccache
       echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
-      mkdir -p "${{ parameters.CACHE_DIR }}"
+      mkdir -p "${{ parameters.CacheDir }}"
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
 
   - task: Cache@2
@@ -34,11 +34,11 @@ steps:
         key:  ' ${{parameters.AdditionalKey}} '
         restoreKeys: |
           ${{parameters.AdditionalKey}}
-      path: ${{ parameters.CACHE_DIR }}
+      path: ${{ parameters.CacheDir }}
     displayName: ccache task
 
   - ${{ parameters.BuildStep }}
 
   - template: check-cache-stats.yml
     parameters:
-      CacheDir: ${{ parameters.CACHE_DIR }}
+      CacheDir: ${{ parameters.CacheDir }}
