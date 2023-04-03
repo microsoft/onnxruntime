@@ -249,9 +249,10 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
   all_input_cmp_rets.clear();
 
   /* For each input of current_node, use this function to check if the input can be passed through.
-   * If the input has dim on the negative_axis and
-   * 1). either the dimension (if exists) including and before the negative_axis is same as the target node's output shape.
-   * 2). or the dimension (if exists) including and before negative_axis is 1.
+   * If the input has dim on the slicing axis and
+   * 1). either the dimension (if exists) including and before the slicing axis is same as the target node's
+   *  output shape.
+   * 2). or the dimension including and before slicing axis is either 1 , or equal with target dim , or not exist.
    * Otherwise, we will skip the optimization.
    *
    * Example 1: [Can be passed through]
@@ -394,11 +395,6 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
     }
 
     shape_update_func = [&info](Node& node) -> void {
-      // Loop all outputs of the target node, and update the shape accordingly.
-      // For cases AreAllOutputShapesEqual is True, which is handling elementwise ops like (Dropout/Add),
-      // if they have multiple outputs, the output shape is same.
-      // We can set the shape for every output easily.
-      // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
       for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
         UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis,
                                info.output_dim_on_axis);
@@ -406,6 +402,7 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
     };
 
   } else {
+    // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
     ORT_ENFORCE(shape_update_func,
                 "SimplePointwiseGatherActor<false>::PreCheck requires a custom shape update function provided.");
   }

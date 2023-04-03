@@ -149,17 +149,13 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
     }
 
     shape_update_func = [&info](Node& node) -> void {
-      // Loop all outputs of the target node, and update the shape accordingly.
-      // For cases AreAllOutputShapesEqual is True, which is handling elementwise ops like (Dropout/Add),
-      // if they have multiple outputs, the output shape is the same.
-      // We can set the shape for every output easily.
-      // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
       for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
         node.MutableOutputDefs()[output_idx]->SetShape(
             CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[output_idx]->Shape(), info.last_dim));
       }
     };
   } else {
+          // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
     ORT_ENFORCE(shape_update_func,
                 "AreAllOutputShapesEqual is false, a custom shape update function should be provided.");
   }

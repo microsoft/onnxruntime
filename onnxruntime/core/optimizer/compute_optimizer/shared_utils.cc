@@ -8,8 +8,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/shared_utils.h"
-using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
+
 namespace onnxruntime::optimizer::compute_optimizer {
 
 Node* InsertIntermediateNodeOnDestInput(Graph& graph,
