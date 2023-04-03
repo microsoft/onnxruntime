@@ -83,6 +83,8 @@ jobs:
     displayName: Install python modules
 
   - script: |
+      set -e -x
+      $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -d $(Build.SourcesDirectory)/cmake/deps.txt -p $(Build.BinariesDirectory)/installed
       python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
         --build-dir $(Build.BinariesDirectory)/ios_framework_full \
         --staging-dir "$(Build.BinariesDirectory)/staging" \

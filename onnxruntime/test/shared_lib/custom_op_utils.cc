@@ -171,6 +171,10 @@ void MyCustomStringLengthsKernel::Compute(OrtKernelContext* context) {
   Ort::KernelContext kcontext(context);
   constexpr std::array<const int64_t, 1> output_shape = {1};
   const size_t num_inputs = kcontext.GetInputCount();
+  Ort::Logger logger = kcontext.GetLogger();
+
+  ORT_CXX_LOGF(logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Getting string lengths for %d inputs",
+               static_cast<int>(num_inputs));
 
   // Each output is set to the length of the corresponding input string.
   for (size_t i = 0; i < num_inputs; ++i) {

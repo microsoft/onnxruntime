@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -355,7 +354,7 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         min_max_pairs = list(zip(rmin, rmax))
         output_names = [infer_session.get_outputs()[i].name for i in range(len(infer_session.get_outputs()))]
         output_min_max_dict = dict(zip(output_names, min_max_pairs))
-        for output_name in output_min_max_dict.keys():
+        for output_name in output_min_max_dict:
             self.assertEqual(output_min_max_dict[output_name], tensors_range[output_name])
 
     def test_augment_graph_with_zero_value_dimension(self):

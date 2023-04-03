@@ -69,7 +69,7 @@ class FusionTranspose(Fusion):
         assert len(parent_permutation) == len(permutation)
 
         output_permutation = []
-        for j, index in enumerate(permutation):
+        for _j, index in enumerate(permutation):
             output_permutation.append(parent_permutation[index])
 
         if cast_node is None:

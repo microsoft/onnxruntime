@@ -4,6 +4,7 @@
 
 #pragma once
 
+#ifdef USE_COMPOSABLE_KERNEL
 #include <cstdlib>
 
 #include "ck/ck.hpp"
@@ -75,7 +76,6 @@ using device_batched_gemm_softmax_gemm_permute_instances =
         // clang-format on
         >;
 
-
 struct PreSoftmaxAttentionScoreOp {
   PreSoftmaxAttentionScoreOp(float scale) : scale_(scale) {}
 
@@ -96,7 +96,6 @@ struct PreSoftmaxAttentionScoreOp {
 
   float scale_;
 };
-
 
 // Use this function to gat implementation
 template <typename DT, typename D0sDT, typename AccDT, typename D0Op, MaskingSpecialization MaskingSpec>
@@ -140,7 +139,8 @@ std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
 GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
     F16, ck::Tuple<F16, F16>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskDisabled>();
 
-}  // namespace ck
+}  // namespace internal
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
+#endif  // USE_COMPOSABLE_KERNEL

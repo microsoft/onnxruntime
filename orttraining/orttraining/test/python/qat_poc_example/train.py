@@ -1,9 +1,10 @@
 import logging
 
 import numpy as np
-import onnxruntime.training.api as orttraining
 import torch
 from torchvision import datasets, transforms
+
+import onnxruntime.training.api as orttraining
 
 
 def _get_dataloaders(data_dir, batch_size):

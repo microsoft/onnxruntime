@@ -8,7 +8,7 @@ Common errors with onnxruntime
 ==============================
 
 This example looks into several common situations
-in which *onnxruntime* does not return the model 
+in which *onnxruntime* does not return the model
 prediction but raises an exception instead.
 It starts by loading the model trained in example
 :ref:`l-logreg-example` which produced a logistic regression
@@ -37,7 +37,7 @@ try:
     sess.run([output_name], {input_name: x})
 except Exception as e:
     print("Unexpected type")
-    print("{0}: {1}".format(type(e), e))
+    print(f"{type(e)}: {e}")
 
 #########################
 # The model fails to return an output if the name
@@ -48,7 +48,7 @@ try:
     sess.run(["misspelled"], {input_name: x})
 except Exception as e:
     print("Misspelled output name")
-    print("{0}: {1}".format(type(e), e))
+    print(f"{type(e)}: {e}")
 
 ###########################
 # The output name is optional, it can be replaced by *None*
@@ -70,7 +70,7 @@ try:
     sess.run([output_name], {"misspelled": x})
 except Exception as e:
     print("Misspelled input name")
-    print("{0}: {1}".format(type(e), e))
+    print(f"{type(e)}: {e}")
 
 #########################
 # *onnxruntime* does not necessarily fail if the input
@@ -85,9 +85,9 @@ for x in [
 ]:
     try:
         r = sess.run([output_name], {input_name: x})
-        print("Shape={0} and predicted labels={1}".format(x.shape, r))
+        print(f"Shape={x.shape} and predicted labels={r}")
     except (RuntimeError, InvalidArgument) as e:
-        print("ERROR with Shape={0} - {1}".format(x.shape, e))
+        print(f"ERROR with Shape={x.shape} - {e}")
 
 for x in [
     numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
@@ -98,9 +98,9 @@ for x in [
 ]:
     try:
         r = sess.run(None, {input_name: x})
-        print("Shape={0} and predicted probabilities={1}".format(x.shape, r[1]))
+        print(f"Shape={x.shape} and predicted probabilities={r[1]}")
     except (RuntimeError, InvalidArgument) as e:
-        print("ERROR with Shape={0} - {1}".format(x.shape, e))
+        print(f"ERROR with Shape={x.shape} - {e}")
 
 #########################
 # It does not fail either if the number of dimension
@@ -113,6 +113,6 @@ for x in [
 ]:
     try:
         r = sess.run([output_name], {input_name: x})
-        print("Shape={0} and predicted labels={1}".format(x.shape, r))
+        print(f"Shape={x.shape} and predicted labels={r}")
     except (RuntimeError, InvalidArgument) as e:
-        print("ERROR with Shape={0} - {1}".format(x.shape, e))
+        print(f"ERROR with Shape={x.shape} - {e}")

@@ -54,6 +54,30 @@ const onnxruntime::Node& OpKernelInfo::node() const noexcept {
   return node_;
 }
 
+bool OpKernelInfo::TryGetConstantInput(int input_index, const OrtValue** constant_input_value) const {
+  if (input_index < 0 || input_index >= gsl::narrow_cast<int>(node_.InputDefs().size())) {
+    return false;
+  }
+  auto& input_arg_name = node_.InputDefs()[input_index]->Name();
+  int input_arg_index = -1;
+  if (!ort_value_name_idx_map_.GetIdx(input_arg_name, input_arg_index).IsOK()) {
+    return false;
+  }
+
+  auto iter = constant_initialized_tensors_.find(input_arg_index);
+  if (constant_initialized_tensors_.end() == iter) {
+    return false;
+  }
+
+  if (!iter->second.IsTensor()) {
+    // Only constant Tensor input is supported right now, since we're using initializers to store the data.
+    return false;
+  }
+
+  *constant_input_value = &iter->second;
+  return true;
+}
+
 bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_input_value) const {
   if (input_index < 0 || input_index >= gsl::narrow_cast<int>(node_.InputDefs().size())) {
     return false;
@@ -77,4 +101,5 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_
   *constant_input_value = &iter->second.Get<Tensor>();
   return true;
 }
+
 }  // namespace onnxruntime

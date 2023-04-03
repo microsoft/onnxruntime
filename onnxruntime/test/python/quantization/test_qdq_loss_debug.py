@@ -42,7 +42,7 @@ def construct_test_model1(test_model_path: str, activations_as_outputs=False):
       Relu2  Conv3
         |      |
       Conv2    |
-        \      /
+        \\      /
           Add
            |
           (AddOut)
@@ -87,7 +87,7 @@ def construct_test_model1(test_model_path: str, activations_as_outputs=False):
 class TestDataReader(CalibrationDataReader):
     """Random Data Input Generator"""
 
-    def __init__(self, input_shape=[1, 3, 1, 3]):
+    def __init__(self, input_shape=[1, 3, 1, 3]):  # noqa: B006
         self.preprocess_flag = True
         self.enum_data_dicts = []
         self.count = 2
@@ -258,7 +258,6 @@ class TestSaveActivations(unittest.TestCase):
             )
 
     def test_create_weight_matching_per_channel(self):
-
         # float model
         #         (input)
         #           |

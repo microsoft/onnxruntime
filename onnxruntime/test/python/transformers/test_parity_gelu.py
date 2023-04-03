@@ -28,7 +28,7 @@ import os
 import unittest
 
 import torch
-from parity_utilities import *
+from parity_utilities import *  # noqa: F403
 from torch import nn
 
 
@@ -98,12 +98,12 @@ def run(
 
     # Do not re-use onnx file from previous test since weights of model are random.
     onnx_model_path = "./temp/gelu_{}_{}.onnx".format(formula, "fp16" if float16 else "fp32")
-    export_onnx(model, onnx_model_path, float16, hidden_size, device)
+    export_onnx(model, onnx_model_path, float16, hidden_size, device)  # noqa: F405
 
     if optimized:
         optimized_onnx_path = "./temp/gelu_{}_opt_{}.onnx".format(formula, "fp16" if float16 else "fp32")
         use_gpu = float16 and not fp32_gelu_op
-        optimize_onnx(
+        optimize_onnx(  # noqa: F405
             onnx_model_path,
             optimized_onnx_path,
             Gelu.get_fused_op(formula),
@@ -115,7 +115,7 @@ def run(
     else:
         onnx_path = onnx_model_path
 
-    num_failure = run_parity(
+    num_failure = run_parity(  # noqa: F405
         model,
         onnx_path,
         batch_size,
@@ -236,7 +236,7 @@ class TestGeluParity(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    args, remaining_args = parse_arguments(namespace_filter=unittest)
+    args, remaining_args = parse_arguments(namespace_filter=unittest)  # noqa: F405
 
     TestGeluParity.verbose = args.log_verbose
     TestGeluParity.optimized = args.optimize

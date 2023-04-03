@@ -3,24 +3,23 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _logger
-
 import os
-import torch
 import warnings
-
 from enum import IntFlag
 from typing import Optional
+
+import torch
+
+from . import _logger, _utils
+from ._fallback_exceptions import wrap_exception  # noqa: F401
 from ._fallback_exceptions import (
+    ORTModuleDeviceException,
     ORTModuleFallbackException,
     ORTModuleInitException,
-    ORTModuleDeviceException,
     ORTModuleIOError,
-    ORTModuleTorchModelException,
     ORTModuleONNXModelException,
-    wrap_exception,
+    ORTModuleTorchModelException,
 )
-from . import _utils
 
 
 class _FallbackPolicy(IntFlag):
@@ -52,7 +51,7 @@ class _FallbackPolicy(IntFlag):
         return _FallbackPolicy.FALLBACK_DISABLE in self
 
 
-class _FallbackManager(object):
+class _FallbackManager:
     """Manages fallbacks based on incoming exceptions and specified policies
 
     The basic algorithm is based on a dictionary whose keys are the supported fallback policies
@@ -69,7 +68,6 @@ class _FallbackManager(object):
     """
 
     def __init__(self, pytorch_module: torch.nn.Module, policy: _FallbackPolicy, retry: bool):
-
         self._original_module = pytorch_module
 
         # Read policy from environment variable for testing purposes
@@ -133,7 +131,6 @@ class _FallbackManager(object):
                     and type(exception) in self._policy_exception_map[policy.value]
                 )
             ):
-
                 if log_level <= _logger.LogLevel.INFO:
                     warnings.warn(f"Fallback for policy {policy.name} is pending.", UserWarning)
 

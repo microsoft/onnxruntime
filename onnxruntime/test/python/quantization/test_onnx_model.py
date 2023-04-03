@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -11,9 +10,9 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_op_type_order
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_op_type_order  # noqa: F401
 
-import onnxruntime
+import onnxruntime  # noqa: F401
 from onnxruntime.quantization.onnx_model import ONNXModel
 
 
@@ -74,7 +73,7 @@ class TestONNXModel(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         onnx.save(model, model_path)
 
-    def construct_model_Constant(self, model_path):
+    def construct_model_Constant(self, model_path):  # noqa: N802
         #    (input)    Constant
         #       \         /
         #        \       /
