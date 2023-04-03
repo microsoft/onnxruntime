@@ -294,7 +294,7 @@ def test_crossentropy_loss_execution():
     ort_output_names = [onnx_model.graph.output[0].name]
     ort_inputs = {
         onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target).type(torch.int32)),
+        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target).type(torch.int64)),
     }
 
     def crossentropy_loss(prediction, target):
@@ -411,7 +411,7 @@ def test_crossentropy_loss_training_graph_execution():
     onnx_model, _ = simple_block.to_model_proto()
 
     ort_output_names = _get_training_ort_output_names(pt_model, onnx_model)
-    ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=torch.int32)
+    ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=torch.int64)
 
     def crossentropy_loss(prediction, target):
         loss = torch.nn.CrossEntropyLoss()
