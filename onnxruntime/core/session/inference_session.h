@@ -462,7 +462,8 @@ class InferenceSession {
                         correctly loaded
    * @return OK if success.
    */
-  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false, bool auto_enable=false);
+  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false,
+                          bool auto_enable = false);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)

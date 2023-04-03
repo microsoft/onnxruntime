@@ -441,13 +441,13 @@ typedef struct OrtCUDAProviderOptions {
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be superseded by environment variable ORT_CUDA_TUNABLE_OP_ENABLED.
+   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_ENABLED.
    */
   int tunable_op_enabled;
 
   /** \brief Enable TunableOp for tuning.
    *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
-   *   This option can be superseded by environment variable ORT_CUDA_TUNABLE_OP_TUNING.
+   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING.
    */
   int tunable_op_tuning;
 
@@ -522,13 +522,13 @@ typedef struct OrtROCMProviderOptions {
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
+   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
    */
   int tunable_op_enabled;
 
   /** \brief Enable TunableOp for tuning.
    *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
-   *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_TUNING.
+   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING.
    */
   int tunable_op_tuning;
 
@@ -4100,6 +4100,10 @@ struct OrtApi {
    * \since Version 1.15.
    */
   ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out);
+
+#ifdef __cplusplus
+  OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
+#endif
 };
 
 /*
