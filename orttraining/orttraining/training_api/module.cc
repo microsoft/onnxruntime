@@ -49,7 +49,10 @@ Status RemoveUnusedNodes(Graph& inference_graph, InlinedVector<const NodeArg*>& 
   // Get all graph nodes and remove those that are not in the reachable nodes.
   GraphViewer graph_viewer(inference_graph);
   const auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (int node_index = node_indices.size()-1; node_index >= 0; --node_index) {
+  // The iteration happens using NodeIndex which is of type size_t in a reverse manner.
+  // Note that size_t is guaranteed to wrap around once it goes below 0, and so having a
+  // node_index < node_indices.size() check is valid and correct here.
+  for (NodeIndex node_index = node_indices.size()-1; node_index < node_indices.size(); --node_index) {
     auto* node = inference_graph.GetNode(node_index);
     if (!reachable_nodes.count(node)) {
       graph_utils::RemoveNodeOutputEdges(inference_graph, *node);
