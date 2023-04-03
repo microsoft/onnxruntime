@@ -10,7 +10,7 @@ Before looking into this further, we should clarify a few things (if possible):
 - If we change the seed for the baseline run, whether the metric diff is big?
   (Make sure the discrepancy is not introduced by randomness)
 	- What are the very first steps we see obvious divergence?
-	- Still repro once remove randomness?
+	- Still reproducible once randomness is removed?
 	- Set same seeds
 	- Set the dropout ratio to 0
 	- Set compute to be deterministic and torch-comparable (TODO(pengwa): need a flag for this).
