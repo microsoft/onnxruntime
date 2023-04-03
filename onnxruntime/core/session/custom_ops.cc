@@ -661,7 +661,6 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 #if !defined(ORT_MINIMAL_BUILD)
     std::unordered_map<std::string, ONNX_NAMESPACE::OpSchema> schema_map;
     std::unordered_map<std::string, InlinedVector<const KernelDef*>> kernel_def_map;
-    using OnnxTypeVec = std::vector<ONNXTensorElementDataType>;
 
     // Domain is not empty - add it to the DomainToVersion ONNX map
     // If domain is empty, it is assumed to be part of the ONNX domain
