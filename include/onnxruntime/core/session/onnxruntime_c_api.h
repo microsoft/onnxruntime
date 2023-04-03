@@ -387,8 +387,8 @@ typedef struct OrtCUDAProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
-        tunable_op_enabled{false},
-        tunable_op_tuning{false} {}
+        tunable_op_enable{false},
+        tunable_op_tuning_enable{false} {}
 #endif
 
   /** \brief CUDA device Id
@@ -441,15 +441,15 @@ typedef struct OrtCUDAProviderOptions {
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_ENABLED.
+   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_ENABLE.
    */
-  int tunable_op_enabled;
+  int tunable_op_enable;
 
   /** \brief Enable TunableOp for tuning.
    *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING.
+   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_ENABLE.
    */
-  int tunable_op_tuning;
+  int tunable_op_tuning_enable;
 
 
 } OrtCUDAProviderOptions;
@@ -469,8 +469,8 @@ typedef struct OrtROCMProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
-        tunable_op_enabled{false},
-        tunable_op_tuning{false} {}
+        tunable_op_enable{false},
+        tunable_op_tuning_enable{false} {}
 #endif
 
   /** \brief ROCM device Id
@@ -522,15 +522,15 @@ typedef struct OrtROCMProviderOptions {
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
+   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_ENABLE.
    */
-  int tunable_op_enabled;
+  int tunable_op_enable;
 
   /** \brief Enable TunableOp for tuning.
    *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING.
+   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
    */
-  int tunable_op_tuning;
+  int tunable_op_tuning_enable;
 
 } OrtROCMProviderOptions;
 

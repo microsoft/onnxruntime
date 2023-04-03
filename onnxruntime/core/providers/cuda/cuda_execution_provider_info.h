@@ -38,8 +38,8 @@ struct CUDAExecutionProviderExternalAllocatorInfo {
 
 namespace cuda {
 struct TunableOpInfo {
-  bool enabled{false};
-  bool tuning{false};
+  bool enable{false};
+  bool tuning_enable{false};
 };
 }  // namespace cuda
 
@@ -79,8 +79,8 @@ template<>
 struct std::hash<::onnxruntime::cuda::TunableOpInfo> {
   size_t operator()(const ::onnxruntime::cuda::TunableOpInfo& info) const {
     size_t seed_and_value{0xbc9f1d34};
-    onnxruntime::HashCombine(info.enabled, seed_and_value);
-    onnxruntime::HashCombine(info.tuning, seed_and_value);
+    onnxruntime::HashCombine(info.enable, seed_and_value);
+    onnxruntime::HashCombine(info.tuning_enable, seed_and_value);
     return seed_and_value;
   }
 };
