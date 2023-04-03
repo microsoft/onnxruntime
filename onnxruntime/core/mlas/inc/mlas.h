@@ -78,12 +78,16 @@ Abstract:
 #endif
 
 #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
-// Visual Studio older than 2022 does not support fp16 intrinsic
-
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
+#if !defined(__APPLE__)
+// Had to temporary disable fp16 under APPLE ARM64, as compiling
+// the source files require a hardware specific compilation flag.
+// When building an universial binary for APPLE, this flag would
+// cause trouble for x64 target.
 
 #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
+#endif // 
 #endif // ARM64
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 
