@@ -70,11 +70,11 @@ class UpStreamReshapeGraphTransformer
    *                         output [M*N, K]
    *
    * Be noted: Reshape1 and Reshape2 are inserted on Add's two inputs.
-   * Reshape0's removal and Add's output shape update are done in RemoveOriginalReshapeNode.
-   *
+   * Reshape0's removal is done in RemoveOriginalReshapeNode.
+   * Be noted: Add's output shape update is done separately after RemoveOriginalReshapeNode is called.
    *
    * @param graph Graph to iterate.
-   * @param reshape_node Reshape op node the takes current_node's output as input.
+   * @param reshape_node Reshape op node that takes current_node's output as input.
    * @param current_node Current node.
    * @param current_node_input_index The current_node_input_index-th input to propagate the Reshape op pass through.
    * @param info reshape_node's ReshapeInfo.
@@ -103,7 +103,7 @@ class UpStreamReshapeGraphTransformer
    * Be noted: Reshape0 is removed, Add's output shape is not updated here.
    *
    * @param graph Graph to iterate.
-   * @param reshape_node Reshape op node the takes current_node's output as input.
+   * @param reshape_node Reshape op node that takes current_node's output as input.
    * @param current_node Current node.
    * @param logger Logger.
    * @param info reshape_node's ReshapeInfo.

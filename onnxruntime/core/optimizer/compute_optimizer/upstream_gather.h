@@ -75,11 +75,12 @@ class UpStreamGatherGraphTransformer
    *                         output [M, 1, K]
    *
    * Be noted: Gather1 and Gather2 are inserted on Add's two inputs.
-   * Gather0's removal and Add's output shape update are done in RemoveOriginSlicingOp.
+   * Gather0's removal is done in RemoveOriginSlicingOp.
+   * Be noted: Add's output shape update is done separately after RemoveOriginSlicingOp is called.
    *
    *
    * @param graph Graph to iterate.
-   * @param slice_node Slicing op node the takes current_node's output as input.
+   * @param slice_node Slicing op node that takes current_node's output as input.
    * @param current_node Current node.
    * @param current_node_input_index The current_node_input_index-th input to propagate the Slice op pass through.
    * @param info slice_node's SliceInfo.
@@ -108,7 +109,7 @@ class UpStreamGatherGraphTransformer
    * Be noted: Gather0 is removed, and Add's output shape is not updated here.
    *
    * @param graph Graph to iterate.
-   * @param slice_node Slicing op node the takes current_node's output as input.
+   * @param slice_node Slicing op node that takes current_node's output as input.
    * @param current_node Current node.
    * @param logger Logger.
    * @param info slice_node's SliceInfo.

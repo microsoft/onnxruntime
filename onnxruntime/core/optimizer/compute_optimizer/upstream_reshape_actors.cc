@@ -57,8 +57,8 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
     std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name());
 
-  int current_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *info.node_ptr->InputDefs()[0]);
-  const NodeArg* data_input_arg = current_node.OutputDefs()[current_node_output_index];
+  int current_node_output_index = *info.node_ptr->data_producer_output_index;
+  const NodeArg* data_input_arg = current_node.OutputDefs()[data_producer_output_index];
 
   propagate_input_indices.clear();
   all_input_cmp_rets.clear();
@@ -155,7 +155,7 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
       }
     };
   } else {
-          // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
+    // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
     ORT_ENFORCE(shape_update_func,
                 "AreAllOutputShapesEqual is false, a custom shape update function should be provided.");
   }
@@ -171,7 +171,7 @@ bool MatMulReshapeActor::PreCheck(
     std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter MatMulReshapeActor::PreCheck for node " + current_node.Name());
 
-  int current_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *info.node_ptr->InputDefs()[0]);
+  int current_node_output_index = *info.node_ptr->data_producer_output_index;
   const NodeArg* data_input_arg = current_node.OutputDefs()[current_node_output_index];
 
   propagate_input_indices.clear();
@@ -234,7 +234,7 @@ bool LayerNormalizationReshapeActor::PreCheck(
     return false;
   }
 
-  int current_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *info.node_ptr->InputDefs()[0]);
+  int current_node_output_index = *info.node_ptr->data_producer_output_index;
   const NodeArg* data_input_arg = current_node.OutputDefs()[current_node_output_index];
 
   propagate_input_indices.clear();

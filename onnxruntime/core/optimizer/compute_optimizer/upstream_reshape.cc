@@ -96,11 +96,6 @@ bool UpStreamReshapeGraphTransformer::UpStreamInternal(
   populated_reshape_infos.reserve(propagate_input_indices.size());
   std::unordered_map<int, ReshapeInfo> new_reshape_infos;
   for (auto input_index : propagate_input_indices) {
-    if (current_node.InputDefs()[input_index]->Shape()->dim_size() != 3) {
-      // If the input is already initialized, we don't need to propagate reshape.
-      continue;
-    }
-
     ORT_ENFORCE(all_input_cmp_rets.find(input_index) != all_input_cmp_rets.end(),
                 "all_input_cmp_rets should be a superset of propagate_input_indices");
 
@@ -114,6 +109,7 @@ bool UpStreamReshapeGraphTransformer::UpStreamInternal(
 
   ORT_ENFORCE(RemoveOriginalReshapeNode(graph, *info.node_ptr, current_node, logger, info).IsOK());
 
+  // Do the shape update for current_node.
   shape_update_func(current_node);
 
   if (!pass_through_config.actor->PostProcess(graph, current_node, info, logger, propagate_input_indices,
@@ -191,6 +187,9 @@ ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
   auto new_reshape_out_arg = new_reshape_node->MutableOutputDefs()[new_reshape_output_index_to_connect];
   new_reshape_out_arg->SetShape(CreateNewShapeWithMergedTwoLeadingDims(new_reshape_out_arg->Shape(),
                                                                        info.last_dim));
+
+  // Notes: current_node's output shapes are not updated here. They will be updated in later.
+
   auto new_reshape_info = ReshapeInfo(graph, new_reshape_node, false);
   new_reshape_info.entry_node_name = info.entry_node_name;
   new_reshape_info.entry_reshape_arg_name = info.entry_reshape_arg_name;

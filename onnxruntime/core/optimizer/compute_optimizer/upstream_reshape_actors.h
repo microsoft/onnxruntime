@@ -30,12 +30,12 @@ struct ReshapeInfo : public UpstreamOperatorInfoBase {
     last_dim = output->Shape()->dim(0);
 
     if (is_entry_node_ptr) {
-      entry_reshape_arg_name = node_ptr->OutputDefs()[kReshapeOutputIndex]->Name();
+      entry_reshape_arg_name = output->Name();
     }
 
     const Node* producer = graph.GetProducerNode(input->Name());
     if (producer) {
-      // Allow the data input to be grpah input or initializer, but this won't be passed through further.
+      // Allow the data input to be graph input or initializer, but this won't be passed through further.
       data_producer_output_index = optimizer_utils::IndexOfNodeOutput(*producer, *input);
     }
   }

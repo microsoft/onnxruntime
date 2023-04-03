@@ -45,7 +45,7 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
                                                        const logging::Logger& logger)
     const {
   LOG_DEBUG_INFO(logger, "Enter UpStreamGraphTransformerBase");
-  bool reordered = false;
+
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
   const auto& graph_outputs = graph.GetOutputs();
@@ -58,6 +58,7 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
       // node was removed.
       continue;
 
+    bool reordered = false;
     auto& node = *node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
