@@ -36,6 +36,7 @@ Before looking into this further, we should clarify a few things (if possible):
 ```
 
 </sub>
+</td>
 <td>
 <sub>
 
@@ -49,22 +50,22 @@ Before looking into this further, we should clarify a few things (if possible):
 </sub>
 </td>
 </tr>
+
 <tr>
 <td>
 <sub>
 
-
-Run training script to the steps that trigger the divergence. A folder named `pt_out` is created in the current working directory. For each step, there is a folder containing summaries for every activation tensor.
-
-
+- Run training script to the steps that trigger the divergence.
+- A folder named `pt_out` is created in the current working directory.
+- For each step, there is a folder containing summaries for every activation tensor.
 </sub>
+</td>
 <td>
 <sub>
 
-
-Run training script to the steps that trigger the divergence. Similarly, a folder named `ort_out` is created in the current working directory.
-
-> `StatisticsSubscriber` can be subscribed before OR after wrapping ORTModule.
+- Run training script to the steps that trigger the divergence.
+- Similarly, a folder named `ort_out` is created in the current working directory.
+- `StatisticsSubscriber` can be subscribed before OR after wrapping ORTModule.
 </sub>
 </td>
 </tr>
