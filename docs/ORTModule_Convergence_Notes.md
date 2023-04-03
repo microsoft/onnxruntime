@@ -30,9 +30,11 @@ Before looking into this further, we should clarify a few things (if possible):
 <sub>
 
 ```diff
-+	from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
-+	sub_manager = SubscriberManager()
-+	sub_manager.subscribe(model, [StatisticsSubscriber(output_dir="pt_out", override_output_dir=True)])
++ from onnxruntime.training.utils.hooks import SubscriberManager,
++                                              StatisticsSubscriber
++ sub_m = SubscriberManager()
++ sub_m.subscribe(model, [StatisticsSubscriber(output_dir="pt_out",
++                                              override_output_dir=True)])
 ```
 
 </sub>
@@ -41,10 +43,12 @@ Before looking into this further, we should clarify a few things (if possible):
 <sub>
 
 ```diff
-	model = ORTModule(model)
-+	from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
-+	sub_manager = SubscriberManager()
-+	sub_manager.subscribe(model, [StatisticsSubscriber(output_dir="ort_out", override_output_dir=True)])
+model = ORTModule(model)
++ from onnxruntime.training.utils.hooks import SubscriberManager,
++                                              StatisticsSubscriber
++ sub_m = SubscriberManager()
++ sub_m.subscribe(model, [StatisticsSubscriber(output_dir="ort_out",
++                                              override_output_dir=True)])
 ```
 
 </sub>
