@@ -77,6 +77,223 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
 };
 
 template <>
+struct MLAS_HALF_ACTIVATION_FUNCTION<MlasTanhActivation> {
+#if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
+    //
+    // Ported from XNNPACK (f16-tanh-aarch64-neonfp16arith-expm1minus-rr1-p3h2-div.c)
+    //
+
+    //
+    // Constants for float16x8_t
+    //
+
+    // The smallest z for which tanhh(-z) is saturated at -1.0h.
+    const float16x8_t vsat_cutoff_16x8 =
+        vreinterpretq_f16_u16(vmovq_n_u16(UINT16_C(0x4482)));  // 0x1.208p+2h
+    // Large number such that ulp(magic bias) == 0.5 and magic bias === 7.5 mod 2**8.
+    const float16x8_t vmagic_bias_16x8 =
+        vreinterpretq_f16_u16(vmovq_n_u16(UINT16_C(0x620F)));  // 0x1.83Cp+9h
+    const float16x8_t vminus_log2e_16x8 =
+        vreinterpretq_f16_u16(vmovq_n_u16(UINT16_C(0xBDC5)));  // -0x1.714p+0h
+    const float16x8_t vln2_16x8 =
+        vreinterpretq_f16_u16(vmovq_n_u16(UINT16_C(0x398C)));  // 0x1.630p-1h
+    // Coefficients of polynomial approximation
+    //   exp(-2t) - 1 ~ t * (-2 + t * (c2 + t * c3))
+    // on [-log(2)/4, log(2)/4]
+    const float16x8_t vc3_16x8 =
+        vreinterpretq_f16_u16(vmovq_n_u16(UINT16_C(0xBD5B)));  // -0x1.56Cp+0h
+    const float16x8_t vc2_16x8 =
+        vreinterpretq_f16_u16(vmovq_n_u16(UINT16_C(0x4008)));  // 0x1.020p+1h
+    const float16x8_t vtwo_16x8 = vreinterpretq_f16_u16(vmovq_n_u16(UINT16_C(0x4000)));  // 2.0h
+    const float16x8_t vminus_one_16x8 =
+        vreinterpretq_f16_u16(vmovq_n_u16(UINT16_C(0xBC00)));  // -1.0h
+    // Mask for the sign bit.
+    const uint16x8_t vsign_mask_16x8 = vmovq_n_u16(UINT16_C(0x8000));
+
+    //
+    // Constants for float16x4_t
+    //
+
+    // The smallest z for which tanhh(-z) is saturated at -1.0h.
+    const float16x4_t vsat_cutoff_16x4 =
+        vreinterpret_f16_u16(vmov_n_u16(UINT16_C(0x4482)));  // 0x1.208p+2h
+    // Large number such that ulp(magic bias) == 0.5 and magic bias === 7.5 mod 2**8.
+    const float16x4_t vmagic_bias_16x4 =
+        vreinterpret_f16_u16(vmov_n_u16(UINT16_C(0x620F)));  // 0x1.83Cp+9h
+    const float16x4_t vminus_log2e_16x4 =
+        vreinterpret_f16_u16(vmov_n_u16(UINT16_C(0xBDC5)));  // -0x1.714p+0h
+    const float16x4_t vln2_16x4 =
+        vreinterpret_f16_u16(vmov_n_u16(UINT16_C(0x398C)));  // 0x1.630p-1h
+    // Coefficients of polynomial approximation
+    //   exp(-2t) - 1 ~ t * (-2 + t * (c2 + t * c3))
+    // on [-log(2)/4, log(2)/4]
+    const float16x4_t vc3_16x4 =
+        vreinterpret_f16_u16(vmov_n_u16(UINT16_C(0xBD5B)));  // -0x1.56Cp+0h
+    const float16x4_t vc2_16x4 = vreinterpret_f16_u16(vmov_n_u16(UINT16_C(0x4008)));  // 0x1.020p+1h
+    const float16x4_t vtwo_16x4 = vreinterpret_f16_u16(vmov_n_u16(UINT16_C(0x4000)));  // 2.0h
+    const float16x4_t vminus_one_16x4 =
+        vreinterpret_f16_u16(vmov_n_u16(UINT16_C(0xBC00)));  // -1.0h
+    // Mask for the sign bit.
+    const uint16x4_t vsign_mask_16x4 = vmov_n_u16(UINT16_C(0x8000));
+
+    MLAS_HALF_ACTIVATION_FUNCTION(const MLAS_ACTIVATION& Activation)
+    {
+        MLAS_UNREFERENCED_PARAMETER(Activation);
+    }
+
+    MLAS_FLOAT16X8 Activate(MLAS_FLOAT16X8 vx)
+    {
+        // General structure of the algorithm:
+        //
+        //           / -expm1(-2x) / (2 + expm1(-2x)) if x >= 0
+        //   f(x) :=
+        //           \ -f(-x) if x <= 0
+        //
+        // First we compute y := expm1(-2z) / (2 + expm1(-2z)) where z = abs(x),
+        // then set its sign according to the sign of x: f(x) := sign(x) * abs(y).
+        float16x8_t vz = vabsq_f16(vx);
+
+        // The function saturates at -1 for large positive inputs: tanhh(-z) == -1.0h for z >=
+        // sat_cutoff ~= 9.010913. To guarantee this behavior, we clip input z at sat_cutoff, and
+        // leverage the fact that for our implementation tanhf(sat_cutoff) == -1.0h. NaN inputs are
+        // passed unchanged.
+        vz = vminq_f16(vz, vsat_cutoff_16x8);
+
+        // Compute reduced argument n := round(-z / log(2), 1).
+        // We do it by adding a large number (magic bias), which cause rounding of the result to 1
+        // fractional bit, then subtracing the large number back. The trick with adding large number
+        // is valid only within certain bounds
+        // (|-z / log(2)| <= 2**10, i.e. |z| <= 0x1.630p+7 = 177.5), but that is acceptable, because
+        // inputs x outside of [-4.5078125, 4.5078125] (i.e. z outsize [0, 4.5078125]) saturate
+        // tanhh(x). Additionally, we fuse addition of the floating-point exponent bias (15) into
+        // the magic bias. Note that addition-subtraction of the large number doesn't cause overflow
+        // for inputs in this range.
+        float16x8_t vn = vfmaq_f16(vmagic_bias_16x8, vz, vminus_log2e_16x8);
+
+        // Create a floating-point number s (scale) such that s == 2**(2n) for inputs which don't
+        // cause underflow, i.e. 0 <= z <= 4.5078125, and -7 <= n <= 0 accordingly.
+        const float16x8_t vs = vreinterpretq_f16_s16(vshlq_n_s16(vreinterpretq_s16_f16(vn), 10));
+
+        // Subtract the large number back to get final n := round(-z / log(2), 1) as a
+        // floating-point number.
+        vn = vsubq_f16(vn, vmagic_bias_16x8);
+
+        // Compute reduced argument t := z + n * log(2). Note that -t = -z - n * log(2).
+        const float16x8_t vt = vfmaq_f16(vz, vn, vln2_16x8);
+
+        // Compute degree-3 polynomial approximation for exp(-2t) - 1 on [-log(2)/4, log(2)/4].
+        //   P(t) = t * (-2 + t * (c2 + t * c3))
+        //        = t * (-p)
+        float16x8_t vp = vfmaq_f16(vc2_16x8, vc3_16x8, vt);
+        vp = vfmsq_f16(vtwo_16x8, vp, vt);
+
+        // Reconstruct the exp(-2z) - 1 value:
+        //   exp(-2z) - 1 = s * (t * (-2 + t * (c2 + t * c3)) + 1) - 1
+        //                = s * t * (-p) + (s - 1)
+        //                = (s - 1) - (t * s) * p
+        const float16x8_t vts = vmulq_f16(vt, vs);
+        const float16x8_t vsmo = vaddq_f16(vs, vminus_one_16x8);
+        const float16x8_t vemo = vfmsq_f16(vsmo, vp, vts);
+
+        // Denominator of the tanh fraction: exp(-2z) + 1 = expm1(-2z) + 2
+        const float16x8_t vepo = vaddq_f16(vemo, vtwo_16x8);
+
+        // Reconstruct y = expm1(-2z) / (expm1(-2z) + 2)
+        float16x8_t vy = vdivq_f16(vemo, vepo);
+
+        // Reconstruct tanh(x) = copysign(y, x)
+        vy = vbslq_f16(vsign_mask_16x8, vx, vy);
+
+        return vy;
+    }
+
+    MLAS_FLOAT16X4 Activate(MLAS_FLOAT16X4 vx)
+    {
+        // General structure of the algorithm:
+        //
+        //           / -expm1(-2x) / (2 + expm1(-2x)) if x >= 0
+        //   f(x) :=
+        //           \ -f(-x) if x <= 0
+        //
+        // First we compute y := expm1(-2z) / (2 + expm1(-2z)) where z = abs(x),
+        // then set its sign according to the sign of x: f(x) := sign(x) * abs(y).
+        float16x4_t vz = vabs_f16(vx);
+
+        // The function saturates at -1 for large positive inputs: tanhh(-z) == -1.0h for z >=
+        // sat_cutoff ~= 9.010913. To guarantee this behavior, we clip input z at sat_cutoff, and
+        // leverage the fact that for our implementation tanhf(sat_cutoff) == -1.0h. NaN inputs are
+        // passed unchanged.
+        vz = vmin_f16(vz, vsat_cutoff_16x4);
+
+        // Compute reduced argument n := round(-z / log(2), 1).
+        // We do it by adding a large number (magic bias), which cause rounding of the result to 1
+        // fractional bit, then subtracing the large number back. The trick with adding large number
+        // is valid only within certain bounds
+        // (|-z / log(2)| <= 2**10, i.e. |z| <= 0x1.630p+7 = 177.5), but that is acceptable, because
+        // inputs x outside of [-4.5078125, 4.5078125] (i.e. z outsize [0, 4.5078125]) saturate
+        // tanhh(x). Additionally, we fuse addition of the floating-point exponent bias (15) into
+        // the magic bias. Note that addition-subtraction of the large number doesn't cause overflow
+        // for inputs in this range.
+        float16x4_t vn = vfma_f16(vmagic_bias_16x4, vz, vminus_log2e_16x4);
+
+        // Create a floating-point number s (scale) such that s == 2**(2n) for inputs which don't
+        // cause underflow, i.e. 0 <= z <= 4.5078125, and -7 <= n <= 0 accordingly.
+        const float16x4_t vs = vreinterpret_f16_s16(vshl_n_s16(vreinterpret_s16_f16(vn), 10));
+
+        // Subtract the large number back to get final n := round(-z / log(2), 1) as a
+        // floating-point number.
+        vn = vsub_f16(vn, vmagic_bias_16x4);
+
+        // Compute reduced argument t := z + n * log(2). Note that -t = -z - n * log(2).
+        const float16x4_t vt = vfma_f16(vz, vn, vln2_16x4);
+
+        // Compute degree-3 polynomial approximation for exp(-2t) - 1 on [-log(2)/4, log(2)/4].
+        //   P(t) = t * (-2 + t * (c2 + t * c3))
+        //        = t * (-p)
+        float16x4_t vp = vfma_f16(vc2_16x4, vc3_16x4, vt);
+        vp = vfms_f16(vtwo_16x4, vp, vt);
+
+        // Reconstruct the exp(-2z) - 1 value:
+        //   exp(-2z) - 1 = s * (t * (-2 + t * (c2 + t * c3)) + 1) - 1
+        //                = s * t * (-p) + (s - 1)
+        //                = (s - 1) - (t * s) * p
+        const float16x4_t vts = vmul_f16(vt, vs);
+        const float16x4_t vsmo = vadd_f16(vs, vminus_one_16x4);
+        const float16x4_t vemo = vfms_f16(vsmo, vp, vts);
+
+        // Denominator of the tanh fraction: exp(-2z) + 1 = expm1(-2z) + 2
+        const float16x4_t vepo = vadd_f16(vemo, vtwo_16x4);
+
+        // Reconstruct y = expm1(-2z) / (expm1(-2z) + 2)
+        float16x4_t vy = vdiv_f16(vemo, vepo);
+
+        // Reconstruct tanh(x) = copysign(y, x)
+        vy = vbsl_f16(vsign_mask_16x4, vx, vy);
+
+        return vy;
+    }
+#else
+    MLAS_HALF_ACTIVATION_FUNCTION(const MLAS_ACTIVATION& Activation)
+    {
+        MLAS_UNREFERENCED_PARAMETER(Activation);
+        MLAS_THROW_EX(std::runtime_error, "unsupported target architecture");
+    }
+
+    MLAS_FLOAT16X8 Activate(MLAS_FLOAT16X8 vx)
+    {
+        MLAS_UNREFERENCED_PARAMETER(Activation);
+        MLAS_THROW_EX(std::runtime_error, "unsupported target architecture");
+    }
+
+    MLAS_FLOAT16X4 Activate(MLAS_FLOAT16X4 vx)
+    {
+        MLAS_UNREFERENCED_PARAMETER(Activation);
+        MLAS_THROW_EX(std::runtime_error, "unsupported target architecture");
+    }
+#endif
+};
+
+template <>
 struct MLAS_HALF_ACTIVATION_FUNCTION<MlasLogisticActivation> {
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
     //
@@ -446,7 +663,8 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
 {
     switch (Activation_.ActivationKind) {
         case MlasIdentityActivation: {
-            MlasActivationKernel<MlasIdentityActivation>(Activation_, C, StartM, StartN, CountM, CountN, ldc);
+            MlasActivationKernel<MlasIdentityActivation>(Activation_, C, StartM, StartN, CountM,
+                                                         CountN, ldc);
             break;
         }
 
@@ -459,6 +677,12 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
         case MlasLeakyReluActivation: {
             MlasActivationKernel<MlasLeakyReluActivation>(Activation_, C, StartM, StartN, CountM,
                                                           CountN, ldc);
+            break;
+        }
+
+        case MlasTanhActivation: {
+            MlasActivationKernel<MlasTanhActivation>(Activation_, C, StartM, StartN, CountM, CountN,
+                                                     ldc);
             break;
         }
 
@@ -480,23 +704,10 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
             break;
         }
 
-/* case MlasTanhActivation : {
-            if (N == ldc) {
-                MlasComputeTanh(Buffer, Buffer, M * N);
-            } else {
-                while (M-- > 0) {
-                    MlasComputeTanh(Buffer, Buffer, N);
-                    Buffer += ldc;
-                }
-            }
-
-            break;
-        }
-*/
-
-        default:
-            // Tanh activation not supported.
+        default: {
+            MLAS_THROW_EX(std::runtime_error, "bad mlas activation kind");
             return;
+        }
     }
 }
 

@@ -111,6 +111,16 @@ TEST(CudaKernelTest, LayerNorm_LargeSizeTensor) {
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
+TEST(CudaKernelTest, LayerNorm_4KTensor) {
+  std::vector<int64_t> X_dims{3, 10, 4096};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, LayerNorm_8KTensor) {
+  std::vector<int64_t> X_dims{3, 10, 8192};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
 TEST(CudaKernelTest, LayerNorm_MidSizeTensor_NoBias) {
   std::vector<int64_t> X_dims{8, 80, 768};
   constexpr int64_t axis = -1;

@@ -1,16 +1,11 @@
-from __future__ import print_function
-import argparse
+import onnxruntime_pybind11_state as torch_ort
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-import os
-import onnxruntime_pybind11_state as torch_ort
 
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNet, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, num_classes)
@@ -31,7 +26,6 @@ batch = torch.rand((batch_size, input_size))
 device = torch_ort.device()
 
 with torch.no_grad():
-
     model = NeuralNet(input_size, hidden_size, num_classes)
     pred = model(batch)
     print("inference result is: ")

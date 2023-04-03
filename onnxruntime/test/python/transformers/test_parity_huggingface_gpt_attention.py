@@ -166,7 +166,7 @@ def create_inputs(
     sequence_length=1,
     past_sequence_length=5,
     float16=False,
-    device=torch.device("cuda"),
+    device=torch.device("cuda"),  # noqa: B008
     padding_length=0,
 ):
     float_type = torch.float16 if float16 else torch.float32
@@ -218,7 +218,7 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_head
     )
 
     with torch.no_grad():
-        outputs = model(input_hidden_states, attention_mask=attention_mask, layer_past=layer_past)
+        model(input_hidden_states, attention_mask=attention_mask, layer_past=layer_past)
 
     dynamic_axes = {
         "input_hidden_states": {0: "batch_size", 1: "seq_len"},
@@ -260,7 +260,7 @@ def optimize_onnx(input_onnx_path, optimized_onnx_path, num_heads, debug):
     onnx_model = OnnxModel(m)
 
     nodes_to_remove = onnx_model.nodes()
-    output_names = ["attn_output", "present"] + DEBUG_OUTPUTS if debug else ["attn_output", "present"]
+    output_names = ["attn_output", "present", *DEBUG_OUTPUTS] if debug else ["attn_output", "present"]
     node_to_add = helper.make_node(
         "Attention",
         [
@@ -316,7 +316,7 @@ def verify_attention(
     max_diffs = []
 
     ort_session = create_ort_session(onnx_model_path, device.type == "cuda", verbose=verbose)
-    for i in range(test_cases):
+    for _i in range(test_cases):
         input_hidden_states, attention_mask, layer_past = create_inputs(
             batch_size,
             hidden_size,

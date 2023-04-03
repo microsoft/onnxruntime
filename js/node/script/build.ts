@@ -59,8 +59,15 @@ if (os.platform() === 'darwin') {
   }
 }
 
+// In Windows, "npx cmake-js configure" uses a powershell script to detect the Visual Studio installation.
+// The script uses the environment variable LIB. If an invalid path is specified in LIB, the script will fail.
+// So we override the LIB environment variable to remove invalid paths.
+const envOverride = os.platform() === 'win32' && process.env.LIB ?
+    {...process.env, LIB: process.env.LIB.split(';').filter(fs.existsSync).join(';')} :
+    process.env;
+
 // launch cmake-js configure
-const procCmakejs = spawnSync('npx', args, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER});
+const procCmakejs = spawnSync('npx', args, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER, env: envOverride});
 if (procCmakejs.status !== 0) {
   if (procCmakejs.error) {
     console.error(procCmakejs.error);

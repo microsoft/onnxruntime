@@ -124,6 +124,9 @@ Status aclrtblasGemmEx(aclTransType transA,
 
 bool FileExist(const std::string& file_name);
 void GenerateHashValue(const std::string string, HashValue& hash_value);
+Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape,
+                          const TensorShape& rhs_shape, TensorShape& out_shape);
+
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
 
 }  // namespace cann
