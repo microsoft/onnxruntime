@@ -6,7 +6,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 stages:
 - template: templates/py-packaging-training-cuda-stage.yml
@@ -16,7 +16,7 @@ stages:
     opset_version: '15'
     cuda_version: '11.6'
     gcc_version: 11
-    cmake_cuda_architectures: 37;50;52;60;61;70;75;80;86;87
+    cmake_cuda_architectures: 50;52;60;61;70;75;80;86;87
     docker_file: Dockerfile.manylinux2014_training_cuda11_6
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
@@ -29,7 +29,7 @@ stages:
     opset_version: '15'
     cuda_version: '11.6'
     gcc_version: 11
-    cmake_cuda_architectures: 37;50;52;60;61;70;75;80;86;87
+    cmake_cuda_architectures: 50;52;60;61;70;75;80;86;87
     docker_file: Dockerfile.manylinux2014_training_cuda11_6
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'no'

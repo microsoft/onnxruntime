@@ -1,8 +1,9 @@
-import sys
 import os.path
-from onnx import *
-import onnx
+import sys
+
 import numpy as np
+import onnx
+from onnx import *  # noqa: F403
 
 
 def find_node(graph_proto, op_type):
@@ -17,10 +18,10 @@ def find_node(graph_proto, op_type):
 
 
 def gen_attribute(key, value):
-    attr = AttributeProto()
+    attr = AttributeProto()  # noqa: F405
     attr.name = key
     attr.ints.extend(int(v) for v in value)
-    attr.type = AttributeProto.INTS
+    attr.type = AttributeProto.INTS  # noqa: F405
     return attr
 
 
@@ -45,21 +46,21 @@ def main():
     # print(graph_proto)
     # print(graph_proto.input)
 
-    nodes_Div, map_input_Div = find_node(graph_proto, "Div")
+    nodes_Div, map_input_Div = find_node(graph_proto, "Div")  # noqa: N806
     # print(map_input_Div)
-    nodes_Sqrt, map_input_Sqrt = find_node(graph_proto, "Sqrt")
+    nodes_Sqrt, map_input_Sqrt = find_node(graph_proto, "Sqrt")  # noqa: N806
     # print(map_input_Sqrt)
-    nodes_Add, map_input_Add = find_node(graph_proto, "Add")
+    nodes_Add, map_input_Add = find_node(graph_proto, "Add")  # noqa: N806
     # print(map_input_Add)
-    nodes_ReduceMean, map_input_ReduceMean = find_node(graph_proto, "ReduceMean")
+    nodes_ReduceMean, map_input_ReduceMean = find_node(graph_proto, "ReduceMean")  # noqa: N806
     # print(map_input_ReduceMean)
-    nodes_Pow, map_input_Pow = find_node(graph_proto, "Pow")
+    nodes_Pow, map_input_Pow = find_node(graph_proto, "Pow")  # noqa: N806
     # print(map_input_Pow)
-    nodes_Mul, map_input_Mul = find_node(graph_proto, "Mul")
+    nodes_Mul, map_input_Mul = find_node(graph_proto, "Mul")  # noqa: N806
 
     # find right side Sub
-    nodes_Sub = []
-    map_input_Sub = {}
+    nodes_Sub = []  # noqa: N806
+    map_input_Sub = {}  # noqa: N806
     for node in graph_proto.node:
         if node.op_type == "Sub":
             if node.output[0] in map_input_Pow:
@@ -68,8 +69,8 @@ def main():
     # print(map_input_Sub)
 
     # find first ReduceMean
-    first_ReduceMean = []
-    first_ReduceMean_outputs = []
+    first_ReduceMean = []  # noqa: N806
+    first_ReduceMean_outputs = []  # noqa: N806
     for node in nodes_ReduceMean:
         if node.output[0] in map_input_Sub:
             first_ReduceMean.append(node)
@@ -77,8 +78,8 @@ def main():
     # print(first_ReduceMean)
 
     # find constant node
-    nodes_Constant = []
-    map_output_Constant = {}
+    nodes_Constant = []  # noqa: N806
+    map_output_Constant = {}  # noqa: N806
     for node in graph_proto.node:
         if node.op_type == "Constant":
             nodes_Constant.append(node)
@@ -96,12 +97,12 @@ def main():
         node_sub = map_input_Sub[node.output[0]]
         node_pow = map_input_Pow[node_sub.output[0]]
         node_reduce = map_input_ReduceMean[node_pow.output[0]]
-        node_Add = map_input_Add[node_reduce.output[0]]
-        node_Sqrt = map_input_Sqrt[node_Add.output[0]]
-        node_Div = map_input_Div[node_Sqrt.output[0]]
-        node_Mul = map_input_Mul[node_Div.output[0]]
+        node_Add = map_input_Add[node_reduce.output[0]]  # noqa: N806
+        node_Sqrt = map_input_Sqrt[node_Add.output[0]]  # noqa: N806
+        node_Div = map_input_Div[node_Sqrt.output[0]]  # noqa: N806
+        node_Mul = map_input_Mul[node_Div.output[0]]  # noqa: N806
         layer_norm_input.append(node_Mul.input[0])
-        node_Add1 = map_input_Add[node_Mul.output[0]]
+        node_Add1 = map_input_Add[node_Mul.output[0]]  # noqa: N806
         layer_norm_input.append(node_Add1.input[1])
         removed_nodes.append(node)
         removed_nodes.append(node_sub)
@@ -120,7 +121,7 @@ def main():
         layer_norm_output.append("saved_mean_" + str(id))
         id = id + 1
         layer_norm_output.append("saved_inv_std_var_" + str(id))
-        layer_norm = helper.make_node(
+        layer_norm = helper.make_node(  # noqa: F405
             "LayerNormalization",
             layer_norm_input,
             layer_norm_output,

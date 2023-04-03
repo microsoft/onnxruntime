@@ -64,7 +64,7 @@ def optimize_by_onnxruntime(
     use_gpu: bool = False,
     optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = 99,
-    disabled_optimizers=[],
+    disabled_optimizers=[],  # noqa: B006
     verbose=False,
 ) -> str:
     """
@@ -113,9 +113,7 @@ def optimize_by_onnxruntime(
         kwargs["disabled_optimizers"] = disabled_optimizers
 
     if not use_gpu:
-        session = onnxruntime.InferenceSession(
-            onnx_model_path, sess_options, providers=["CPUExecutionProvider"], **kwargs
-        )
+        onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=["CPUExecutionProvider"], **kwargs)
     else:
         gpu_ep = []
 
@@ -124,7 +122,7 @@ def optimize_by_onnxruntime(
         elif torch_version.hip:
             gpu_ep.append("MIGraphXExecutionProvider")
             gpu_ep.append("ROCMExecutionProvider")
-        session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
+        onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
         assert not set(onnxruntime.get_available_providers()).isdisjoint(
             ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
         )
@@ -296,7 +294,7 @@ def optimize_model(
     # Remove the temporary model.
     if temp_model_path:
         os.remove(temp_model_path)
-        logger.debug("Remove temporary model: {}".format(temp_model_path))
+        logger.debug(f"Remove temporary model: {temp_model_path}")
 
     return optimizer
 

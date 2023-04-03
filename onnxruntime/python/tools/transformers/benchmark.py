@@ -45,16 +45,16 @@ import logging
 import os
 import timeit
 from datetime import datetime
-from enum import Enum
+from enum import Enum  # noqa: F401
 
 import numpy
-import onnx
+import onnx  # noqa: F401
 import psutil
+from benchmark_helper import allocateOutputBuffers  # noqa: F401
 from benchmark_helper import (
     ConfigModifier,
     OptimizerInfo,
     Precision,
-    allocateOutputBuffers,
     create_onnxruntime_session,
     get_latency_result,
     inference_ort,
@@ -76,7 +76,7 @@ from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger("")
 
-from huggingface_models import MODEL_CLASSES, MODELS
+from huggingface_models import MODEL_CLASSES, MODELS  # noqa: E402
 
 cpu_count = psutil.cpu_count(logical=False)
 
@@ -84,8 +84,8 @@ cpu_count = psutil.cpu_count(logical=False)
 if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
-import torch
-from transformers import AutoConfig, AutoModel, AutoTokenizer, GPT2Model, LxmertConfig
+import torch  # noqa: E402
+from transformers import AutoConfig, AutoModel, AutoTokenizer, GPT2Model, LxmertConfig  # noqa: E402, F401
 
 
 def run_onnxruntime(
@@ -178,7 +178,12 @@ def run_onnxruntime(
                         fusion_options,
                     )
             if "tf" in model_source:
-                (onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length,) = export_onnx_model_from_tf(
+                (
+                    onnx_model_file,
+                    is_valid_onnx_model,
+                    vocab_size,
+                    max_sequence_length,
+                ) = export_onnx_model_from_tf(
                     model_name,
                     MODELS[model_name][1],
                     MODELS[model_name][2],
@@ -257,9 +262,7 @@ def run_onnxruntime(
                         "datetime": str(datetime.now()),
                     }
 
-                    logger.info(
-                        "Run onnxruntime on {} with input shape {}".format(model_name, [batch_size, sequence_length])
-                    )
+                    logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}")
 
                     if disable_ort_io_binding:
                         result = inference_ort(
@@ -359,7 +362,7 @@ def run_pytorch(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
+                logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
                 input_ids = torch.randint(
                     low=0,
                     high=config.vocab_size - 1,
@@ -373,7 +376,7 @@ def run_pytorch(
                     )
                     inference(input_ids)
 
-                    runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
+                    runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)  # noqa: B023
 
                     result = {
                         "engine": "torchscript" if torchscript else "torch2" if torch2 else "torch",
@@ -491,9 +494,7 @@ def run_tensorflow(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info(
-                    "Run Tensorflow on {} with input shape {}".format(model_name, [batch_size, sequence_length])
-                )
+                logger.info(f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}")
 
                 import random
 
@@ -505,18 +506,18 @@ def run_tensorflow(
                     # Disable both for better inference perf
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_forward():
-                        return model(input_ids, training=False)
+                        return model(input_ids, training=False)  # noqa: B023
 
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_decoder_forward():
-                        return model(input_ids, decoder_input_ids=input_ids, training=False)
+                        return model(input_ids, decoder_input_ids=input_ids, training=False)  # noqa: B023
 
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def lxmert_forward():
-                        feats = tf.random.normal([1, 1, config.visual_feat_dim])
-                        pos = tf.random.normal([1, 1, config.visual_pos_dim])
-                        return model(
-                            input_ids,
+                        feats = tf.random.normal([1, 1, config.visual_feat_dim])  # noqa: B023
+                        pos = tf.random.normal([1, 1, config.visual_pos_dim])  # noqa: B023
+                        return model(  # noqa: B023
+                            input_ids,  # noqa: B023
                             visual_feats=feats,
                             visual_pos=pos,
                             training=False,
@@ -530,7 +531,7 @@ def run_tensorflow(
 
                     inference()
 
-                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)
+                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)  # noqa: B023
 
                     result = {
                         "engine": "tensorflow",
@@ -766,7 +767,7 @@ def main():
         logger.error("int8 is for CPU only")
         return
 
-    args.num_threads = sorted(set(cpu_count if x <= 0 else x for x in args.num_threads))
+    args.num_threads = sorted({cpu_count if x <= 0 else x for x in args.num_threads})
 
     logger.info(f"Arguments: {args}")
 
@@ -891,8 +892,8 @@ def main():
                     args.model_source,
                     args,
                 )
-            except:
-                logger.error(f"Exception", exc_info=True)
+            except Exception:
+                logger.error("Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if model_fusion_statistics:

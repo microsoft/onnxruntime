@@ -71,6 +71,7 @@ struct Tensorrt_Provider : Provider {
     info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
     info.layer_norm_fp32_fallback = options.trt_layer_norm_fp32_fallback != 0;
     info.timing_cache_enable = options.trt_timing_cache_enable != 0;
+    info.force_timing_cache = options.trt_force_timing_cache != 0;
     info.detailed_build_log = options.trt_detailed_build_log != 0;
     return std::make_shared<TensorrtProviderFactory>(info);
   }
@@ -141,6 +142,7 @@ struct Tensorrt_Provider : Provider {
     trt_options.trt_layer_norm_fp32_fallback = internal_options.layer_norm_fp32_fallback;
     trt_options.trt_timing_cache_enable = internal_options.timing_cache_enable;
     trt_options.trt_force_timing_cache = internal_options.force_timing_cache;
+    trt_options.trt_detailed_build_log = internal_options.detailed_build_log;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

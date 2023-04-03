@@ -45,6 +45,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
+  bool TryGetConstantInput(int input_index, const OrtValue** constant_input_value) const;
+
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);

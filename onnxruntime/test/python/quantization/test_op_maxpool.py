@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -25,7 +24,7 @@ from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 class TestOpMaxPool(unittest.TestCase):
     def input_feeds(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
@@ -76,7 +75,7 @@ class TestOpMaxPool(unittest.TestCase):
         model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, output_model_path)
 
-    def quantize_maxpool_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_maxpool_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "maxpool_fp32.onnx"
         self.construct_model_conv_maxpool(
@@ -92,8 +91,8 @@ class TestOpMaxPool(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_q8_path = "maxpool_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_q8_qdq_path = "maxpool_dqd_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_q8_path = f"maxpool_{activation_type_str}{weight_type_str}.onnx"
+        model_q8_qdq_path = f"maxpool_dqd_{activation_type_str}{weight_type_str}.onnx"
 
         # Verify QOperator mode
         data_reader.rewind()

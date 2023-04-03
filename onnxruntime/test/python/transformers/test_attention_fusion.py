@@ -25,11 +25,11 @@ else:
 
 class TestFusion(unittest.TestCase):
     def verify_fusion(self, optimized_model, expected_model_filename):
-        optimized_model.topological_sort()
+        optimized_model.topological_sort(is_deterministic=True)
 
         expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "models", expected_model_filename)
         expected_model = OnnxModel(onnx.load(expected_model_path))
-        expected_model.topological_sort()
+        expected_model.topological_sort(is_deterministic=True)
 
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
@@ -178,7 +178,7 @@ class TestFusion(unittest.TestCase):
                 else:
                     model_suffix = "opt_no_skiplayernorm"
 
-                model_name = "gpt2_attention_{}.onnx".format(model_suffix)
+                model_name = f"gpt2_attention_{model_suffix}.onnx"
                 self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):
@@ -203,7 +203,7 @@ class TestFusion(unittest.TestCase):
             else:
                 model_suffix = "opt_no_skiplayernorm"
 
-            model_name = "gpt2_megatron_{}.onnx".format(model_suffix)
+            model_name = f"gpt2_megatron_{model_suffix}.onnx"
             self.verify_fusion(optimized_model, model_name)
 
 

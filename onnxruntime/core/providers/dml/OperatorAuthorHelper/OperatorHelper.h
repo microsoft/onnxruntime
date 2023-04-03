@@ -1405,6 +1405,14 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class SkipLayerNormHelper
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    SkipLayerNormHelper(const Info_t& info, const Shape_t& shapeInfo) {}
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
@@ -1425,9 +1433,10 @@ using ShapeInferenceHelper_BatchNormalization15 = BatchNormalizationHelper;
 
 using ShapeInferenceHelper_LRN = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_GroupNorm = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization17 = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_SkipLayerNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_SkipLayerNormalization = SkipLayerNormHelper;
 using ShapeInferenceHelper_EmbedLayerNormalization = EmbedLayerNormalizationHelper;
 using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;

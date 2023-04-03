@@ -11,7 +11,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_bytes, dtype_to_suffix
+from utils import dtype_to_bytes, dtype_to_suffix, softmax
 
 
 def get_test_sizes():
@@ -29,13 +29,6 @@ def dtype_to_funcs(dtype):
     return type_map[dtype]
 
 
-def softmax(x, is_log_softmax):
-    x = x - np.max(x, axis=-1, keepdims=1)
-    if is_log_softmax:
-        return x - np.log(np.sum(np.exp(x), axis=-1, keepdims=1))
-    return (np.exp(x)) / np.sum(np.exp(x), axis=-1, keepdims=1)
-
-
 def _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, func):
     np.random.seed(0)
     x = np.random.rand(batch_count, softmax_elements).astype(dtype)
@@ -43,7 +36,7 @@ def _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, func):
 
     x_d = ke.DeviceArray(x)
     y_d = ke.DeviceArray(y)
-    y_ref = softmax(x, is_log_softmax)
+    y_ref = softmax(x, is_log_softmax=is_log_softmax)
 
     softmax_func = getattr(ke, func)
     softmax_op = softmax_func(
