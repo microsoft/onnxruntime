@@ -56,6 +56,13 @@ jobs:
   - template: set-version-number-variables-step.yml
 
   - script: |
+      echo $(Build.SourceVersion)
+      echo $(Build.SourceBranchName)
+      echo $(Build.SourceBranchName)
+    displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
+    condition: eq(${{ parameters.WithCache }}, true)
+
+  - script: |
       brew install ccache
       echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
       mkdir -p $(PROTO_CACHE_DIR)
@@ -94,16 +101,14 @@ jobs:
 
   - task: Cache@2
     inputs:
-      key: ' "$(TODAY)" | ccache  | onnxruntime | "$(LastKey)" '
+      ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
+        key: ' "$(TODAY)" | ccache  | onnxruntime | merge '
+      ${{else}}:
+        key: ' "$(TODAY)" | ccache  | onnxruntime | $(Build.SourceVersion) '
       path: $(ORT_CACHE_DIR)
       restoreKeys: |
         "$(TODAY)" | ccache | onnxruntime
     displayName: ccache MacOS Build
-    env:
-      ${{if eq(Build.SourceName, 'merge')}}:
-        LastKey: $(Build.SourceName)
-      ${{ else }}:
-        LastKey: $(Build.SourceVesion)
     condition: eq(${{ parameters.WithCache }}, true)
 
   - ${{ if eq(parameters.MacosArch, 'universal2') }}:
