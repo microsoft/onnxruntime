@@ -429,7 +429,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (5 - 10)
 
 <dl>
-<dt><tt>input_ids</tt> : I</dt>
+<dt><tt>input_ids</tt> : F</dt>
 <dd>Input sequence used as a prompt for the generation. Can be int32 tokens (Shape is (batch_size, sequence_length)) or spectrogram float data (Shape is (batch_size, feature_size, sequence_length))</dd>
 <dt><tt>max_length</tt> : I</dt>
 <dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
@@ -465,6 +465,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
+<dt><tt>F</tt> : tensor(float), tensor(int32)</dt>
+<dd>Constrain input type to float or int32 tensors.</dd>
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>I</tt> : tensor(int32)</dt>
