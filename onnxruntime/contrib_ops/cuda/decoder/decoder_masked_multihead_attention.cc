@@ -139,6 +139,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   } else {
     // Sanity check
     ORT_ENFORCE(past_present_share_buffer_);
+    ORT_ENFORCE(past_key != nullptr && past_value != nullptr);
 
     auto* present_key_data = present_key->MutableData<T1>();
     auto* present_value_data = present_value->MutableData<T1>();
