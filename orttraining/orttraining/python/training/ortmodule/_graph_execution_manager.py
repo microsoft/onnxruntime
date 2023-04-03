@@ -101,7 +101,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._execution_agent = None
 
         # indicators of some logic have been executed previously and thus could be skipped for faster training
-        # default is enabled, if not define in os env
+        # default is enabled, if not defined in os env
         self._skip_check = _SkipCheck(
             _SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT
         )
@@ -122,10 +122,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
         # - If the _propagate_cast_ops_level is set to zero, then the transformation considers only the opcodes specified by _propagate_cast_ops_allow
         #   as "FP16 safe", to insert/(re)move cast operations before/after to perform such operations in reduced (16-bit) precision.
-        # - If propagate_cast_ops_level is positive, 1 or 2, then in addition to opcode codes specified by propagate_cast_ops_allow use onnxruntime
+        # - If propagate_cast_ops_level is positive, 1 or 2, then in addition to opcode codes specified by propagate_cast_ops_allow, use onnxruntime
         #   predetermined list of opcodes considered safe to move before/after the cast operation.
-        # - Onnxruntime Level 1 predetermined "FP16 safe" opcodes include only opcode that does not perform any computation such as Transpose, Split, Reshape, etc.,
-        #   or the computation is actual in Float such as GeLU, etc.
+        # - Onnxruntime Level 1 predetermined "FP16 safe" opcodes include only opcodes that do not perform any computation such as Transpose, Split, Reshape, etc.,
+        #   or the computation is actually in Float such as GeLU, etc.
         #   whereas Level 2 predetermined "FP16 safe" opcodes include opcodes that perform computation using contrib ops, Dropout, LayerNormalization, etc.
         self._propagate_cast_ops_level = 1
         # List of opcodes to be considered safe to move before/after the cast operation if propagate_cast_ops_level is zero.
@@ -327,7 +327,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # 1. Set the self._device from the user module
         # 2. Verify input schema matches the schema used on the previous model export
         # 3. Export the user model under self._export_training_flag mode
-        # Return True if the model needed to be exported, False if no export was required.
+        # Return True if the model needs to be exported, False if no export is required.
 
         # Note: Model is only exported when:
         #       1. Model has never been exported before.

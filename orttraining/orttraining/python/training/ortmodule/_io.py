@@ -11,10 +11,9 @@ from collections import abc
 
 import torch
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception  # noqa: F401
-from ._utils import warn_of_constant_inputs
-
+from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
 from ._logger import suppress_os_stream_output
+from ._utils import warn_of_constant_inputs
 
 
 class _OutputIdentityOp(torch.autograd.Function):
