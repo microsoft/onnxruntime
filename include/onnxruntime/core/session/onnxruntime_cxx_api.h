@@ -1640,7 +1640,7 @@ struct Logger {
    * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
    * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
    *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
-   * \param args... Zero or more variadic arguments referenced by the format string.
+   * \param args Zero or more variadic arguments referenced by the format string.
    * \return A Ort::Status value to indicate error or success.
    */
   template <typename... Args>
@@ -1714,6 +1714,8 @@ struct KernelInfoImpl : Base<T> {
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
+
+  ConstValue GetTensorConstantInput(size_t index, int* is_constant) const;
 
   std::string GetNodeName() const;
   Logger GetLogger() const;

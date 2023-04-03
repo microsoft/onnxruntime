@@ -3970,7 +3970,6 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
 
-  /// @}
   /// \name OrtKernelInfo
   /// Custom operator APIs.
   /// @{
@@ -4022,7 +4021,7 @@ struct OrtApi {
    * Used in the KernelCompute callback of an OrtCustomOp to get a logger that can be used to log
    * messages during inference.
    *
-   * \param[in] info An instance of ::OrtKernelContext.
+   * \param[in] context An instance of ::OrtKernelContext.
    * \param[out] logger Pointer set to the kernel context's ::OrtLogger. Owned by ONNX Runtime, so do not free.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -4072,9 +4071,20 @@ struct OrtApi {
 
   /// @}
 
-#ifdef __cplusplus
-  OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
-#endif
+  /** \brief Get a ::OrtValue tensor stored as a constant initializer in the graph node.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to get a tensor value.
+   *
+   * \param[in] info ::OrtKernelInfo instance.
+   * \param[in] index The node index.
+   * \param[out] is_constant Is it a constant node input or not.
+   * \param[out] out The OrtValue tensor value.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out);
 };
 
 /*
@@ -4186,5 +4196,4 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOpt
 #ifdef __cplusplus
 }
 #endif
-
-//! @}
+/// @}

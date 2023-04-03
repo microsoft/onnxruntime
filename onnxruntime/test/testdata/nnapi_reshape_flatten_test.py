@@ -5,7 +5,7 @@ from onnx import TensorProto, helper
 # Since NNAPI EP handles Reshape and Flatten differently,
 # Please see ReshapeOpBuilder::CanSkipReshape in <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_builder.cc
 # We have a separated test for these skip reshape scenarios
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [
         helper.make_node("Flatten", ["X"], ["Flatten_1_Y"], "flatten_1"),
         helper.make_node("MatMul", ["Flatten_1_Y", "MatMul_B"], ["MatMul_Y"], "matmul"),

@@ -1,12 +1,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from enum import Enum
 from abc import ABC
-from typing import List, Optional, Union, Tuple
+from enum import Enum
+from typing import List, Optional, Tuple, Union
 
 
-class SourceLocation(object):
+class SourceLocation:
     def __init__(self, offset: int = 0, line: int = 1, column: int = 1):
         self.offset = offset
         self.line = line
@@ -63,7 +63,7 @@ class TokenKind(Enum):
     ARROW = 27
 
 
-class Token(object):
+class Token:
     def __init__(
         self,
         location: Union[SourceLocation, Tuple[int, int, int]],
@@ -72,7 +72,7 @@ class Token(object):
         leading_trivia: Optional[List["Token"]] = None,
         trailing_trivia: Optional[List["Token"]] = None,
     ):
-        if isinstance(location, tuple) or isinstance(location, list):
+        if isinstance(location, (tuple, list)):
             location = SourceLocation(location[0], location[1], location[2])
 
         self.location = location
@@ -91,10 +91,7 @@ class Token(object):
     def has_trailing_trivia(self, trivia_kind: TokenKind) -> bool:
         if not self.trailing_trivia:
             return False
-        for trivia in self.trailing_trivia:
-            if trivia.kind == trivia_kind:
-                return True
-        return False
+        return any(trivia.kind == trivia_kind for trivia in self.trailing_trivia)
 
     def __str__(self) -> str:
         return f"{self.location}: [{self.kind}] '{self.value}'"
@@ -120,11 +117,11 @@ class Token(object):
         )
 
 
-class Reader(ABC):
-    def open(self):
+class Reader(ABC):  # noqa: B024
+    def open(self):  # noqa: B027
         pass
 
-    def close(self):
+    def close(self):  # noqa: B027
         pass
 
     def read_char(self) -> str:
@@ -158,7 +155,7 @@ class StringReader(Reader):
         return None
 
 
-class Lexer(object):
+class Lexer:
     _peek: str
     _next_token: Token
     _first_token_leading_trivia: List[Token]

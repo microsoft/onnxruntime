@@ -21,14 +21,14 @@ from transformers import AutoConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import (
+from benchmark_helper import (  # noqa: E402
     Precision,
     create_onnxruntime_session,
     get_ort_environment_variables,
     prepare_environment,
     setup_logger,
 )
-from quantize_helper import QuantizeHelper
+from quantize_helper import QuantizeHelper  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -404,8 +404,8 @@ def main(args):
                             "onnxruntime_latency": f"{ort_latency:.2f}",
                         }
                         csv_writer.writerow(row)
-                    except:
-                        logger.error(f"Exception", exc_info=True)
+                    except Exception:
+                        logger.error("Exception", exc_info=True)
                         return None
 
     logger.info(f"Results are saved to file {csv_filename}")

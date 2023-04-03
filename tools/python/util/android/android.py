@@ -23,7 +23,7 @@ SdkToolPaths = collections.namedtuple("SdkToolPaths", ["emulator", "adb", "sdkma
 def get_sdk_tool_paths(sdk_root: str):
     def filename(name, windows_extension):
         if is_windows():
-            return "{}.{}".format(name, windows_extension)
+            return f"{name}.{windows_extension}"
         else:
             return name
 
@@ -33,9 +33,9 @@ def get_sdk_tool_paths(sdk_root: str):
             path = shutil.which(os.path.join(dirname, basename))
             if path is not None:
                 path = os.path.realpath(path)
-                _log.debug("Found {} at {}".format(basename, path))
+                _log.debug(f"Found {basename} at {path}")
                 return path
-        raise FileNotFoundError("Failed to resolve path for {}".format(basename))
+        raise FileNotFoundError(f"Failed to resolve path for {basename}")
 
     return SdkToolPaths(
         emulator=resolve_path([os.path.join(sdk_root, "emulator")], filename("emulator", "exe")),
@@ -71,7 +71,7 @@ _process_creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if is_windows() els
 
 
 def _start_process(*args) -> subprocess.Popen:
-    _log.debug("Starting process - args: {}".format([*args]))
+    _log.debug(f"Starting process - args: {[*args]}")
     return subprocess.Popen([*args], creationflags=_process_creationflags)
 
 
@@ -79,7 +79,7 @@ _stop_signal = signal.CTRL_BREAK_EVENT if is_windows() else signal.SIGTERM
 
 
 def _stop_process(proc: subprocess.Popen):
-    _log.debug("Stopping process - args: {}".format(proc.args))
+    _log.debug(f"Stopping process - args: {proc.args}")
     proc.send_signal(_stop_signal)
 
     try:
@@ -91,7 +91,7 @@ def _stop_process(proc: subprocess.Popen):
 
 def _stop_process_with_pid(pid: int):
     # not attempting anything fancier than just sending _stop_signal for now
-    _log.debug("Stopping process - pid: {}".format(pid))
+    _log.debug(f"Stopping process - pid: {pid}")
     os.kill(pid, _stop_signal)
 
 
@@ -135,12 +135,12 @@ def start_emulator(
 
             if emulator_ret is not None:
                 # emulator exited early
-                raise RuntimeError("Emulator exited early with return code: {}".format(emulator_ret))
+                raise RuntimeError(f"Emulator exited early with return code: {emulator_ret}")
 
             if waiter_ret is not None:
                 if waiter_ret == 0:
                     break
-                raise RuntimeError("Waiter process exited with return code: {}".format(waiter_ret))
+                raise RuntimeError(f"Waiter process exited with return code: {waiter_ret}")
 
             time.sleep(sleep_interval_seconds)
 

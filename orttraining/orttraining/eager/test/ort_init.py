@@ -8,6 +8,7 @@
 # after the import, hence this test is isolated from the others.
 
 import unittest
+
 import torch
 
 
@@ -22,7 +23,7 @@ class OrtInitTests(unittest.TestCase):
         with self.assertRaises(BaseException):
             ort_alloc()
 
-        import onnxruntime_pybind11_state as torch_ort
+        import onnxruntime_pybind11_state as torch_ort  # noqa: F401
 
         ort_alloc()
         self.assertIn(config_match, torch._C._show_config())
