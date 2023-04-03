@@ -1,20 +1,19 @@
 #![warn(missing_docs)]
 
-//! ONNX Runtime
+//! Onnxruntime
 //!
-//! This crate is a (safe) wrapper around Microsoft's [ONNX Runtime](https://github.com/microsoft/onnxruntime/)
-//! through its C API.
+//! # Build
 //!
-//! From its [GitHub page](https://github.com/microsoft/onnxruntime/):
+//! ## Environment variables
 //!
-//! > ONNX Runtime is a cross-platform, high performance ML inferencing and training accelerator.
+//! `ORT_RUST_STRATEGY`
+//! - compile Use cmake to build the Onnxruntime library (default)
+//! - system Use an installed Onnxruntime library
+//! - download Download a pre-built library
 //!
-//! The (highly) unsafe [C API](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h)
-//! is wrapped using bindgen as [`onnxruntime-sys`](https://crates.io/crates/onnxruntime-sys).
+//! `ORT_RUST_LIB_LOCATION` only used if `ORT_RUST_STRATEGY=system`
+//! The location of the Onnxruntime library.
 //!
-//! The unsafe bindings are wrapped in this crate to expose a safe API.
-//!
-//! For now, efforts are concentrated on the inference API. Training is _not_ supported.
 //!
 //! # Example
 //!

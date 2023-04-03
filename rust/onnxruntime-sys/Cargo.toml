@@ -6,7 +6,7 @@ version = "0.0.14"
 
 links = "onnxruntime"
 
-description = "Unsafe wrapper around Microsoft's ONNX Runtime"
+description = "low-level wrapper around Microsoft's ONNXRuntime"
 documentation = "https://docs.rs/onnxruntime-sys"
 homepage = "https://github.com/microsoft/onnxruntime"
 license = "MIT OR Apache-2.0"
@@ -22,6 +22,7 @@ libloading = "0.7"
 [build-dependencies]
 bindgen = "0.63"
 cmake = "0.1"
+doxygen-rs = "0.3"
 
 # Used on unix
 flate2 = "1.0"
