@@ -40,7 +40,7 @@ using namespace decoder_masked_self_attention_details;
       <<<grid, THDS_PER_BLOCK, dynamic_block_memory, stream>>>(params)
 
 template <typename T, int head_size>
-void mmha_launch_kernel(const DecoderMaskedSelfAttentionParams& params, cudaStream_t stream) {
+void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream) {
   constexpr int THREADS_PER_VALUE = ThreadsPerValue<T, head_size>::value;
   int total_sequence_length = params.total_sequence_length;
 
@@ -54,9 +54,9 @@ void mmha_launch_kernel(const DecoderMaskedSelfAttentionParams& params, cudaStre
 }
 
 // Instantiate templates
-template void mmha_launch_kernel<float, 64>(const DecoderMaskedSelfAttentionParams& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, 64>(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
 
-template void mmha_launch_kernel<uint16_t, 64>(const DecoderMaskedSelfAttentionParams& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, 64>(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib
