@@ -107,9 +107,13 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  // Present input will have the same shape as the past input
-  Tensor* present_key = context->Output(kPresentOutputIndex, past_key->Shape());
-  Tensor* present_value = context->Output(kPresentOutputIndex + 1, past_value->Shape());
+  std::vector<int64_t> present_dims{
+    parameters.batch_size, parameters.num_heads,
+    past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
+    parameters.head_size};
+  TensorShape present_shape(present_dims);
+  Tensor* present_key = context->Output(kPresentOutputIndex, present_shape);
+  Tensor* present_value = context->Output(kPresentOutputIndex + 1, present_shape);
 
   auto cuda_stream = Stream(context);
 
