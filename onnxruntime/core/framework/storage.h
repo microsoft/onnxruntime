@@ -11,7 +11,7 @@
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/tensor_shape.h"
 #include "core/common/common.h"
-#include "core/framework/shard.h"
+#include "core/framework/shard_utils.h"
 
 namespace onnxruntime {
 
@@ -97,7 +97,7 @@ class ShardRange
     }
 
     explicit ShardRange(Storage& storage, ShardDim& shape)
-        : begin_(storage, shape, 0), end_(storage, storage, ShardUtils::NumShards(storage_.shardDims().value())) {}
+        : begin_(storage, shape, 0), end_(storage, storage, ShardUtils::NumShards(storage_.ShardDims().value())) {}
 
     iterator begin() const { return begin_; }
     iterator end() const { return end_; }
@@ -141,10 +141,11 @@ struct Storage : IStorage {
     size_t Size(uint32_t index) const  { return buffers_.at(index).Size(); }
     ShardInfo const& Shard(ShardDim const& offset) const { return { buffers_.at(ShardUtils::Index(offset, shardDims_)), offset, shardDims_ }; }
     void Apply(std::function<void(Buffer&)> fn) { std::for_each(buffers_.begin(), buffers_.end(), fn); }
+    ShardDim const& ShardDims() const { return shardDims_; }
  private:
     std::vector<Buffer> buffers_;
     ShardDim shardDims_;
 };
 
 
-}
+} // namespace onnxruntime ends

@@ -373,7 +373,6 @@ class Tensor final {
 #endif
 
   std::shared_ptr<Storage> storage_;
-  //ShardDims shardDims_;
 
   TensorShape shape_;
 #ifdef ENABLE_STRIDED_TENSORS

@@ -13,30 +13,20 @@
 
 namespace onnxruntime {
 
-static Buffer MakeBuffer(std::size_t sizeInBytes, AllocatorPtr allocatorPtr, MemoryLocation location=MemoryLocation::OrtUniformMemory, std::size_t offset=0)
+static Buffer MakeBuffer(std::size_t sizeInBytes, AllocatorPtr allocatorPtr, MemoryLocation location=MemoryLocation::Uniform, std::size_t offset=0)
 {
-    Buffer buffer(sizeInBytes, location, offset, allocatorPtr->Alloc(sizeInBytes), [allocatorPtr](void *ptr){ allocatorPtr->Free(ptr); });
-    return buffer;
+    return {sizeInBytes, location, offset, allocatorPtr->Alloc(sizeInBytes), [allocatorPtr](void *ptr){ allocatorPtr->Free(ptr); }};
 }
-static Buffer MakeBuffer(std::size_t sizeInBytes, void* ptr, MemoryLocation location=MemoryLocation::OrtUniformMemory, std::size_t offset=0)
+
+static Buffer MakeBuffer(std::size_t sizeInBytes, void* ptr, DeleterFnPtr deleter=nullptr, MemoryLocation location=MemoryLocation::Uniform, std::size_t offset=0)
 {
-    Buffer buffer(sizeInBytes, location, offset, ptr, nullptr);
-    return buffer;
+    return {sizeInBytes, location, offset, ptr, deleter};
 }
+
 static std::shared_ptr<Storage> MakeStorage(Buffer&& buffer, std::optional<ShardDim> const& shardDim)
 {
   std::make_shared<Storage>(std::move(buffer), shardDim);
 }
-// std::vector<Buffer> MakeBuffers(size_t len,
-//                  std::vector<std::shared_ptr<IAllocator>> allocators)
-// {
-//   std::vector<Buffer> buffers;
-//   for (auto allocator : allocators)
-//   {
-//     buffers.emplace_back(MakeBuffer(len, allocator, allocator.Info().location()));
-//   }
-//   return buffers;
-// }
 
 #ifdef ENABLE_STRIDED_TENSORS
 namespace {
@@ -86,32 +76,29 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const 
     : alloc_info_(alloc) {
   ORT_ENFORCE(p_type != nullptr);
   const size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
-  auto buffer = MakeBuffer(len, p_data, alloc.location, offset);
+  auto buffer = MakeBuffer(len, p_data, nullptr /*deleter*/, alloc.location, offset);
   Init(p_type, MakeStorage(std::move(buffer), shape.shardDims()), shape, strides);
 }
 
-// --- kyule: new constructor for multiple shards
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
                gsl::span<const int64_t> strides)
     : Tensor(!shape.ShardDims() && allocators.size() == 1? Tensor(p_type, shape, allocators[0], strides) : Tensor()) {
   const auto shardDims = shape.ShardDims();
   ORT_ENFORCE(p_type != nullptr);
-  ORT_ENFORCE(shardDims);
+  ORT_ENFORCE(shardDims.has_value());
   ORT_ENFORCE(allocators.size() > 1);
 
   assert(ShardUtils::NumShards(shardDims.value()) == allocators.size());
   std::vector<Buffer> buffers;
   for (auto allocator : allocators)
   {
-    auto index = ShardUtils::Index(offset, shardDims_);
-
-    const size_t len = Tensor::CalculateTensorStorageSize(p_type, shape.shardShape(i), strides);
+    auto shard = ShardUtils::GetShardSize(shape, shardDims.value());
+    const size_t len = Tensor::CalculateTensorStorageSize(p_type, shard, strides);
     buffers.emplace_back(MakeBuffer(len, allocator, allocator.Info().location()));
   }
   Init(p_type, MakeStorage(std::move(buffers), shardDims), shape, strides);
 }
 
-// ---
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
                gsl::span<const int64_t> strides)
     : alloc_info_(allocator->Info()) {
@@ -122,8 +109,9 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   if (len > 0) {
     p_data = allocator->Alloc(len);
   }
-  std::shared_ptr<Storage> storage(len, MemoryLocation::OrtUniformMemory, 0L, p_data, [deleter](void *ptr){ deleter->Free(ptr); });
-  Init(p_type, std::move(storage, shape.shardDims()), shape, strides);
+  auto buffer = MakeBuffer(len, p_data, [deleter](void *ptr){ deleter->Free(ptr); }, alloc.location, 0L);
+
+  Init(p_type, MakeStorage(std::move(storage), shape.shardDims()), shape, strides);
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
@@ -131,8 +119,8 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
     : alloc_info_(deleter->Info()) {
   ORT_ENFORCE(p_type != nullptr);
   size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
-  std::shared_ptr<Storage> storage(len, MemoryLocation::OrtUniformMemory, offset, p_data, [deleter](void *ptr){ deleter->Free(ptr); });
-  Init(p_type, std::move(storage, shape.shardDims()), shape, strides);
+  auto buffer = MakeBuffer(len, p_data, [deleter](void *ptr){ deleter->Free(ptr); }, alloc.location, offset);
+  Init(p_type, MakeStorage(std::move(buffer), shape.shardDims()), shape, strides);
 }
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
@@ -189,9 +177,6 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, std::shared_ptr<S
 
   // for string tensors, if this tensor own the buffer (caller passed in the deleter)
   // do the placement new for strings on pre-allocated buffer.
-  // if (buffer_deleter_ && IsDataTypeString()) {
-  //   utils::ConstructStrings(p_data_, shape_size);
-  // }
   if (IsDataTypeString())
   {
     storage_->Apply([elemSizeInBytes = p_type->Size()](Buffer& buffer){
@@ -212,15 +197,13 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, std::shared_ptr<S
 }
 
 Tensor::Tensor(Tensor&& other) noexcept
-    : p_data_(other.p_data_),
-      buffer_deleter_(other.buffer_deleter_),
+    : storage_(other.storage_),
       shape_(other.shape_),
       dtype_(other.dtype_),
       alloc_info_(other.alloc_info_),
-      byte_offset_(other.byte_offset_) {
   other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
   other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
-  other.storage_.Reset(); // do not deallocate
+  other.storage_ = nullptr;
 }
 
 Tensor& Tensor::operator=(Tensor&& other) noexcept {
@@ -230,13 +213,12 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept {
     dtype_ = other.dtype_;
     shape_ = other.shape_;
     storage_ = other.storage_;
-    shardDims_ = other.shardDims_;
     alloc_info_ = other.alloc_info_;
 
 
     other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
     other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
-    other.storage_.Reset(); // do not deallocate
+    other.storage_ = nullptr;
   }
   return *this;
 }
