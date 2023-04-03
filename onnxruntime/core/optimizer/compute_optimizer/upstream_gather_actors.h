@@ -57,6 +57,11 @@ struct SliceInfo : public UpstreamOperatorInfoBase {
     return kSliceOutputIndex;
   }
 
+  int GetDataProducerOutputIndex() const {
+    ORT_ENFORCE(slice_data_producer_output_index >= 0, "Data producer output index is not set");
+    return slice_data_producer_output_index;
+  }
+
   bool is_scalar_slice;  // whether the slice is a scalar, if it is after Gather, the rank will be reduced by 1.
   std::string axis_attr_name;
   int non_negative_axis;  // The axis to slice on
@@ -69,6 +74,7 @@ struct SliceInfo : public UpstreamOperatorInfoBase {
   // shapes, that dim at the axis will be removed.
   ONNX_NAMESPACE::TensorShapeProto_Dimension output_dim_on_axis;
 
+ private:
   int slice_data_producer_output_index{-1};
 };
 

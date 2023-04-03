@@ -242,7 +242,7 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
                                                                    std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter SimplePointwiseGatherActor::PreCheck for node " + current_node.Name());
 
-  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[info.slice_data_producer_output_index];
+  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[info.GetDataProducerOutputIndex()];
   const auto& data_input_shape = gather_data_input_arg->Shape();
 
   propagate_input_indices.clear();
@@ -373,7 +373,7 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
     // Make sure once Gather is moved before the target node, all its outputs can be correctly sliced.
     std::unordered_map<int, int> output_indices;
     for (size_t output_idx = 1; output_idx < current_node.OutputDefs().size(); ++output_idx) {
-      if (static_cast<int>(output_idx) == info.slice_data_producer_output_index) {
+      if (static_cast<int>(output_idx) == info.GetDataProducerOutputIndex()) {
         continue;
       }
 
@@ -433,7 +433,7 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PostProcess(
   }
 
   if (info_without_node.is_scalar_slice && found_dim_value_1_in_inputs) {
-    AdaptInputAndOutputForScalarSlice(graph, current_node, info_without_node.slice_data_producer_output_index,
+    AdaptInputAndOutputForScalarSlice(graph, current_node, info_without_node.GetDataProducerOutputIndex(),
                                       slice_axis, info_without_node.entry_node_name, new_gather_infos, logger);
   }
 
@@ -455,7 +455,7 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
     return false;
   }
 
-  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[info.slice_data_producer_output_index];
+  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[info.GetDataProducerOutputIndex()];
   const auto& gather_data_input_shape = gather_data_input_arg->Shape();
 
   // Only handle the case where the first input is 3D.
@@ -702,7 +702,7 @@ bool TransposeGatherActor::PostProcess(
 
   // We need to keep the original dimension to align with an original perm.
   if (info_without_node.is_scalar_slice) {
-    AdaptInputAndOutputForScalarSlice(graph, current_node, info_without_node.slice_data_producer_output_index,
+    AdaptInputAndOutputForScalarSlice(graph, current_node, info_without_node.GetDataProducerOutputIndex(),
                                       info_without_node.non_negative_axis,
                                       info_without_node.entry_node_name, new_gather_infos, logger);
   }
@@ -760,7 +760,7 @@ bool MatMulGatherActor::PostProcess(
 
   // We need to keep the original dimension to avoid the matmul inputs cannot be compatible to compute.
   if (info_without_node.is_scalar_slice) {
-    AdaptInputAndOutputForScalarSlice(graph, current_node, info_without_node.slice_data_producer_output_index,
+    AdaptInputAndOutputForScalarSlice(graph, current_node, info_without_node.GetDataProducerOutputIndex(),
                                       info_without_node.non_negative_axis,
                                       info_without_node.entry_node_name, new_gather_infos, logger);
   }

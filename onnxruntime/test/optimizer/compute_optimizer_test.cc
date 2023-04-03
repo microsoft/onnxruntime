@@ -1724,7 +1724,7 @@ TEST(ComputeOptimizerTests, ReshapeMlmBertE2E) {
 
   input_container.AddInput<int64_t>("labels", dims_labels, labels);
 
-  static const std::string all_provider_types[] = {
+  const std::string all_provider_types[] = {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,

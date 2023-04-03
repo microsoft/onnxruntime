@@ -48,12 +48,18 @@ struct ReshapeInfo : public UpstreamOperatorInfoBase {
     return kReshapeOutputIndex;
   }
 
+  int GetDataProducerOutputIndex() const {
+    ORT_ENFORCE(data_producer_output_index >= 0, "Data producer output index is not set");
+    return data_producer_output_index;
+  }
+
   std::string entry_reshape_arg_name;
 
   // The dimension of the output tensor after merging the two leading dims.
   ONNX_NAMESPACE::TensorShapeProto_Dimension last_dim;
 
-  int data_producer_output_index;
+ private:
+  int data_producer_output_index{-1};
 };
 
 /**
