@@ -70,18 +70,23 @@ Status ExpandBuffer(Stream* stream,
                     int num_beams,
                     AllocatorPtr allocator,
                     OrtValue& expanded,
-                    bool only_copy_shape) {
+                    bool only_copy_shape,
+                    int max_sequence_length = 0) {
   // Input shape (batch_size, xxx). The input is required with data type T.
   // Output shape (batch_size * num_beams, xxx)
+  // If max_sequence_length > 0, the output shape will be (batch_size * num_beams, num_heads,
+  // max_sequence_length, head_size)
   ORT_UNUSED_PARAMETER(stream);
 
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
   const int64_t& batch_size = input_shape[0];
-  const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
 
   int64_t dims[4] = {0};
   input_shape.CopyDims(dims, input_shape.NumDimensions());
   dims[0] = batch_size * num_beams;
+  if (max_sequence_length > 0) {
+    dims[2] = max_sequence_length;
+  }
   TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
 
   MLDataType element_type = input.Get<Tensor>().DataType();
@@ -95,14 +100,23 @@ Status ExpandBuffer(Stream* stream,
   const T* input_data = input.Get<Tensor>().Data<T>();
   T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
   T* target = expanded_data;
-  for (int i = 0; i < batch_size; i++) {
-    for (int j = 0; j < num_beams; j++) {
-      memcpy(target, input_data + i * chunk_size, sizeof(T) * SafeInt<size_t>(chunk_size));
-      target += chunk_size;
+
+  if (max_sequence_length == 0) {
+    const int64_t& offset = static_cast<int64_t>(input_shape.Size() / batch_size);
+
+    for (int i = 0; i < batch_size; i++) {
+      for (int j = 0; j < num_beams; j++) {
+        memcpy(target, input_data + i * offset, sizeof(T) * SafeInt<size_t>(offset));
+        target += offset;
+      }
     }
+    return Status::OK();
   }
 
-  return Status::OK();
+  // Expand from [B, N, S, H] to [B*beam, N, S_max, H]
+  // const int64_t& input_offset =
+  // const int64_t& output_offset =
+
 }
 
 Status CreateGptInputs(
@@ -930,7 +944,8 @@ template Status ExpandBuffer<int32_t>(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length);
 
 template Status ExpandBuffer<float>(
     Stream* stream,
@@ -938,7 +953,8 @@ template Status ExpandBuffer<float>(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length);
 
 template Status ExpandBuffer<MLFloat16>(
     Stream* stream,
@@ -946,7 +962,8 @@ template Status ExpandBuffer<MLFloat16>(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length);
 
 }  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib

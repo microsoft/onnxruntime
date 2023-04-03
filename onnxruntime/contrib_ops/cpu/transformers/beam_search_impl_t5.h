@@ -28,6 +28,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                IConsoleDumper* cuda_dumper,
                BeamSearchParameters& params,
                const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+               const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
                const GenerationDeviceHelper::TopkFunc& topk_func,
                const GenerationDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
                const GenerationDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
@@ -37,7 +38,9 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                const GenerationDeviceHelper::UpdateDecoderFeedsFunc<T>& update_decoder_feeds_func,
                const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
                const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
-               const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func)
+               const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
+               const void* cuda_device_prop,
+               int cuda_device_arch)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           ort_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
@@ -46,11 +49,21 @@ class BeamSearchT5 : public BeamSearchBase<T> {
         decoder_subgraph_(decoder_subgraph),
         add_to_feeds_func_(add_to_feeds_func),
         init_beam_state_func_(init_beam_state_func),
+        reorder_past_state_func_(reorder_past_state_func),
         create_encoder_inputs_func_(create_encoder_inputs_func),
         update_decoder_feeds_func_(update_decoder_feeds_func),
         expand_buffer_int32_func_(expand_buffer_int32_func),
         expand_buffer_float_func_(expand_buffer_float_func),
-        expand_buffer_float16_func_(expand_buffer_float16_func) {
+        expand_buffer_float16_func_(expand_buffer_float16_func),
+        cuda_device_prop_(cuda_device_prop),
+        cuda_device_arch_(cuda_device_arch) {
+    if (decoder_subgraph_.has_decoder_masked_attention_) {
+      ORT_ENFORCE(cuda_device_arch_ >= 530,
+                  "Decoder masked multihead attention can only be used on "
+                  "GPU cards of compute capability 5.3 or higher. "
+                  "This card has compute capability ",
+                  cuda_device_arch_);
+    }
   }
 
   // Execute beam search in iterations util stopping criteria is reached.
@@ -72,6 +85,11 @@ class BeamSearchT5 : public BeamSearchBase<T> {
   GenerationDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
   GenerationDeviceHelper::ExpandBufferFunc<float> expand_buffer_float_func_;
   GenerationDeviceHelper::ExpandBufferFunc<MLFloat16> expand_buffer_float16_func_;
+
+  GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
+
+  const void* cuda_device_prop_ = nullptr;
+  int cuda_device_arch_ = 0;
 };
 
 template <typename T>
@@ -195,7 +213,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                   parameters->max_length,
                   parameters->num_heads,
                   parameters->head_size,
-                  false,  // TODO: Support past/present state buffer re-use for T5
+                  decoder_subgraph_.has_decoder_masked_attention_,
                   parameters->output_scores,
                   use_position);
 
@@ -214,6 +232,10 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   int iteration_counter = 0;
   std::vector<OrtValue> decoder_feeds;
   int current_length = parameters->sequence_length;
+
+  // TODO(tianleiwu): allocate fetches. use ping-pong buffers for past state.
+  std::vector<OrtValue> decoder_fetches;
+
   if (current_length + 1 < parameters->max_length) {
     ++iteration_counter;
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(encoder_fetches[0],
@@ -236,11 +258,25 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              this->ort_stream_,
                                                              decoder_subgraph_.UseSequenceAsInputIds(),
                                                              current_length,
-                                                             cpu_state.sequences));
+                                                             cpu_state.sequences,
+                                                             parameters->max_length,
+                                                             decoder_subgraph_.has_decoder_masked_attention_));
+
+    if (decoder_subgraph_.past_present_share_buffer_) {
+      decoder_fetches.reserve(static_cast<int64_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) + 2 * decoder_subgraph_.num_layers);
+      decoder_fetches.resize(decoder_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
+      for (int layer = 0; layer < 2 * decoder_subgraph_.num_layers; layer++) {
+        int feed_idx = decoder_subgraph_.GetFirstPastInputIndex() + layer;
+        OrtValue& past_tensor_value = decoder_feeds[feed_idx];
+        Tensor* past_tensor = past_tensor_value.GetMutable<Tensor>();
+        OrtValue present_tensor_value;
+        Tensor::InitOrtValue(past_tensor->DataType(), past_tensor->Shape(), past_tensor->MutableData<T>(),
+                             past_tensor->Location(), present_tensor_value);
+        decoder_fetches.push_back(present_tensor_value);
+      }
+    }
   }
 
-  // TODO(tianleiwu): allocate fetches. use ping-pong buffers for past state.
-  std::vector<OrtValue> decoder_fetches;
   while (current_length < parameters->max_length) {
     iteration_counter++;
 #ifdef DEBUG_GENERATION

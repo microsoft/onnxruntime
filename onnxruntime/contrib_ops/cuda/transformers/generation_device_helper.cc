@@ -965,7 +965,7 @@ Status UpdateGptFeeds(
       int max_sequence_length = static_cast<int>(last_outputs[gpt_subgraph_first_present_output_idx].Get<Tensor>().Shape()[3]);
 
       // Launch kernel to update the cache indirection buffer
-      cuda::UpdateDecoderMaskedSelfAttentionCacheIndirection(cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>(),
+      cuda::UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>(),
                                                                   old_cache_indirection.Get<Tensor>().Data<int32_t>(),
                                                                   reinterpret_cast<const int32_t*>(beam_indices_gpu.data()),
                                                                   batch_beam_size / num_beams,
@@ -1072,7 +1072,8 @@ Status ExpandBuffer(Stream* ort_stream,
                     int num_beams,
                     AllocatorPtr allocator,
                     OrtValue& expanded,
-                    bool only_copy_shape) {
+                    bool only_copy_shape,
+                    int max_seqence_length) {
   // Input shape (batch_size, xxx). The input is required with data type T.
   // Output shape (batch_size * num_beams, xxx)
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
@@ -1283,7 +1284,8 @@ template Status ExpandBuffer<int32_t>(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length);
 
 template Status ExpandBuffer<float>(
     Stream* ort_stream,
@@ -1291,7 +1293,8 @@ template Status ExpandBuffer<float>(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length);
 
 template Status ExpandBuffer<MLFloat16>(
     Stream* ort_stream,
@@ -1299,7 +1302,8 @@ template Status ExpandBuffer<MLFloat16>(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length);
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime
