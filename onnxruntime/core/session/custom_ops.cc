@@ -401,7 +401,6 @@ struct CustomOpKernel : OpKernel {
 KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op) {
   const size_t input_count = op->GetInputTypeCount(op);
   const size_t output_count = op->GetOutputTypeCount(op);
-  int undefined = 0;
 
   KernelDefBuilder def_builder;
   def_builder.SetName(op->GetName(op))
@@ -417,20 +416,22 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
   }
 
   for (size_t i = 0; i < input_count; i++) {
-    const auto type = op->GetInputType(op, i);
-    if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      def_builder.TypeConstraint("T" + std::to_string(undefined++), DataTypeImpl::AllTensorTypes());
+    const auto input_type = op->GetInputType(op, i);
+    const auto input_name = "Input" + std::to_string(i);
+    if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+      def_builder.TypeConstraint(input_name, DataTypeImpl::AllTensorTypes());
     } else {
-      def_builder.TypeConstraint("Input" + std::to_string(i), DataTypeImpl::TensorTypeFromONNXEnum((int)type)->AsTensorType());
+      def_builder.TypeConstraint(input_name, DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(input_type))->AsTensorType());
     }
   }
 
   for (size_t i = 0; i < output_count; i++) {
-    const auto type = op->GetOutputType(op, i);
-    if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      def_builder.TypeConstraint("T0", DataTypeImpl::AllTensorTypes());
+    const auto output_type = op->GetOutputType(op, i);
+    const auto output_name = "Output" + std::to_string(i);
+    if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+      def_builder.TypeConstraint(output_name, DataTypeImpl::AllTensorTypes());
     } else {
-      def_builder.TypeConstraint("Output" + std::to_string(i), DataTypeImpl::TensorTypeFromONNXEnum((int)type)->AsTensorType());
+      def_builder.TypeConstraint(output_name, DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(output_type))->AsTensorType());
     }
   }
 
@@ -481,16 +482,12 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     }
 
     const auto type = op->GetInputType(op, i);
-    if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
-      std::string type_str = "T" + std::to_string(undefined);
-      schema.Input(i, "Input" + std::to_string(i), "", type_str, option, is_homogeneous, min_arity);
-      schema.TypeConstraint(type_str, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+    if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
       undefined++;
-    } else {
-      std::string input_name = "Input" + std::to_string(i);
-      schema.Input(i, input_name, "", input_name, option, is_homogeneous, min_arity);
-      schema.TypeConstraint(input_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
     }
+    std::string input_name = "Input" + std::to_string(i);
+    schema.Input(i, input_name, "", input_name, option, is_homogeneous, min_arity);
+    schema.TypeConstraint(input_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
   }
 
   for (size_t i = 0; i < output_count; i++) {
@@ -524,12 +521,10 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
                     "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
                     "cannot be inferred without which model loading cannot proceed.");
       }
-      schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);
-    } else {
-      std::string output_name = "Output" + std::to_string(i);
-      schema.Output(i, output_name, "", output_name, option, is_homogeneous, min_arity);
-      schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
     }
+    std::string output_name = "Output" + std::to_string(i);
+    schema.Output(i, output_name, "", output_name, option, is_homogeneous, min_arity);
+    schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
   }
   schema.SetDomain(domain);
   schema.SinceVersion(1);
@@ -610,43 +605,44 @@ void InferOutputTypes(const InlinedVector<const KernelDef*>& kernel_defs,
                       ONNX_NAMESPACE::InferenceContext& infer_ctx) {
   for (const auto& kernel_def : kernel_defs) {
     const auto& type_constraints = kernel_def->TypeConstraints();
-    if (type_constraints.count("T1")) {
-      continue;
-    }
     auto num_inputs = infer_ctx.getNumInputs();
     bool matched = true;
     ONNXTensorElementDataType undef = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    for (size_t i = 0; i < num_inputs; ++i) {
+    // first, make sure there is a constraint for every input
+    for (size_t i = 0; i < num_inputs && matched; ++i) {
       auto input_name = "Input" + std::to_string(i);
       auto input_type = infer_ctx.getInputType(i);
       if (input_type) {
         auto elem_type = static_cast<ONNXTensorElementDataType>(input_type->tensor_type().elem_type());
         auto tc_iter = type_constraints.find(input_name);
-        if (tc_iter == type_constraints.end()) {
-          if (ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == undef) {
-            tc_iter = type_constraints.find("T0");
-            if (tc_iter == type_constraints.end()) {
-              matched = false;
-              break;
-            }
+        if (tc_iter != type_constraints.end()) {
+          if (tc_iter->second.size() > 1) {
             undef = elem_type;
-          } else {
+          } else if (tc_iter->second.size() != 1 || tc_iter->second[0] != DataTypeImpl::TensorTypeFromONNXEnum(elem_type)) {
             matched = false;
-            break;
           }
-        } else if (tc_iter->second.size() != 1 || tc_iter->second[0] != DataTypeImpl::TensorTypeFromONNXEnum(elem_type)) {
+        } else {
           matched = false;
-          break;
         }
+      } else {
+        matched = false;
       }
     }  // for
+    // next, ensure that there is a constraint for every output
+    auto num_outputs = infer_ctx.getNumOutputs();
+    for (size_t i = 0; i < num_outputs && matched; i++) {
+      auto output_name = "Output" + std::to_string(i);
+      auto tc_iter = type_constraints.find(output_name);
+      if (tc_iter == type_constraints.end() || tc_iter->second.size() < 1) {
+        matched = false;
+      }
+    }
     if (matched) {
-      auto num_outputs = infer_ctx.getNumOutputs();
       for (size_t i = 0; i < num_outputs; i++) {
         auto output_name = "Output" + std::to_string(i);
         auto output_type = infer_ctx.getOutputType(i);
         auto tc_iter = type_constraints.find(output_name);
-        if (tc_iter == type_constraints.end()) {
+        if (tc_iter->second.size() > 1) {
           output_type->mutable_tensor_type()->set_elem_type(undef);
         } else {
           output_type->mutable_tensor_type()->set_elem_type(tc_iter->second[0]->GetTypeProto()->tensor_type().elem_type());

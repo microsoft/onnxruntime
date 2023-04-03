@@ -1048,7 +1048,7 @@ TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
     Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
     FAIL();
   } catch (const Ort::Exception& excpt) {
-    ASSERT_THAT(excpt.what(), testing::HasSubstr("Type Error: Type parameter (T0) of Optype (VariadicNode) bound "
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Type Error: Type parameter (Input0) of Optype (VariadicNode) bound "
                                                  "to different types"));
   }
 }
