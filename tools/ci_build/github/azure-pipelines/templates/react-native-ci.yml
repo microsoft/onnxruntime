@@ -122,9 +122,6 @@ stages:
               CCACHE_SLOPPINESS: modules
               CCACHE_DIR: $(ORT_CACHE_DIR)
 
-    - publish: $(System.DefaultWorkingDirectory)/ccache-debug-1
-      artifact: ccache-debug-1
-
     - task: DownloadPipelineArtifact@2
       inputs:
         buildType: 'current'
