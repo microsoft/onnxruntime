@@ -28,12 +28,12 @@ jobs:
            cd rust
            find .
       - name: Log source commit
-        run: git rev-parse --short HEAD > build/rust/html/source-version.txt
+        run: git rev-parse --short HEAD > target/doc/source-version.txt
       - name: Move Rust docs into site
         run: |
           rm -rf _site/docs/api/rust
           mkdir -p _site/docs/api
-          mv rust/html _site/docs/api/rust
+          mv target/doc _site/docs/api/rust
       - name: Upload docs artifact
         uses: actions/upload-artifact@v3
         with:
