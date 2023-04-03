@@ -88,6 +88,7 @@ jobs:
       python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
         --build-dir $(Build.BinariesDirectory)/ios_framework_full \
         --staging-dir "$(Build.BinariesDirectory)/staging" \
+        --path_to_protoc_exe $(Build.BinariesDirectory)/installed/bin/protoc \
         --pod-version "1.15.0" \
         --variant Full \
         --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
