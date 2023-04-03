@@ -11,6 +11,7 @@
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/shared/utils/utils.h"
 #include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
@@ -96,18 +97,11 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     auto* prelu = layer->mutable_activation()->mutable_prelu();
     ORT_RETURN_IF_ERROR(AddPReluWeight(model_builder, node, logger, *prelu));
   } else if (op_type == "LeakyRelu") {
-    const auto& attributes = node.GetAttributes();
-    auto alpha_attr = attributes.find("alpha");
+    NodeAttrHelper helper(node);
+    const auto alpha = helper.Get("alpha", 0.01f);
 
-    if (alpha_attr != attributes.end()) {
-      auto alpha = (*alpha_attr).second.f();
-      auto *leaky_relu = layer->mutable_activation()->mutable_leakyrelu();
-      leaky_relu->set_alpha(alpha);
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "ActivationOpBuilder::AddToModelBuilderImpl, alpha not present in LeakyReLU",
-                             node.Index());
-    }
+    auto *leaky_relu = layer->mutable_activation()->mutable_leakyrelu();
+    leaky_relu->set_alpha(alpha);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
