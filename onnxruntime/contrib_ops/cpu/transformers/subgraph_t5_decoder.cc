@@ -31,6 +31,10 @@ namespace transformers {
       past_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
       ... (for each cross attention layer)
 
+      past_seq_len: int32 (1) - the length of past sequence(optional)
+      num_beams: int32 (1) - the number of beams(optional)
+      cache_indirection: int32 (B, num_beams, max_seq_length) - the cache indirection(optional)
+
     Outputs:
       logits: (B, 1, vocab_size)
 
@@ -50,9 +54,21 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 
   ORT_RETURN_IF(first_past_input_index_ != 2 && first_past_input_index_ != 3,
                 "kFirstPastInputIndex currently only supports 2 or 3");
-  ORT_RETURN_IF(num_subgraph_inputs < 4 + first_past_input_index_ ||
-                    (num_subgraph_inputs - first_past_input_index_) % 4 != 0,
-                "number of outputs expected to be kFirstPastInputIndex + 4 * layers, got:", num_subgraph_inputs);
+  if (!past_present_share_buffer_) {
+    ORT_RETURN_IF(has_decoder_masked_attention_, "decoder_masked_attention shall use with past_present_share_buffer");
+    ORT_RETURN_IF(num_subgraph_inputs < 4 + first_past_input_index_ ||
+                      (num_subgraph_inputs - first_past_input_index_) % 4 != 0,
+                  "number of inputs expected to be kFirstPastInputIndex + 4 * layers, got:", num_subgraph_inputs);
+  } else if (has_decoder_masked_attention_) {
+    ORT_RETURN_IF(num_subgraph_inputs < 7 + first_past_input_index_ ||
+                      (num_subgraph_inputs - first_past_input_index_ - 3) % 4 != 0,
+                  "number of inputs expected to be kFirstPastInputIndex + 4 * layers + 3, got:", num_subgraph_inputs);
+  } else {
+    ORT_RETURN_IF(num_subgraph_inputs < 5 + first_past_input_index_ ||
+                      (num_subgraph_inputs - first_past_input_index_ - 1) % 4 != 0,
+                  "number of inputs expected to be kFirstPastInputIndex + 4 * layers + 1, got:", num_subgraph_inputs);
+  }
+
   ORT_RETURN_IF(num_subgraph_outputs < 3 || (num_subgraph_outputs - first_present_output_index_) % 2 != 0,
                 "number of outputs expected to be 1 + 2 * layers, got:", num_subgraph_outputs);
 
@@ -136,7 +152,9 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     Stream* stream,
     bool use_sequence_as_input_ids,
     int cur_len,
-    transformers::Sequences& sequences) {
+    transformers::Sequences& sequences,
+    int past_present_share_buffer_max_seq_len,
+    bool add_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // Allocate subgraph inputs from same device as inputs of encoder subgraph.
@@ -182,6 +200,10 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
 
   decoder_feeds.push_back(expanded_decoder_attention_masks);
 
+  if (!past_present_share_buffer_) {
+    past_present_share_buffer_max_seq_len = 0;
+  }
+
   // When first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output
   // of encoder.
   // When first_past_input_index_ == 2, the past states are copied from the second output of encoder.
@@ -206,6 +228,9 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
       }
       decoder_feeds.push_back(expanded_hidden_states);
     } else {
+      // past key/value for cross attention does not need to be initialized with max_seq_len since they are static.
+      bool use_max_seq_len = (j - first_past_input_index_) < 2 * num_layers;
+
       OrtValue expanded_cache;
       if (is_output_float16_) {
         ORT_RETURN_IF_ERROR(expand_buffer_float16_func(stream,
@@ -213,14 +238,16 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
                                                        num_beam,
                                                        allocator,
                                                        expanded_cache,
-                                                       false));
+                                                       false,
+                                                       use_max_seq_len ? past_present_share_buffer_max_seq_len : 0));
       } else {
         ORT_RETURN_IF_ERROR(expand_buffer_float_func(stream,
                                                      encoder_fetches[j],
                                                      num_beam,
                                                      allocator,
                                                      expanded_cache,
-                                                     false));
+                                                     false,
+                                                     use_max_seq_len ? past_present_share_buffer_max_seq_len : 0));
       }
       decoder_feeds.push_back(expanded_cache);
     }

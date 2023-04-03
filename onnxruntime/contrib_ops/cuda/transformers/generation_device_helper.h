@@ -136,7 +136,8 @@ Status ExpandBuffer(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length);
 
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib
