@@ -23,8 +23,9 @@ TEST(GraphTransformerUtilsTestsForTraining, TestGenerateGraphTransformers) {
   InlinedHashSet<std::string> disabled = {l1_rule1, l1_transformer, l2_transformer};
   CPUExecutionProvider cpu_ep(CPUExecutionProviderInfo{});
 
-  auto all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, cpu_ep);
-  auto filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, cpu_ep, disabled);
+  std::map<OrtDevice, AllocatorPtr> allocators;
+  auto all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, cpu_ep, allocators);
+  auto filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, cpu_ep, allocators, disabled);
 
   // check ConstantFolding transformer was removed
   ASSERT_TRUE(filtered_transformers.size() == all_transformers.size() - 1);
@@ -47,8 +48,8 @@ TEST(GraphTransformerUtilsTestsForTraining, TestGenerateGraphTransformers) {
 
 #ifndef DISABLE_CONTRIB_OPS
   // check that ConvActivationFusion was removed
-  all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep);
-  filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep, disabled);
+  all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep, allocators);
+  filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep, allocators, disabled);
   ASSERT_TRUE(filtered_transformers.size() == all_transformers.size() - 1);
 #endif
 }

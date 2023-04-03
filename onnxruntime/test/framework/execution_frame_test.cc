@@ -396,14 +396,14 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
 
   OrtValue& y_value = *frame.GetMutableNodeInputOrOutputMLValue(y_idx);
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(
-      y_value, y_idx, DataTypeImpl::GetType<float>(), cpu_allocator->Info(), TensorShape(std::vector<int64_t>{2, 2})));
+      y_value, y_idx, DataTypeImpl::GetType<float>(), cpu_allocator->Info().device, TensorShape(std::vector<int64_t>{2, 2})));
 
   MemoryPatternGroup pattern;
   ASSERT_STATUS_OK(frame.GeneratePatterns(pattern));
 
   ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
   ASSERT_EQ(pattern.patterns.size(), 1u);
-  auto p = pattern.GetPatterns(cpu_allocator->Info());
+  auto p = pattern.GetPatterns(cpu_allocator->Info().device);
   ASSERT_EQ(p->PeakSize(), 0u);  // Peak size is 0.
 }
 #endif

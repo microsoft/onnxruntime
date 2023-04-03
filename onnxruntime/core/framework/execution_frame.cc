@@ -102,7 +102,7 @@ void IExecutionFrame::UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs,
         OrtValue& dest = all_values_[ort_value_idx];
 
         if (!dest.IsAllocated()) {
-          AllocatorPtr allocator = GetAllocator(src.Location());
+          AllocatorPtr allocator = GetAllocator(src.Location().device);
           auto p_tensor = std::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
           auto ml_tensor = DataTypeImpl::GetType<Tensor>();
           dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());

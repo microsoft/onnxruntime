@@ -1453,7 +1453,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
 // !!! TODO: re-enable it before merge.
 #ifdef FALSE_USE_CUDA
   auto cuda_provider = DefaultCudaExecutionProvider();
-  auto cuda_allocator = cuda_provider->GetAllocator(OrtMemTypeDefault);
+  auto cuda_allocator = std::make_shared<CPUAllocator>();
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
     ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
@@ -1681,7 +1681,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
 // !!! TODO Re-enalbe it before merge.
 #ifdef FALSE_USE_CUDA
   auto cuda_provider = DefaultCudaExecutionProvider();
-  auto cuda_allocator = cuda_provider->GetAllocator(OrtMemTypeDefault);
+  auto cuda_allocator = std::make_shared<CPUAllocator>();
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
     ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));

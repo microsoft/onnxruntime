@@ -281,7 +281,7 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
     const auto& name_to_id = session_state.GetOrtValueNameIdxMap();
     int index;
     ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_name, index));
-    const auto& device = exec_plan->GetLocation(index).device;
+    const auto& device = exec_plan->GetLocation(index);
     copy_info.target_device = device;
   }
 #endif

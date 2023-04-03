@@ -704,7 +704,7 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
       if (!ml_type->IsTensorType())
         continue;
 
-      if (exe_plan->allocation_plan[ml_value_idx].location.mem_type != OrtMemType::OrtMemTypeDefault)
+      if (exe_plan->allocation_plan[ml_value_idx].location.MemType() != OrtDevice::MemType::DEFAULT)    // TODO(leca): review
         continue;
 
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
