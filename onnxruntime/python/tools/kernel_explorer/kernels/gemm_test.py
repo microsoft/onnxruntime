@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import os
 import sys
 from dataclasses import dataclass
 from itertools import product
@@ -71,6 +72,10 @@ dtypes = ["float32", "float16"]
 all_transabs = list(product([True, False], repeat=2))
 
 
+@pytest.mark.skipif(
+    not int(os.environ.get("KERNEL_EXPLORER_TEST_VENDOR_LIBRARIES", "0")),
+    reason="Export KERNEL_EXPLORER_TEST_VENDOR_LIBRARIES=1 to test vendor libraries.",
+)
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=True) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
