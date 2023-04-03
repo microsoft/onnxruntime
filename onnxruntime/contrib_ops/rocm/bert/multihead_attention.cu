@@ -58,8 +58,9 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_key = context->Input<Tensor>(6);
   const Tensor* past_value = context->Input<Tensor>(7);
 
-  // TODO: relax
-  ORT_ENFORCE(bias == nullptr && key_padding_mask == nullptr && past_key == nullptr && past_value == nullptr);
+  // TODO: Add support for bias, key_padding_mask and attention cache.
+  ORT_ENFORCE(bias == nullptr && key_padding_mask == nullptr && past_key == nullptr && past_value == nullptr,
+              "bias, key_padding_mask and attention cache is not supported");
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters attn;
@@ -90,9 +91,10 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       attn.head_size,
   };
   TensorShape present_shape(present_dims);
-  // TODO:
-  // Tensor* present_key = context->Output(1, present_shape);
-  // Tensor* present_value = context->Output(2, present_shape);
+  Tensor* present_key = context->Output(1, present_shape);
+  Tensor* present_value = context->Output(2, present_shape);
+  // TODO: Add support for attention cache
+  ORT_ENFORCE(present_key == nullptr && present_value == nullptr, "attention cache is not supported");
 
   using HipT = typename ToHipType<T>::MappedType;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
