@@ -398,6 +398,7 @@ struct CustomOpKernel : OpKernel {
   void* op_kernel_;
 };
 
+#if !defined(ORT_MINIMAL_BUILD)
 KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op) {
   const size_t input_count = op->GetInputTypeCount(op);
   const size_t output_count = op->GetOutputTypeCount(op);
@@ -652,6 +653,7 @@ void InferOutputTypes(const InlinedVector<const KernelDef*>& kernel_defs,
     }
   }
 }
+#endif
 
 common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domains,
                                     std::shared_ptr<CustomRegistry>& output) {
