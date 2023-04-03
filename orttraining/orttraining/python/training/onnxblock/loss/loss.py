@@ -92,9 +92,9 @@ class CrossEntropyLoss(blocks.Block):
             # the graph output against to calculate loss.
             labels_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, scores_input_name))
             labels_input.name = labels_name
-            labels_input.type.tensor_type.elem_type = onnx.TensorProto.INT32
+            labels_input.type.tensor_type.elem_type = onnx.TensorProto.INT64
             # If the predictions are (num_examples x num_classes)
-            # labels should be (num_examples x 1)
+            # labels should be (num_examples,)
             del labels_input.type.tensor_type.shape.dim[1]
             self.base.graph.input.append(labels_input)
 
