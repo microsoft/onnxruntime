@@ -49,7 +49,7 @@ class NeuralNetwork(nn.Module):
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
-    for batch, (X, y) in enumerate(dataloader):
+    for batch, (X, y) in enumerate(dataloader):  # noqa: N806
         # Compute prediction and loss
         x_ort = X.to(device)
         y_ort = y.to(device)
@@ -72,7 +72,7 @@ def test_loop(dataloader, model, loss_fn):
     test_loss, correct = 0, 0
 
     with torch.no_grad():
-        for X, y in dataloader:
+        for X, y in dataloader:  # noqa: N806
             x_ort = X.to(device)
             y_ort = y.to(device)
             pred = model(x_ort)

@@ -8,7 +8,7 @@ def is_windows():
     return sys.platform.startswith("win")
 
 
-def is_macOS():
+def is_macOS():  # noqa: N802
     return sys.platform.startswith("darwin")
 
 

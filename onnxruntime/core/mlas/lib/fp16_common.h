@@ -53,6 +53,10 @@ MLAS_FLOAT16X8
 MlasZeroFloat16x8(void) { return vreinterpretq_f16_f32(vdupq_n_f32(0.0f)); }
 
 MLAS_FORCEINLINE
+MLAS_FLOAT16X4
+MlasZeroFloat16x4(void) { return vreinterpret_f16_f32(vdup_n_f32(0.0f)); }
+
+MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 MlasLoadFloat16x8(const _mlas_fp16_* Buffer) { return vreinterpretq_f16_u16(vld1q_u16(Buffer)); }
 
@@ -142,6 +146,20 @@ MLAS_FLOAT16X4
 MlasMultiplyFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
 {
     return vmul_f16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasDivFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+{
+    return vdivq_f16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X4
+MlasDivFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
+{
+    return vdiv_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE

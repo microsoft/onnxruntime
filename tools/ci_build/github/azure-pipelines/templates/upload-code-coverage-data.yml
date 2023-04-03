@@ -1,0 +1,32 @@
+jobs:
+  - job: Upload
+    workspace:
+      clean: all
+    pool: 'Win-CPU-2021'
+    variables:
+    - name: runCodesignValidationInjection
+      value: false
+    - name: skipComponentGovernanceDetection
+      value: true
+    dependsOn:
+    - CodeCoverage
+    condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    steps:
+    - checkout: self
+      submodules: false
+
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Pipeline Artifact'
+      inputs:
+        buildType: 'current'
+        artifactName: 'html'
+        targetPath: '$(Build.BinariesDirectory)'
+
+    - task: AzureFileCopy@4
+      displayName: 'AzureBlob File Copy'
+      inputs:
+        SourcePath: '$(Build.BinariesDirectory)\*'
+        azureSubscription: AIInfraBuildOnnxRuntimeOSS
+        Destination: AzureBlob
+        storage: onnxruntime
+        ContainerName: '$web'

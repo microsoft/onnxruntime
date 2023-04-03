@@ -16,12 +16,12 @@ import onnxruntime as onnxrt
 
 class ScaledTanh(Layer):
     def __init__(self, alpha=1.0, beta=1.0, **kwargs):
-        super(ScaledTanh, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.alpha = alpha
         self.beta = beta
 
     def build(self, input_shape):
-        super(ScaledTanh, self).build(input_shape)
+        super().build(input_shape)
 
     def call(self, x):
         return self.alpha * K.tanh(self.beta * x)
@@ -43,10 +43,9 @@ def custom_activation(scope, operator, container):
 
 
 class TestInferenceSessionKeras(unittest.TestCase):
-    def testRunModelConv(self):
-
+    def testRunModelConv(self):  # noqa: N802
         # keras model
-        N, C, H, W = 2, 3, 5, 5
+        N, C, H, W = 2, 3, 5, 5  # noqa: N806
         x = np.random.rand(N, H, W, C).astype(np.float32, copy=False)
 
         model = Sequential()

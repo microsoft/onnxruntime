@@ -11,7 +11,7 @@ from .types import FbsTypeInfo, value_name_to_typestr
 
 
 def _create_op_key(domain: str, optype: str):
-    return "{}:{}".format(domain, optype)
+    return f"{domain}:{optype}"
 
 
 def _ort_constant_for_domain(domain: str):
@@ -26,7 +26,7 @@ def _ort_constant_for_domain(domain: str):
     domain_to_constant_map = {"ai.onnx": "kOnnxDomain", "ai.onnx.ml": "kMLDomain", "com.microsoft": "kMSDomain"}
 
     if domain not in domain_to_constant_map:
-        raise ValueError("Domain {} not found in map to ONNX Runtime constant. Please update map.".format(domain))
+        raise ValueError(f"Domain {domain} not found in map to ONNX Runtime constant. Please update map.")
 
     return domain_to_constant_map[domain]
 
@@ -76,7 +76,7 @@ class TypeUsageProcessor(ABC):
         :return: True is required. False if not.
         """
         # Not all operators have typed registrations, so this is optionally implemented by derived classes
-        raise RuntimeError("Did not expect processor for {} to have typed registrations.".format(self.name))
+        raise RuntimeError(f"Did not expect processor for {self.name} to have typed registrations.")
 
     def get_cpp_entry(self):
         """
@@ -113,10 +113,10 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         self,
         domain: str,
         optype: str,
-        inputs: [int] = [0],
-        outputs: [int] = [],
-        required_input_types: typing.Dict[int, typing.Set[str]] = {},
-        required_output_types: typing.Dict[int, typing.Set[str]] = {},
+        inputs: [int] = [0],  # noqa: B006
+        outputs: [int] = [],  # noqa: B006
+        required_input_types: typing.Dict[int, typing.Set[str]] = {},  # noqa: B006
+        required_output_types: typing.Dict[int, typing.Set[str]] = {},  # noqa: B006
     ):
         """
         Create DefaultTypeUsageProcessor. Types for one or more inputs and/or outputs can be tracked by the processor.
@@ -166,7 +166,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         return self._is_type_enabled(reg_type, index, self._required_output_types, allowed_type_set)
 
     def process_node(self, node: fbs.Node, value_name_to_typeinfo: dict):
-        for i in self._input_types.keys():
+        for i in self._input_types:
             if i >= node.InputsLength():
                 # Some operators have fewer inputs in earlier versions where data that was as an attribute
                 # become an input in later versions to allow it to be dynamically provided. Allow for that.
@@ -178,7 +178,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
                 type_str = value_name_to_typestr(node.Inputs(i), value_name_to_typeinfo)
                 self._input_types[i].add(type_str)
 
-        for o in self._output_types.keys():
+        for o in self._output_types:
             # Don't know of any ops where the number of outputs changed across versions, so require a valid length
             if o >= node.OutputsLength():
                 raise RuntimeError(
@@ -196,7 +196,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         if 0 not in self._input_types.keys():
             # currently all standard typed registrations are for input 0.
             # custom registrations can be handled by operator specific processors (e.g. OneHotProcessor below).
-            raise RuntimeError("Expected typed registration to use type from input 0. Node:{}".format(self.name))
+            raise RuntimeError(f"Expected typed registration to use type from input 0. Node:{self.name}")
 
         return self.is_input_type_enabled(type_in_registration, 0, globally_allowed_types)
 
@@ -327,7 +327,7 @@ class OneHotProcessor(TypeUsageProcessor):
         self._triples.clear()
         aggregate_info = json.loads(entry)
         if "custom" in aggregate_info:
-            self._triples = set([tuple(triple) for triple in aggregate_info["custom"]])
+            self._triples = {tuple(triple) for triple in aggregate_info["custom"]}
 
 
 def _create_operator_type_usage_processors():
@@ -589,7 +589,6 @@ class OperatorTypeUsageManager:
             op_processor.from_config_entry(config_entry)
 
     def debug_dump(self):
-
         print("C++ code that will be emitted:")
         [print(cpp_line) for cpp_line in self.get_cpp_entries()]
 
@@ -597,7 +596,7 @@ class OperatorTypeUsageManager:
         for key in sorted(self._operator_processors.keys()):
             entry = self._operator_processors[key].to_config_entry()
             if entry:
-                print("{} -> {}".format(key, entry))
+                print(f"{key} -> {entry}")
 
                 # roundtrip test to validate that we can initialize the processor from the entry and get the
                 # same values back

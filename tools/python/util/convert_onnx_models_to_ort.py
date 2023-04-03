@@ -83,7 +83,6 @@ def _convert(
     target_platform: str,
     session_options_config_entries: typing.Dict[str, str],
 ) -> typing.List[pathlib.Path]:
-
     model_dir = model_path_or_dir if model_path_or_dir.is_dir() else model_path_or_dir.parent
     output_dir = output_dir or model_dir
 
@@ -102,7 +101,7 @@ def _convert(
     models = files_from_file_or_dir(model_path_or_dir, is_model_file_to_convert)
 
     if len(models) == 0:
-        raise ValueError("No model files were found in '{}'".format(model_path_or_dir))
+        raise ValueError(f"No model files were found in '{model_path_or_dir}'")
 
     providers = ["CPUExecutionProvider"]
 
@@ -118,7 +117,6 @@ def _convert(
 
     for model in models:
         try:
-
             relative_model_path = model.relative_to(model_dir)
 
             (output_dir / relative_model_path).parent.mkdir(parents=True, exist_ok=True)
@@ -142,7 +140,7 @@ def _convert(
                     # Limit the optimizations to those that can run in a model with runtime optimizations.
                     so.add_session_config_entry("optimization.minimal_build_optimizations", "apply")
 
-                print("Saving optimized ONNX model {} to {}".format(model, optimized_target_path))
+                print(f"Saving optimized ONNX model {model} to {optimized_target_path}")
                 _ = ort.InferenceSession(
                     str(model), sess_options=so, providers=providers, disabled_optimizers=optimizer_filter
                 )
@@ -155,7 +153,7 @@ def _convert(
             if optimization_style == OptimizationStyle.Runtime:
                 so.add_session_config_entry("optimization.minimal_build_optimizations", "save")
 
-            print("Converting optimized ONNX model {} to ORT format model {}".format(model, ort_target_path))
+            print(f"Converting optimized ONNX model {model} to ORT format model {ort_target_path}")
             _ = ort.InferenceSession(
                 str(model), sess_options=so, providers=providers, disabled_optimizers=optimizer_filter
             )
@@ -167,11 +165,11 @@ def _convert(
             # print("Serialized {} to {}. Sizes: orig={} new={} diff={} new:old={:.4f}:1.0".format(
             #     onnx_target_path, ort_target_path, orig_size, new_size, new_size - orig_size, new_size / orig_size))
         except Exception as e:
-            print("Error converting {}: {}".format(model, e))
+            print(f"Error converting {model}: {e}")
             if not allow_conversion_failures:
                 raise
 
-    print("Converted {}/{} models successfully.".format(len(converted_models), len(models)))
+    print(f"Converted {len(converted_models)}/{len(models)} models successfully.")
 
     return converted_models
 
@@ -280,10 +278,10 @@ def convert_onnx_models_to_ort():
     custom_op_library = args.custom_op_library.resolve() if args.custom_op_library else None
 
     if not model_path_or_dir.is_dir() and not model_path_or_dir.is_file():
-        raise FileNotFoundError("Model path '{}' is not a file or directory.".format(model_path_or_dir))
+        raise FileNotFoundError(f"Model path '{model_path_or_dir}' is not a file or directory.")
 
     if custom_op_library and not custom_op_library.is_file():
-        raise FileNotFoundError("Unable to find custom operator library '{}'".format(custom_op_library))
+        raise FileNotFoundError(f"Unable to find custom operator library '{custom_op_library}'")
 
     session_options_config_entries = {}
 
