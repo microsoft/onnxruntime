@@ -898,7 +898,7 @@ void Node::Init(const std::string& name,
     }
   }
 }
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Node::Definitions& Node::MutableDefinitions() noexcept {
@@ -1625,11 +1625,12 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             Node& output_node = *entry->second.first;
             AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
 
-            // If this Graph was built manually, remove the implicit input from the graph outputs
-            // if it is present there and not explicitly listed in the ordered graph outputs
-            // (as that implies we should leave it as an output).
-            // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
-            if (!is_loaded_from_model_file_) {
+            // If this Graph was built manually and the outputs were not manually set, remove the implicit input from
+            // the graph outputs if it is present there.
+            //
+            // Otherwise, if the Graph was loaded from a GraphProto or the outputs were manually set, honor the
+            // explicit graph outputs and leave as is.
+            if (!is_loaded_from_model_file_ && !graph_outputs_manually_set_) {
               graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
                                    graph_outputs_.end());
             }
