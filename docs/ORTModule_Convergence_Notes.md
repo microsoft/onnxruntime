@@ -81,7 +81,7 @@ Arguments:
 - end_step [optional]: the end step (exclusively) that runs subscriber actions.
 - override_output_dir: whether `output_dir` can be overridden if it already exists.
 
-Check [DebugOptions implementation](../orttraining/orttraining/python/training/utils/hooks/_statistics_subscriber.py)  for more information.
+Check [StatisticsSubscriber implementation](../orttraining/orttraining/python/training/utils/hooks/_statistics_subscriber.py)  for more information.
 
 ### Run command to generate per-step summary
 
