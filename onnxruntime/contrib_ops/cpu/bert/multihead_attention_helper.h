@@ -287,7 +287,7 @@ Status CheckInputs(const T* query,
     }
   }
 
-  ORT_RETURN_IF(qkv_format == UNKNOWN, "qkv format is not classified");
+  ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
