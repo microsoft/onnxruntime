@@ -391,7 +391,11 @@ TEST(GroupNormTest, GroupNorm_128) {
 
   // Test float16, without activation
   int min_cuda_architecture = 530;
-  if (HasCudaEnvironment(min_cuda_architecture)) {
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+  bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
+
+  if (enable_cuda || enable_rocm || enable_dml) {
     OpTester test("GroupNorm", 1, onnxruntime::kMSDomain);
     test.AddAttribute<float>("epsilon", 1e-05f);
     test.AddAttribute<int64_t>("groups", 32);
@@ -407,12 +411,21 @@ TEST(GroupNormTest, GroupNorm_128) {
     test.AddOutput<MLFloat16>("Y", dims, ToFloat16(norm_data), false, rel_error, abs_error);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
+    if (enable_cuda) {
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+    }
+    if (enable_rocm) {
+      execution_providers.push_back(DefaultRocmExecutionProvider());
+    }
+    if (enable_dml) {
+      execution_providers.push_back(DefaultDmlExecutionProvider());
+    }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 
   // Test float32, with activation
-  if (HasCudaEnvironment(0)) {
+  enable_cuda = HasCudaEnvironment(0);
+  if (enable_cuda || enable_rocm || enable_dml) {
     OpTester test("GroupNorm", 1, onnxruntime::kMSDomain);
     test.AddAttribute<float>("epsilon", 1e-05f);
     test.AddAttribute<int64_t>("groups", 32);
@@ -427,7 +440,15 @@ TEST(GroupNormTest, GroupNorm_128) {
     test.AddOutput<float>("Y", dims, swish_data, false, rel_error, abs_error);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
+    if (enable_cuda) {
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+    }
+    if (enable_rocm) {
+      execution_providers.push_back(DefaultRocmExecutionProvider());
+    }
+    if (enable_dml) {
+      execution_providers.push_back(DefaultDmlExecutionProvider());
+    }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }

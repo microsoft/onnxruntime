@@ -45,7 +45,7 @@ class DeviceArray {
     CALL_THROW(MEMCPY(device_.get(), host_, size_ * itemsize_, MEMCPY_HOST_TO_DEVICE));
   }
   DeviceArray(const DeviceArray&) = default;
-  DeviceArray& operator=(DeviceArray&) = default;
+  DeviceArray& operator=(const DeviceArray&) = default;
 
   void UpdateHostNumpyArray() {
     CALL_THROW(MEMCPY(host_, device_.get(), size_ * itemsize_, MEMCPY_DEVICE_TO_HOST));

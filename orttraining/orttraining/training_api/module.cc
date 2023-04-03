@@ -149,7 +149,6 @@ Module::Module(const std::string& train_model_path_or_bytes,
                const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                const std::optional<std::string>& eval_model_path_or_bytes)
     : named_parameters_{named_parameters} {
-
   // Enforce weight prepacking is disabled
   // If user explicitly enabled weight prepacking then return error.
   // Default value is enabled. Therefore, explicitly disable it if the value is not set by user.

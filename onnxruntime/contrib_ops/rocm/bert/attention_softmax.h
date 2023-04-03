@@ -38,7 +38,6 @@ namespace rocm {
 
 template <typename T, unsigned TPB>
 __device__ inline void Softmax(const int all_sequence_length,
-                               const int sequence_length,
                                const int valid_end,
                                const int valid_start,
                                const T* add_before_softmax,
@@ -276,10 +275,8 @@ __global__ void SoftmaxKernelSmall(const int all_sequence_length, const int sequ
 }
 
 template <typename T, unsigned TPB>
-__global__ void SoftmaxKernel(const int all_sequence_length, const int sequence_length,
-                              const T* add_before_softmax, const T* input, T* output) {
-  Softmax<T, TPB>(all_sequence_length, sequence_length, all_sequence_length, 0,
-                  add_before_softmax, input, output);
+__global__ void SoftmaxKernel(const int all_sequence_length, const T* add_before_softmax, const T* input, T* output) {
+  Softmax<T, TPB>(all_sequence_length, all_sequence_length, 0, add_before_softmax, input, output);
 }
 
 template <typename T>
@@ -315,7 +312,7 @@ Status ComputeSoftmax(
   } else if (!is_unidirectional) {
     const int blockSize = 1024;
     SoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
-        all_sequence_length, sequence_length, add_before_softmax, input, output);
+        all_sequence_length, add_before_softmax, input, output);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Attention ROCM operator does not support total sequence length > 1024.");
   }
@@ -349,8 +346,7 @@ __global__ void MaskedSoftmaxKernelSmall(const int all_sequence_length, const in
 }
 
 template <typename T, unsigned TPB>
-__global__ void MaskedSoftmaxKernel(const int all_sequence_length, const int sequence_length,
-                                    const int* mask_end, const int* mask_start,
+__global__ void MaskedSoftmaxKernel(const int all_sequence_length, const int* mask_end, const int* mask_start,
                                     const T* add_before_softmax, const T* input, T* output) {
   __shared__ int start_position;
   __shared__ int end_position;
@@ -368,8 +364,7 @@ __global__ void MaskedSoftmaxKernel(const int all_sequence_length, const int seq
   }
   __syncthreads();
 
-  Softmax<T, TPB>(all_sequence_length, sequence_length, end_position, start_position,
-                  add_before_softmax, input, output);
+  Softmax<T, TPB>(all_sequence_length, end_position, start_position, add_before_softmax, input, output);
 }
 
 template <typename T>
@@ -400,7 +395,7 @@ Status ComputeSoftmaxWithMask1D(
   } else if (!is_unidirectional) {
     const int blockSize = 1024;
     MaskedSoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
-        all_sequence_length, sequence_length, mask_index, mask_start,
+        all_sequence_length, mask_index, mask_start,
         add_before_softmax, input, output);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Attention ROCM operator does not support total sequence length > 1024.");

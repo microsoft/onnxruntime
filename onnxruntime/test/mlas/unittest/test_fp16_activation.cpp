@@ -19,9 +19,8 @@ class MlasFp16ActivationTest : public MlasTestBase {
     };
 
     // N.B. The test data includes values at the edge of Tanh/Logistic boundaries.
-    //    Identity,     Relu,         LeakyRelu,    Tanh,         Logistic,     Clip,
     static const AliasedValue TestData[] = {
-        {0x00000001},  // positive denormal
+        {0x00000001}, // positive denormal
         {0x80000001}, // negative denormal
         {0x7fc00000}, // positive NaN
         {0xffc00000}, // negative NaN
@@ -40,7 +39,7 @@ class MlasFp16ActivationTest : public MlasTestBase {
         {0x418866eb}, // +17.0502529144f
         {0x418869bb}, // +17.0516262054f
         {0x418852a8}, // +17.0403594971f
-        {0x418844aa} // +17.0335273743f
+        {0x418844aa}  // +17.0335273743f
     };
 
     constexpr size_t M = 5;
@@ -57,6 +56,8 @@ class MlasFp16ActivationTest : public MlasTestBase {
         MlasIdentityActivation,
         MlasReluActivation,
         MlasLeakyReluActivation,
+        MlasTanhActivation,
+        MlasLogisticActivation,
         MlasClipActivation,
         MlasHardSigmoidActivation};
 

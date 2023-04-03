@@ -353,10 +353,10 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  size_t bytes = element_size * batch_size * (sequence_length + 2 * kv_sequence_length) * hidden_size;
+  size_t bytes = element_size * batch_size * (static_cast<size_t>(sequence_length) + static_cast<size_t>(2) * kv_sequence_length) * hidden_size;
   auto qkv_buffer_p = GetScratchBuffer<void>(bytes, context->GetComputeStream());
 
-  bytes = element_size * 2 * batch_size * sequence_length * num_heads_ * (2 * head_size + kv_sequence_length);
+  bytes = element_size * 2 * batch_size * sequence_length * num_heads_ * (static_cast<size_t>(2) * head_size + static_cast<size_t>(kv_sequence_length));
   auto workspace_p = GetScratchBuffer<void>(bytes, context->GetComputeStream());
 
   Tensor* output(context->Output(0, query_shape));

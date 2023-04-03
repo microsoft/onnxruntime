@@ -7,6 +7,7 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/session/inference_session.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -326,12 +327,11 @@ TEST(NnapiExecutionProviderTest, TestQDQResizeNCHW) {
   // NNAPI EP does not support the default setting of Resize Op
   // Use bi-linear and asymmetric for NNAPI EP only
   auto Mode = ExpectedEPNodeAssignment::None;
-#if defined(__ANDROID__)
-  const auto* nnapi = NnApiImplementation();
-  if (nnapi->nnapi_runtime_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_3) {
+  const auto* nnapi_handle = NnApiImplementation();
+  if (nnapi_handle && nnapi::GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(
+                          *nnapi_handle, nnapi::TargetDeviceOption::ALL_DEVICES) >= ANEURALNETWORKS_FEATURE_LEVEL_3) {
     Mode = ExpectedEPNodeAssignment::All;
   }
-#endif
   RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
                                          {1, 3, 32, 32} /* sizes_data */,
                                          "linear" /* mode */,
@@ -458,8 +458,9 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
   // See https://developer.android.com/studio/run/emulator-commandline for some info on
   // starting a testing android emulator in command line. (Run an android build with emulator started)
   // TODO: consider to configure this and enable it to run in Android CI.
-  const auto* nnapi = NnApiImplementation();
-  if (nnapi->nnapi_runtime_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+  const auto* nnapi_handle = NnApiImplementation();
+  if (nnapi_handle && nnapi::GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(
+                          *nnapi_handle, nnapi::TargetDeviceOption::ALL_DEVICES) < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     RunQDQModelTest(BuildQDQConcatTestCaseUnsupportedInputScaleZp(),
                     "nnapi_qdq_test_graph_concat_unsupported",
                     {ExpectedEPNodeAssignment::None});

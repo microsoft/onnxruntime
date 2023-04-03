@@ -13,11 +13,12 @@ public:
     :   DmlOperator(kernelCreationContext)
     {
         std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2, 3, 4};
+        std::vector<std::optional<uint32_t>> kernelOutputIndices = {0, 1, 2, 3};
 
         DmlOperator::Initialize(
             kernelCreationContext,
             kernelInputIndices,
-            std::nullopt,
+            kernelOutputIndices,
             kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0),
             std::nullopt,
             kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0));
@@ -31,7 +32,7 @@ public:
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
 
         assert(m_inputTensorDescs.size() == 5);
-        assert(m_outputTensorDescs.size() == 1);
+        assert(m_outputTensorDescs.size() == 4);
 
         auto inputDesc = m_inputTensorDescs[0].GetDmlDesc();
         auto skipDesc = m_inputTensorDescs[1].GetDmlDesc();
@@ -39,6 +40,7 @@ public:
         auto betaDesc = m_inputTensorDescs[3].GetDmlDesc();
         auto biasDesc = m_inputTensorDescs[4].GetDmlDesc();
         auto outputDesc = m_outputTensorDescs[0].GetDmlDesc();
+        auto inputSkipBiasSum = m_outputTensorDescs[3].GetDmlDesc();
 
         TensorDesc inputSkipBiasTensorDesc(m_inputTensorDescs[0].GetDmlDataType(), m_inputTensorDescs[0].GetSizes());
         DML_TENSOR_DESC inputSkipBiasDmlTensorDesc = inputSkipBiasTensorDesc.GetDmlDesc();
@@ -112,6 +114,23 @@ public:
             biasInputEdge.ToNodeIndex = 1;
             biasInputEdge.ToNodeInputIndex = 1;
             inputEdges.push_back(std::move(biasInputEdge));
+
+            if (inputSkipBiasSum.Desc)
+            {
+                DML_OUTPUT_GRAPH_EDGE_DESC inputSkipBiasSumEdge = {};
+                inputSkipBiasSumEdge.FromNodeIndex = 1;
+                inputSkipBiasSumEdge.FromNodeOutputIndex = 0;
+                inputSkipBiasSumEdge.GraphOutputIndex = 3;
+                outputEdges.push_back(std::move(inputSkipBiasSumEdge));
+            }
+        }
+        else if (inputSkipBiasSum.Desc)
+        {
+            DML_OUTPUT_GRAPH_EDGE_DESC inputSkipBiasSumEdge = {};
+            inputSkipBiasSumEdge.FromNodeIndex = 0;
+            inputSkipBiasSumEdge.FromNodeOutputIndex = 0;
+            inputSkipBiasSumEdge.GraphOutputIndex = 3;
+            outputEdges.push_back(std::move(inputSkipBiasSumEdge));
         }
 
         // Insert the MVN operation into the graph
@@ -158,6 +177,25 @@ public:
         SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }
 };
+
+void CALLBACK QuerySkipLayerNormalization(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
+{
+    *isSupported = false;
+
+    // `mean` output tensor is not supported yet
+    if (context->IsOutputValid(1))
+    {
+        return;
+    }
+
+    // `inv_std_var` output tensor is not supported yet
+    if (context->IsOutputValid(2))
+    {
+        return;
+    }
+
+    *isSupported = true;
+}
 
 DML_OP_DEFINE_CREATION_FUNCTION(SkipLayerNormalization, DmlOperatorSkipLayerNormalization);
 

@@ -36,36 +36,33 @@ class CANNExecutionProvider : public IExecutionProvider {
 
   Status OnRunStart() override;
 
-  Status OnRunEnd(bool sync_stream) override;
-
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
-
   template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
+  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
   }
 
   template <typename T>
   IAllocatorUniquePtr<T> GetScratchBufferOnCANNPinned(size_t count_or_bytes) const {
     if (count_or_bytes == 0)
       return nullptr;
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeCPU),
-                                        count_or_bytes);
+
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeCPU), count_or_bytes);
   }
 
   template <typename T>
-  Status Fill(Tensor* y, void* addr) const {
-    return cann::Fill<T>(y, addr, stream_);
+  Status Fill(Tensor* y, void* addr, aclrtStream stream) const {
+    return cann::Fill<T>(y, addr, stream);
   }
 
   template <typename T>
-  Status Broadcast(const Tensor* x, Tensor* y, void* addr) const {
-    return cann::Broadcast<T>(x, y, addr, stream_);
+  Status Broadcast(const Tensor* x, Tensor* y, void* addr, aclrtStream stream) const {
+    return cann::Broadcast<T>(x, y, addr, stream);
   }
 
+  int GetDeviceId() const override { return info_.device_id; }
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
@@ -86,11 +83,13 @@ class CANNExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+
  private:
   CANNExecutionProviderInfo info_;
-  aclrtStream stream_ = nullptr;
   const char* soc_name_ = nullptr;
 
+  std::unordered_map<std::string, uint32_t> modelIDs_;
   std::unordered_map<std::string, std::string> models_;
   std::unordered_map<std::string, std::unordered_map<std::size_t, std::string>> names_;
 };

@@ -28,22 +28,7 @@ namespace {
 
 class WindowsEnvTime : public EnvTime {
  public:
-#if WINVER >= _WIN32_WINNT_WIN8
   WindowsEnvTime() : GetSystemTimePreciseAsFileTime_(GetSystemTimePreciseAsFileTime) {}
-#else
-  WindowsEnvTime() : GetSystemTimePreciseAsFileTime_(NULL) {
-    // GetSystemTimePreciseAsFileTime function is only available in
-    // Windows >= 8. For that reason, we try to look it up in
-    // kernel32.dll at runtime and use an alternative option if the function
-    // is not available.
-    HMODULE module = GetModuleHandleW(L"kernel32.dll");
-    if (module != NULL) {
-      auto func = (FnGetSystemTimePreciseAsFileTime)GetProcAddress(
-          module, "GetSystemTimePreciseAsFileTime");
-      GetSystemTimePreciseAsFileTime_ = func;
-    }
-  }
-#endif
 
   uint64_t NowMicros() override {
     if (GetSystemTimePreciseAsFileTime_ != NULL) {

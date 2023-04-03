@@ -3,15 +3,16 @@ import logging
 import os
 
 import onnx
-import onnxruntime.training.onnxblock as onnxblock
 import torch
+
+import onnxruntime.training.onnxblock as onnxblock
 
 
 class MNIST(torch.nn.Module):
     """MNIST PyTorch model"""
 
     def __init__(self, input_size, hidden_size, num_classes):
-        super(MNIST, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -97,7 +98,7 @@ def create_training_artifacts(model_path, artifacts_dir, model_prefix):
 
     class MNISTWithLoss(onnxblock.TrainingModel):
         def __init__(self):
-            super(MNISTWithLoss, self).__init__()
+            super().__init__()
             self.loss = onnxblock.loss.CrossEntropyLoss()
 
         def build(self, output_name):
