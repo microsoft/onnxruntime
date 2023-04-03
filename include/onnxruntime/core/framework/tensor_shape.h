@@ -185,7 +185,7 @@ class TensorShape {
     return len == 0 || (len == 1 && values_[0] == 1);
   }
 
-  virtual std::optional<ShardDim> shardDims() const { return std::nullopt_t; }
+  virtual std::optional<ShardDim> ShardDims() const { return std::nullopt_t; }
 
  private:
   struct External {};

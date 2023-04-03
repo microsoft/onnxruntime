@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <optinal>
+#include <optional>
 
 #include "core/framework/tensor_shape.h"
 #include "core/framework/ortmemoryinfo.h"
@@ -78,6 +78,19 @@ struct ShardUtils {
         return accumulator;
     }
 
+    static uint64_t Index(ShardDim const& offsets, ShardDim const& shardDims)
+    {
+        ShardDim shardStride;
+        auto accumulator = 1u;
+        auto offset = 0u;
+        for (auto i = shardDims.size() - 1; i >= 0; --i)
+        {
+            offset += offsets[i] * accumulator;
+            accumulator *= shardDims[i];
+        }
+        return offset;
+    }
+
     static size_t GetIdxInShardDim(ShardDim const& shardDims, ShardDim const& shardIdx)
     {
         assert(shardDims.size() == shardIdx.size());
@@ -92,6 +105,12 @@ struct ShardUtils {
         }
         return offset;
     }
+};
+
+struct ShardInfo
+{
+    ShardDim shardDims_;
+    Buffer const& buffer_;
 };
 
 using MemoryLocations = std::array<MemoryLocation, onnxruntime::kTensorShapeSmallBufferElementsSize>;

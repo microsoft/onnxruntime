@@ -9,8 +9,34 @@
 #include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/utils.h"
+#include "core/framework/storage.h"
 
 namespace onnxruntime {
+
+static Buffer MakeBuffer(std::size_t sizeInBytes, AllocatorPtr allocatorPtr, MemoryLocation location=MemoryLocation::OrtUniformMemory, std::size_t offset=0)
+{
+    Buffer buffer(sizeInBytes, location, offset, allocatorPtr->Alloc(sizeInBytes), [allocatorPtr](void *ptr){ allocatorPtr->Free(ptr); });
+    return buffer;
+}
+static Buffer MakeBuffer(std::size_t sizeInBytes, void* ptr, MemoryLocation location=MemoryLocation::OrtUniformMemory, std::size_t offset=0)
+{
+    Buffer buffer(sizeInBytes, location, offset, ptr, nullptr);
+    return buffer;
+}
+static std::shared_ptr<Storage> MakeStorage(Buffer&& buffer, std::optional<ShardDim> const& shardDim)
+{
+  std::make_shared<Storage>(std::move(buffer), shardDim);
+}
+// std::vector<Buffer> MakeBuffers(size_t len,
+//                  std::vector<std::shared_ptr<IAllocator>> allocators)
+// {
+//   std::vector<Buffer> buffers;
+//   for (auto allocator : allocators)
+//   {
+//     buffers.emplace_back(MakeBuffer(len, allocator, allocator.Info().location()));
+//   }
+//   return buffers;
+// }
 
 #ifdef ENABLE_STRIDED_TENSORS
 namespace {
@@ -59,28 +85,30 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const 
                ptrdiff_t offset, gsl::span<const int64_t> strides)
     : alloc_info_(alloc) {
   ORT_ENFORCE(p_type != nullptr);
-  Init(p_type, shape, p_data, nullptr, offset, strides);
+  const size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
+  auto buffer = MakeBuffer(len, p_data, alloc.location, offset);
+  Init(p_type, MakeStorage(std::move(buffer), shape.shardDims()), shape, strides);
 }
 
-
-// --- kyule
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators, gsl::span<const int64_t> strides)
-    : alloc_info_(allocator->Info()) {
+// --- kyule: new constructor for multiple shards
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
+               gsl::span<const int64_t> strides)
+    : Tensor(!shape.ShardDims() && allocators.size() == 1? Tensor(p_type, shape, allocators[0], strides) : Tensor()) {
+  const auto shardDims = shape.ShardDims();
   ORT_ENFORCE(p_type != nullptr);
-  std::vector<Buffer> buffers;
+  ORT_ENFORCE(shardDims);
+  ORT_ENFORCE(allocators.size() > 1);
 
+  assert(ShardUtils::NumShards(shardDims.value()) == allocators.size());
+  std::vector<Buffer> buffers;
   for (auto allocator : allocators)
   {
-    size_t len = Tensor::CalculateTensorStorageSize(p_type, shape.shardShape(i), strides);
+    auto index = ShardUtils::Index(offset, shardDims_);
 
-    void* p_data = nullptr;
-    if (len > 0) {
-      p_data = allocator->Alloc(len);
-    }
-    buffers.emplace_back(len, alloc_info_.location, p_data, [&allocator](void *ptr){ allocator->Free(ptr); });
+    const size_t len = Tensor::CalculateTensorStorageSize(p_type, shape.shardShape(i), strides);
+    buffers.emplace_back(MakeBuffer(len, allocator, allocator.Info().location()));
   }
-  Storage storage(std::move(buffers));
-  Init(p_type, shape, std::move(buffers), shape.shardDims() /* shardDims */, strides);
+  Init(p_type, MakeStorage(std::move(buffers), shardDims), shape, strides);
 }
 
 // ---
@@ -94,8 +122,8 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   if (len > 0) {
     p_data = allocator->Alloc(len);
   }
-  Storage storage(len, MemoryLocation::OrtUniformMemory, 0L, p_data, [deleter](void *ptr){ deleter->Free(ptr); });
-  Init(p_type, shape, std::move(storage), shape.shardDims() /* shardDims */, strides);
+  std::shared_ptr<Storage> storage(len, MemoryLocation::OrtUniformMemory, 0L, p_data, [deleter](void *ptr){ deleter->Free(ptr); });
+  Init(p_type, std::move(storage, shape.shardDims()), shape, strides);
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
@@ -103,8 +131,8 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
     : alloc_info_(deleter->Info()) {
   ORT_ENFORCE(p_type != nullptr);
   size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
-  Storage storage(len, MemoryLocation::OrtUniformMemory, offset, p_data, [deleter](void *ptr){ deleter->Free(ptr); });
-  Init(p_type, shape, std::move(storage), shape.shardDims() /* shardDims */, strides);
+  std::shared_ptr<Storage> storage(len, MemoryLocation::OrtUniformMemory, offset, p_data, [deleter](void *ptr){ deleter->Free(ptr); });
+  Init(p_type, std::move(storage, shape.shardDims()), shape, strides);
 }
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
@@ -149,15 +177,14 @@ size_t Tensor::SizeInBytes() const {
   return ret;
 }
 
-void Tensor::Init(MLDataType p_type, const TensorShape& shape, Storage storage,
-                  ShardInfo const& shardDims, gsl::span<const int64_t> strides) {
+void Tensor::Init(MLDataType p_type, const TensorShape& shape, std::shared_ptr<Storage> storage,
+            gsl::span<const int64_t> strides) {
   int64_t shape_size = shape.Size();
   if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
   dtype_ = p_type->AsPrimitiveDataType();
   ORT_ENFORCE(dtype_ != nullptr,
               "Tensor is expected to contain one of the primitive data types. Got: ", DataTypeImpl::ToString(p_type));
   shape_ = shape;
-  shardDims = shardDims;
   storage_ = storage;
 
   // for string tensors, if this tensor own the buffer (caller passed in the deleter)
@@ -167,14 +194,11 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, Storage storage,
   // }
   if (IsDataTypeString())
   {
-    auto numShards = ShardUtils::NumShards(shardDims_);
-    auto shardSize = shape_size / numShards;
-    for (auto& buffer : storage_)
-    {
+    storage_->Apply([elemSizeInBytes = p_type->Size()](Buffer& buffer){
       if (buffer.deleter()) {
-        utils::ConstructStrings(buffer.ptr(), buffer.size() / p_type->Size());
+        utils::ConstructStrings(buffer.Data(), buffer.Size() / elemSizeInBytes);
       }
-    }
+    });
   }
 #ifdef ENABLE_STRIDED_TENSORS
   if (shape.NumDimensions() > 0 && !strides.empty()) {
@@ -222,13 +246,12 @@ Tensor::~Tensor() {
 }
 
 void Tensor::ReleaseBuffer() {
-
-
   if (IsDataTypeString()) {
-    for (auto& buffer : storage_)
-    {
-      utils::DestroyStrings(buffer.ptr(), buffer.size() / p_type->Size());
-    }
+    storage_->Apply([elemSizeInBytes = p_type->Size()](Buffer& buffer){
+      if (buffer.deleter()) {
+            utils::DestroyStrings(buffer.Data(), buffer.Size() / elemSizeInBytes);
+          }
+    });
   }
   _storage.Release();
 }

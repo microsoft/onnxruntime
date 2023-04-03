@@ -6,9 +6,10 @@
 #include <string_view>
 
 #include "core/common/hash_combine.h"
-enum class MemoryLocation : std::uint32_t
+enum class MemoryLocation : std::int32_t
 {
-    OrtUniformMemory = 0,
+    Invalid = -1,
+    Uniform = 0,
 };
 
 struct OrtMemoryInfo {
@@ -19,7 +20,7 @@ struct OrtMemoryInfo {
   int id = -1;
   OrtMemType mem_type = OrtMemTypeDefault;
   OrtAllocatorType alloc_type = OrtInvalidAllocator;
-  MemoryLocation location = MemoryLocation::OrtUniformMemory;
+  MemoryLocation location = MemoryLocation::Uniform;
   OrtDevice device;
 
   constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0,
@@ -35,7 +36,7 @@ struct OrtMemoryInfo {
         device(device_) {
   }
 
-  void SetLocation(MemoryLocation loc) { location = loc; }
+  OrtMemoryInfo& SetLocation(MemoryLocation loc) { location = loc; return *this; }
 
   // To make OrtMemoryInfo become a valid key in std map
   bool operator<(const OrtMemoryInfo& other) const {
