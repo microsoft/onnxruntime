@@ -117,9 +117,6 @@ class CalibraterBase:
         tensors_to_calibrate = set()
         tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
 
-        # print("op_types_to_calibrate")
-        # print(self.op_types_to_calibrate)
-
         for node in model.graph.node:
             if not self.op_types_to_calibrate or node.op_type in self.op_types_to_calibrate:
                 for tensor_name in itertools.chain(node.input, node.output):
@@ -569,8 +566,6 @@ class SmoothCalibrater(CalibraterBase):
         self.tensors_to_calibrate, value_infos = self.select_tensors_to_calibrate(model)
         for tensor in self.tensors_to_calibrate:
             if tensor not in self.model_original_outputs:
-                # print("value_infos[tensor]")
-                # print(value_infos[tensor])
                 model.graph.output.append(value_infos[tensor])
 
         try:
@@ -606,60 +601,26 @@ class SmoothCalibrater(CalibraterBase):
             dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
         ]
 
-        """
-        print("output_names")
-        print(output_names)
-        print("output_dicts_list")
-        print(output_dicts_list)
-        """
-
         merged_dict = {}
         for d in output_dicts_list:
             for k, v in d.items():
                 merged_dict[k] = v
 
-        # print("merged_dict")
-        # print(merged_dict)
-
-        """
-        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i in self.tensors_to_calibrate)
-
-        print("clean_merged_dict")
-        print(clean_merged_dict)
-        """
+        # clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i in self.tensors_to_calibrate)
 
         graph = self.model.graph
 
         initializer_dict = dict(
             (init_tensor.name, np.array(onnx.numpy_helper.to_array(init_tensor))) for init_tensor in graph.initializer
         )
-        # print("initializer_dict")
-        # print(initializer_dict)
 
+        """
         value_infos = {vi.name: vi for vi in graph.value_info}
-        """
-        print("value_infos")
-        print(type(value_infos))
-        print(value_infos)
-        """
         value_infos.update({ot.name: ot for ot in graph.output})
-        """
-        print("{ot.name: ot for ot in model.graph.output}")
-        print(type({ot.name: ot for ot in graph.output}))
-        print({ot.name: ot for ot in graph.output})
-        """
         value_infos.update({it.name: it for it in graph.input})
         """
-        print("{it.name: it for it in graph.input}")
-        print(type({it.name: it for it in graph.input}))
-        print({it.name: it for it in graph.input})
-        """
+
         initializer = set(init.name for init in graph.initializer)
-        """
-        print("set(init.name for init in graph.initializer)")
-        print(type(set(init.name for init in graph.initializer)))
-        print(set(init.name for init in graph.initializer))
-        """
 
         for node in graph.node:
             if node.op_type == "MatMul":
@@ -671,29 +632,12 @@ class SmoothCalibrater(CalibraterBase):
                     # input_B_dim = None
                 else:
                     continue
-                    input_B = np.asarray(merged_dict[input_B_name])
+                    # input_B = np.asarray(merged_dict[input_B_name])
                     # input_B_dim = value_infos[input_B_name].type.tensor_type.shape.dim
 
                 assert len(input_A.shape) == 2 or (len(input_A.shape) == 3 and input_A.shape[0] == 1)
                 assert len(input_B.shape) == 2
-                """
-                print(input_A_name)
-                # print(len(value_infos[input_A_name].type.tensor_type.shape.dim))
-                # print(value_infos[input_A_name].type.tensor_type.shape.dim)
-                # assert len(value_infos[input_A_name].type.tensor_type.shape.dim) == 2
-                print(input_A)
-                print(input_B_name)
-                # print(graph.get_tensor_shape(input_B_name))
-                print(input_B)
-                """
-                """
-                print(input_A_name)
-                print(input_B_name)
-                print("value_infos[input_A_name].type.tensor_type.shape.dim")
-                print(value_infos[input_A_name].type.tensor_type.shape)
-                print("input B dim")
-                print(input_B_dim)
-                """
+
                 input_A_2D = input_A
                 if len(input_A.shape) == 3:
                     input_A_2D = np.squeeze(input_A, axis=0)
@@ -716,12 +660,6 @@ class SmoothCalibrater(CalibraterBase):
                     )
                 else:
                     self.input_B_abs_max[node.name] = np.amax(abs(input_B), -1)
-                """
-                print("input_A_smoothfactor.shape")
-                print(input_A_smoothfactor.shape)
-                print("input_B_smoothfactor.shape")
-                print(input_B_smoothfactor.shape)
-                """
 
     def compute_range(self):
         """
@@ -730,13 +668,11 @@ class SmoothCalibrater(CalibraterBase):
         """
         smoothing_factor = {}
         for MatMul_name in self.input_A_abs_max:
-            # self.smoothing_factor[node.name] = np.sqrt(np.amax(abs(input_A), -2) / np.amax(abs(input_B), -1))
             smoothfactor = np.sqrt(self.input_B_abs_max[MatMul_name] / self.input_A_abs_max[MatMul_name])
             input_A_smoothfactor = np.expand_dims(smoothfactor, -2)
             if MatMul_name in self.input_A_dim_is_3:
                 input_A_smoothfactor = np.expand_dims(input_A_smoothfactor, 0)
             input_B_smoothfactor = np.expand_dims(1 / smoothfactor, -1)
-            # self.smoothing_factor[node.name] = np.sqrt(input_A_smoothfactor / input_B_smoothfactor)
             smoothing_factor[MatMul_name] = [input_A_smoothfactor, input_B_smoothfactor]
 
             """
@@ -1084,47 +1020,6 @@ class HistogramCollector(CalibrationDataCollector):
         if optimal_threshold[1] > max_value:
             optimal_threshold = (optimal_threshold[0], max_value)
         return optimal_threshold
-
-
-class SmoothCollector(CalibrationDataCollector):
-    """
-    Collecting histogram for each tensor. Percentile and Entropy method are supported.
-
-    ref: https://github.com//apache/incubator-mxnet/blob/master/python/mxnet/contrib/quantization.py
-    ref: https://docs.nvidia.com/deeplearning/tensorrt/pytorch-quantization-toolkit/docs/_modules/
-                 pytorch_quantization/calib/histogram.html
-    """
-
-    def __init__(self, symmetric):
-        self.histogram_dict = {}
-        self.symmetric = symmetric
-
-    def collect(self, name_to_arr):
-        print("Collecting tensor data and making histogram ...")
-
-        # TODO: Currently we have different collect() for entropy and percentile method respectively.
-        #       Need unified collect in the future.
-        if self.method == "entropy":
-            return self.collect_value(name_to_arr)
-        elif self.method == "percentile":
-            if self.symmetric:
-                return self.collect_absolute_value(name_to_arr)
-            else:
-                return self.collect_value(name_to_arr)
-        else:
-            raise ValueError("Only 'entropy' or 'percentile' method are supported")
-
-    def compute_collection_result(self):
-        if not self.histogram_dict or len(self.histogram_dict) == 0:
-            raise ValueError("Histogram has not been collected. Please run collect() first.")
-        print("Finding optimal threshold for each tensor using {} algorithm ...".format(self.method))
-
-        if self.method == "entropy":
-            return self.compute_entropy()
-        elif self.method == "percentile":
-            return self.compute_percentile()
-        else:
-            raise ValueError("Only 'entropy' or 'percentile' method are supported")
 
 
 def create_calibrator(

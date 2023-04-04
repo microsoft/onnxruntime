@@ -65,7 +65,6 @@ class QDQQuantizer(ONNXQuantizer):
         op_types_to_quantize,
         extra_options=None,
     ):
-        print("Test yilyu")
         ONNXQuantizer.__init__(
             self,
             model,
@@ -120,14 +119,10 @@ class QDQQuantizer(ONNXQuantizer):
         )
 
     def _is_tensor_quantizable(self, tensor_name):
-        # print("\n_is_tensor_quantizable")
         """
         Check if tensor can be quantized
         """
-        # print("tensor_name: " + tensor_name)
         weight = find_by_name(tensor_name, self.model.initializer())
-        # print("weight: ")
-        # print(weight)
         if weight is not None:
             if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 return True
@@ -141,7 +136,6 @@ class QDQQuantizer(ONNXQuantizer):
                     tensor_name
                 )
             )
-        print("\n")
 
         return False
 
@@ -464,41 +458,18 @@ def insert_smooth_factors(
     model_proto = load_model(Path(model_path), False)
     model = ONNXModel(model_proto)
 
-    """
-    print("type(model_proto)")
-    print(type(model_proto))
-    print("type(model)")
-    print(type(model))
-    """
-
     for node in model_proto.graph.node:
         if node.op_type == "MatMul" and node.name in smooth_factors:
-            """
-            print("In insert_smooth_factors")
-            print("node.name")
-            print(node.name)
-
-            print("smooth_factors[node.name]:")
-            print(smooth_factors[node.name])
-            print("1/smooth_factors[node.name]:")
-            print(1 / smooth_factors[node.name])
-            """
-
             #
             # Add Mul for input A
             #
 
             input_A_name = node.input[0]
-            # print("smooth_factors[node.name].shape")
-            # print(smooth_factors[node.name].shape)
-            input_A_smoothfactor = smooth_factors[node.name][0]  # np.expand_dims(smooth_factors[node.name], -2)
-            # print("input_A_smoothfactor.shape")
-            # print(input_A_smoothfactor.shape)
+            input_A_smoothfactor = smooth_factors[node.name][0]
             input_A_smoothfactor_name = add_smoothfactor_suffix(node.name + "_input_A")
             input_A_smoothfactor_output = add_output_suffix(input_A_smoothfactor_name)
             input_A_smoothfactor_init_name = add_init_suffix(input_A_smoothfactor_name)
 
-            # model.replace_input_of_all_nodes(input_A_name, input_A_smoothfactor_output)
             node.input[0] = input_A_smoothfactor_output
 
             # Create the initializer
@@ -524,16 +495,11 @@ def insert_smooth_factors(
             #
 
             input_B_name = node.input[1]
-            # print("smooth_factors[node.name].shape")
-            # print(smooth_factors[node.name].shape)
-            input_B_smoothfactor = smooth_factors[node.name][1]  # np.expand_dims(1 / smooth_factors[node.name], -1)
-            # print("input_B_smoothfactor.shape")
-            # print(input_B_smoothfactor.shape)
+            input_B_smoothfactor = smooth_factors[node.name][1]
             input_B_smoothfactor_name = add_smoothfactor_suffix(node.name + "_input_B")
             input_B_smoothfactor_output = add_output_suffix(input_B_smoothfactor_name)
             input_B_smoothfactor_init_name = add_init_suffix(input_B_smoothfactor_name)
 
-            # model.replace_input_of_all_nodes(input_B_name, input_B_smoothfactor_output)
             node.input[1] = input_B_smoothfactor_output
 
             # Create the initializer
