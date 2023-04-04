@@ -66,10 +66,12 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
               "num_return_sequences (", num_return_sequences, ") shall be be no more than num_beams (", num_beams, ")");
 
   auto* length_penalty_tensor = context->Input<Tensor>(5);
-  length_penalty = length_penalty_tensor ? static_cast<float>(*length_penalty_tensor->Data<float>()) : 1;
-
+  //length_penalty = length_penalty_tensor ? static_cast<float>(*length_penalty_tensor->Data<float>()) : 1;//slx
+  length_penalty = length_penalty_tensor ? static_cast<MLFloat16>(*length_penalty_tensor->Data<MLFloat16>()) : 1;
+  
   auto* repetition_penalty_tensor = context->Input<Tensor>(6);
-  repetition_penalty = repetition_penalty_tensor ? static_cast<float>(*repetition_penalty_tensor->Data<float>()) : 1.0f;
+  //repetition_penalty = repetition_penalty_tensor ? static_cast<float>(*repetition_penalty_tensor->Data<float>()) : 1.0f;//slx
+  repetition_penalty = repetition_penalty_tensor ? static_cast<MLFloat16>(*repetition_penalty_tensor->Data<MLFloat16>()) : 1.0f;  
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
 }
 

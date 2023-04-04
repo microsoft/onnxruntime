@@ -866,7 +866,7 @@ def generate_build_tree(
 ):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
-    cmake_args = [cmake_path, cmake_dir]
+    cmake_args = [cmake_path, cmake_dir, "-G" + "CodeBlocks - Unix Makefiles"]##slx
     if not use_dev_mode(args):
         cmake_args += ["--compile-no-warning-as-error"]
 

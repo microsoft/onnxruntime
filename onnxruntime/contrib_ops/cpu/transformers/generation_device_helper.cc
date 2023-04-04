@@ -856,9 +856,14 @@ Status CreateWhisperEncoderInputs(
   // Current shape is (batch_size, sequence_length)
   // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
   // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
+  //Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
+  //                     input_features_shape,
+  //                     const_cast<Tensor*>(original_encoder_input_features)->MutableData<float>(),
+  //                     allocator->Info(),
+  //                     encoder_input_features);//slx
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(),
                        input_features_shape,
-                       const_cast<Tensor*>(original_encoder_input_features)->MutableData<float>(),
+                       const_cast<Tensor*>(original_encoder_input_features)->MutableData<MLFloat16>(),
                        allocator->Info(),
                        encoder_input_features);
 
