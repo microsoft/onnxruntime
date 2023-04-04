@@ -63,7 +63,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (!((protoDt == metaElementType) ||
                 (protoDt == TensorElementType.UInt16 &&
                 (metaElementType == TensorElementType.BFloat16 || metaElementType == TensorElementType.Float16))))
-                throw new InvalidDataException($"Loaded tensor type: {protoDt} is expected to be equal to: {metaElementType}");
+                throw new InvalidDataException($"For node: '{nodeName}' metadata expects: '{metaElementType}' but loaded loaded tensor type: '{protoDt}'");
 
             // Tensors within Sequences may have no dimensions as the standard allows
             // different dimensions for each tensor element of the sequence
@@ -124,9 +124,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     return CreateNamedOnnxValueFromRawData<Float16>(nodeName, rawData, sizeof(ushort), intDims);
                 case TensorElementType.BFloat16:
                     return CreateNamedOnnxValueFromRawData<BFloat16>(nodeName, rawData, sizeof(ushort), intDims);
+                case TensorElementType.String:
+                    throw new ArgumentException("For string tensors of type use: CreateNamedOnnxValueFromStringTensor.");
                 default:
-                    throw new InvalidDataException($"Tensors of type: " + elementType.ToString() +
-                        " not currently supported here, use: CreateNamedOnnxValueFromStringTensor.");
+                    throw new NotImplementedException($"Tensors of type: {elementType} not currently supported by this function");
             }
         }
 
@@ -175,7 +176,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             return CreateNamedOnnxValueFromOptional(opt, nodeName, nodeMeta);
                         }
                     default:
-                        throw new ArgumentException($"Unable to load value type {nodeMeta.OnnxValueType} not implemented");
+                        throw new NotImplementedException($"Unable to load value type: {nodeMeta.OnnxValueType} not implemented");
                 }
             }
         }
