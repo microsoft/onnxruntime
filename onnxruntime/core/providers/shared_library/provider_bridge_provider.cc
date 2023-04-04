@@ -76,8 +76,7 @@ namespace onnxruntime {
 // "Global initializer calls a non-constexpr function."
 #pragma warning(disable : 26426)
 #endif
-ProviderHost* g_host = Provider_GetHost();
-ProviderHostCPU& g_host_cpu = g_host->GetProviderHostCPU();
+ProviderHostCPU& g_host_cpu = Provider_GetHost()->GetProviderHostCPU();
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
@@ -105,19 +104,19 @@ struct OnUnload {
 
 } g_on_unload;
 
-void* CPUAllocator::Alloc(size_t size) { return g_host->CPUAllocator__Alloc(this, size); }
-void CPUAllocator::Free(void* p) { g_host->CPUAllocator__Free(this, p); }
+void* CPUAllocator::Alloc(size_t size) { return Provider_GetHost()->CPUAllocator__Alloc(this, size); }
+void CPUAllocator::Free(void* p) { Provider_GetHost()->CPUAllocator__Free(this, p); }
 
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
-  return g_host->CreateAllocator(info);
+  return Provider_GetHost()->CreateAllocator(info);
 }
 
 void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
-  return g_host->AllocatorManager__InsertAllocator(this, allocator);
+  return Provider_GetHost()->AllocatorManager__InsertAllocator(this, allocator);
 }
 
 AllocatorPtr AllocatorManager::GetAllocator(OrtMemType mem_type, OrtDevice device) const {
-  return g_host->AllocatorManager__GetAllocator(this, mem_type, device);
+  return Provider_GetHost()->AllocatorManager__GetAllocator(this, mem_type, device);
 }
 
 template <>
@@ -216,19 +215,19 @@ MLDataType DataTypeImpl::GetSparseTensorType<MLFloat16>() { return Provider_GetH
 #endif
 
 Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
-  return g_host->IDataTransfer__CopyTensor(this, src, dst);
+  return Provider_GetHost()->IDataTransfer__CopyTensor(this, src, dst);
 }
 
 Status IDataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const {
-  return g_host->IDataTransfer__CopyTensors(this, src_dst_pairs);
+  return Provider_GetHost()->IDataTransfer__CopyTensors(this, src_dst_pairs);
 }
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status IDataTransfer::CopySparseTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const {
-  return g_host->IDataTransfer__CopySparseTensors(this, src_dst_pairs);
+  return Provider_GetHost()->IDataTransfer__CopySparseTensors(this, src_dst_pairs);
 }
 #endif
 
-const Node& OpKernel::Node() const { return g_host->OpKernel__Node(this); }
+const Node& OpKernel::Node() const { return Provider_GetHost()->OpKernel__Node(this); }
 
 TensorShape::TensorShape(gsl::span<const int64_t> dims) {
   Allocate(dims.size());
@@ -236,17 +235,17 @@ TensorShape::TensorShape(gsl::span<const int64_t> dims) {
 }
 
 TensorShape& TensorShape::operator=(const TensorShape& other) {
-  g_host->TensorShape__operator_assign(this, other);
+  Provider_GetHost()->TensorShape__operator_assign(this, other);
   return *this;
 }
 
 TensorShape& TensorShape::operator=(TensorShape&& other) noexcept {
-  g_host->TensorShape__operator_move_assign(this, std::move(other));
+  Provider_GetHost()->TensorShape__operator_move_assign(this, std::move(other));
   return *this;
 }
 
 void TensorShape::Allocate(size_t size) {
-  g_host->TensorShape__Allocate(this, size);
+  Provider_GetHost()->TensorShape__Allocate(this, size);
 }
 
 int64_t TensorShape::Size() const {
@@ -256,7 +255,7 @@ int64_t TensorShape::Size() const {
 }
 
 int64_t TensorShape::SizeHelper(size_t start, size_t end) const {
-  return g_host->TensorShape__SizeHelper(this, start, end);
+  return Provider_GetHost()->TensorShape__SizeHelper(this, start, end);
 }
 
 TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
@@ -265,100 +264,100 @@ TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
 }
 
 std::string TensorShape::ToString() const {
-  return g_host->TensorShape__ToString(this);
+  return Provider_GetHost()->TensorShape__ToString(this);
 }
 
-int64_t TensorShape::SizeToDimension(size_t dimension) const { return g_host->TensorShape__SizeToDimension(this, dimension); }
-int64_t TensorShape::SizeFromDimension(size_t dimension) const { return g_host->TensorShape__SizeFromDimension(this, dimension); }
+int64_t TensorShape::SizeToDimension(size_t dimension) const { return Provider_GetHost()->TensorShape__SizeToDimension(this, dimension); }
+int64_t TensorShape::SizeFromDimension(size_t dimension) const { return Provider_GetHost()->TensorShape__SizeFromDimension(this, dimension); }
 
-std::ostream& operator<<(std::ostream& out, const TensorShape& shape) { return g_host->operator_left_shift(out, shape); }
+std::ostream& operator<<(std::ostream& out, const TensorShape& shape) { return Provider_GetHost()->operator_left_shift(out, shape); }
 
 AllocatorPtr CreateAllocator(AllocatorCreationInfo info) {
-  return g_host->CreateAllocator(info);
+  return Provider_GetHost()->CreateAllocator(info);
 }
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& info) {
-  return g_host->CreateCPUAllocator(info);
+  return Provider_GetHost()->CreateCPUAllocator(info);
 }
 
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
-  return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
+  return Provider_GetHost()->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
 AllocatorPtr IExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-  return g_host->IExecutionProvider__GetAllocator(this, mem_type);
+  return Provider_GetHost()->IExecutionProvider__GetAllocator(this, mem_type);
 }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  g_host->IExecutionProvider__InsertAllocator(this, allocator);
+  Provider_GetHost()->IExecutionProvider__InsertAllocator(this, allocator);
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const IKernelLookup& kernel_lookup) const {
-  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
+  return Provider_GetHost()->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
 }
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
-  return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
+  return Provider_GetHost()->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
 int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
-  return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
+  return Provider_GetHost()->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
 }
 
 void IExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  return g_host->IExecutionProvider__RegisterAllocator(this, allocator_manager);
+  return Provider_GetHost()->IExecutionProvider__RegisterAllocator(this, allocator_manager);
 }
 
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateCUDAAllocator(device_id, name);
+  return Provider_GetHost()->CreateCUDAAllocator(device_id, name);
 }
 
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateCUDAPinnedAllocator(device_id, name);
+  return Provider_GetHost()->CreateCUDAPinnedAllocator(device_id, name);
 }
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
-  return g_host->CreateGPUDataTransfer();
+  return Provider_GetHost()->CreateGPUDataTransfer();
 }
 #endif
 
 #ifdef USE_MIGRAPHX
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateROCMAllocator(device_id, name);
+  return Provider_GetHost()->CreateROCMAllocator(device_id, name);
 }
 
 std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateROCMPinnedAllocator(device_id, name);
+  return Provider_GetHost()->CreateROCMPinnedAllocator(device_id, name);
 }
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
-  return g_host->CreateGPUDataTransfer();
+  return Provider_GetHost()->CreateGPUDataTransfer();
 }
 #endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
-  return g_host->GetEnvironmentVar(var_name);
+  return Provider_GetHost()->GetEnvironmentVar(var_name);
 }
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                    gsl::span<const NodeIndex> tentative_nodes) {
-  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+  return Provider_GetHost()->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
 }
 
 namespace profiling {
 
-std::string demangle(const char* name) { return g_host->demangle(name); }
-std::string demangle(const std::string& name) { return g_host->demangle(name); }
+std::string demangle(const char* name) { return Provider_GetHost()->demangle(name); }
+std::string demangle(const std::string& name) { return Provider_GetHost()->demangle(name); }
 
 }  // namespace profiling
 
 namespace logging {
 
-unsigned int GetThreadId() { return g_host->GetThreadId(); }
-unsigned int GetProcessId() { return g_host->GetProcessId(); }
+unsigned int GetThreadId() { return Provider_GetHost()->GetThreadId(); }
+unsigned int GetProcessId() { return Provider_GetHost()->GetProcessId(); }
 
 const char* Category::onnxruntime = "onnxruntime";
 
@@ -395,7 +394,7 @@ const std::string& Status::ErrorMessage() const noexcept {
   return IsOK() ? EmptyString() : state_->msg;
 }
 
-std::string Status::ToString() const { return g_host->Status__ToString(this); }
+std::string Status::ToString() const { return Provider_GetHost()->Status__ToString(this); }
 
 const std::string& Status::EmptyString() noexcept {
   static std::string s_empty;
@@ -405,8 +404,8 @@ const std::string& Status::EmptyString() noexcept {
 }  // namespace common
 
 namespace math {
-uint16_t floatToHalf(float f) { return g_host->math__floatToHalf(f); }
-float halfToFloat(uint16_t h) { return g_host->math__halfToFloat(h); }
+uint16_t floatToHalf(float f) { return Provider_GetHost()->math__floatToHalf(f); }
+float halfToFloat(uint16_t h) { return Provider_GetHost()->math__halfToFloat(h); }
 
 }  // namespace math
 
@@ -415,23 +414,23 @@ namespace sparse_utils {
 #if !defined(ORT_MINIMAL_BUILD)
 Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, SparseTensor& dst) {
-  return g_host->sparse_utils__DenseTensorToSparseCsr(data_manager, src, cpu_allocator, dst_allocator, dst);
+  return Provider_GetHost()->sparse_utils__DenseTensorToSparseCsr(data_manager, src, cpu_allocator, dst_allocator, dst);
 }
 
 Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, Tensor& dst) {
-  return g_host->sparse_utils__SparseCsrToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
+  return Provider_GetHost()->sparse_utils__SparseCsrToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
 }
 
 Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, Tensor& dst) {
-  return g_host->sparse_utils__SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
+  return Provider_GetHost()->sparse_utils__SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
 }
 #endif  // !ORT_MINIMAL_BUILD
 
 Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) {
-  return g_host->sparse_utils__DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
+  return Provider_GetHost()->sparse_utils__DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
 }
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
@@ -441,42 +440,42 @@ float MLFloat16::ToFloat() const {
   return math::halfToFloat(val);
 }
 
-std::vector<std::string> GetStackTrace() { return g_host->GetStackTrace(); }
+std::vector<std::string> GetStackTrace() { return Provider_GetHost()->GetStackTrace(); }
 
 void LogRuntimeError(uint32_t session_id, const common::Status& status,
                      const char* file, const char* function, uint32_t line) {
-  return g_host->LogRuntimeError(session_id, status, file, function, line);
+  return Provider_GetHost()->LogRuntimeError(session_id, status, file, function, line);
 }
 
 std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
-  return g_host->CopyOpKernelInfo(info);
+  return Provider_GetHost()->CopyOpKernelInfo(info);
 }
 
 namespace utils {
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ float* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ float* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ double* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ double* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ MLFloat16* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ MLFloat16* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int8_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int8_t* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint8_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint8_t* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int16_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int16_t* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint16_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint16_t* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int32_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int32_t* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint32_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint32_t* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) { return Provider_GetHost()->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 
 }  // namespace utils
 
@@ -528,7 +527,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const ConcatBase::Inl
   return g_host_cpu.ConcatBase__PrepareForCompute(this, ctx, reinterpret_cast<const ConcatBase_InlinedTensorsVector&>(input_tensors), p);
 }
 
-PhiloxGenerator& PhiloxGenerator::Default() { return g_host->PhiloxGenerator__Default(); }
+PhiloxGenerator& PhiloxGenerator::Default() { return Provider_GetHost()->PhiloxGenerator__Default(); }
 
 Status Einsum::Compute(OpKernelContext* context) const { return g_host_cpu.Einsum__Compute(this, context); }
 
@@ -635,7 +634,7 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 template <>
 Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
-void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) { return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn); }
+void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) { return Provider_GetHost()->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn); }
 
 #ifdef ENABLE_TRAINING_OPS
 namespace contrib {
@@ -657,28 +656,28 @@ Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.cont
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {
-void PythonOpBase::Init(const OpKernelInfo& info) { return g_host->contrib__PythonOpBase__Init(this, info); }
-void PythonOpBase::Clear() { return g_host->contrib__PythonOpBase__Clear(this); }
+void PythonOpBase::Init(const OpKernelInfo& info) { return Provider_GetHost()->contrib__PythonOpBase__Init(this, info); }
+void PythonOpBase::Clear() { return Provider_GetHost()->contrib__PythonOpBase__Clear(this); }
 void PythonOpBase::RunForward(OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) const {
-  return g_host->contrib__PythonOpBase__RunForward(this, context, diff_ctx, returned_ortvalues);
+  return Provider_GetHost()->contrib__PythonOpBase__RunForward(this, context, diff_ctx, returned_ortvalues);
 }
 void PythonOpBase::SetOutputs(OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) const {
-  return g_host->contrib__PythonOpBase__SetOutputs(this, context, diff_ctx, returned_args);
+  return Provider_GetHost()->contrib__PythonOpBase__SetOutputs(this, context, diff_ctx, returned_args);
 }
 
-void PythonOpGradBase::Init(const OpKernelInfo& info) { return g_host->contrib__PythonOpGradBase__Init(this, info); }
+void PythonOpGradBase::Init(const OpKernelInfo& info) { return Provider_GetHost()->contrib__PythonOpGradBase__Init(this, info); }
 void PythonOpGradBase::RunBackward(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
-  return g_host->contrib__PythonOpGradBase__RunBackward(this, context, returned_ortvalues);
+  return Provider_GetHost()->contrib__PythonOpGradBase__RunBackward(this, context, returned_ortvalues);
 }
 void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const {
-  return g_host->contrib__PythonOpGradBase__SetOutputs(this, context, returned_args);
+  return Provider_GetHost()->contrib__PythonOpGradBase__SetOutputs(this, context, returned_args);
 }
 }  // namespace contrib
 
 namespace language_interop_ops {
 namespace torch {
 void RefCountTracker::DumpDetails(const std::string& phase_name) const {
-  return g_host->RefCountTracker__DumpDetails(this, phase_name);
+  return Provider_GetHost()->RefCountTracker__DumpDetails(this, phase_name);
 }
 
 }  // namespace torch
@@ -689,26 +688,26 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 #endif
 
 #if defined(USE_CANN)
-RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
+RandomGenerator& RandomGenerator::Default() { return Provider_GetHost()->RandomGenerator__Default(); }
 void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream,
                                 WaitNotificationFn wait_fn) {
-  return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn);
+  return Provider_GetHost()->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn);
 }
 
 namespace cann {
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
-  return g_host->cann__CreateModel(graph_viewer, logger);
+  return Provider_GetHost()->cann__CreateModel(graph_viewer, logger);
 }
 }  // namespace cann
 #endif
 
 void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
-  return g_host->MurmurHash3__x86_128(key, len, seed, out);
+  return Provider_GetHost()->MurmurHash3__x86_128(key, len, seed, out);
 }
 
 #ifdef _WIN32
 std::string ToUTF8String(const std::wstring& s) {
-  return g_host->ToUTF8String(s);
+  return Provider_GetHost()->ToUTF8String(s);
 }
 #endif
 }  // namespace onnxruntime
