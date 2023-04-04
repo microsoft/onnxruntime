@@ -35,17 +35,17 @@ namespace onnxruntime {
   it, and won't do any allocation / release.
 */
 
-class Tensor final {
+class ShardedTensor final {
  public:
   // NB! Removing Create() methods returning unique_ptr<Tensor>. Still available in other EPs that are dynamically linked.
   // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
   // Use InitOrtValue() methods to allocate for OrtValue.
 
-  Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
+  ShardedTensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
 
 
-  Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
+  ShardedTensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
                gsl::span<const int64_t> strides={});
 
   static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
@@ -57,14 +57,14 @@ class Tensor final {
                                            gsl::span<const int64_t> strides = {});
 
 
-  ~Tensor();
+  ~ShardedTensor();
 
   // Move is allowed
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
 
-  Tensor(Tensor&& other) noexcept;
+  ShardedTensor(Tensor&& other) noexcept;
 
-  Tensor& operator=(Tensor&& other) noexcept;
+  ShardedTensor& operator=(Tensor&& other) noexcept;
 
   /**
      Returns the data type.

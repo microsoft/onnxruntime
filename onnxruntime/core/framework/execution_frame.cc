@@ -201,23 +201,6 @@ AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
   return GetAllocatorImpl(info);
 }
 
-std::vector<AllocatorPtr> IExecutionFrame::GetAllocator(OrtMemoryInfo info, std::optional<ShardInfo> shardInfo) const {
-  if (shardInfo.has_value())
-  {
-    std::vector<AllocatorPtr> ptrs;
-    for (auto const& location : shardInfo.value().locations_)
-    {
-      ptrs.emplace_back(GetAllocatorImpl(info.SetLocation(static_cast<MemoryLocation>(location))));
-    }
-    assert(!ptrs.empty());
-    return ptrs;
-  }
-  else
-  {
-    return {GetAllocatorImpl(info)};
-  }
-}
-
 Status IExecutionFrame::ReleaseMLValue(int ort_value_idx) { return ReleaseMLValueImpl(ort_value_idx); }
 
 Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
@@ -529,7 +512,8 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     return Status(ONNXRUNTIME, FAIL, "size overflow");
   }
 
-
+  // Lazily get the allocator only if needed.
+  AllocatorPtr alloc = nullptr;
 
   // if we have pre-calculated memory pattern, and the ort_value is not output mlvalue
   // try to allocated on pre-allocated big chunk.
@@ -567,9 +551,10 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     }
   }
 
+  // no memory pattern, or the pattern is not correct.
+  if (!alloc) alloc = GetAllocator(location);
   Stream* current_stream = GetValueStream(ort_value_index);
   if (current_stream) {
-    auto alloc = GetAllocator(location);
 #ifdef ORT_ENABLE_STREAM
     auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
     if (stream_aware_alloc) {
@@ -586,7 +571,6 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     ORT_THROW("Ort value is associated with a Stream but Stream is not enabled in the build.");
 #endif
   } else {
-    auto alloc = GetAllocator(location, shape.shardInfo());
     Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
   }
 
@@ -814,6 +798,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     }
   } else if (ml_type->IsShardedTensorType()) {
     const auto* ml_data_type = static_cast<const ShardedTensorTypeBase*>(ml_type)->GetElementType();
+    // TODO kyule
     return AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info, *shape);
   } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));

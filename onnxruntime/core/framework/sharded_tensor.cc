@@ -35,7 +35,7 @@ int64_t GetSizeFromStrides(const TensorShape& shape, gsl::span<const int64_t> st
 }  // namespace
 #endif
 
-size_t Tensor::CalculateTensorStorageSize(MLDataType p_type,
+size_t ShardedTensor::CalculateTensorStorageSize(MLDataType p_type,
                                           const TensorShape& shape,
                                           gsl::span<const int64_t> strides) {
 #ifdef ENABLE_STRIDED_TENSORS
@@ -62,7 +62,7 @@ size_t Tensor::CalculateTensorStorageSize(MLDataType p_type,
   return 0;
 }
 
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
+ShardedTensor::ShardedTensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
                gsl::span<const int64_t> strides)
     : Tensor(!shape.shardInfo().has_value() && allocators.size() == 1? Tensor(p_type, shape, allocators[0], strides) : Tensor()) {
   alloc_info_ = allocators[0]->Info();
@@ -75,20 +75,20 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::sha
   for (auto allocator : allocators)
   {
     TensorShape shard = ShardUtils::GetShardSize(shape, shardDims);
-    const size_t len = Tensor::CalculateTensorStorageSize(p_type, shard, strides);
+    const size_t len = ShardedTensor::CalculateTensorStorageSize(p_type, shard, strides);
     buffers.emplace_back(MakeBuffer(len, allocator, allocator->Info().location));
   }
   Init(p_type, std::make_shared<Storage>(std::move(buffers), std::make_optional(shardDims)), shape, strides);
 }
 
-void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
+void ShardedTensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
                           OrtValue& ort_value, gsl::span<const int64_t> strides) {
   auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocators), strides);
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 }
 
-size_t Tensor::SizeInBytes() const {
+size_t ShardedTensor::SizeInBytes() const {
 #ifdef ENABLE_STRIDED_TENSORS
   int64_t size = IsContiguous() ? shape_.Size() : GetSizeFromStrides(shape_, strides_);
 #else
@@ -101,7 +101,7 @@ size_t Tensor::SizeInBytes() const {
   return ret;
 }
 
-void Tensor::Init(MLDataType p_type, std::shared_ptr<Storage> storage, const TensorShape& shape,
+void ShardedTensor::Init(MLDataType p_type, std::shared_ptr<Storage> storage, const TensorShape& shape,
             gsl::span<const int64_t> strides) {
   int64_t shape_size = shape.Size();
   if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
@@ -132,7 +132,7 @@ void Tensor::Init(MLDataType p_type, std::shared_ptr<Storage> storage, const Ten
 #endif
 }
 
-Tensor::Tensor(Tensor&& other) noexcept
+ShardedTensor::ShardedTensor(Tensor&& other) noexcept
     : storage_(other.storage_),
       shape_(other.shape_),
       dtype_(other.dtype_),
@@ -142,7 +142,7 @@ Tensor::Tensor(Tensor&& other) noexcept
   other.storage_ = nullptr;
 }
 
-Tensor& Tensor::operator=(Tensor&& other) noexcept {
+Tensor& ShardedTensor::operator=(Tensor&& other) noexcept {
   if (this != &other) {
     ReleaseBuffer();
 
@@ -159,11 +159,11 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept {
   return *this;
 }
 
-Tensor::~Tensor() {
+ShardedTensor::~Tensor() {
   ReleaseBuffer();
 }
 
-void Tensor::ReleaseBuffer() {
+void ShardedTensor::ReleaseBuffer() {
   if (IsDataTypeString()) {
     storage_->Apply([=, elemSize = this->DataType()->Size()](Buffer& buffer){
       if (buffer.OwnBuffer()) {
@@ -175,7 +175,7 @@ void Tensor::ReleaseBuffer() {
 }
 
 #ifdef ENABLE_STRIDED_TENSORS
-bool Tensor::CheckIsContiguous() const {
+bool ShardedTensor::CheckIsContiguous() const {
   if (strides_.empty()) {
     return true;
   }
@@ -197,7 +197,7 @@ bool Tensor::CheckIsContiguous() const {
   return true;
 }
 
-gsl::span<const int64_t> Tensor::Strides() const {
+gsl::span<const int64_t> ShardedTensor::Strides() const {
   if (shape_.NumDimensions() == 0) {
     return {};
   }
@@ -214,7 +214,7 @@ gsl::span<const int64_t> Tensor::Strides() const {
   return gsl::make_span(strides_);
 }
 
-void Tensor::SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides) {
+void ShardedTensor::SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides) {
   ORT_ENFORCE(new_shape.NumDimensions() == new_strides.size(),
               "Length of strides doesn't match with tensor dimension size.");
   shape_ = new_shape;
