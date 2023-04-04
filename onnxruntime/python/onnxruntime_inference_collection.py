@@ -7,10 +7,9 @@ from __future__ import annotations
 import collections
 import collections.abc
 import os
-import pathlib
 import typing
-from typing import Any, Sequence
 import warnings
+from typing import Any, Sequence
 
 from onnxruntime.capi import _pybind_state as C
 
