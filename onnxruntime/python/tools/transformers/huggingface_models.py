@@ -160,5 +160,5 @@ MODELS = {
     # "google/pegasus-large": (["input_ids"], 11, False, "bert"),
 
     # ViT
-    "google/vit-base-patch16-224": (["input_ids"], 12, False, "bert"),
+    "google/vit-base-patch16-224": (["input_ids"], 12, False, "vit"),
 }
