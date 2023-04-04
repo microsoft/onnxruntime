@@ -23,11 +23,6 @@ static Buffer MakeBuffer(std::size_t sizeInBytes, void* ptr, DeleterFnPtr delete
     return {sizeInBytes, location, offset, ptr, deleter};
 }
 
-static std::shared_ptr<Storage> MakeStorage(Buffer&& buffer, std::optional<ShardDim> const& shardDim)
-{
-  std::make_shared<Storage>(std::move(buffer), shardDim);
-}
-
 #ifdef ENABLE_STRIDED_TENSORS
 namespace {
 int64_t GetSizeFromStrides(const TensorShape& shape, gsl::span<const int64_t> strides) {
@@ -77,7 +72,25 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const 
   ORT_ENFORCE(p_type != nullptr);
   const size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
   auto buffer = MakeBuffer(len, p_data, nullptr /*deleter*/, alloc.location, offset);
-  Init(p_type, MakeStorage(std::move(buffer), shape.shardDims()), shape, strides);
+  Init(p_type, std::make_shared<SingleShard>(std::move(buffer)), shape, strides);
+}
+
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
+               gsl::span<const int64_t> strides)
+    : alloc_info_(allocator->Info()) {
+  ORT_ENFORCE(p_type != nullptr);
+  size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
+  auto buffer = MakeBuffer(len, allocator, alloc.location, 0L);
+  Init(p_type, std::make_shared<SingleShard>(std::move(buffer)), shape, strides);
+}
+
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
+               ptrdiff_t offset, gsl::span<const int64_t> strides)
+    : alloc_info_(deleter->Info()) {
+  ORT_ENFORCE(p_type != nullptr);
+  size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
+  auto buffer = MakeBuffer(len, p_data, [deleter](void *ptr){ deleter->Free(ptr); }, alloc.location, offset);
+  Init(p_type, std::make_shared<SingleShard>(std::move(buffer)), shape, strides);
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
@@ -96,31 +109,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::sha
     const size_t len = Tensor::CalculateTensorStorageSize(p_type, shard, strides);
     buffers.emplace_back(MakeBuffer(len, allocator, allocator.Info().location()));
   }
-  Init(p_type, MakeStorage(std::move(buffers), shardDims), shape, strides);
-}
-
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
-               gsl::span<const int64_t> strides)
-    : alloc_info_(allocator->Info()) {
-  ORT_ENFORCE(p_type != nullptr);
-  size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
-
-  void* p_data = nullptr;
-  if (len > 0) {
-    p_data = allocator->Alloc(len);
-  }
-  auto buffer = MakeBuffer(len, p_data, [deleter](void *ptr){ deleter->Free(ptr); }, alloc.location, 0L);
-
-  Init(p_type, MakeStorage(std::move(storage), shape.shardDims()), shape, strides);
-}
-
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
-               ptrdiff_t offset, gsl::span<const int64_t> strides)
-    : alloc_info_(deleter->Info()) {
-  ORT_ENFORCE(p_type != nullptr);
-  size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
-  auto buffer = MakeBuffer(len, p_data, [deleter](void *ptr){ deleter->Free(ptr); }, alloc.location, offset);
-  Init(p_type, MakeStorage(std::move(buffer), shape.shardDims()), shape, strides);
+  Init(p_type, std::make_shared<Storage>(std::move(buffers), shardDims), shape, strides);
 }
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
