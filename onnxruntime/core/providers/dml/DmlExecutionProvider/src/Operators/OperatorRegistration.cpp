@@ -381,6 +381,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Shape);
 DML_OP_EXTERN_CREATION_FUNCTION(Size);
 DML_OP_EXTERN_CREATION_FUNCTION(Attention);
 DML_OP_EXTERN_CREATION_FUNCTION(NonZero);
+DML_OP_EXTERN_CREATION_FUNCTION(RandomNormalLike);
 
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
@@ -467,6 +468,8 @@ constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListSize =
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListQLinearSigmoid = {SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListAttention = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListGroupNorm = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRandomNormalLike = {SupportedTensorDataTypes::AllScalars, SupportedTensorDataTypes::Float16to32};
+
 
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQLinearMatMul = {
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
@@ -835,6 +838,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     15,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::NotSupported)},
     {REG_INFO(      7,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
     {REG_INFO(     13,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
+    {REG_INFO(      7,  RandomNormalLike,                   typeNameListTwo,                supportedTypeListRandomNormalLike,      DmlGraphSupport::NotSupported)},
     {REG_INFO_DYNAMIC_OUTPUTS( 9,  NonZero,                 typeNameListDefault,            supportedTypeListFloat16to32Ints8to32,  DmlGraphSupport::NotSupported)},
     {REG_INFO_DYNAMIC_OUTPUTS(13,  NonZero,                 typeNameListDefault,            supportedTypeListFloat16to32Ints8to32,  DmlGraphSupport::NotSupported)},
 

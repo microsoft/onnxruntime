@@ -1637,5 +1637,6 @@ using ShapeInferenceHelper_DmlFusedSum = GetBroadcastedOutputShapeHelper;
 
 using ShapeInferenceHelper_Shape = ShapeHelper;
 using ShapeInferenceHelper_Size = SizeHelper;
+using ShapeInferenceHelper_RandomNormalLike = GetOutputShapeAsInputShapeHelper;
 
 }  // namespace OperatorHelper

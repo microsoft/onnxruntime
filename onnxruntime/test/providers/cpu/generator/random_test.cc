@@ -329,7 +329,7 @@ TEST(Random, MultinomialInvalidDtype) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "Output type must be int32 or int64");
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 // We cannot call CUDA lib from UT, so just do some simple verification on output tensor.
 void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, const float scale, const float seed,
                             TensorProto_DataType dtype, bool is_random_like, bool infer_dtype) {
@@ -380,7 +380,7 @@ void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, c
     test.AddOutput("Y", dims, fp16_data);
   }
 
-  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string&) {
     // Only one output, and mean of output values are near attribute mean.
     ASSERT_EQ(fetches.size(), 1u);
     const auto& output_tensor = FetchTensor(fetches[0]);
@@ -472,7 +472,7 @@ void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, c
     test.AddOutput("Y", dims, fp16_data);
   }
 
-  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string&) {
     // Only one output. Each value in output tensoer is between low and high.
     // Mean of output values are near attribute mean of low and high.
     ASSERT_EQ(fetches.size(), 1u);
