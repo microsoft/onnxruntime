@@ -17,9 +17,10 @@ BUILD_PY = os.path.join(REPO_DIR, "tools", "ci_build", "build.py")
 
 # We by default will build below 3 archs
 DEFAULT_BUILD_OSX_ARCHS = {
-    "apple-ios-macabi": ["arm64", "x86_64"],
+    "macabi": ["arm64", "x86_64"],
 }
 
+MACABI_IOS_SYSROOT = subprocess.run(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
 
 def _parse_build_settings(args):
     with open(args.build_settings_file.resolve()) as f:
@@ -52,19 +53,20 @@ def _build_for_ios_sysroot(
     for current_arch in archs:
         build_dir_current_arch = os.path.join(intermediates_dir, sysroot + "_" + current_arch)
         build_command = base_build_command + [
-            "--isysroot=" + sysroot,
-            "--arch=" + current_arch,
+            "--ios_sysroot=" + MACABI_IOS_SYSROOT,
+            "--osx_arch=" + current_arch,
             "--build_dir=" + build_dir_current_arch,
         ]
 
         # the actual build process for current arch
         subprocess.run(build_command, shell=False, check=True, cwd=REPO_DIR)
-
+        print("Paco finished subprocess.run(build_command, shell=False, check=True, cwd=REPO_DIR)")
+        #exit(-1)
         # get the compiled lib path
         framework_dir = os.path.join(
             build_dir_current_arch,
             build_config,
-            build_config + "-" + sysroot,
+            # build_config + "-" + sysroot,
             "onnxruntime.framework"
             if build_dynamic_framework
             else os.path.join("static_framework", "onnxruntime.framework"),
@@ -116,8 +118,8 @@ def _build_package(args):
     if args.path_to_protoc_exe is not None:
         base_build_command += ["--path_to_protoc_exe=" + str(args.path_to_protoc_exe.resolve())]
 
+    print("In _build_package")
     print(build_settings)
-    exit()
 
     # build framework for individual sysroot
     framework_dirs = []
