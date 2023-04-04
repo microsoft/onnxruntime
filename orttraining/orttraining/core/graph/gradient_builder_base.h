@@ -270,19 +270,19 @@ class GradientBuilderBase {
     }
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN) {
-      return ConstantScalarNode(Float8E4M3FN(value), {1}, arg_name);
+      return ConstantScalarNode(Float8E4M3FN(value, true), {1}, arg_name);
     }
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ) {
-      return ConstantScalarNode(Float8E4M3FNUZ(value), {1}, arg_name);
+      return ConstantScalarNode(Float8E4M3FNUZ(value, true), {1}, arg_name);
     }
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2) {
-      return ConstantScalarNode(Float8E5M2(value), {1}, arg_name);
+      return ConstantScalarNode(Float8E5M2(value, true), {1}, arg_name);
     }
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ) {
-      return ConstantScalarNode(Float8E5M2FNUZ(value), {1}, arg_name);
+      return ConstantScalarNode(Float8E5M2FNUZ(value, true), {1}, arg_name);
     }
 
     return ConstantScalarNode(value, {1}, arg_name);
@@ -298,19 +298,19 @@ class GradientBuilderBase {
     }
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN) {
-      return ScalarTensorProto(Float8E4M3FN(value), {1});
+      return ScalarTensorProto(Float8E4M3FN(value, true), {1});
     }
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ) {
-      return ScalarTensorProto(Float8E4M3FNUZ(value), {1});
+      return ScalarTensorProto(Float8E4M3FNUZ(value, true), {1});
     }
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2) {
-      return ScalarTensorProto(Float8E5M2(value), {1});
+      return ScalarTensorProto(Float8E5M2(value, true), {1});
     }
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ) {
-      return ScalarTensorProto(Float8E5M2FNUZ(value), {1});
+      return ScalarTensorProto(Float8E5M2FNUZ(value, true), {1});
     }
 
     return ScalarTensorProto(value, {1});
