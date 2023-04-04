@@ -1,10 +1,9 @@
 import onnx
 import sys
 import os
-from onnx import TensorProto, helper, GraphProto, ModelProto, TensorProto
+from onnx import TensorProto, helper
 from transformers import WhisperConfig
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from onnx_model import OnnxModel  # noqa: E402
 from convert_generation import get_shared_initializers
 
 def add_attention_mask(model):
