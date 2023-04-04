@@ -96,7 +96,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
                gsl::span<const int64_t> strides)
-    : Tensor(!shardInfo().has_value() && allocators.size() == 1? Tensor(p_type, shape, allocators[0], strides) : Tensor()) {
+    : Tensor(!shape.shardInfo().has_value() && allocators.size() == 1? Tensor(p_type, shape, allocators[0], strides) : Tensor()) {
   alloc_info_ = allocators[0]->Info();
   const auto shardDims = shape.shardInfo()->shardDims_;
   ORT_ENFORCE(p_type != nullptr);
