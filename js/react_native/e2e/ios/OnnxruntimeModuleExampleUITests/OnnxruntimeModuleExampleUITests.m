@@ -1,25 +1,27 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+// NOT USING THIS TEST ANY MORE
 
-#import <XCTest/XCTest.h>
+// // Copyright (c) Microsoft Corporation. All rights reserved.
+// // Licensed under the MIT License.
 
-@interface OnnxruntimeModuleExampleUITests : XCTestCase
+// #import <XCTest/XCTest.h>
 
-@end
+// @interface OnnxruntimeModuleExampleUITests : XCTestCase
 
-@implementation OnnxruntimeModuleExampleUITests
+// @end
 
-- (void)setUp {
-  self.continueAfterFailure = NO;
-}
+// @implementation OnnxruntimeModuleExampleUITests
 
-- (void)testExample {
-  XCUIApplication *app = [[XCUIApplication alloc] init];
-  [app launch];
+// - (void)setUp {
+//   self.continueAfterFailure = NO;
+// }
 
-  XCTAssert([app.textFields[@"output"] waitForExistenceWithTimeout:180]);
-  NSString* value = app.textFields[@"output"].value;
-  XCTAssertEqualObjects(value, @"Result: 3");
-}
+// - (void)testExample {
+//   XCUIApplication *app = [[XCUIApplication alloc] init];
+//   [app launch];
 
-@end
+//   XCTAssert([app.textFields[@"output"] waitForExistenceWithTimeout:180]);
+//   NSString* value = app.textFields[@"output"].value;
+//   XCTAssertEqualObjects(value, @"Result: 3");
+// }
+
+// @end

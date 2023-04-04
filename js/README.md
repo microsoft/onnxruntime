@@ -466,6 +466,14 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
 
   - Run the detox e2e tests.
     
+    In a debug configuration, you need to have React Native packager running in parallel before you start Detox tests:
+
+    ```
+    npm start
+
+    > react-native start
+    ```
+    
     From `<ORT_ROOT>/js/react_native/e2e`, run Detox tests using the following command:
 
     iOS (Debug):
