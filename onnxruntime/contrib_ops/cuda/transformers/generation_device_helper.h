@@ -137,7 +137,7 @@ Status ExpandBuffer(
     AllocatorPtr allocator,
     OrtValue& expanded,
     bool only_copy_shape,
-    int max_sequence_length);
+    int max_sequence_length = 0);
 
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib

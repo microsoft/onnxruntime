@@ -79,14 +79,12 @@ class BeamSearchT5 : public BeamSearchBase<T> {
   // Device specific functions
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
-
+  GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
   GenerationDeviceHelper::CreateEncoderInputsFunc create_encoder_inputs_func_;
   GenerationDeviceHelper::UpdateDecoderFeedsFunc<T> update_decoder_feeds_func_;
   GenerationDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
   GenerationDeviceHelper::ExpandBufferFunc<float> expand_buffer_float_func_;
   GenerationDeviceHelper::ExpandBufferFunc<MLFloat16> expand_buffer_float16_func_;
-
-  GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
 
   const void* cuda_device_prop_ = nullptr;
   int cuda_device_arch_ = 0;
@@ -273,6 +271,17 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
         Tensor::InitOrtValue(past_tensor->DataType(), past_tensor->Shape(), past_tensor->MutableData<T>(),
                              past_tensor->Location(), present_tensor_value);
         decoder_fetches.push_back(present_tensor_value);
+      }
+    }
+
+    if (decoder_subgraph_.has_decoder_masked_attention_) {
+      size_t offset = static_cast<size_t>(decoder_subgraph_.GetFirstPresentOutputIndex());
+      // Here we only need to reorder the past key.
+      for (size_t i = 0; i < static_cast<size_t>(decoder_subgraph_.num_layers); ++i) {
+        ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                     *decoder_fetches[offset + 2 * i].GetMutable<Tensor>(),
+                                                     beam_state.staging_for_past_state_reorder,
+                                                     this->ort_stream_));
       }
     }
   }
