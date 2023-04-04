@@ -358,7 +358,7 @@ class InferenceSession(Session):
         means execute a node using `CUDAExecutionProvider`
         if capable, otherwise execute using `CPUExecutionProvider`.
         """
-        super().__init__(self)
+        super().__init__()
 
         if isinstance(path_or_bytes, str):
             self._model_path = path_or_bytes
