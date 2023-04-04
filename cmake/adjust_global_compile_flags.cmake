@@ -10,10 +10,11 @@ endif()
 
 # Enable space optimization for gcc/clang
 # Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
-if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
-  string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
-  string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
-endif()
+#TODO: Paco: need to find out onnxruntime_ENABLE_BITCODE turns ON even it is set to OFF
+#if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
+#  string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
+#  string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
+#endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)
   string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI}")
