@@ -878,8 +878,7 @@ namespace Microsoft.ML.OnnxRuntime
                           PrePackedWeightsContainer prepackedWeightsContainer = null)
         {
             var envHandle = OrtEnv.Handle;
-            var session = IntPtr.Zero;
-
+            IntPtr session;
             if (prepackedWeightsContainer == null)
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
@@ -900,8 +899,7 @@ namespace Microsoft.ML.OnnxRuntime
                           PrePackedWeightsContainer prepackedWeightsContainer = null)
         {
             var envHandle = OrtEnv.Handle;
-            var session = IntPtr.Zero;
-
+            IntPtr session;
             if (prepackedWeightsContainer == null)
             {
 
@@ -932,8 +930,7 @@ namespace Microsoft.ML.OnnxRuntime
                 // Initialize input/output metadata
 
                 // get input count
-                UIntPtr inputCount = UIntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out inputCount));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out UIntPtr inputCount));
 
                 // get all the input names and metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>((int)inputCount);
@@ -948,8 +945,7 @@ namespace Microsoft.ML.OnnxRuntime
                     _inputMetadata[iname] = inputMeta;
                 }
                 // get output count
-                UIntPtr outputCount = UIntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle, out outputCount));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle, out UIntPtr outputCount));
 
                 // get all the output names and metadata
                 _outputMetadata = new Dictionary<string, NodeMetadata>((int)outputCount);
@@ -965,8 +961,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 // get overridable initializer count
-                UIntPtr initilaizerCount = UIntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerCount(_nativeHandle, out initilaizerCount));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerCount(_nativeHandle, out UIntPtr initilaizerCount));
 
                 _overridableInitializerMetadata = new Dictionary<string, NodeMetadata>((int)initilaizerCount);
                 // get all the overridable initializer names and metadata
@@ -978,9 +973,8 @@ namespace Microsoft.ML.OnnxRuntime
                     _overridableInitializerMetadata[iname] = meta;
                 }
                 // set profiling's start time
-                UIntPtr startTime = UIntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
-                                                                    out startTime));
+                                                                    out UIntPtr startTime));
                 _profilingStartTimeNs = (ulong)startTime;
             }
             catch (Exception)
@@ -1001,12 +995,11 @@ namespace Microsoft.ML.OnnxRuntime
         {
             string str;
             var allocator = OrtAllocator.DefaultInstance;
-            IntPtr nameHandle = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputName(
                                            _nativeHandle,
                                            (UIntPtr)index,
                                            allocator.Pointer,
-                                           out nameHandle));
+                                           out IntPtr nameHandle));
 
             using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
@@ -1020,12 +1013,11 @@ namespace Microsoft.ML.OnnxRuntime
         {
             string str;
             var allocator = OrtAllocator.DefaultInstance;
-            IntPtr nameHandle = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputName(
                                            _nativeHandle,
                                            (UIntPtr)index,
                                            allocator.Pointer,
-                                           out nameHandle));
+                                           out IntPtr nameHandle));
 
             using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
@@ -1038,12 +1030,11 @@ namespace Microsoft.ML.OnnxRuntime
         {
             string str;
             var allocator = OrtAllocator.DefaultInstance;
-            IntPtr nameHandle = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerName(
                                             _nativeHandle,
                                             (UIntPtr)index,
                                             allocator.Pointer,
-                                            out nameHandle));
+                                            out IntPtr nameHandle));
             using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
                 NativeOnnxValueHelper.StringAndUtf8FromNative(nameHandle, out str, out utf8);
@@ -1053,8 +1044,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private NodeMetadata GetInputMetadata(ulong index)
         {
-            IntPtr typeInfo = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputTypeInfo(_nativeHandle, (UIntPtr)index, out typeInfo));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputTypeInfo(_nativeHandle, (UIntPtr)index, out IntPtr typeInfo));
             try
             {
                 return GetMetadataFromTypeInfo(typeInfo);
@@ -1067,8 +1057,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private NodeMetadata GetOutputMetadata(ulong index)
         {
-            IntPtr typeInfo = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputTypeInfo(_nativeHandle, (UIntPtr)index, out typeInfo));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputTypeInfo(_nativeHandle, (UIntPtr)index, out IntPtr typeInfo));
             try
             {
                 return GetMetadataFromTypeInfo(typeInfo);
@@ -1081,8 +1070,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private NodeMetadata GetOverridableInitializerMetadata(ulong index)
         {
-            IntPtr typeInfo = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerTypeInfo(_nativeHandle, (UIntPtr)index, out typeInfo));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerTypeInfo(_nativeHandle, (UIntPtr)index, out IntPtr typeInfo));
             try
             {
                 return GetMetadataFromTypeInfo(typeInfo);
@@ -1097,8 +1085,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             OnnxValueType valueType;
             {
-                IntPtr valType;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOnnxTypeFromTypeInfo(typeInfo, out valType));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOnnxTypeFromTypeInfo(typeInfo, out IntPtr valType));
                 valueType = (OnnxValueType)valType;
             }
 
@@ -1120,16 +1107,14 @@ namespace Microsoft.ML.OnnxRuntime
 
         internal static NodeMetadata GetSequenceMetadataFromTypeInfo(IntPtr typeInfo)
         {
-            IntPtr sequenceTypeInfo;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToSequenceTypeInfo(typeInfo, out sequenceTypeInfo));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToSequenceTypeInfo(typeInfo, out IntPtr sequenceTypeInfo));
             // Casts API are broken. Always return success, but may return null for the result.
             if (sequenceTypeInfo == IntPtr.Zero)
             {
-                throw new InvalidOperationException("TypeInfo cast to SequenceTypeInfo failed. The object does not represent a sequence");
+                throw new OnnxRuntimeException(ErrorCode.Fail, "TypeInfo cast to SequenceTypeInfo failed. The object does not represent a sequence");
             }
 
-            IntPtr elementType;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetSequenceElementType(sequenceTypeInfo, out elementType));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetSequenceElementType(sequenceTypeInfo, out IntPtr elementType));
             try
             {
                 var elementMeta = GetMetadataFromTypeInfo(elementType);
@@ -1144,19 +1129,16 @@ namespace Microsoft.ML.OnnxRuntime
 
         internal static NodeMetadata GetMapMetadataFromTypeInfo(IntPtr typeInfo)
         {
-            IntPtr mapTypeInfo;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToMapTypeInfo(typeInfo, out mapTypeInfo));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToMapTypeInfo(typeInfo, out IntPtr mapTypeInfo));
             // Casts API are broken. Always return success, but may return null for the result.
             if (mapTypeInfo == IntPtr.Zero)
             {
-                throw new InvalidOperationException("TypeInfo cast to MapTypeInfo failed. The object does not represent a map");
+                throw new OnnxRuntimeException(ErrorCode.Fail, "TypeInfo cast to MapTypeInfo failed. The object does not represent a map");
             }
 
-            IntPtr keyType;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMapKeyType(mapTypeInfo, out keyType));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMapKeyType(mapTypeInfo, out IntPtr keyType));
 
-            IntPtr valueTypeInfo;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMapValueType(mapTypeInfo, out valueTypeInfo));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMapValueType(mapTypeInfo, out IntPtr valueTypeInfo));
             try
             {
                 var valueMetadata = GetMetadataFromTypeInfo(valueTypeInfo);
@@ -1172,16 +1154,14 @@ namespace Microsoft.ML.OnnxRuntime
         internal static NodeMetadata GetOptionalMetadataFromTypeInfo(IntPtr typeInfo)
         {
             // This should not be destroyed
-            IntPtr optTypeInfo;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToOptionalTypeInfo(typeInfo, out optTypeInfo));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToOptionalTypeInfo(typeInfo, out IntPtr optTypeInfo));
             // Casts API are broken. Always return success, but may return null for the result.
             if (optTypeInfo == IntPtr.Zero)
             {
-                throw new InvalidOperationException("TypeInfo cast to OptionalTypeInfo failed. The object does not represent a optional value");
+                throw new OnnxRuntimeException(ErrorCode.Fail, "TypeInfo cast to OptionalTypeInfo failed. The object does not represent a optional value");
             }
 
-            IntPtr elementTypeInfo;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOptionalContainedTypeInfo(optTypeInfo, out elementTypeInfo));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOptionalContainedTypeInfo(optTypeInfo, out IntPtr elementTypeInfo));
             try
             {
                 var elementMetadata = GetMetadataFromTypeInfo(elementTypeInfo);
@@ -1197,23 +1177,20 @@ namespace Microsoft.ML.OnnxRuntime
         internal static NodeMetadata GetTensorNodeMetadata(OnnxValueType valueType, IntPtr typeInfo)
         {
             // Fetch tensor type and shape from the TypeInfo
-            IntPtr tensorInfo;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToTensorInfo(typeInfo, out tensorInfo)); //(IntPtr)(int)(uint)
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToTensorInfo(typeInfo, out IntPtr tensorInfo)); //(IntPtr)(int)(uint)
             // Casts API are broken. Always return success, but may return null for the result.
             if (tensorInfo == IntPtr.Zero)
             {
-                throw new InvalidOperationException("TypeInfo cast to TensorTypeInfo failed. The object does not represent a tensor");
+                throw new OnnxRuntimeException(ErrorCode.Fail, "TypeInfo cast to TensorTypeInfo failed. The object does not represent a tensor");
             }
 
             TensorElementType type;
             {
-                IntPtr el_type;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(tensorInfo, out el_type));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(tensorInfo, out IntPtr el_type));
                 type = (TensorElementType)el_type;
             }
 
-            UIntPtr numDimensions;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(tensorInfo, out numDimensions));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(tensorInfo, out UIntPtr numDimensions));
 
             long[] dimensions = new long[(int)numDimensions];
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(tensorInfo, dimensions, numDimensions));
@@ -1532,7 +1509,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// 
         /// Used to avoid utf8 conversions on every run and associated allocations
         /// </summary>
-        public byte[] ZeroTerminatedUtf8Name { get; set; }
+        internal byte[] ZeroTerminatedUtf8Name { get; set; }
 
         /// <summary>
         /// Tensor shape valid only if this is a Tensor.

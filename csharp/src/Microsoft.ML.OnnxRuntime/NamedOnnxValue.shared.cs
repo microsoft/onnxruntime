@@ -95,7 +95,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Onnx Value Type if known. In general, NamedOnnxValue is able to contain
         /// arbitrary objects.
         /// </summary>
-        public OnnxValueType ValueType { get; }
+        public OnnxValueType ValueType { get; internal set; }
 
         /// <summary>
         /// This is a factory method that instantiates NamedOnnxValue
@@ -203,7 +203,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Produces an output value for outputs. This produces an output value
         /// only for tensors or optional types that can contain a tensor.
-        /// For all others we return a null, letting ORT to create an output value.
+        /// For all other Onnx value types, this method throws. Use Run() overloads
+        /// that return DisposableNamedOnnxValue to get access to all Onnx value types
+        /// that may be returned as output.
         /// </summary>
         /// <param name="metadata"></param>
         /// <param name="memoryOwner"></param>
@@ -229,8 +231,11 @@ namespace Microsoft.ML.OnnxRuntime
                     return projection.Value;
                 }
             }
-            memoryOwner = null;
-            return null;
+
+            throw new OnnxRuntimeException(ErrorCode.NotImplemented, 
+                $"Can not create output OrtValue for NamedOnnxValue '{metadata.OnnxValueType}' type." +
+                $" Only tensors can be pre-allocated for outputs " +
+                $" Use Run() overloads that return DisposableNamedOnnxValue to get access to all Onnx value types that may be returned as output.");
         }
 
         /// <summary>
