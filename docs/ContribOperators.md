@@ -20,6 +20,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
+  * <a href="#com.microsoft.DecoderMaskedMultiHeadAttention">com.microsoft.DecoderMaskedMultiHeadAttention</a>
   * <a href="#com.microsoft.DecoderMaskedSelfAttention">com.microsoft.DecoderMaskedSelfAttention</a>
   * <a href="#com.microsoft.DequantizeBFP">com.microsoft.DequantizeBFP</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
@@ -428,7 +429,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (5 - 10)
 
 <dl>
-<dt><tt>input_ids</tt> : I</dt>
+<dt><tt>input_ids</tt> : F</dt>
 <dd>The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)</dd>
 <dt><tt>max_length</tt> : I</dt>
 <dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
@@ -465,7 +466,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(float)</dt>
-<dd>Constrain input and output types to float tensors.</dd>
+<dd>Constrain to float tensors.</dd>
+<dt><tt>F</tt> : tensor(float), tensor(int32)</dt>
+<dd>Constrain input type to float or int tensors.</dd>
 <dt><tt>I</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
@@ -1099,6 +1102,75 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float and float16 tensors.</dd>
 <dt><tt>B</tt> : tensor(bool)</dt>
 <dd>Constrain key_padding_mask to bool tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.DecoderMaskedMultiHeadAttention"></a><a name="com.microsoft.decodermaskedmultiheadattention">**com.microsoft.DecoderMaskedMultiHeadAttention**</a>
+
+  Multihead attention that supports input sequence length of 1.
+  Similar to DecoderMaskedSelfAttention but this op excludes QKV MatMul and Bias.
+  This op supports both Self and Cross Attention.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+<dt><tt>past_present_share_buffer</tt> : int</dt>
+<dd>Corresponding past and present are same tensor, its size is (batch_size, num_heads, max_sequence_length, head_size)</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+</dl>
+
+#### Inputs (3 - 10)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query with shape (batch_size, 1, hidden_size)</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Key with shape (batch_size, 1, hidden_size) for self attention or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Value with shape (batch_size, 1, v_hidden_size) for self attention or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention</dd>
+<dt><tt>mask_index</tt> (optional) : M</dt>
+<dd>Mask values of shape (batch_size, total_sequence_length) or (batch_size, kv_sequence_length)</dd>
+<dt><tt>relative_position_bias</tt> (optional) : T</dt>
+<dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)</dd>
+<dt><tt>past_key</tt> (optional) : T</dt>
+<dd>past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) for self attentionWhen past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size). The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape (batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape (batch_size, num_heads, max_sequence_length, head_size / x, x) is reordered to become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`.</dd>
+<dt><tt>past_value</tt> (optional) : T</dt>
+<dd>past state for value with shape (batch_size, num_heads, past_sequence_length, head_size) for self attentionWhen past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size). </dd>
+<dt><tt>past_sequence_length</tt> (optional) : M</dt>
+<dd>When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).Cross Attention doesn't need this input.</dd>
+<dt><tt>beam_width</tt> (optional) : M</dt>
+<dd>The beam width that is being used while decoding.If not provided, the beam width will be assumed to be 1.</dd>
+<dt><tt>cache_indirection</tt> (optional) : M</dt>
+<dd>A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifieswhich beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
+<dt><tt>present_key</tt> (optional) : T</dt>
+<dd>past state for key with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
+<dt><tt>present_value</tt> (optional) : T</dt>
+<dd>past state for value with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask index to integer types</dd>
 </dl>
 
 
@@ -4417,9 +4489,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D input tensor with shape (batch_size, sequence_length, hidden_size)Or 2D input tensor with shape (token_count, hidden_size)</dd>
 <dt><tt>skip</tt> : T</dt>
-<dd>3D skip tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D input tensor with shape (batch_size, sequence_length, hidden_size)Or 2D input tensor with shape (token_count, hidden_size)</dd>
 <dt><tt>gamma</tt> : T</dt>
 <dd>1D input tensor with shape (hidden_size)</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
@@ -4430,13 +4502,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)Or 2D output tensor with shape (token_count, hidden_size)</dd>
 <dt><tt>mean</tt> (optional) : U</dt>
 <dd>Saved mean used during training to speed up gradient computation</dd>
 <dt><tt>inv_std_var</tt> (optional) : U</dt>
 <dd>Saved inverse standard variance used during training to speed up gradient computation.</dd>
 <dt><tt>input_skip_bias_sum</tt> (optional) : T</dt>
-<dd>Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).</dd>
+<dd>Sum of the input and skip inputs (and bias if it exists)with shape (batch_size, sequence_length, hidden_size) or (token_count, hidden_size).</dd>
 </dl>
 
 #### Type Constraints

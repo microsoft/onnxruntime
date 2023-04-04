@@ -20,10 +20,12 @@ Status CheckInputs(const T* query,
                    const T* relative_position_bias,
                    const T* past_key,
                    const T* past_value,
+                   const T* past_seq_len,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
                    float scale,
+                   bool past_present_share_buffer,
                    int max_threads_per_block) {
   //     key_padding_mask (K/V)     : (B) or (2*B + 1) or (B, L) or None
   //     relative_position_bias     : (B, 1, S, L)
@@ -59,6 +61,7 @@ Status CheckInputs(const T* query,
   int kv_sequence_length = sequence_length;
 
   int past_sequence_length = 0;
+  int max_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     const auto& past_key_dims = past_key->Shape().GetDims();
     const auto& past_value_dims = past_value->Shape().GetDims();
@@ -110,6 +113,14 @@ Status CheckInputs(const T* query,
                              past_value_dims[3]);
     }
     past_sequence_length = static_cast<int>(past_key_dims[2]);
+    max_sequence_length = static_cast<int>(past_key_dims[2]);
+    if (past_present_share_buffer) {
+      if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
+      }
+      past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+    }
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
@@ -191,7 +202,7 @@ Status CheckInputs(const T* query,
     if (mask_dims.size() == 1) {
       if (mask_dims[0] == static_cast<int64_t>(batch_size)) {
         mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-      } else if (mask_dims[0] == static_cast<int64_t>(3 * batch_size + 2)) {
+      } else if (mask_dims[0] == static_cast<int64_t>(3) * static_cast<int64_t>(batch_size) + static_cast<int64_t>(2)) {
         mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
       }
     } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
@@ -277,7 +288,7 @@ Status CheckInputs(const T* query,
     output_parameters->past_sequence_length = past_sequence_length;
     output_parameters->kv_sequence_length = kv_sequence_length;
     output_parameters->total_sequence_length = total_sequence_length;
-    output_parameters->max_sequence_length = 0;
+    output_parameters->max_sequence_length = max_sequence_length;
     output_parameters->input_hidden_size = 0;
     output_parameters->hidden_size = hidden_size;
     output_parameters->v_hidden_size = v_hidden_size;
@@ -285,7 +296,7 @@ Status CheckInputs(const T* query,
     output_parameters->v_head_size = v_hidden_size / num_heads;
     output_parameters->num_heads = num_heads;
     output_parameters->is_unidirectional = false;
-    output_parameters->past_present_share_buffer = false;
+    output_parameters->past_present_share_buffer = past_present_share_buffer;
     output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
     output_parameters->scale = scale;
