@@ -177,7 +177,7 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   param_tensor_names.push_back(qnn_interp_mode_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(qnn_interp_mode_param));
 
-  // Parameter 'nearest_mode'. Handle only when 'interpolation_mode' is NEAREST(0).
+  // Parameter 'nearest_mode'. Processed only when 'interpolation_mode' is NEAREST(0).
   if (qnn_interp_mode.uint32Value == 0) {
     const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
     Qnn_Scalar_t qnn_nearest_mode = QNN_SCALAR_INIT;
