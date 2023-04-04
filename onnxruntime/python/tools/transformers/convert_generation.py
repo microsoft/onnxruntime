@@ -1654,7 +1654,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         if is_gpt2 and args.precision == Precision.FLOAT16:
             args.op_block_list = ["Add", "LayerNormalization", "SkipLayerNormalization", "FastGelu"]
             logger.info(f"**** Setting op_block_list to {args.op_block_list}")
-            logger.info(f"**** use --op_block_list if you want to overwrite it.")
+            logger.info("**** use --op_block_list if you want to override the block operator list.")
         else:
             args.op_block_list = []
 
