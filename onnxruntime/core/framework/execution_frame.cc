@@ -812,6 +812,9 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     } else {
       return AllocateTensorSequence(ort_value);
     }
+  } else if (ml_type->IsShardedTensorType()) {
+    const auto* ml_data_type = static_cast<const ShardedTensorTypeBase*>(ml_type)->GetElementType();
+    return AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info, *shape);
   } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }

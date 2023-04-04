@@ -75,6 +75,10 @@ struct OrtValue {
 #endif
   }
 
+  bool IsShardedTensor() const {
+    return (type_ != nullptr && type_->IsShardedTensorType());
+  }
+
   onnxruntime::MLDataType Type() const {
     return type_;
   }

@@ -195,6 +195,14 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   return nullptr;
 }
 
+ORT_STATUS_PTR CreateShardedTensorImpl(MLDataType ml_type, const int64_t* shape, size_t shape_len,
+                                _Inout_ OrtAllocator* allocator, OrtValue& value) {
+  TensorShape tensor_shape(shape, shape_len);
+  AllocatorPtr alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
+  Tensor::InitOrtValue(ml_type, tensor_shape, std::move(alloc_ptr), value);
+  return nullptr;
+}
+
 ORT_STATUS_PTR CreateTensorImplForSeq(MLDataType elem_type, const int64_t* shape, size_t shape_len, Tensor& out) {
   OrtAllocator* allocator;
   // TODO(pranav): what allocator should be used to create the tensor here?
@@ -250,6 +258,23 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
   auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
   auto value = std::make_unique<OrtValue>();
   ORT_API_RETURN_IF_ERROR(CreateTensorImpl(ml_type, shape, shape_len, allocator, *value));
+  *out = value.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateShardedTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
+                    _In_ const int64_t* shape, size_t shape_len, const int64_t* shardDims, ONNXTensorElementDataType type,
+                    _Outptr_ OrtValue** out) {
+  API_IMPL_BEGIN
+  auto ml_type = DataTypeImpl::ShardedTypeFromONNXEnum(type)->GetElementType();
+  auto value = std::make_unique<OrtValue>();
+  std::vector<std::shared_ptr<IAllocator>> shardAllocs;
+  int64_t numShards = 1;
+  for (auto i=0; i<shape_len; i++) { numShards *= shardDims[i]; }
+  for (auto i=0; i<numShards; i++) { shardAllocs.push_back(std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator[i])); }
+  auto value = std::make_unique<OrtValue>();
+  ShardedTensor::InitOrtValue(element_type, std::move(shardAllocs), shape,  *value);
   *out = value.release();
   return nullptr;
   API_IMPL_END
@@ -2703,6 +2728,7 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::Logger_LogMessage,
     &OrtApis::Logger_GetLoggingSeverityLevel,
     &OrtApis::KernelInfoGetConstantInput_tensor,
+    &OrtApis::CreateShardedTensorAsOrtValue,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

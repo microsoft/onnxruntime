@@ -88,6 +88,7 @@ class DataTypeImpl {
     kSparseTensor = 4,
     kOptional = 5,
     kPrimitive = 6,
+    kShardedTensor = 7,
   };
 
   const GeneralType type_;
@@ -144,6 +145,10 @@ class DataTypeImpl {
     return type_ == GeneralType::kPrimitive;
   }
 
+  bool IsShardedTensorType() const {
+    return type_ == GeneralType::kShardedTensor;
+  }
+
   // Returns this if this is of tensor-type and null otherwise
   const TensorTypeBase* AsTensorType() const;
 
@@ -164,6 +169,8 @@ class DataTypeImpl {
   // and null otherwise
   const PrimitiveDataTypeBase* AsPrimitiveDataType() const;
 
+  const ShardedTensorTypeBase* AsShardedTensorType() const;
+
   // Return the type meta that we are using in the runtime.
   template <typename T>
   static MLDataType GetType();
@@ -180,6 +187,10 @@ class DataTypeImpl {
   template <typename elemT>
   static MLDataType GetSparseTensorType();
 #endif
+
+  // Return the MLDataType for a concrete sparse tensor type.
+  template <typename elemT>
+  static MLDataType GetShardedTensorType();
 
   template <typename T, typename elemT>
   static MLDataType GetOptionalType();
@@ -198,6 +209,7 @@ class DataTypeImpl {
 #if !defined(DISABLE_SPARSE_TENSORS)
   static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);
 #endif
+  static const ShardedTensorTypeBase* ShardedTensorTypeFromONNXEnum(int type);
 
   static const char* ToString(MLDataType type);
   static std::vector<std::string> ToString(const std::vector<MLDataType>& types);
@@ -268,6 +280,12 @@ struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, u
 };
 #endif
 
+template <typename T>
+struct IsShardedTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
+                                                    int32_t, int64_t, std::string, bool, MLFloat16,
+                                                    double, uint32_t, uint64_t, BFloat16> {
+};
+
 #if !defined(DISABLE_OPTIONAL_TYPE)
 /// Tells if the specified type is one of ORT types
 /// that can be contained within an optional struct.
@@ -311,6 +329,13 @@ struct SparseTensorTypeHelper {
   }
 };
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+struct ShardedTensorTypeHelper {
+  static void Set(ONNX_NAMESPACE::TensorProto_DataType element_type,
+                  ONNX_NAMESPACE::TypeProto& proto) {
+    proto.mutable_sparse_tensor_type()->set_elem_type(element_type);
+  }
+};
 
 #if !defined(DISABLE_ML_OPS)
 /// Map helpers
@@ -453,6 +478,54 @@ class TensorType : public TensorTypeBase {
   TensorType() {
     using namespace data_types_internal;
     TensorTypeHelper::Set(utils::ToTensorProtoElementType<elemT>(), MutableTypeProto());
+  }
+};
+
+class ShardedTensorTypeBase : public DataTypeImpl {
+ public:
+  static MLDataType Type();
+
+  bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override;
+
+  DeleteFunc GetDeleteFunc() const override;
+
+  const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
+
+  virtual MLDataType GetElementType() const {
+    // should never reach here.
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ShardedTensorTypeBase);
+
+ protected:
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
+
+  ShardedTensorTypeBase();
+  ~ShardedTensorTypeBase() override;
+
+ private:
+  struct Impl;
+  Impl* impl_;
+};
+
+template <typename elemT>
+class ShardedTensorType : public ShardedTensorTypeBase {
+ public:
+  static_assert(data_types_internal::IsShardedTensorContainedType<elemT>::value,
+                "Requires one of the sparse-tensor fundamental types");
+
+  static MLDataType Type();
+
+  /// Return a MLDataType representing the element-type
+  MLDataType GetElementType() const override {
+    return DataTypeImpl::GetType<elemT>();
+  }
+
+ private:
+  ShardedTensorType() {
+    using namespace data_types_internal;
+    ShardedTensorTypeHelper::Set(utils::ToTensorProtoElementType<elemT>(), MutableTypeProto());
   }
 };
 
@@ -943,6 +1016,10 @@ inline const SequenceTensorTypeBase* DataTypeImpl::AsSequenceTensorType() const 
   return IsTensorSequenceType() ? static_cast<const SequenceTensorTypeBase*>(this) : nullptr;
 }
 
+inline const ShardedTensorTypeBase* DataTypeImpl::AsShardedTensorType() const {
+  return IsShardedTensorType() ? static_cast<const ShardedTensorTypeBase*>(this) : nullptr;
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 inline const SparseTensorTypeBase* DataTypeImpl::AsSparseTensorType() const {
   return IsSparseTensorType() ? static_cast<const SparseTensorTypeBase*>(this) : nullptr;
@@ -977,6 +1054,17 @@ inline const PrimitiveDataTypeBase* DataTypeImpl::AsPrimitiveDataType() const {
   template <>                                           \
   MLDataType DataTypeImpl::GetTensorType<ELEM_TYPE>() { \
     return TensorType<ELEM_TYPE>::Type();               \
+  }
+
+#define ORT_REGISTER_SHARDED_TENSOR_TYPE(ELEM_TYPE)            \
+  template <>                                                  \
+  MLDataType ShardedTensorType<ELEM_TYPE>::Type() {            \
+    static ShardedTensorType<ELEM_TYPE> tensor_type;           \
+    return &tensor_type;                                       \
+  }                                                            \
+  template <>                                                  \
+  MLDataType DataTypeImpl::GetShardedTensorType<ELEM_TYPE>() { \
+    return ShardedTensorType<ELEM_TYPE>::Type();               \
   }
 
 #if !defined(DISABLE_SPARSE_TENSORS)

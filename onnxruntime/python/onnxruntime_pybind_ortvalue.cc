@@ -237,6 +237,9 @@ void addOrtValueMethods(pybind11::module& m) {
         } else if (ort_value->IsTensorSequence()) {
           auto elem_type = ort_value->Get<TensorSeq>().DataType()->AsPrimitiveDataType()->GetDataType();
           type_proto = DataTypeImpl::SequenceTensorTypeFromONNXEnum(elem_type)->GetTypeProto();
+        } else if (ort_value->IsShardedTensor()) {
+          auto elem_type = ort_value->Get<ShardedTensor>().DataType()->AsPrimitiveDataType()->GetDataType();
+          type_proto = DataTypeImpl::ShardedTensorTypeFromONNXEnum(elem_type)->GetTypeProto();
         } else {
           // Plane sequences and maps probably have their specific type
           type_proto = ort_value->Type()->GetTypeProto();

@@ -1234,6 +1234,27 @@ struct OrtApi {
   ORT_API2_STATUS(CreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator, _In_ const int64_t* shape, size_t shape_len,
                   ONNXTensorElementDataType type, _Outptr_ OrtValue** out);
 
+  /// @}
+  /// \name OrtValue
+  /// @{
+
+  /** \brief Create a tensor
+   *
+   * Create a tensor using a supplied ::OrtAllocator
+   *
+   * \param[in] allocators
+   * \param[in] shape Pointer to the tensor shape dimensions.
+   * \param[in] shape_len The number of tensor shape dimensions.
+   * \param[in] shape Pointer to the sharding dimensions.
+   * \param[in] type
+   * \param[out] out Returns newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(CreateShardedTensorAsOrtValue, _Inout_ OrtAllocator* allocators,
+                    _In_ const int64_t* shape, size_t shape_len, const int64_t* shardDims, ONNXTensorElementDataType type,
+                    _Outptr_ OrtValue** out);
+
   /** \brief Create a tensor backed by a user supplied buffer
    *
    * Create a tensor with user's buffer. You can fill the buffer either before calling this function or after.

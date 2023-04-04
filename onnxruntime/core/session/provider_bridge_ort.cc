@@ -390,6 +390,15 @@ struct ProviderHostImpl : ProviderHost {
   }
 #endif
 
+#if !defined(DISABLE_SHARDED_TENSORS)
+  const ONNX_NAMESPACE::TypeProto_ShardedTensor& TypeProto__sharded_tensor_type(const ONNX_NAMESPACE::TypeProto* p) override {
+    return p->sharded_tensor_type();
+  }
+  ONNX_NAMESPACE::TypeProto_ShardedTensor* TypeProto__mutable_sharded_tensor_type(ONNX_NAMESPACE::TypeProto* p) override {
+    return p->mutable_sharded_tensor_type();
+  }
+#endif
+
 #if !defined(DISABLE_OPTIONAL_TYPE)
   const ONNX_NAMESPACE::TypeProto_Optional& TypeProto__optional_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->optional_type(); }
   ONNX_NAMESPACE::TypeProto_Optional* TypeProto__mutable_optional_type(ONNX_NAMESPACE::TypeProto* p) override { return p->mutable_optional_type(); }
