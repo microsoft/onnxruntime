@@ -5,7 +5,7 @@ from onnx import TensorProto, helper, GraphProto, ModelProto, TensorProto
 from transformers import WhisperConfig
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from onnx_model import OnnxModel  # noqa: E402
-from convert_generation import get_shared_initializers, remove_shared_initializers
+from convert_generation import get_shared_initializers
 
 def add_attention_mask(model):
     # Add attention mask - required by BeamSearch but unused in Pytorch
