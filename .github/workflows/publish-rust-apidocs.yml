@@ -22,7 +22,7 @@ jobs:
       - name: Run rust docs generation
         run: |
            cd rust
-           RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo +nightly doc --no-deps
+           ORT_RUST_STRATEGY=download RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo +nightly doc --no-deps
       - name: Debug
         run: |
            cd rust
