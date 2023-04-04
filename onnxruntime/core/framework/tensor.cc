@@ -98,20 +98,19 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::sha
                gsl::span<const int64_t> strides)
     : Tensor(!shape.shardInfo().has_value() && allocators.size() == 1? Tensor(p_type, shape, allocators[0], strides) : Tensor()) {
   alloc_info_ = allocators[0]->Info();
-  const auto shardDims = shape.shardInfo()->shardDims_;
   ORT_ENFORCE(p_type != nullptr);
-  ORT_ENFORCE(shardDims.has_value());
+  ORT_ENFORCE(shape.shardInfo().has_value());
   ORT_ENFORCE(allocators.size() > 1);
-
-  assert(ShardUtils::NumShards(shardDims.value()) == allocators.size());
+  auto shardDims = shape.shardInfo()->shardDims_;
+  assert(ShardUtils::NumShards(shardDims) == allocators.size());
   std::vector<Buffer> buffers;
   for (auto allocator : allocators)
   {
-    auto shard = ShardUtils::GetShardSize(shape, shardDims.value());
+    TensorShape shard = ShardUtils::GetShardSize(shape, shardDims);
     const size_t len = Tensor::CalculateTensorStorageSize(p_type, shard, strides);
     buffers.emplace_back(MakeBuffer(len, allocator, allocator->Info().location));
   }
-  Init(p_type, std::make_shared<Storage>(std::move(buffers), shardDims), shape, strides);
+  Init(p_type, std::make_shared<Storage>(std::move(buffers), std::make_optional(shardDims)), shape, strides);
 }
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
@@ -177,8 +176,8 @@ void Tensor::Init(MLDataType p_type, std::shared_ptr<Storage> storage, const Ten
   // do the placement new for strings on pre-allocated buffer.
   if (IsDataTypeString())
   {
-    storage_->Apply([=, elemSize = this->p_type](Buffer& buffer){
-      if (buffer.deleter()) {
+    storage_->Apply([=, elemSize = p_type->Size()](Buffer& buffer){
+      if (buffer.OwnBuffer()) {
         utils::ConstructStrings(buffer.Data(), buffer.Size() / elemSize);
       }
     });
@@ -227,7 +226,7 @@ Tensor::~Tensor() {
 
 void Tensor::ReleaseBuffer() {
   if (IsDataTypeString()) {
-    storage_->Apply([=, elemSize = p_type->Size()](Buffer& buffer){
+    storage_->Apply([=, elemSize = this->DataType()->Size()](Buffer& buffer){
       if (buffer.OwnBuffer()) {
             utils::DestroyStrings(buffer.Data(), buffer.Size() / elemSize);
           }
