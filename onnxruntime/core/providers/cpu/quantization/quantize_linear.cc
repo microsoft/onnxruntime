@@ -122,6 +122,16 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+template<typename T>
+void LocalParQuantizeLinear(const float* Input, T* Output, size_t N, float Scale, T ZeroPoint, bool /* saturate */, concurrency::ThreadPool* thread_pool) {
+  ParQuantizeLinearStd(Input, Output, N, Scale, ZeroPoint, thread_pool);
+}
+
+template<typename T>
+T LocalDefaultZero() {
+  return static_cast<T>(0);
+}
+
 #define REGISTER_QUANTIZELINEAR(T)                                    \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
       QuantizeLinear,                                                 \
@@ -153,14 +163,28 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T>);
 
+#define REGISTER_QUANTIZELINEAR_FLOAT8(T)                             \
+  REGISTER_QUANTIZELINEAR(T)                                          \
+  template<>                                                          \
+  T LocalDefaultZero() {                                              \
+    return T(static_cast<unsigned char>(0), T::FromBits);\
+  }                                                                   \
+  template<>                                                          \
+  void LocalParQuantizeLinear(const float* Input, T* Output, size_t N, float Scale, T ZeroPoint, bool saturate, concurrency::ThreadPool* thread_pool) { \
+    ParQuantizeLinearSat(Input, Output, N, Scale, ZeroPoint, saturate, thread_pool); \
+  }
+
 REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
-REGISTER_QUANTIZELINEAR(Float8E4M3FN)
-REGISTER_QUANTIZELINEAR(Float8E4M3FNUZ)
-REGISTER_QUANTIZELINEAR(Float8E5M2)
-REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
+
+REGISTER_QUANTIZELINEAR_FLOAT8(Float8E4M3FN)
+REGISTER_QUANTIZELINEAR_FLOAT8(Float8E4M3FNUZ)
+REGISTER_QUANTIZELINEAR_FLOAT8(Float8E5M2)
+REGISTER_QUANTIZELINEAR_FLOAT8(Float8E5M2FNUZ)
+
 REGISTER_QUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t)
+
 
 // formula is Y = X / Scale + ZeroPoint
 template <typename T>
@@ -183,8 +207,8 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   for (size_t n = 0; n < static_cast<size_t>(N); n++) {
     for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
-      T zp = zero_point != nullptr ? zero_point[bd] : static_cast<T>(0);
-      ParQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], zp, ctx->GetOperatorThreadPool());
+      T zp = zero_point != nullptr ? zero_point[bd] : LocalDefaultZero<T>();
+      LocalParQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], zp, saturate_, ctx->GetOperatorThreadPool());
       input += block_size;
       output += block_size;
     }

@@ -12,5 +12,8 @@ namespace cuda {
 template <class TOUT, class TIN>
 Status CudaCast(cudaStream_t stream, const TIN* input, TOUT* output, size_t num_of_element);
 
+template <class TOUT, class TIN>
+Status CudaCastF8(cudaStream_t stream, const TIN* input, TOUT* output, size_t num_of_element, bool saturate);
+
 }  // namespace cuda
 }  // namespace onnxruntime

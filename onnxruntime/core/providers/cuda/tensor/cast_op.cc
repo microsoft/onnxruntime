@@ -166,11 +166,12 @@ Status Cast<float>::ComputeInternal(OpKernelContext* context) const {
     case TensorProto_DataType_FLOAT8E4M3FN:
       std::cout << "CudaCast to=" << to_ << "\n";
       if (count > 0) {
-        return CudaCast<Float8E4M3FN, float>(
+        return CudaCastF8<Float8E4M3FN, float>(
             Stream(context),
             x_data,
             reinterpret_cast<Float8E4M3FN*>(Y->MutableData<Float8E4M3FN>()),
-            count);
+            count,
+            saturate_);
       }
       break;
     default:

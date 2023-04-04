@@ -33,9 +33,9 @@ struct Float8E4M3FN {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E4M3FN(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E4M3FN(float v) {
+  inline ORT_HOST_DEVICE Float8E4M3FN(float v, bool saturate=true) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
-    val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E4M3);
+    val = __nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3);
 #else
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -44,8 +44,11 @@ struct Float8E4M3FN {
     if ((b & 0x7fc00000) == 0x7fc00000) {
       val |= 0x7f;
     } else if ((b & 0x7fffffff) == 0x7f800000) {
-      // infinity
-      val |= 0x7f;
+      if (saturate) {
+        val |= 126;
+      } else {
+        val |= 0x7f;
+      }
     } else {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
@@ -77,12 +80,18 @@ struct Float8E4M3FN {
               val &= 0xFE;
             }
           }
-          if ((m & 0x80000) && ((val & 0x7F) < 0x7E)) {
-            // rounding
-            val += 1;
+          if (m & 0x80000) {
+            if ((val & 0x7F) < 0x7E) {
+              // rounding
+              val += 1;
+            } else if (!saturate) {
+              val |= 0x7F;
+            }
           }
-        } else {
+        } else if (saturate) {
           val |= 126;  // 0b01111110
+        } else {
+          val |= 0x7F;
         }
       }
     }
@@ -155,7 +164,7 @@ inline Float8E4M3FN operator"" _f8e4m3fn(unsigned long long int v) {
 }
 
 inline Float8E4M3FN operator"" _f8e4m3fnp8(long double v) {
-  return Float8E4M3FN(static_cast<float>(v));
+  return Float8E4M3FN(static_cast<float>(v), true);
 }
 
 #endif
@@ -168,11 +177,11 @@ inline void Float8E4M3FNToFloat(const Float8E4M3FN* blf, float* flt, size_t size
   }
 }
 
-inline void FloatToFloat8E4M3FN(const float* flt, Float8E4M3FN* blf, size_t size) {
+inline void FloatToFloat8E4M3FN(const float* flt, Float8E4M3FN* blf, size_t size, bool saturate) {
   auto src = flt;
   auto d = blf;
   for (; size != 0; ++src, ++d, --size) {
-    new (d) Float8E4M3FN(*src);
+    new (d) Float8E4M3FN(*src, saturate);
   }
 }
 
@@ -189,7 +198,7 @@ struct Float8E4M3FNUZ {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E4M3FNUZ(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E4M3FNUZ(float v) {
+  inline ORT_HOST_DEVICE Float8E4M3FNUZ(float v, bool saturate=true) {
     // This type does not exist on CUDA.
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -198,8 +207,12 @@ struct Float8E4M3FNUZ {
     if ((b & 0x7fc00000) == 0x7fc00000) {
       val = 0x80;
     } else if ((b & 0x7fffffff) == 0x7f800000) {
-      // infinity
-      val = 0x80;
+      if (saturate) {
+        val |= 126;
+      } else {
+        // infinity
+        val = 0x80;
+      }
     } else {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
@@ -228,13 +241,22 @@ struct Float8E4M3FNUZ {
             val |= ex << 3;
             val |= m >> 20;
           }
-          if ((m & 0x80000) && ((val & 0x7F) < 0x7F)) {
-            // rounding
-            val += 1;
+          if (m & 0x80000) {
+            if ((val & 0x7F) < 0x7F) {
+              // rounding
+              val += 1;
+            } else if (!saturate) {
+              val |= 0x80;
+            }
           }
-        } else {
+        } else if (saturate) {
           val |= 0x7F;
+        } else {
+          val = 0x80;
         }
+      } else if (m ==0) {
+        // -0
+        val = 0;
       }
     }
   }
@@ -295,7 +317,7 @@ inline Float8E4M3FNUZ operator"" _f8e4m3p8fnuz(unsigned long long int v) {
 }
 
 inline Float8E4M3FNUZ operator"" _f8e4m3fnuzp8(long double v) {
-  return Float8E4M3FNUZ(static_cast<float>(v));
+  return Float8E4M3FNUZ(static_cast<float>(v), true);
 }
 
 #endif
@@ -308,11 +330,11 @@ inline void Float8E4M3FNUZToFloat(const Float8E4M3FNUZ* blf, float* flt, size_t 
   }
 }
 
-inline void FloatToFloat8E4M3FNUZ(const float* flt, Float8E4M3FNUZ* blf, size_t size) {
+inline void FloatToFloat8E4M3FNUZ(const float* flt, Float8E4M3FNUZ* blf, size_t size, bool saturate) {
   auto src = flt;
   auto d = blf;
   for (; size != 0; ++src, ++d, --size) {
-    new (d) Float8E4M3FNUZ(*src);
+    new (d) Float8E4M3FNUZ(*src, saturate);
   }
 }
 
@@ -329,9 +351,9 @@ struct Float8E5M2 {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E5M2(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E5M2(float v) {
+  inline ORT_HOST_DEVICE Float8E5M2(float v, bool saturate=true) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
-    val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E5M2);
+    val = __nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E5M2);
 #else
     #if defined(CUDA_VERSION)
     #error "CUDA should be used."
@@ -343,6 +365,12 @@ struct Float8E5M2 {
     val = (b & 0x80000000) >> 24;           // sign
     if ((b & 0x7fc00000) == 0x7fc00000) {
       val |= 0x7f;
+    } else if ((b & 0x7FFFFFFF) == 0x7F800000) { // inf
+      if (saturate) {
+        val |= 0x7B;
+      } else {
+        val |= 0x7C;
+      }
     } else {
       uint32_t e = (b & 0x7F800000) >> 23;  // exponent
       uint32_t m = b & 0x007FFFFF;          // mantissa
@@ -367,14 +395,20 @@ struct Float8E5M2 {
           auto ex = e - 112;   // 127 - 15
           val |= ex << 2;
           val |= m >> 21;
-          if ((m & 0x100000) && ((val & 0x7F) < 0x7B)) {
-            // rounding
-            val += 1;
+          if (m & 0x100000) {
+            if ((val & 0x7F) < 0x7B) {
+              // rounding
+              val += 1;
+            } else if (saturate) {
+              val |= 0x7B;
+            } else {
+              val |= 0x7C;
+            }
           }
-        } else if ((e == 255) && (m == 0)) {  // inf
-          val |= 124;
+        } else if (saturate) {
+          val |= 0x7B;
         } else {
-          val |= 123;
+          val |= 0x7C;
         }
       }
     }
@@ -450,7 +484,7 @@ inline Float8E5M2 operator"" _f8e5m2fn(unsigned long long int v) {
 }
 
 inline Float8E5M2 operator"" _f8e5m2fnp8(long double v) {
-  return Float8E5M2(static_cast<float>(v));
+  return Float8E5M2(static_cast<float>(v), true);
 }
 
 #endif
@@ -463,11 +497,11 @@ inline void Float8E5M2ToFloat(const Float8E5M2* blf, float* flt, size_t size) {
   }
 }
 
-inline void FloatToFloat8E5M2(const float* flt, Float8E5M2* blf, size_t size) {
+inline void FloatToFloat8E5M2(const float* flt, Float8E5M2* blf, size_t size, bool saturate) {
   auto src = flt;
   auto d = blf;
   for (; size != 0; ++src, ++d, --size) {
-    new (d) Float8E5M2(*src);
+    new (d) Float8E5M2(*src, saturate);
   }
 }
 
@@ -484,7 +518,7 @@ struct Float8E5M2FNUZ {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E5M2FNUZ(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E5M2FNUZ(float v) {
+  inline ORT_HOST_DEVICE Float8E5M2FNUZ(float v, bool saturate=true) {
     // This type does not exist on CUDA.
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -492,6 +526,12 @@ struct Float8E5M2FNUZ {
     val = (b & 0x80000000) >> 24;           // sign
     if ((b & 0x7fc00000) == 0x7fc00000) {
       val = 0x80;
+    } else if ((b & 0x7FFFFFFF) == 0x7F800000) { // inf
+      if (saturate) {
+        val |= 0x7F;
+      } else {
+        val = 0x80;
+      }
     } else {
       uint32_t e = (b & 0x7F800000) >> 23;  // exponent
       uint32_t m = b & 0x007FFFFF;          // mantissa
@@ -516,15 +556,24 @@ struct Float8E5M2FNUZ {
           auto ex = e - 111;
           val |= ex << 2;
           val |= m >> 21;
-          if ((m & 0x100000) && ((val & 0x7F) < 0x7F)) {
-            // rounding
-            val += 1;
+          if (m & 0x100000) {
+            if ((val & 0x7F) < 0x7F) {
+              // rounding
+              val += 1;
+            } else if (!saturate) {
+              val = 0x80;
+            }
           }
         } else if ((e == 255) && (m == 0)) {  // inf
           val = 0x80;
+        } else if (saturate) {
+          val |= 0x7F;
         } else {
-          val |= 0x7f;
+          val = 0x80;
         }
+      } else if (m ==0) {
+        // -0
+        val = 0;
       }
     }
   }
@@ -580,7 +629,7 @@ inline Float8E5M2FNUZ operator"" _f8e5m2fnuz(unsigned long long int v) {
 }
 
 inline Float8E5M2FNUZ operator"" _f8e5m2fnuzp8(long double v) {
-  return Float8E5M2FNUZ(static_cast<float>(v));
+  return Float8E5M2FNUZ(static_cast<float>(v), true);
 }
 
 #endif
@@ -593,11 +642,11 @@ inline void Float8E5M2FNUZToFloat(const Float8E5M2FNUZ* blf, float* flt, size_t 
   }
 }
 
-inline void FloatToFloat8E5M2FNUZ(const float* flt, Float8E5M2FNUZ* blf, size_t size) {
+inline void FloatToFloat8E5M2FNUZ(const float* flt, Float8E5M2FNUZ* blf, size_t size, bool saturate) {
   auto src = flt;
   auto d = blf;
   for (; size != 0; ++src, ++d, --size) {
-    new (d) Float8E5M2FNUZ(*src);
+    new (d) Float8E5M2FNUZ(*src, saturate);
   }
 }
 

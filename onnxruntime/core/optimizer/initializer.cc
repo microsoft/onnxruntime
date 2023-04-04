@@ -105,8 +105,8 @@ struct ToFloat8E4M3FN;
 
 template <>
 struct ToFloat8E4M3FN<float> {
-  uint8_t operator()(float f) const {
-    return Float8E4M3FN(f).val;
+  uint8_t operator()(float f, bool saturate) const {
+    return Float8E4M3FN(f, saturate).val;
   }
 };
 
@@ -115,8 +115,8 @@ struct ToFloat8E4M3FNUZ;
 
 template <>
 struct ToFloat8E4M3FNUZ<float> {
-  uint8_t operator()(float f) const {
-    return Float8E4M3FNUZ(f).val;
+  uint8_t operator()(float f, bool saturate) const {
+    return Float8E4M3FNUZ(f, saturate).val;
   }
 };
 
@@ -125,8 +125,8 @@ struct ToFloat8E5M2;
 
 template <>
 struct ToFloat8E5M2<float> {
-  uint8_t operator()(float f) const {
-    return Float8E5M2(f).val;
+  uint8_t operator()(float f, bool saturate) const {
+    return Float8E5M2(f, saturate).val;
   }
 };
 
@@ -135,8 +135,8 @@ struct ToFloat8E5M2FNUZ;
 
 template <>
 struct ToFloat8E5M2FNUZ<float> {
-  uint8_t operator()(float f) const {
-    return Float8E5M2FNUZ(f).val;
+  uint8_t operator()(float f, bool saturate) const {
+    return Float8E5M2FNUZ(f, saturate).val;
   }
 };
 
