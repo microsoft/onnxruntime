@@ -251,9 +251,9 @@ std::optional<ReshapeInfo> UpStreamReshapeGraphTransformer::IsSupportedForUpstre
   }
 
   bool are_first_two_dims_concrete = utils::HasDimValue(data_shape->dim(0)) && utils::HasDimValue(data_shape->dim(1));
-  int merged_dims_value = are_first_two_dims_concrete
-                              ? data_shape->dim(0).dim_value() * data_shape->dim(1).dim_value()
-                              : -1;
+  int64_t merged_dims_value = are_first_two_dims_concrete
+                                  ? data_shape->dim(0).dim_value() * data_shape->dim(1).dim_value()
+                                  : -1;
 
   InlinedVector<int64_t> new_shape_const_values;
   optimizer_utils::AppendTensorFromInitializer(graph, *node.InputDefs()[1], new_shape_const_values, true);
