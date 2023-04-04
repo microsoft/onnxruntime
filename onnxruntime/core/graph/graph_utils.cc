@@ -626,7 +626,7 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
 
   for (const auto* input_def : node.InputDefs()) {
     // For optional node inputs which are missing, we can safely ignore them
-    if (input_def->Name() == "") {
+    if (input_def->Name().empty()) {
       continue;
     }
 
