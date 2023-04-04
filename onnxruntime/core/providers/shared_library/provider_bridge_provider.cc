@@ -285,8 +285,8 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
-AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  return g_host->IExecutionProvider__GetAllocator(this, id, mem_type);
+AllocatorPtr IExecutionProvider::GetAllocator(OrtMemType mem_type) const {
+  return g_host->IExecutionProvider__GetAllocator(this, mem_type);
 }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
@@ -690,6 +690,10 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #if defined(USE_CANN)
 RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
+void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream,
+                                WaitNotificationFn wait_fn) {
+  return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn);
+}
 
 namespace cann {
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {

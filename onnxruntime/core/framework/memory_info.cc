@@ -266,7 +266,7 @@ void MemoryProfiler::CreateEvents(const std::string& p_name,
                                   const OrtDevice::DeviceType device_type) {
   // Metadata.
   std::string pid_name_internal = "device_" + std::to_string(device_type) + "_" + p_name + group_name;
-  events.push_back(CreateMetadataEvent(pid_name_internal, pid));
+  events_.push_back(CreateMetadataEvent(pid_name_internal, pid));
   size_t summary_size = 10;
   std::hash<std::string> str_hash;
 
@@ -350,14 +350,14 @@ void MemoryProfiler::CreateEvents(const std::string& p_name,
         size_t offset = IsStaticType(map_type) ? map.GetPlannedAddress(live_tensor) : map.GetAllocAddress(live_tensor);
         size_t size = IsStaticType(map_type) ? map.GetPlannedSize(live_tensor) : map.GetAllocSize(live_tensor);
         alloc_size_for_pattern += size;
-        events.push_back(CreateMemoryEvent(pid, item.first, name, offset, size, cname));
+        events_.push_back(CreateMemoryEvent(pid, item.first, name, offset, size, cname));
         has_other_tensors = true;
       }
       // If for that time steps, we have other tensors to plot other than just summary, add summary events.
       // These will show up visually as 10 % of the max width in a section.
       if (has_other_tensors) {
         summary_size = std::max(summary_size, item.second.total_size / 10);
-        events.push_back(CreateSummaryEvent(pid, item.first, item.second, summary_size, alloc_size_for_pattern));
+        events_.push_back(CreateSummaryEvent(pid, item.first, item.second, summary_size, alloc_size_for_pattern));
       }
     }
   }

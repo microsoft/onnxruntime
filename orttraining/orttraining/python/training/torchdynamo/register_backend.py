@@ -4,9 +4,9 @@
 # --------------------------------------------------------------------------
 
 from functorch.compile import min_cut_rematerialization_partition
-from torch._dynamo.optimizations.training import aot_autograd
-from .ort_backend import OrtBackend
+from torch._dynamo.backends.common import aot_autograd
 
+from .ort_backend import OrtBackend
 
 # This should be the underlying compiler for ALL graphs if
 # the user uses ORT to accelerate PyTorch via Dynamo.

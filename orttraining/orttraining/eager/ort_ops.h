@@ -25,7 +25,7 @@ OrtValue reshape_invoke(
   // todo: avoid the copy on this small shape vector;
   auto element_type = onnxruntime::DataTypeImpl::GetType<int64_t>();
   onnxruntime::Tensor::InitOrtValue(element_type, onnxruntime::TensorShape({(int64_t)shape.size()}),
-                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault),
                                     shape_tensor);
   auto* ort_shape_tensor = shape_tensor.GetMutable<onnxruntime::Tensor>();
   CopyVectorToTensor<int64_t>(invoker, shape.data(), shape.size(), *ort_shape_tensor);
@@ -41,7 +41,7 @@ OrtValue add(onnxruntime::ORTInvoker& invoker,
              const OrtValue& A,
              const OrtValue& B);
 
-void copy(onnxruntime::ORTInvoker& invoker, 
+void copy(onnxruntime::ORTInvoker& invoker,
           const OrtValue& src, OrtValue& dst);
 
 } // namespace eager

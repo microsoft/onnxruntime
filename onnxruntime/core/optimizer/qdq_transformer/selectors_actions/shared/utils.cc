@@ -30,21 +30,37 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
   return {{"Gather", {}},
           {"Reshape", {}},
+          {"Flatten", {}},
           {"Transpose", {}},
           {"MaxPool", {12}},
           {"Resize", {}},
+          {"Split", {}},
           {"Squeeze", {}},
           {"Unsqueeze", {}}};
 }
 
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
+          {"GlobalAveragePool", {}},
+          {"LeakyRelu", {}},
+          {"ReduceMean", {}},
+          {"ReduceMin", {}},
+          {"ReduceMax", {}},
+          {"ReduceProd", {}},
+          {"ReduceSum", {}},
+          {"Relu", {}},
+          {"Sigmoid", {}},
+          {"Slice", {}},
           {"Softmax", {}},
-          {"LeakyRelu", {}}};
+          {"Sqrt", {}},
+          {"Tanh", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
-          {"Mul", {}}};
+          {"Div", {}},
+          {"Mul", {}},
+          {"Pow", {}},
+          {"Sub", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
   return {{"Concat", {}}};
@@ -60,6 +76,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
 }
 static const OpVersionsAndSelector::OpVersionsMap GetGemmOpVersionsMap() {
   return {{"Gemm", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetInstanceNormalizationOpVersionsMap() {
+  return {{"InstanceNormalization", {}}};
 }
 
 /* Selector rules registration related */
@@ -120,6 +139,13 @@ void RegisterGemmSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterInstanceNormalizationSelector(Selectors& qdq_selectors) {
+  /* register selector for InstanceNormalization op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<InstanceNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetInstanceNormalizationOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
@@ -129,6 +155,7 @@ void SelectorManager::CreateSelectors() {
   RegisterConvTransposeSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
+  RegisterInstanceNormalizationSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {
@@ -179,6 +206,30 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
   }
 
   return qdq_selections;
+}
+
+Status ValidateNodeGroupDQNodes(const GraphViewer& graph_viewer,
+                                const Node& target_node,
+                                gsl::span<const Node* const> dq_nodes) {
+  // Within a QDQ node group, a target node input is the only consumer of each DQ.
+  // This should have been ensured by the EnsureUniqueDQForNodeUnit graph transformer, but other graph modifications
+  // may have happened since. Verify that this is still true.
+  for (const auto* dq_node : dq_nodes) {
+    const bool dq_produces_graph_output = graph_viewer.NodeProducesGraphOutput(*dq_node);
+    ORT_RETURN_IF(dq_produces_graph_output,
+                  "QDQ node group cannot have DQ node that produces a graph output. DQ node: ", dq_node->Name(),
+                  ", target node: ", target_node.Name());
+
+    const bool dq_has_single_output_edge_to_target =
+        dq_node->GetOutputEdgesCount() == 1 &&
+        dq_node->OutputEdgesBegin()->GetNode().Index() == target_node.Index();
+    ORT_RETURN_IF_NOT(dq_has_single_output_edge_to_target,
+                      "QDQ node group cannot have DQ that doesn't have a single output edge to the target node. "
+                      "DQ node: ",
+                      dq_node->Name(), ", target node: ", target_node.Name());
+  }
+
+  return Status::OK();
 }
 
 }  // namespace QDQ

@@ -7,7 +7,7 @@ from datetime import date
 
 import numpy as np
 import onnx
-from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper, utils
+from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper, utils  # noqa: F401
 
 
 def parse_arguments():
@@ -47,8 +47,8 @@ def generate_abs_op_test(type, X, top_test_folder):
         data_dir = os.path.join(test_folder, "test_data_0")
         os.makedirs(data_dir, exist_ok=True)
         # Create one output (ValueInfoProto)
-        Y = helper.make_tensor_value_info("Y", type, X.shape)
-        X_INFO = helper.make_tensor_value_info("X", type, X.shape)
+        Y = helper.make_tensor_value_info("Y", type, X.shape)  # noqa: N806
+        X_INFO = helper.make_tensor_value_info("X", type, X.shape)  # noqa: N806
         if is_raw:
             tensor_x = onnx.helper.make_tensor(name="X", data_type=type, dims=X.shape, vals=X.tobytes(), raw=True)
         else:
@@ -75,8 +75,8 @@ def generate_size_op_test(type, X, test_folder):
     data_dir = os.path.join(test_folder, "test_data_0")
     os.makedirs(data_dir, exist_ok=True)
     # Create one output (ValueInfoProto)
-    Y = helper.make_tensor_value_info("Y", TensorProto.INT64, [])
-    X_INFO = helper.make_tensor_value_info("X", type, X.shape)
+    Y = helper.make_tensor_value_info("Y", TensorProto.INT64, [])  # noqa: N806
+    X_INFO = helper.make_tensor_value_info("X", type, X.shape)  # noqa: N806
     tensor_x = onnx.helper.make_tensor(name="X", data_type=type, dims=X.shape, vals=X.ravel(), raw=False)
     # Create a node (NodeProto)
     node_def = helper.make_node("Size", inputs=["X"], outputs=["Y"])
@@ -98,8 +98,8 @@ def generate_reducesum_op_test(X, test_folder):
     data_dir = os.path.join(test_folder, "test_data_0")
     os.makedirs(data_dir, exist_ok=True)
     # Create one output (ValueInfoProto)
-    Y = helper.make_tensor_value_info("Y", type, [])
-    X_INFO = helper.make_tensor_value_info("X", type, X.shape)
+    Y = helper.make_tensor_value_info("Y", type, [])  # noqa: N806
+    X_INFO = helper.make_tensor_value_info("X", type, X.shape)  # noqa: N806
     tensor_x = onnx.helper.make_tensor(name="X", data_type=type, dims=X.shape, vals=X.ravel(), raw=False)
     # Create a node (NodeProto)
     node_def = helper.make_node("ReduceSum", inputs=["X"], outputs=["Y"], keepdims=0)

@@ -28,6 +28,7 @@
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
+#include "orttraining/core/optimizer/lstm_replacement.h"
 
 #include <random>
 
@@ -951,6 +952,101 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
   ASSERT_TRUE(op_to_count["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
 }
 
+class LSTMReplacementTestsParameterized : public GraphTransformationTests,
+                                          public ::testing::WithParamInterface<std::tuple<int, bool, bool, bool>> {
+};
+
+TEST_P(LSTMReplacementTestsParameterized, CheckLSTMReplacement) {
+  Model model("LSTMReplacement", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}}, {}, *logger_);
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor;
+  tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  onnxruntime::NodeArg X("X", &tensor);
+  onnxruntime::NodeArg W("W", &tensor);
+  onnxruntime::NodeArg R("R", &tensor);
+  onnxruntime::NodeArg B("B", &tensor);
+  onnxruntime::NodeArg SL("", nullptr);
+  onnxruntime::NodeArg H0("H0", &tensor);
+  onnxruntime::NodeArg C0("C0", &tensor);
+  onnxruntime::NodeArg P("P", &tensor);
+
+  onnxruntime::NodeArg HAll("HAll", &tensor);
+  onnxruntime::NodeArg HAllDummy("", nullptr);
+  onnxruntime::NodeArg Ht("Ht", &tensor);
+  onnxruntime::NodeArg HtDummy("", nullptr);
+  onnxruntime::NodeArg Ct("Ct", &tensor);
+  onnxruntime::NodeArg CtDummy("", nullptr);
+
+  InlinedVector<onnxruntime::NodeArg*> outputs;
+  const int num_outputs = std::get<0>(GetParam());
+  outputs.reserve(num_outputs);
+  const bool output_hall = std::get<1>(GetParam());
+  const bool output_final_h = std::get<2>(GetParam());
+  const bool output_final_c = std::get<3>(GetParam());
+
+  if (num_outputs > 0) {
+    if (output_hall) {
+      outputs.push_back(&HAll);
+    } else {
+      outputs.push_back(&HAllDummy);
+    }
+  }
+
+  if (num_outputs > 1) {
+    if (output_final_h) {
+      outputs.push_back(&Ht);
+    } else {
+      outputs.push_back(&HtDummy);
+    }
+  }
+
+  if (num_outputs > 2) {
+    if (output_final_c) {
+      outputs.push_back(&Ct);
+    } else {
+      outputs.push_back(&CtDummy);
+    }
+  }
+
+  Node& lstm_node = graph.AddNode(
+      "lstm", "LSTM", "LSTM operator",
+      {&X, &W, &R, &B, &SL, &H0, &C0, &P}, outputs, nullptr);
+  lstm_node.AddAttribute("hidden_size", static_cast<int64_t>(128));
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count1.count("LSTM") && op_to_count1["LSTM"] == 1);
+  ASSERT_FALSE(op_to_count1.count("LSTMTraining"));
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("LSTMReplacement");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<LSTMReplacement>()));
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count2 = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count2.count("com.microsoft.LSTMTraining") && op_to_count2["com.microsoft.LSTMTraining"] == 1);
+
+  const auto nodes = graph.Nodes();
+  ASSERT_FALSE(nodes.empty());
+  const auto& lstm_outputs = nodes.begin()->OutputDefs();
+  ASSERT_EQ(lstm_outputs.size(), 5U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    LSTMReplacementTests,
+    LSTMReplacementTestsParameterized,
+    ::testing::Values(
+        std::make_tuple(0, false, false, false),
+        std::make_tuple(1, true, false, false),
+        std::make_tuple(2, false, true, false),
+        std::make_tuple(3, false, false, true),
+        std::make_tuple(3, true, true, true)));
+
 class QDQFusionTestsParameterized : public GraphTransformationTests,
                                     public ::testing::WithParamInterface<std::tuple<PathString>> {
 };
@@ -1037,7 +1133,7 @@ static void RunPartitionCorrectnessTest(std::string model_path,
                   [&generator, &distribution](float& value) { value = distribution(generator); });
 
     OrtValue ml_value;
-    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_X, values_X, &ml_value);
     feeds.insert(std::make_pair(input_names[i], ml_value));
   }
 

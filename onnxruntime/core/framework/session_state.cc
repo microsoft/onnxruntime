@@ -100,8 +100,8 @@ void SessionState::SetupAllocators() {
       } else {
         // slightly weird indirection to go back to the provider to get the allocator each time it's needed
         // in order to support scenarios such as the CUDA EP's per-thread allocator.
-        allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
-          return provider->GetAllocator(id, mem_type);
+        allocators_[memory_info] = [&provider](OrtMemType mem_type) {
+          return provider->GetAllocator(mem_type);
         };
       }
     }
@@ -112,7 +112,7 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
   AllocatorPtr result;
   auto entry = allocators_.find(location);
   if (entry != allocators_.cend()) {
-    result = entry->second(location.id, location.mem_type);
+    result = entry->second(location.mem_type);
   }
 
   return result;
@@ -121,7 +121,7 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
 AllocatorPtr SessionState::GetAllocator(OrtDevice device) const noexcept {
   for (const auto& iter : allocators_) {
     if (iter.first.device == device) {
-      return iter.second(device.Id(), iter.first.mem_type);
+      return iter.second(iter.first.mem_type);
     }
   }
   return nullptr;
@@ -243,6 +243,39 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
   }
   node_index_info_.emplace(*graph_viewer_, ort_value_name_idx_map_);
   return Status::OK();
+}
+
+void SessionState::PruneRemovableAttributes() {
+  InlinedVector<std::string> removable_attributes;
+  for (size_t i = 0; i < session_kernels_.size(); ++i) {
+    if (session_kernels_[i].get() == nullptr)
+      continue;
+    auto status = session_kernels_[i].get()->GetRemovableAttributes(removable_attributes);
+    if (!status.IsOK()) {
+      const Node& node_const = session_kernels_[i].get()->Node();
+      LOGS(logger_, WARNING) << "failed at retrieving the removable attributes"
+                             << "for node '" << node_const.Name() << "' ('" << node_const.OpType() << "').";
+      continue;
+    }
+    if (removable_attributes.empty())
+      continue;
+    auto index = session_kernels_[i].get()->Node().Index();
+    Node* node = graph_.GetNode(index);
+    int n_removed = node->PruneRemovableAttributes(removable_attributes);
+    if (n_removed == 0)
+      continue;
+    LOGS(logger_, INFO) << "removed " << n_removed << " removable attributes "
+                        << "for node '" << node->Name() << "' ('" << node->OpType() << "'), "
+                        << "among attributes: " << [removable_attributes]() -> std::string{
+                          std::ostringstream os;
+                          for(auto it = removable_attributes.cbegin(); it != removable_attributes.cend(); ++it) {
+                            if (it != removable_attributes.cbegin())
+                              os << ", ";
+                            os << *it;
+                          }
+                          return os.str();
+                        }() << ".";
+  }
 }
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
@@ -451,7 +484,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   }
 
                 } else {  // caching of pre-packed weights' turned OFF
-                  AllocatorPtr session_cpu_alloc = kernel->Info().GetAllocator(0, OrtMemType::OrtMemTypeDefault);
+                  AllocatorPtr session_cpu_alloc = kernel->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
                   ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx,
                                                       session_cpu_alloc,  // use allocator tied to this session
                                                       is_packed,
@@ -1377,14 +1410,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
 
-// Record the allocation plan
+  // Record the allocation plan
 
-// Uncomment the below to dump the allocation plan to std::cout
-// LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+  // Uncomment the below to dump the allocation plan to std::cout
+  // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  auto mem_profiler = std::make_unique<MemoryProfiler>();
-  mem_profiler->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
-  SetMemoryProfiler(mem_profiler.release());
+  GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
 
   // Note: For Training Prepacking should be always disabled.

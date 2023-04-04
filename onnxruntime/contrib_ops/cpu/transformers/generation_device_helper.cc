@@ -407,18 +407,18 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
 template <typename T>
 Status GreedySearchProcessLogits(
-  const OrtValue& logits,                                     // logits output of subgraph
-  transformers::IGreedySearchState<T>* greedy_state,          // state
-  transformers::ISamplingState<T>* sampling_state,        // sampling_state
-  transformers::ISequences* sequences,                        // sequences
-  AllocatorPtr& allocator,                                    // default allocator
-  onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
-  transformers::ILogitsProcessorList* logits_processors,      // logits processors
-  const transformers::IGenerationParameters* parameters,      // parameters
-  bool do_sampling,                                           // whether to do sampling
-  int step,                                                   // iteration counter
-  Stream* stream,                                             // cuda stream (for CUDA only)
-  const transformers::IConsoleDumper* dumper) {               // tensor dumper
+    const OrtValue& logits,                                 // logits output of subgraph
+    transformers::IGreedySearchState<T>* greedy_state,      // state
+    transformers::ISamplingState<T>* sampling_state,        // sampling_state
+    transformers::ISequences* sequences,                    // sequences
+    AllocatorPtr& allocator,                                // default allocator
+    onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+    transformers::ILogitsProcessorList* logits_processors,  // logits processors
+    const transformers::IGenerationParameters* parameters,  // parameters
+    bool do_sampling,                                       // whether to do sampling
+    int step,                                               // iteration counter
+    Stream* stream,                                         // cuda stream (for CUDA only)
+    const transformers::IConsoleDumper* dumper) {           // tensor dumper
 
   int batch_size = parameters->batch_size;
   int vocab_size = parameters->vocab_size;
@@ -499,8 +499,8 @@ Status GreedySearchProcessLogits(
                            topk_indices));
 
 #ifdef DEBUG_GENERATION
-    dumper->Print("topk_scores", topk_scores);
-    dumper->Print("topk_indices", topk_indices);
+  dumper->Print("topk_scores", topk_scores);
+  dumper->Print("topk_indices", topk_indices);
 #endif
 
   gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
@@ -574,15 +574,21 @@ Status UpdateGptFeeds(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_cpu,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len) {
+    int past_sequence_len,
+    int input_sequence_len,
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(beam_indices_gpu);
+  ORT_UNUSED_PARAMETER(input_sequence_len);
+  ORT_UNUSED_PARAMETER(has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
   // The following updates inputs for subgraph
 
@@ -631,14 +637,14 @@ Status UpdateGptFeeds(
     return Status::OK();
   }
 
-  if (num_beams == 1) {   // Update past state
+  if (num_beams == 1) {  // Update past state
     // feed present_* output to past_* inputs one by one
     const int k = gpt_subgraph_first_past_input_idx - gpt_subgraph_first_present_output_idx;
     for (size_t i = gpt_subgraph_first_present_output_idx; i < last_outputs.size(); ++i) {
       next_inputs[i + k] = last_outputs[i];
     }
   } else {
-    PickGptPastState<T>(last_outputs, next_inputs, beam_indices,
+    PickGptPastState<T>(last_outputs, next_inputs, beam_indices_cpu,
                         gpt_subgraph_first_past_input_idx,
                         gpt_subgraph_first_present_output_idx, allocator);
   }
@@ -826,6 +832,80 @@ Status UpdateDecoderFeeds(
 }
 
 //------------------------------------------------
+//  Modified Encoder functions for Whisper Model
+//------------------------------------------------
+
+Status CreateWhisperEncoderInputs(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* attn_mask_value,
+    int pad_token_id,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_features,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids) {
+  const TensorShape& input_features_shape = original_encoder_input_features->Shape();
+  ORT_ENFORCE(input_features_shape.NumDimensions() == 3);
+  const int64_t& batch_size = input_features_shape[0];
+  const int64_t& sequence_length = input_features_shape[1];
+
+  // Allocate attention_mask based on shape of input_ids
+  auto element_type = DataTypeImpl::GetType<int32_t>();
+
+  // Use original encoder_input_ids. This requires the input_ids for subgraph is also int32.
+  // Current shape is (batch_size, sequence_length)
+  // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
+  // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
+                       input_features_shape,
+                       const_cast<Tensor*>(original_encoder_input_features)->MutableData<float>(),
+                       allocator->Info(),
+                       encoder_input_features);
+
+  if (attn_mask_value != nullptr) {
+    const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
+    Tensor::InitOrtValue(element_type, input_features_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(),
+                         allocator->Info(), encoder_attention_mask);
+  } else {
+    auto mask_type = DataTypeImpl::GetType<int32_t>();
+    Tensor::InitOrtValue(mask_type, input_features_shape, allocator, encoder_attention_mask);
+
+    // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
+    int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+    const int32_t* word_id = original_encoder_input_features->Data<int32_t>();
+    int32_t* mask = mask_data;
+    for (int i = 0; i < batch_size; i++) {
+      int32_t abs_position = 0;
+      for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
+        // T5Tokenizer might add one EOS pad token at the end.
+        // That EOS token shall have attention mask 1 even when EOS token is same as pad token.
+        // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
+        if (*word_id == pad_token_id && abs_position == 0) {
+          *mask = 0;
+        } else {
+          *mask = 1;
+          abs_position++;
+        }
+      }
+    }
+  }
+
+  // decoder_input_ids is optional.
+  if (start_token_id >= 0) {
+    // Filled decoder_input_ids with start token ID
+    int64_t dims[] = {batch_size, 1};
+    TensorShape decoder_input_ids_shape(&dims[0], 2);
+    Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, decoder_input_ids);
+    int32_t* data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+    for (int i = 0; i < batch_size; i++, data++) {
+      *data = start_token_id;
+    }
+  }
+
+  return Status::OK();
+}
+
+//------------------------------------------------
 // Explicit template instantiations of functions
 //------------------------------------------------
 
@@ -890,12 +970,15 @@ template Status UpdateGptFeeds<float>(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_cpu,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len);
+    int past_sequence_len,
+    int input_sequence_len,
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,

@@ -5,6 +5,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/framework/print_tensor_utils.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -12,6 +13,39 @@ namespace cuda {
 namespace transformers {
 
 #if DUMP_TENSOR_LEVEL > 0
+
+// Total number of elements which trigger snippet rather than full dump (default 200). Value 0 disables snippet.
+constexpr const char* kTensorSnippetThreshold = "ORT_TENSOR_SNIPPET_THRESHOLD";
+
+// Number of array items in snippet at beginning and end of each dimension (default 3)
+constexpr const char* kTensorSnippetEdgeItems = "ORT_TENSOR_SNIPPET_EDGE_ITEMS";
+
+class DumpTensorConfig {
+ public:
+  static DumpTensorConfig& instance() {
+    static DumpTensorConfig instance;
+    return instance;
+  }
+
+  DumpTensorConfig(const DumpTensorConfig&) = delete;
+  DumpTensorConfig& operator=(const DumpTensorConfig&) = delete;
+
+  int get_snippet_threshold() const { return snippet_threshold; }
+  int get_snippet_edge_items() const { return snippet_edge_items; }
+
+ private:
+  int snippet_threshold;
+  int snippet_edge_items;
+
+  DumpTensorConfig() {
+    snippet_threshold = ParseEnvironmentVariableWithDefault<int>(kTensorSnippetThreshold,
+                                                                 onnxruntime::utils::kDefaultSnippetThreshold);
+    snippet_edge_items = ParseEnvironmentVariableWithDefault<int>(kTensorSnippetEdgeItems,
+                                                                  onnxruntime::utils::kDefaultSnippetEdgeItems);
+  }
+  ~DumpTensorConfig() {}
+};
+
 template <typename T>
 class PinnedHostBuffer {
  public:
@@ -38,8 +72,6 @@ class PinnedHostBuffer {
   T* buffer_;
 };
 
-constexpr int64_t kGpuSnippetThreshold = 0;
-
 template <typename T>
 void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, bool is_gpu_tensor) {
   // Occasionally, user will need dump CPU tensor in CUDA EP.
@@ -47,15 +79,17 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, bool i
   int num_items = dim0 * dim1;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
   CUDA_CALL_THROW(cudaDeviceSynchronize());
-  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
-
+  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T),
+                             is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
   }
 
-  if (kGpuSnippetThreshold > 0 && kGpuSnippetThreshold < static_cast<int64_t>(num_items)) {
-    onnxruntime::utils::PrintCpuTensorSnippet<T>(*data, dim0, dim1, onnxruntime::utils::kDefaultSnippetEdgeItems);
+  int snippet_threshold = DumpTensorConfig::instance().get_snippet_threshold();
+  int snippet_edge_items = DumpTensorConfig::instance().get_snippet_edge_items();
+  if (snippet_threshold > 0 && snippet_threshold < num_items) {
+    onnxruntime::utils::PrintCpuTensorSnippet<T>(*data, dim0, dim1, snippet_edge_items);
   } else {
     onnxruntime::utils::PrintCpuTensorFull<T>(*data, dim0, dim1);
   }
@@ -66,14 +100,17 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int di
   int num_items = dim0 * dim1 * dim2;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
   CUDA_CALL_THROW(cudaDeviceSynchronize());
-  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
+  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T),
+                             is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
   }
 
-  if (kGpuSnippetThreshold > 0 && kGpuSnippetThreshold < static_cast<int64_t>(num_items)) {
-    onnxruntime::utils::PrintCpuTensorSnippet<T>(*data, dim0, dim1, dim2, onnxruntime::utils::kDefaultSnippetEdgeItems);
+  int snippet_threshold = DumpTensorConfig::instance().get_snippet_threshold();
+  int snippet_edge_items = DumpTensorConfig::instance().get_snippet_edge_items();
+  if (snippet_threshold > 0 && snippet_threshold < num_items) {
+    onnxruntime::utils::PrintCpuTensorSnippet<T>(*data, dim0, dim1, dim2, snippet_edge_items);
   } else {
     onnxruntime::utils::PrintCpuTensorFull<T>(*data, dim0, dim1, dim2);
   }
@@ -84,19 +121,23 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int di
   int num_items = dim0 * dim1 * dim2 * dim3;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
   CUDA_CALL_THROW(cudaDeviceSynchronize());
-  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
+  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T),
+                             is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
   }
 
-  if (kGpuSnippetThreshold > 0 && kGpuSnippetThreshold < static_cast<int64_t>(num_items)) {
-    for(int i = 0; i < dim0; i++) {
+  int snippet_threshold = DumpTensorConfig::instance().get_snippet_threshold();
+  int snippet_edge_items = DumpTensorConfig::instance().get_snippet_edge_items();
+  if (snippet_threshold > 0 && snippet_threshold < num_items) {
+    for (int i = 0; i < dim0; i++) {
       std::cout << "[" << i << "]:" << std::endl;
-      onnxruntime::utils::PrintCpuTensorSnippet<T>((*data) + i * dim1 * dim2 * dim3, dim1, dim2, dim3, onnxruntime::utils::kDefaultSnippetEdgeItems);
+      onnxruntime::utils::PrintCpuTensorSnippet<T>((*data) + i * dim1 * dim2 * dim3, dim1, dim2, dim3,
+                                                   snippet_edge_items);
     }
   } else {
-    for(int i = 0; i < dim0; i++) {
+    for (int i = 0; i < dim0; i++) {
       std::cout << "[" << i << "]:" << std::endl;
       onnxruntime::utils::PrintCpuTensorFull<T>((*data) + i * dim1 * dim2 * dim3, dim1, dim2, dim3);
     }

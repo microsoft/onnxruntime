@@ -32,9 +32,9 @@ TEST(InvokerTest, Basic) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue A, B;
-  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &A);
-  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &B);
   std::vector<OrtValue> result(1);
   ASSERT_STATUS_OK(kernel_invoker.Invoke("Add", {A, B}, result, nullptr));
@@ -65,9 +65,9 @@ TEST(InvokerTest, Inplace) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue A, B;
-  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &A);
-  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &B);
   std::vector<OrtValue> result;
   result.push_back(A);
@@ -130,7 +130,7 @@ TEST(InvokerTest, CustomOp) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue A;
-  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &A);
   std::vector<OrtValue> result;
   result.push_back(A);

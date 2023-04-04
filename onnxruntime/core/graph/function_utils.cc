@@ -229,7 +229,18 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
   int i = 0;
   for (auto& input : input_types_list) {
-    op_schema->Input(i, input.first, "", input.second);
+    if (!input.first.empty()) {
+      op_schema->Input(i, input.first, "", input.second);
+    } else {
+      // Handle unused input: its type can be anything.
+      std::string type_str = "Tin" + std::to_string(i);
+      op_schema->Input(i, onnx_func_proto.input(i), "", type_str);
+      auto& dest_types = type_constraint_map[type_str];
+      dest_types.reserve(dest_types.size() + all_types.size());
+      for (const auto& data_type : all_types) {
+        dest_types.emplace_back(data_type);
+      }
+    }
     ++i;
   }
   i = 0;
@@ -348,7 +359,7 @@ class Inliner {
     name = new_name;
   }
 
-  void rename(std::string& name) {
+  void rename(std::string& name, bool is_new_def) {
     if (name.empty()) return;
     for (auto i = rename_scopes.size(); i > 0; --i) {
       const auto& map = rename_scopes[i - 1];
@@ -358,7 +369,10 @@ class Inliner {
         return;
       }
     }
-    make_unique(name);
+    if (is_new_def) {
+      make_unique(name);
+    }
+    // Otherwise, it is a reference to an outer-scope variable that should not be renamed.
   }
 
   template <bool isOutput>
@@ -396,10 +410,10 @@ class Inliner {
       n.set_name(prefix + n.name());
 
     for (auto& x : *n.mutable_input()) {
-      rename(x);
+      rename(x, false);
     }
     for (auto& y : *n.mutable_output()) {
-      rename(y);
+      rename(y, true);
     }
     auto& attributes = *n.mutable_attribute();
     for (auto attr_iter = attributes.begin(); attr_iter != attributes.end();) {

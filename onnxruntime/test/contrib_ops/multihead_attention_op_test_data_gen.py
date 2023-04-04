@@ -24,7 +24,7 @@ class Attention(nn.Module):
         v_head_size,
         is_decoder: bool,
     ):
-        super(Attention, self).__init__()
+        super().__init__()
         self.num_attention_heads = num_attention_heads
         self.qk_head_size = qk_head_size
         self.v_head_size = v_head_size
@@ -142,7 +142,7 @@ class Attention(nn.Module):
         outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
 
         if self.is_decoder:
-            outputs = outputs + (past_key_value,)
+            outputs = (*outputs, past_key_value)
 
         return outputs
 
@@ -156,6 +156,7 @@ def run_cross_attention(
     sequence_length,
     kv_sequence_length,
     key_padding_mask=None,
+    has_bias=True,
 ):
     seed = 123
     torch.manual_seed(seed)
@@ -170,10 +171,16 @@ def run_cross_attention(
     torch.nn.init.uniform_(mha.key.weight, -0.5, 0.5)
     torch.nn.init.uniform_(mha.value.weight, -0.5, 0.5)
 
-    torch.nn.init.uniform_(mha.query.bias, -0.5, 0.5)
-    torch.nn.init.uniform_(mha.key.bias, -0.5, 0.5)
-    torch.nn.init.uniform_(mha.value.bias, -0.5, 0.5)
+    if has_bias:
+        torch.nn.init.uniform_(mha.query.bias, -0.5, 0.5)
+        torch.nn.init.uniform_(mha.key.bias, -0.5, 0.5)
+        torch.nn.init.uniform_(mha.value.bias, -0.5, 0.5)
+    else:
+        torch.nn.init.zeros_(mha.query.bias)
+        torch.nn.init.zeros_(mha.key.bias)
+        torch.nn.init.zeros_(mha.value.bias)
 
+    # Here we simulate input projection with MatMul but no bias:
     w_q = nn.Linear(hidden_dim, num_heads * q_head_size).to(device).eval()
     w_k = nn.Linear(hidden_dim, num_heads * q_head_size).to(device).eval()
     w_v = nn.Linear(hidden_dim, num_heads * v_head_size).to(device).eval()
@@ -195,16 +202,112 @@ def run_cross_attention(
     input_q = w_q(hidden_states.clone())
     input_k = w_k(encoder_hidden_states.clone())
     input_v = w_v(encoder_hidden_states.clone())
-    input_bias = torch.concat([mha.query.bias, mha.key.bias, mha.value.bias])
     print("input_q", input_q)
     print("input_k", input_k)
     print("input_v", input_v)
-    print("input_bias", input_bias)
 
-    output = mha.forward(
+    input_bias = torch.concat([mha.query.bias, mha.key.bias, mha.value.bias])
+    print("input_bias", input_bias)
+    if not has_bias:
+        print("no bias!")
+
+    # packed KV
+    if q_head_size == v_head_size:
+        packed_kv = torch.dstack(
+            (
+                input_k.reshape(batch_size * kv_sequence_length, num_heads, q_head_size),
+                input_v.reshape(batch_size * kv_sequence_length, num_heads, v_head_size),
+            )
+        )
+        packed_kv = packed_kv.reshape(batch_size, kv_sequence_length, num_heads, 2, q_head_size)
+        print("packed_kv_5d", packed_kv)
+
+    mha.forward(
         hidden_states,
         attention_mask=None,
         encoder_hidden_states=encoder_hidden_states,
+        encoder_attention_mask=key_padding_mask,
+        past_key_value=None,
+        output_attentions=False,
+    )
+
+
+def run_self_attention(
+    hidden_dim,
+    q_head_size,
+    v_head_size,
+    num_heads,
+    batch_size,
+    sequence_length,
+    key_padding_mask=None,
+    has_bias=True,
+):
+    seed = 123
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    torch.use_deterministic_algorithms(True)
+
+    device = torch.device("cuda:0")
+    mha = Attention(num_heads, hidden_dim, q_head_size, v_head_size, is_decoder=False).to(device).eval()
+    if key_padding_mask is not None:
+        key_padding_mask = key_padding_mask.to(device)
+    torch.nn.init.uniform_(mha.query.weight, -0.5, 0.5)
+    torch.nn.init.uniform_(mha.key.weight, -0.5, 0.5)
+    torch.nn.init.uniform_(mha.value.weight, -0.5, 0.5)
+
+    if has_bias:
+        torch.nn.init.uniform_(mha.query.bias, -0.5, 0.5)
+        torch.nn.init.uniform_(mha.key.bias, -0.5, 0.5)
+        torch.nn.init.uniform_(mha.value.bias, -0.5, 0.5)
+    else:
+        torch.nn.init.zeros_(mha.query.bias)
+        torch.nn.init.zeros_(mha.key.bias)
+        torch.nn.init.zeros_(mha.value.bias)
+
+    # Here we simulate input projection with MatMul but no bias:
+    w_q = nn.Linear(hidden_dim, num_heads * q_head_size).to(device).eval()
+    w_k = nn.Linear(hidden_dim, num_heads * q_head_size).to(device).eval()
+    w_v = nn.Linear(hidden_dim, num_heads * v_head_size).to(device).eval()
+    w_q.weight.copy_(mha.query.weight)
+    w_k.weight.copy_(mha.key.weight)
+    w_v.weight.copy_(mha.value.weight)
+    torch.nn.init.zeros_(w_q.bias)
+    torch.nn.init.zeros_(w_k.bias)
+    torch.nn.init.zeros_(w_v.bias)
+
+    torch.set_printoptions(profile="full", precision=8, linewidth=120, sci_mode=False)
+
+    hidden_states = torch.empty(batch_size, sequence_length, hidden_dim, device="cuda")
+    torch.nn.init.normal_(hidden_states)
+
+    input_q = w_q(hidden_states.clone())
+    input_k = w_k(hidden_states.clone())
+    input_v = w_v(hidden_states.clone())
+    print("input_q", input_q)
+    print("input_k", input_k)
+    print("input_v", input_v)
+
+    input_bias = torch.concat([mha.query.bias, mha.key.bias, mha.value.bias])
+    print("input_bias", input_bias)
+    if not has_bias:
+        print("no bias!")
+
+    # packed QKV
+    if q_head_size == v_head_size:
+        packed_qkv = torch.dstack(
+            (
+                input_q.reshape(batch_size * sequence_length, num_heads, q_head_size),
+                input_k.reshape(batch_size * sequence_length, num_heads, q_head_size),
+                input_v.reshape(batch_size * sequence_length, num_heads, v_head_size),
+            )
+        )
+        packed_qkv = packed_qkv.reshape(batch_size, sequence_length, num_heads, 3, q_head_size)
+        print("packed_qkv_5d", packed_qkv)
+
+    mha.forward(
+        hidden_states,
+        attention_mask=None,
+        encoder_hidden_states=None,
         encoder_attention_mask=key_padding_mask,
         past_key_value=None,
         output_attentions=False,
@@ -293,7 +396,44 @@ def run_cross_batch1_headsize_32_left_side_padding():
     )
 
 
-def create_cross_attention_test_data():
+def run_cross_batch2_headsize_32_packed_kv():
+    hidden_dim = 32
+    q_head_size = 32
+    v_head_size = 32
+    num_heads = 1
+    batch_size = 2
+    sequence_length = 2
+    kv_sequence_length = 3
+    key_padding_mask = None
+    has_bias = False
+    run_cross_attention(
+        hidden_dim,
+        q_head_size,
+        v_head_size,
+        num_heads,
+        batch_size,
+        sequence_length,
+        kv_sequence_length,
+        key_padding_mask,
+        has_bias,
+    )
+
+
+def run_self_batch2_headsize_32_packed_qkv():
+    hidden_dim = 32
+    q_head_size = 32
+    v_head_size = 32
+    num_heads = 1
+    batch_size = 2
+    sequence_length = 2
+    key_padding_mask = None
+    has_bias = False
+    run_self_attention(
+        hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, key_padding_mask, has_bias
+    )
+
+
+def create_test_data():
     """
     Create test data used in attention_op_test_helper.cc and multihead_attention_op_test.cc
     """
@@ -312,6 +452,12 @@ def create_cross_attention_test_data():
     print("CrossAttention_Batch1_HeadSize32_LeftSidePadding")
     run_cross_batch1_headsize_32_left_side_padding()
 
+    print("CrossAttention_Batch2_HeadSize32_PackedKV")
+    run_cross_batch2_headsize_32_packed_kv()
+
+    print("SelfAttention_Batch2_HeadSize32_PackedQKV")
+    run_self_batch2_headsize_32_packed_qkv()
+
 
 with torch.no_grad():
-    create_cross_attention_test_data()
+    create_test_data()

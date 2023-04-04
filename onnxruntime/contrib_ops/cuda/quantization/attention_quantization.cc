@@ -174,6 +174,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present = context->Output(1, present_shape);
 
   void* fused_runner = nullptr;  // TODO(tianleiwu): use fused kernel to speed up
+  bool use_fused_cross_attention = false;
   bool use_memory_efficient_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
@@ -184,6 +185,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
                                                    fused_runner,
+                                                   use_fused_cross_attention,
                                                    use_memory_efficient_attention);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
@@ -198,13 +200,20 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
   data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
   data.past = (nullptr == past_tensor) ? nullptr : reinterpret_cast<const CudaT*>(past_tensor->Data<T>());
+  data.past_key = nullptr;
+  data.past_value = nullptr;
   data.relative_position_bias = nullptr;  // add_qk is not supported in quantized attention
+  data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
+  data.present_key = nullptr;
+  data.present_value = nullptr;
   data.fused_runner = fused_runner;
   data.fused_cross_attention_kernel = nullptr;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  data.cumulated_sequence_length_q_cache = nullptr;
+  data.cumulated_sequence_length_kv_cache = nullptr;
 
   return QkvToContext<CudaT>(GetDeviceProp(), cublas, Stream(context), parameters, data);
 }

@@ -74,7 +74,23 @@ class FusionUtils:
                     self.model.replace_input_of_all_nodes(output_name, input_name)
 
     @staticmethod
-    def skip_parent(model: OnnxModel, node, parent_node, input_name_to_nodes):
+    def update_node_input(node, i, new_input_name, input_name_to_nodes):
+        old_input_reference = 0
+        if (node.input[i] in input_name_to_nodes) and node in input_name_to_nodes[node.input[i]]:
+            input_name_to_nodes[node.input[i]].remove(node)
+            old_input_reference = len(input_name_to_nodes[node.input[i]])
+
+        node.input[i] = new_input_name
+
+        if new_input_name in input_name_to_nodes:
+            input_name_to_nodes[new_input_name].append(node)
+        else:
+            input_name_to_nodes[new_input_name] = [node]
+
+        return old_input_reference
+
+    @staticmethod
+    def skip_parent(model: OnnxModel, node, parent_node, input_name_to_nodes, node_input_index=0, parent_input_index=0):
         """
         Before:
               (input)-->parent-->node-->(output)
@@ -83,20 +99,16 @@ class FusionUtils:
                 |
                 +----->node-->(output)
 
-        This function returns a flag about whether the parent node can be removed.
-        Note that this function assumes the node has first input links from parent!
+        This function returns a flag whether the parent node can be removed.
         """
-        parent_can_be_removed = False
-        input_name_to_nodes[node.input[0]].remove(node)
-        # We can remove the first Transpose if its output is not used (linked to graph output or other nodes) anymore.
-        if len(input_name_to_nodes[node.input[0]]) == 0 and not model.find_graph_output(
-            node.input[0]
-        ):  # checks main graph output. TODO: deal with subgraph
-            parent_can_be_removed = True
-            # self.nodes_to_remove.append(transpose_a)
 
-        input_name_to_nodes[parent_node.input[0]].append(node)
-        node.input[0] = parent_node.input[0]
+        old_input_name = node.input[node_input_index]
+        new_input_name = parent_node.input[parent_input_index]
+        old_input_reference = FusionUtils.update_node_input(node, node_input_index, new_input_name, input_name_to_nodes)
+
+        # We can remove the first Transpose if its output is not used (linked to graph output or other nodes) anymore.
+        parent_can_be_removed = (old_input_reference == 0) and not model.find_graph_output(old_input_name)
+
         return parent_can_be_removed
 
     @staticmethod
@@ -118,9 +130,7 @@ class FusionUtils:
                 value = helper.get_attribute_value(attr)
 
         if isinstance(expected_value, list):
-            return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
-                expected_value, value, equal_nan=False
-            )
+            return (isinstance(value, (ndarray, list))) and array_equal(expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 
@@ -160,7 +170,7 @@ class FusionUtils:
         Returns:
             bool: whether the check is passed or not
         """
-        if not node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+        if node.op_type not in {"QuantizeLinear", "DequantizeLinear"}:
             logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")
 
         scale = model.get_constant_value(node.input[1])
@@ -207,9 +217,7 @@ class FusionUtils:
         value = self.model.get_constant_value(node.input[input_index])
 
         if isinstance(expected_value, list):
-            return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
-                expected_value, value, equal_nan=False
-            )
+            return (isinstance(value, (ndarray, list))) and array_equal(expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 

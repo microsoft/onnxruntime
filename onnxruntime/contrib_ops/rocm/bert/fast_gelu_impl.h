@@ -6,14 +6,16 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "core/common/common.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
 template <typename T>
-Status LaunchFastGeluKernel(bool tuning, hipStream_t stream, int input_length, int bias_length,
+Status LaunchFastGeluKernel(RocmTuningContext* tuning_ctx, hipStream_t stream, int input_length, int bias_length,
                             const T* input, const T* bias, T* output);
 
 }  // namespace rocm

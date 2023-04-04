@@ -13,7 +13,7 @@ def _demangle(name, demangler="c++filt"):
         with sp.Popen([demangler, name], stdin=sp.PIPE, stdout=sp.PIPE) as proc:
             out, _ = proc.communicate()
             return out.decode("utf-8").strip()
-    except:
+    except Exception:
         return name
 
 
@@ -68,7 +68,7 @@ def _json_to_df(profile_path, filter_matcher):
     cpu_entries = []
     gpu_entries = []
 
-    with open(profile_path, "r", encoding="utf-8") as file_obj:
+    with open(profile_path, encoding="utf-8") as file_obj:
         data = json.load(file_obj)
     if isinstance(data, dict):
         data = data["traceEvents"]
@@ -156,7 +156,7 @@ def _print_cpu_top_hitters(frame, args):
 
     frame2 = frame[["duration", "count"]].sum()
     frame["pct"] = 100 * (frame["duration"] / frame2["duration"])
-    fields = group_key + ["duration", "pct", "count"]
+    fields = [*group_key, "duration", "pct", "count"]
     frame1 = frame[fields].groupby(group_key).sum().reset_index()
     frame1 = frame1.sort_values(by="duration", ascending=False)[:top]
     frame1["cumulative_pct"] = frame1["pct"].cumsum()
@@ -180,7 +180,7 @@ def _print_gpu_top_hitters(frame, args):
 
     frame2 = frame[["duration", "count"]].sum()
     frame["pct"] = 100 * (frame["duration"] / frame2["duration"])
-    fields = group_key + ["duration", "pct", "count"]
+    fields = [*group_key, "duration", "pct", "count"]
     frame1 = frame[fields].groupby(group_key).sum().reset_index()
     frame1 = frame1.sort_values(by="duration", ascending=False)[:top]
     frame1["cumulative_pct"] = frame1["pct"].cumsum()
@@ -207,10 +207,7 @@ def _construct_filter_matcher(args):
     def _match_item(item):
         if item in concrete_filter_set:
             return True
-        for pattern in fnmatch_filter_set:
-            if fnmatch.fnmatch(item, pattern):
-                return True
-        return False
+        return any(fnmatch.fnmatch(item, pattern) for pattern in fnmatch_filter_set)
 
     return _match_item
 

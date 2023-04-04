@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace test {
 TEST(AllocatorTest, CPUAllocatorTest) {
-  auto cpu_arena = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_arena = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
 
   ASSERT_STREQ(cpu_arena->Info().name, CPU);
   EXPECT_EQ(cpu_arena->Info().id, 0);

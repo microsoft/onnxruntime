@@ -322,8 +322,8 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryProbabilities) {
   std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "BRANCH_LEQ", "LEAF", "LEAF", "BRANCH_LEQ",
                                     "LEAF", "BRANCH_LEQ", "BRANCH_LEQ", "LEAF", "LEAF", "LEAF",
                                     "BRANCH_LEQ", "BRANCH_LEQ", "LEAF", "BRANCH_LEQ", "LEAF", "LEAF", "LEAF"};
-  //std::vector<int64_t> classes = {0, 1, 2, 3};
-  std::vector<int64_t> class_treeids = {0, 1, 0, 1, 1, 1, 1, 2, 2, 2, 2};
+  //std::vector<int64_t> classes = {0, 1};
+  std::vector<int64_t> class_treeids = {0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2};
   std::vector<int64_t> class_nodeids = {1, 3, 4, 1, 4, 5, 6, 2, 4, 5, 6};
   std::vector<int64_t> class_classids = {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1};
   std::vector<float> class_weights = {-1.f, 4.f, -1.f, 2.f, -1.f, +1.f, -2.f, 1.f, -1.f, 2.f, -3.f};
@@ -335,13 +335,13 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryProbabilities) {
   std::vector<float> probs = {};
   std::vector<float> log_probs = {};
   std::vector<float> scores{
-      0.2689414f, 0.73105859f,
+      0.00669282f, 0.99330717f,
       0.04742586f, 0.88079702f,
-      0.73105859f, 0.26894140f,
-      0.73105859f, 0.26894140f,
-      0.73105859f, 0.26894140f,
+      0.73105859f, 0.26894142f,
+      0.73105859f, 0.26894142f,
+      0.73105859f, 0.26894142f,
       0.26894140f, 0.73105859f,
-      0.73105859f, 0.26894140f,
+      0.73105859f, 0.26894142f,
       0.5f, 0.04742586f};
 
   //define the context of the operator call

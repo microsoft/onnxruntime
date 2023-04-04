@@ -26,7 +26,7 @@ void CudaOrtValueToCpuVec(const OrtValue& val, std::vector<T>& output,
                           std::shared_ptr<IExecutionProvider> cpu_provider) {
   const Tensor& src_tensor = val.Get<Tensor>();
 
-  auto allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
+  auto allocator = cpu_provider->GetAllocator(OrtMemTypeDefault);
   ORT_ENFORCE(allocator, "Cpu allocator is a nullptr.");
   auto dst_tensor = std::make_unique<Tensor>(src_tensor.DataType(), src_tensor.Shape(), allocator);
 

@@ -32,9 +32,9 @@ Status Activations::Prepare(OpKernelContext* ctx, CannPreparation& prepare) cons
 
 #define REGISTER_ACTIVATION_TYPED_COMPUTE(x, T)                                \
   template <>                                                                  \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {               \
+  Status x<T>::ComputeInternal(OpKernelContext* ctx) const {                   \
     CannPreparation prepare;                                                   \
-    ORT_RETURN_IF_ERROR(Prepare<T>(context, prepare));                         \
+    ORT_RETURN_IF_ERROR(Prepare<T>(ctx, prepare));                             \
     CANN_RETURN_IF_ERROR(aclopCompileAndExecute(#x,                            \
                                                 prepare.inputDesc_.size(),     \
                                                 prepare.inputDesc_.data(),     \
@@ -46,7 +46,7 @@ Status Activations::Prepare(OpKernelContext* ctx, CannPreparation& prepare) cons
                                                 ACL_ENGINE_SYS,                \
                                                 ACL_COMPILE_SYS,               \
                                                 NULL,                          \
-                                                Stream()));                    \
+                                                Stream(ctx)));                 \
     return Status::OK();                                                       \
   }
 

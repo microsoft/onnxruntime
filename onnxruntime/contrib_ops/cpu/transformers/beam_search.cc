@@ -34,6 +34,7 @@
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_gpt.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_t5.h"
+#include "contrib_ops/cpu/transformers/subgraph_whisper_encoder.h"
 #include "contrib_ops/cpu/transformers/greedy_search_impl_gpt.h"
 
 using namespace ONNX_NAMESPACE;
@@ -62,7 +63,8 @@ void BeamSearch::Init(const OpKernelInfo& info) {
 
   // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5)
   ORT_ENFORCE(parameters_.model_type == IGenerationParameters::kModelTypeGpt ||
-              parameters_.model_type == IGenerationParameters::kModelTypeT5);
+              parameters_.model_type == IGenerationParameters::kModelTypeT5 ||
+              parameters_.model_type == IGenerationParameters::kModelTypeWhisper);
 
   ONNX_NAMESPACE::GraphProto proto;
 
@@ -148,6 +150,37 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                         t5_decoder_subgraph_->num_layers);
     }
   }
+  else if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
+    if (attribute_name == "encoder") {
+      ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
+                  "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      t5_encoder_subgraph_ = std::make_unique<WhisperEncoderSubgraph>(node,
+                                                                 attribute_name,
+                                                                 subgraph_session_state.GetGraphViewer());
+      ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
+      encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
+
+      if (parameters_.decoder_start_token_id < 0) {
+        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 2,
+                      "Encoder subgraph shall have 2 inputs when decoder_start_token_id attribute is empty");
+      } else {
+        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 3,
+                      "Encoder subgraph shall have 3 inputs when decoder_start_token_id attribute is available");
+      }
+    } else if (attribute_name == "decoder") {
+      ORT_ENFORCE(t5_decoder_subgraph_ == nullptr,
+                  "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      t5_decoder_subgraph_ = std::make_unique<T5DecoderSubgraph>(node,
+                                                                 attribute_name,
+                                                                 subgraph_session_state.GetGraphViewer());
+      ORT_RETURN_IF_ERROR(t5_decoder_subgraph_->Setup(session_state, subgraph_session_state));
+      decoder_feeds_fetches_manager_ = t5_decoder_subgraph_->GetFeedsFetchesManager();
+      parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
+                                        t5_decoder_subgraph_->num_heads,
+                                        t5_decoder_subgraph_->head_size,
+                                        t5_decoder_subgraph_->num_layers);
+    }
+  }
 
   return Status::OK();
 }
@@ -163,6 +196,8 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   if (has_init_decoder_) {
     ORT_ENFORCE(init_run_decoder_session_state, "Subgraph SessionState was not found for 'decoder' attribute.");
     ORT_ENFORCE(init_run_decoder_feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
+    ORT_ENFORCE(init_run_gpt_subgraph_ && gpt_subgraph_ && init_run_gpt_subgraph_->past_present_share_buffer_ == gpt_subgraph_->past_present_share_buffer_,
+                "past_present_share_buffer mode must be same for init decoder and decoder subgraphes");
   }
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
@@ -181,12 +216,15 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
           init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
           device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
           device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
-          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>};
+          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>,
+          cuda_device_prop_,
+          cuda_device_arch_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -200,12 +238,15 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_beam_state_fp16_func_,
           device_copy_func_,
           device_copy_int32_func_,
-          update_gpt_feeds_fp16_func_};
+          update_gpt_feeds_fp16_func_,
+          cuda_device_prop_,
+          cuda_device_arch_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -216,45 +257,94 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(encoder_session_state, "Subgraph SessionState was not found for 'encoder' attribute.");
   ORT_ENFORCE(encoder_feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
-  // Subgraph has constraint that the output is either float or float16
-  if (!t5_decoder_subgraph_->IsOutputFloat16()) {
-    BeamSearchT5<float> impl{
-        *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
-        *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
-        add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-        topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
-        process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
-        init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
-        device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
-        device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
-        create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateEncoderInputs,
-        update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
-        expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
-        expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
-        expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>};
-    ORT_RETURN_IF_ERROR(impl.Initialize());
 
-    return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
-  } else {
-    BeamSearchT5<MLFloat16> impl{
-        *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
-        *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
-        add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-        topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
-        process_logits_fp16_func_,
-        init_beam_state_fp16_func_,
-        device_copy_func_,
-        device_copy_int32_func_,
-        create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateEncoderInputs,
-        update_decoder_feeds_fp16_func_,
-        expand_buffer_int32_func_,
-        expand_buffer_float_func_,
-        expand_buffer_float16_func_};
+  if (parameters_.model_type == IGenerationParameters::kModelTypeT5) {
+    // Subgraph has constraint that the output is either float or float16
+    if (!t5_decoder_subgraph_->IsOutputFloat16()) {
+      BeamSearchT5<float> impl{
+          *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
+          *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
+          add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
+          process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
+          init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
+          device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
+          device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
+          create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateEncoderInputs,
+          update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
+          expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
+          expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
+          expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>};
+      ORT_RETURN_IF_ERROR(impl.Initialize());
 
-    ORT_RETURN_IF_ERROR(impl.Initialize());
+      return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
+    } else {
+      BeamSearchT5<MLFloat16> impl{
+          *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
+          *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
+          add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
+          process_logits_fp16_func_,
+          init_beam_state_fp16_func_,
+          device_copy_func_,
+          device_copy_int32_func_,
+          create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateEncoderInputs,
+          update_decoder_feeds_fp16_func_,
+          expand_buffer_int32_func_,
+          expand_buffer_float_func_,
+          expand_buffer_float16_func_};
 
-    return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
+      ORT_RETURN_IF_ERROR(impl.Initialize());
+
+      return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
+    }
   }
+
+  // Change the CreateEncoderInputs function for Whisper shapes
+  if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
+    // Subgraph has constraint that the output is either float or float16
+    if (!t5_decoder_subgraph_->IsOutputFloat16()) {
+      BeamSearchT5<float> impl{
+          *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
+          *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
+          add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
+          process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
+          init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
+          device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
+          device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
+          create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateWhisperEncoderInputs,
+          update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
+          expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
+          expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
+          expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>};
+      ORT_RETURN_IF_ERROR(impl.Initialize());
+
+      return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
+    } else {
+      BeamSearchT5<MLFloat16> impl{
+          *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
+          *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
+          add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
+          process_logits_fp16_func_,
+          init_beam_state_fp16_func_,
+          device_copy_func_,
+          device_copy_int32_func_,
+          create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateWhisperEncoderInputs,
+          update_decoder_feeds_fp16_func_,
+          expand_buffer_int32_func_,
+          expand_buffer_float_func_,
+          expand_buffer_float16_func_};
+
+      ORT_RETURN_IF_ERROR(impl.Initialize());
+
+      return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
+    }
+  }
+
+  // Model type not supported in IGenerationParameters
+  ORT_THROW("Model type is not supported.");
 }
 
 }  // namespace transformers

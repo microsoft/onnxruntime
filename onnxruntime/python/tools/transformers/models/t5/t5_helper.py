@@ -19,9 +19,9 @@ from transformers import MT5ForConditionalGeneration, T5ForConditionalGeneration
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from float16 import float_to_float16_max_diff
-from onnx_model import OnnxModel
-from optimizer import optimize_model
+from float16 import float_to_float16_max_diff  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
+from optimizer import optimize_model  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -150,26 +150,22 @@ class T5Helper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: List[str] = [
-            "Pow",
-            "ReduceMean",
-            "Add",
-            "Sqrt",
-            "Div",
-            "Mul",
-            "Softmax",
+        op_block_list: List[str] = [  # noqa: B006
+            "SimplifiedLayerNormalization",
+            "SkipSimplifiedLayerNormalization",
             "Relu",
+            "Add",
         ],
     ):
         """Convert model to mixed precision.
            It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
         Args:
             onnx_model (OnnxModel): optimized ONNX model
-            op_block_list (List[str], optional): . Defaults to ["Pow", "ReduceMean", "Add", "Sqrt", "Div", "Mul", "Softmax", "Relu"]
+            op_block_list (List[str], optional): . Defaults to ["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization", "Relu", "Add"]
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
-        op_full_set = set([node.op_type for node in onnx_model.nodes()])
+        op_full_set = {node.op_type for node in onnx_model.nodes()}
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
         logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
@@ -235,8 +231,7 @@ class T5Helper:
         from fusion_options import FusionOptions
 
         optimization_options = None
-        if not use_gpu:
-            # Currently there is no SkipSimplifiedLayerNorm cpu kernel
+        if is_float16:
             optimization_options = FusionOptions("t5")
             optimization_options.enable_skip_layer_norm = False
 
@@ -245,10 +240,12 @@ class T5Helper:
             model_type="t5",
             num_heads=num_attention_heads,
             hidden_size=hidden_size,
-            opt_level=2 if not is_float16 and not use_external_data_format else 0,
+            opt_level=2 if not use_external_data_format else 0,
             optimization_options=optimization_options,
             use_gpu=False,
+            only_onnxruntime=not use_gpu,
         )
+
         if is_float16:
             if auto_mixed_precision:
                 T5Helper.auto_mixed_precision(m)

@@ -414,7 +414,8 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
         static_cast<double>(output_height * 2),
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           if (output_height == input_height) {
-            std::copy_n(Xdata_span.begin() + narrow<size_t>(first * input_width), narrow<size_t>((last - first) * output_width),
+            auto workload_in_thread = narrow<size_t>(last) - narrow<size_t>(first);
+            std::copy_n(Xdata_span.begin() + narrow<size_t>(first * input_width), narrow<size_t>(workload_in_thread * output_width),
                         Ydata_span.begin() + narrow<size_t>(first * output_width));
             return;
           }

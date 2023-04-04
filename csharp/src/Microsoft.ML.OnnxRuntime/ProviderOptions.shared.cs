@@ -58,7 +58,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Updates  the configuration knobs of OrtTensorRTProviderOptions that will eventually be used to configure a TensorRT EP
         /// Please refer to the following on different key/value pairs to configure a TensorRT EP and their meaning:
-        /// https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html
+        /// https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html
         /// </summary>
         /// <param name="providerOptions">key/value pairs used to configure a TensorRT Execution Provider</param>
         public void UpdateOptions(Dictionary<string, string> providerOptions)
@@ -169,7 +169,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Updates  the configuration knobs of OrtCUDAProviderOptions that will eventually be used to configure a CUDA EP
         /// Please refer to the following on different key/value pairs to configure a CUDA EP and their meaning:
-        /// https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html
+        /// https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html
         /// </summary>
         /// <param name="providerOptions">key/value pairs used to configure a CUDA Execution Provider</param>
         public void UpdateOptions(Dictionary<string, string> providerOptions)

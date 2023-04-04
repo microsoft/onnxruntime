@@ -4,6 +4,8 @@
 #include "dnnl_dynamicquantizelinear.h"
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
+#include "dnnl_util.h"
+
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -23,7 +25,7 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   // Get src mem
   auto x_mem = sp.GetMemory(node.Input(IN_X));
   auto x_md = x_mem.get_desc();
-  auto x_size = x_md.dims().size();
+  auto x_size = x_md.get_dims().size();
   auto x_format = sp.GetDnnlFormat(x_size);
   x_mem = sp.GetMemoryAndReshape(node.Input(IN_X), x_md, eng);
 
@@ -31,10 +33,8 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   dnnl::memory::dims one_dim(x_size, 1);
 
   // Y_SCALE COMPUTATION
-  // Create descriptor for reduction max and min
-  auto y_scale_md = dnnl::memory::desc(one_dim, x_md.data_type(), x_format);
-  auto max_reduction_d = dnnl::reduction::desc(dnnl::algorithm::reduction_max, x_md, y_scale_md, 0.f, 0.f);
-  auto min_reduction_d = dnnl::reduction::desc(dnnl::algorithm::reduction_min, x_md, y_scale_md, 0.f, 0.f);
+  // Create descriptor for y_scale
+  auto y_scale_md = dnnl::memory::desc(one_dim, x_md.get_data_type(), x_format);
 
   // Fill memory with 0's, needed for min and max binary
   auto zero_mem = dnnl::memory(y_scale_md, eng);
@@ -50,7 +50,7 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
     // y_scale = x_max - x_min
     calc_y_scale.append_binary(dnnl::algorithm::binary_sub, y_scale_md);
     // y_scale =/ 255
-    calc_y_scale.append_eltwise(1.0f, dnnl::algorithm::eltwise_linear, 1.0f / 255.0f, 0.0f);
+    calc_y_scale.append_eltwise(dnnl::algorithm::eltwise_linear, 1.0f / 255.0f, 0.0f);
     max_reduction_attr.set_post_ops(calc_y_scale);
   }
 
@@ -63,8 +63,11 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   }
 
   // Create reduction primitive
-  auto max_reduction_prim = dnnl::reduction(dnnl::reduction::primitive_desc(max_reduction_d, max_reduction_attr, eng));
-  auto min_reduction_prim = dnnl::reduction(dnnl::reduction::primitive_desc(min_reduction_d, min_reduction_attr, eng));
+  auto max_reduction_prim = dnnl::reduction({eng, dnnl::algorithm::reduction_max,
+                                             x_md, y_scale_md, 0.f, 0.f, max_reduction_attr});
+  auto min_reduction_prim = dnnl::reduction(  {eng, dnnl::algorithm::reduction_min,
+                                              x_md, y_scale_md, 0.f, 0.f, min_reduction_attr});
+
 
   // Create y_scale and min memory
   auto y_scale_mem = dnnl::memory(y_scale_md, eng);
@@ -85,43 +88,48 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   // Y_ZERO_POINT COMPUTATION
   // Create memory and primitive descriptors
   auto y_zp_md = dnnl::memory::desc(one_dim, dnnl::memory::data_type::u8, x_format);
-  auto zp_prim_d = dnnl::binary::desc(dnnl::algorithm::binary_div, y_scale_md, y_scale_md, y_zp_md);
 
   // Add round and clip post ops
   dnnl::primitive_attr zp_prim_attr;
   {
-    zp_prim_attr.set_scales(DNNL_ARG_SRC_0, 0, {-1.0f});
     dnnl::post_ops div_saturate_round;
-    div_saturate_round.append_eltwise(1.0f, dnnl::algorithm::eltwise_round, 0.0f, 0.0f);
+    div_saturate_round.append_eltwise(dnnl::algorithm::eltwise_round, 0.0f, 0.0f);
     zp_prim_attr.set_post_ops(div_saturate_round);
   }
+  // Set the value to scale DNNL_ARG_SRC_0 with mask 0
+  zp_prim_attr.set_scales_mask(DNNL_ARG_SRC_0, 0);
+  // Create the memory object related to the scale
+  auto scale_mem = dnnl::memory({{1}, dnnl::memory::data_type::f32, {1}}, eng);
+  // Write the alpha value into the memory object
+  sp.WriteToDnnlMemory<float>(scale_mem, {-1.0f});
 
   // Create primitives
-  auto zp_prim_pd = dnnl::binary::primitive_desc(zp_prim_d, zp_prim_attr, eng);
+  auto zp_prim_pd = dnnl::binary::primitive_desc( eng, dnnl::algorithm::binary_div,
+                                                  y_scale_md, y_scale_md, y_zp_md, zp_prim_attr);
   auto zp_prim = dnnl::binary(zp_prim_pd);
 
   // Create zp memory dst
   auto y_zp_mem = dnnl::memory(zp_prim_pd.dst_desc(), eng);
 
   // Calc zp
-  sp.AddPrimitive(zp_prim,{{DNNL_ARG_SRC_0, min_reduction_mem},
-                           {DNNL_ARG_SRC_1, y_scale_mem},
-                           {DNNL_ARG_DST, y_zp_mem}});
+  sp.AddPrimitive(zp_prim,{ {DNNL_ARG_SRC_0, min_reduction_mem},
+                            {DNNL_ARG_SRC_1, y_scale_mem},
+                            {DNNL_ARG_DST, y_zp_mem},
+                            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0, scale_mem}});
 
   // Y COMPUTATION
   // Create y md and binary desc
-  auto y_md = dnnl::memory::desc(x_md.dims(), dnnl::memory::data_type::u8, x_format);
-  auto y_bin_d = dnnl::binary::desc(dnnl::algorithm::binary_div, x_mem.get_desc(), y_scale_mem.get_desc(), y_md);
+  auto y_md = dnnl::memory::desc(x_md.get_dims(), dnnl::memory::data_type::u8, x_format);
   // Add post ops
   dnnl::primitive_attr y_bin_attr;
   {
     dnnl::post_ops round_add;
-    round_add.append_eltwise(1.0f, dnnl::algorithm::eltwise_round, 0.0f, 0.0f);
+    round_add.append_eltwise(dnnl::algorithm::eltwise_round, 0.0f, 0.0f);
     round_add.append_binary(dnnl::algorithm::binary_add, y_zp_mem.get_desc());
     y_bin_attr.set_post_ops(round_add);
   }
   // Create binary primitive with post ops
-  auto y_pd = dnnl::binary::primitive_desc(y_bin_d, y_bin_attr, eng);
+  auto y_pd = dnnl::binary::primitive_desc(eng, dnnl::algorithm::binary_div, x_mem.get_desc(), y_scale_mem.get_desc(), y_md, y_bin_attr);
   auto y_prim = dnnl::binary(y_pd);
   // Create y_dst mem
   auto y_mem = dnnl::memory(y_pd.dst_desc(), eng);
@@ -139,8 +147,8 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
 
 //change md to targeted data type of cast op dst
 dnnl::memory::desc DnnlDynamicQuantizeLinear::ChangeMemoryDescDataType(dnnl::memory::desc md, dnnl::memory::data_type dt) {
-  auto dims = md.dims();
-  auto strides = md.data.format_desc.blocking.strides;
+  auto dims = md.get_dims();
+  auto strides = md.get_strides();
   dnnl::memory::dims strides_vec;
   for (size_t i = 0; i < dims.size(); i++) {
     strides_vec.push_back(strides[i]);

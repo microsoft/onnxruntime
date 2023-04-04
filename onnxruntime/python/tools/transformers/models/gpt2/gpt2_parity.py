@@ -26,7 +26,7 @@ from onnx_model import OnnxModel
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import get_ort_environment_variables, setup_logger
+from benchmark_helper import get_ort_environment_variables, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -113,14 +113,14 @@ class ParityTask:
 
         try:
             result = main(
-                argv + ["-t", f"{self.test_cases}", "-r", f"{self.total_runs}"],
+                [*argv, "-t", f"{self.test_cases}", "-r", f"{self.total_runs}"],
                 experiment_name=experiment_name,
                 run_id=run_id,
                 csv_filename=self.csv_path,
             )
             if result:
                 self.results.append(result)
-        except:
+        except Exception:
             logger.exception(f"Failed to run experiment {experiment_name}")
             result = None
 
@@ -150,7 +150,7 @@ def score(row):
     """Scoring function based on 3 metrics. The larger score is better."""
     latency_in_ms = get_latency(row)
     top1_match_rate = float(row["top1_match_rate"])
-    onnx_size_in_MB = float(row["onnx_size_in_MB"])
+    onnx_size_in_MB = float(row["onnx_size_in_MB"])  # noqa: N806
     # A simple scoring function: cost of 0.1ms latency ~ 0.1% match rate ~ 100MB size
     return top1_match_rate * 1000 - latency_in_ms * 10 - onnx_size_in_MB / 100
 
@@ -321,7 +321,7 @@ def get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list):
     ]
 
     if op_block_list:
-        parameters.extend(["--op_block_list"] + op_block_list)
+        parameters.extend(["--op_block_list", *op_block_list])
 
     return parameters
 
@@ -330,7 +330,7 @@ def run_candidate(
     task: ParityTask,
     args,
     last_matmul_node_name,
-    op_block_list=["FastGelu", "LayerNormalization"],
+    op_block_list=["FastGelu", "LayerNormalization"],  # noqa: B006
 ):
     parameters = get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list)
     op_block_list_str = ",".join(sorted(op_block_list))
@@ -407,9 +407,9 @@ def run_tuning_step2(task, mixed_precision_baseline, optimized_ops):
     fp32_ops = [x for x in candidate_fp32_ops if x in optimized_ops]
     for op in optimized_ops:
         if op not in fp32_ops:
-            op_block_list = fp32_ops + [op]
+            op_block_list = [*fp32_ops, op]
             task.run(
-                mixed_precision_baseline + ["--op_block_list"] + op_block_list,
+                [*mixed_precision_baseline, "--op_block_list", *op_block_list],
                 "Mixed precision baseline + {},{} in FP32".format(",".join(fp32_ops), op),
             )
 
@@ -450,7 +450,8 @@ def run_parity(task: ParityTask, args):
     # Mixed precision baseline
     run_candidate(task, args, last_matmul_node_name, op_block_list=[])
 
-    get_fp32_ops = lambda x: [op for op in x if op in all_ops]
+    def get_fp32_ops(x):
+        return [op for op in x if op in all_ops]
 
     if args.all:
         run_tuning_step0(task, fp16_baseline, all_ops, optimized_ops)
@@ -509,7 +510,7 @@ if __name__ == "__main__":
 
     try:
         rows = load_results_from_csv(task.csv_path)
-    except:
+    except Exception:
         logger.exception(f"Failed to load csv {task.csv_path}")
         rows = task.results
 

@@ -15,10 +15,10 @@ void DnnlReshape::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   // the input shape assumes OrtFormat so we get the memory in OrtFormat.
   auto data_mem = sp.GetMemoryInOrtFormat(node.Input(IN_DATA), dnnl_engine);
-  dnnl::memory::dims data_dims = data_mem.get_desc().dims();
+  dnnl::memory::dims data_dims = data_mem.get_desc().get_dims();
 
   auto shape_mem = sp.GetMemory(node.Input(IN_SHAPE));
-  dnnl::memory::dims shape_dims = shape_mem.get_desc().dims();
+  dnnl::memory::dims shape_dims = shape_mem.get_desc().get_dims();
   int64_t* shape_data = (int64_t*)shape_mem.get_data_handle();
 
   // Reshape helper will take input data_dims shape and the reshape_shape and replace the -1 and 0s with the calculated

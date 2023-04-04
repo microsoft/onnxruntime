@@ -382,7 +382,7 @@ Status DnnlExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         for (size_t i = 0; i < context_num_outputs; i++) {
           auto output_name = subgraph_primitive->GetOrderedOutputs()[i];
           auto output_md = subgraph_primitive->GetOutputInfo(output_name);
-          auto output_shape = output_md.dims();
+          auto output_shape = output_md.get_dims();
           //if an output is a scaler, onednn internally uses tensor representation (eg, (1,1,...))
           //but allocating an output with no shape instead of the equivalent tensorshape to avoid shape mismatch
           if (subgraph_primitive->IsScalarOutput(output_name)) {

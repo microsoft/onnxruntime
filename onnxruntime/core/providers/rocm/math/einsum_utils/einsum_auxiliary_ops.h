@@ -21,7 +21,7 @@ namespace EinsumOp {
 // Holds ROCM assets required for ROCM ops that need to be executed as part of the Einsum flow
 struct EinsumRocmAssets {
   explicit EinsumRocmAssets(rocblas_handle rocblas_handle,
-                            const ROCMExecutionProvider* rocm_ep,
+                            ROCMExecutionProvider* rocm_ep,
                             Stream* ort_stream) : rocblas_handle_(rocblas_handle),
                                                   rocm_ep_(rocm_ep),
                                                   ort_stream_(ort_stream) {}
@@ -31,7 +31,7 @@ struct EinsumRocmAssets {
   }
 
   rocblas_handle rocblas_handle_;
-  const ROCMExecutionProvider* rocm_ep_;
+  ROCMExecutionProvider* rocm_ep_;
   Stream* ort_stream_;
 };
 

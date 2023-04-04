@@ -497,7 +497,8 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel3D) {
   test.AddInput<float>("X", x_dims, inputs);
   test.AddInput<float>("slope", slope_dims, slopes);
   test.AddOutput<float>("Y", x_dims, outputs);
-  test.Run();
+  // QNN has some issue with the broadcast support
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
@@ -524,7 +525,8 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
     test.AddInput<float>("X", x_dims, inputs);
     test.AddInput<float>("slope", slope_dims, slopes, slope_is_initializer);
     test.AddOutput<float>("Y", x_dims, outputs);
-    test.Run();
+    // QNN has some issue with the broadcast support
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
   };
 
   test(true /* slope_is_initializer */, 5, 4, 3, 2);

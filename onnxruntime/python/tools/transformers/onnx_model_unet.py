@@ -7,11 +7,12 @@ from logging import getLogger
 from typing import Optional
 
 from fusion_attention_unet import FusionAttentionUnet
+from fusion_bias_add import FusionBiasAdd
 from fusion_biassplitgelu import FusionBiasSplitGelu
 from fusion_group_norm import FusionGroupNorm
 from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions
-from fusion_transpose import FusionTranspose
+from fusion_transpose import FusionInsertTranspose, FusionTranspose
 from onnx import ModelProto
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
@@ -36,7 +37,6 @@ class UnetOnnxModel(BertOnnxModel):
         self.remove_useless_div()
 
     def postprocess(self):
-        self.merge_sequential_transpose()
         self.prune_graph()
         self.remove_unused_constant()
 
@@ -54,14 +54,14 @@ class UnetOnnxModel(BertOnnxModel):
 
         if nodes_to_remove:
             self.remove_nodes(nodes_to_remove)
-            logger.info("Removed %d useless Div (by 1) nodes", len(nodes_to_remove))
+            logger.info("Removed %d Div nodes", len(nodes_to_remove))
 
     def convert_conv_to_nhwc(self):
         # Do not update weight here since save external data has a bug
         conv_to_nhwc_conv = FusionNhwcConv(self, update_weight=False)
         conv_to_nhwc_conv.apply()
 
-    def merge_sequential_transpose(self):
+    def merge_adjacent_transpose(self):
         fusion_transpose = FusionTranspose(self)
         fusion_transpose.apply()
 
@@ -89,6 +89,25 @@ class UnetOnnxModel(BertOnnxModel):
         if total:
             logger.info("Removed %d Transpose nodes", total)
 
+    def fuse_multi_head_attention(self, options: Optional[FusionOptions] = None):
+        # Self Attention
+        enable_packed_qkv = (options is None) or options.enable_packed_qkv
+        self_attention_fusion = FusionAttentionUnet(
+            self, self.hidden_size, self.num_heads, False, enable_packed_qkv, False
+        )
+        self_attention_fusion.apply()
+
+        # Cross Attention
+        enable_packed_kv = (options is None) or options.enable_packed_kv
+        cross_attention_fusion = FusionAttentionUnet(
+            self, self.hidden_size, self.num_heads, True, False, enable_packed_kv
+        )
+        cross_attention_fusion.apply()
+
+    def fuse_bias_add(self):
+        fusion = FusionBiasAdd(self)
+        fusion.apply()
+
     def optimize(self, options: Optional[FusionOptions] = None):
         if (options is not None) and not options.enable_shape_inference:
             self.disable_shape_inference()
@@ -112,17 +131,15 @@ class UnetOnnxModel(BertOnnxModel):
             group_norm_fusion = FusionGroupNorm(self)
             group_norm_fusion.apply()
 
+            insert_transpose_fusion = FusionInsertTranspose(self)
+            insert_transpose_fusion.apply()
+
         if (options is None) or options.enable_bias_splitgelu:
             bias_split_gelu_fusion = FusionBiasSplitGelu(self)
             bias_split_gelu_fusion.apply()
 
         if (options is None) or options.enable_attention:
-            self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False, False)
-            self_attention_fusion.apply()
-
-            enable_packed_kv = (options is None) or options.enable_packed_kv
-            cross_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, True, enable_packed_kv)
-            cross_attention_fusion.apply()
+            self.fuse_multi_head_attention(options)
 
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
@@ -132,14 +149,20 @@ class UnetOnnxModel(BertOnnxModel):
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
         self.utils.remove_useless_reshape_nodes()
 
-        self.convert_conv_to_nhwc()
-
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
             self.fuse_add_bias_skip_layer_norm()
 
         if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()
+
+        if options is None or options.enable_nhwc_conv:
+            self.convert_conv_to_nhwc()
+
+            self.merge_adjacent_transpose()
+
+        if options is not None and options.enable_bias_add:
+            self.fuse_bias_add()
 
         self.postprocess()
 
@@ -153,13 +176,12 @@ class UnetOnnxModel(BertOnnxModel):
         ops = [
             "Attention",
             "MultiHeadAttention",
-            "Gelu",
-            "FastGelu",
             "LayerNormalization",
             "SkipLayerNormalization",
             "BiasSplitGelu",
             "GroupNorm",
             "NhwcConv",
+            "BiasAdd",
         ]
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)

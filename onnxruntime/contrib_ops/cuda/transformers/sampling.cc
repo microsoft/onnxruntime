@@ -33,6 +33,7 @@ transformers::CudaTensorConsoleDumper g_cuda_dumper_sampling;
 Sampling::Sampling(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::Sampling(info) {
   SetDeviceHelpers(GenerationCudaDeviceHelper::AddToFeeds,
+                   GenerationCudaDeviceHelper::ReorderPastState,
                    GenerationCudaDeviceHelper::TopK,
                    GenerationCudaDeviceHelper::DeviceCopy<float>,
                    GenerationCudaDeviceHelper::GreedySearchProcessLogits<float>,

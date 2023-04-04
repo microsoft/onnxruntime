@@ -21,7 +21,7 @@ namespace internal {
 template <typename T>
 Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
   namespace column_major = onnxruntime::rocm::tunable::blas::column_major;
-  ORT_RETURN_IF_ERROR(column_major::Gemm(params->tuning, params->stream, params->handle,
+  ORT_RETURN_IF_ERROR(column_major::Gemm(params->tuning_ctx, params->stream, params->handle,
                          params->opb, params->opa,
                          params->n, params->m, params->k,
                          params->alpha, params->b, params->ldb, params->a, params->lda,
@@ -41,7 +41,7 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
   //
   // Note: If any change cause directly usage of GemmFastGeluUnfused, add PreTuning() and PostTuning() in FastGeluTunableOp
   // to protect original input value.
-  return onnxruntime::contrib::rocm::LaunchFastGeluKernel<T>(params->tuning,
+  return onnxruntime::contrib::rocm::LaunchFastGeluKernel<T>(params->tuning_ctx,
                                                              params->stream,
                                                              static_cast<int>(fast_gelu_input_length),
                                                              static_cast<int>(bias_length),
@@ -51,7 +51,7 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
 }
 
 template <typename T, typename ALayout, typename BLayout>
-class GemmFastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<GemmFastGeluParams<T>> {
+class GemmFastGeluTunableOp : public TunableOp<GemmFastGeluParams<T>> {
  public:
   GemmFastGeluTunableOp() {
     this->RegisterOp(GemmFastGeluUnfused<T>);

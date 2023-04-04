@@ -131,11 +131,11 @@ MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
   ORT_IGNORE_RETURN_VALUE(MIOPEN_CALL(miopenDestroy(external_miopen_handle_)));
 }
 
-AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr MIGraphXExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
     return allocator_;
   } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
+    return IExecutionProvider::GetAllocator(mem_type);
   }
 }
 
@@ -166,7 +166,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
   // OrtMemTypeCPUOutput -- allocated by hipMallocHost, used to copy HIP device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto hip_pinned_alloc = GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto hip_pinned_alloc = GetAllocator(OrtMemTypeCPUOutput);
   if (!hip_pinned_alloc) {
     hip_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -183,7 +183,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
     InsertAllocator(hip_pinned_alloc);
   }
 
-  auto hip_cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto hip_cpu_alloc = GetAllocator(OrtMemTypeCPUInput);
   if (!hip_cpu_alloc) {
     hip_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
@@ -816,7 +816,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "GlobalMaxPool", "Greater", "GreaterOrEqual", "HardSigmoid", "HardSwish", "Identity",
                                                     "If", "ImageScaler", "InstanceNormalization", "LeakyRelu", "Less", "LessOrEqual",
                                                     "Log", "LogSoftmax", "Loop", "LpNormalization", "LRN", "LSTM", "MatMul", "MatMulInteger", "Max", "MaxPool",
-                                                    "Mean", "Min", "Mul", "Multinomial", "Neg", "NonMaxSuppression", "NonZero", "Not",
+                                                    "Mean", "Min", "Mod", "Mul", "Multinomial", "Neg", "NonMaxSuppression", "NonZero", "Not",
                                                     "OneHot", "Or", "Pad", "Pow", "PRelu", "QuantizeLinear", "RandomNormal", "RandomNormalLike",
                                                     "RandomUniform", "RandomUniformLike", "Range", "Reciprocal", "ReduceL1", "ReduceL2",
                                                     "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd",
@@ -1205,7 +1205,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 }
 
 void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  auto allocator = GetAllocator(OrtMemTypeCPU);
   RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false/*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
 }
 

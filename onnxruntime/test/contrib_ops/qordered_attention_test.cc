@@ -246,8 +246,8 @@ TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
     return;
   }
 
-  // Needs Turing or higher architecture
-  if (NeedSkipIfCudaArchLowerThan(750)) {
+  // Needs Turing architecture
+  if (NeedSkipIfCudaArchLowerThan(750) || NeedSkipIfCudaArchGreaterEqualThan(800)) {
     return;
   }
 

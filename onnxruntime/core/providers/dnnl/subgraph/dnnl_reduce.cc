@@ -68,7 +68,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     } else {
       if (node.Input(IN_AXES).Exists()) {
         auto axes_mem = sp.GetMemory(node.Input(IN_AXES));
-        dnnl::memory::dims axes_dims = axes_mem.get_desc().dims();
+        dnnl::memory::dims axes_dims = axes_mem.get_desc().get_dims();
         int64_t* p_axes_data = (int64_t*)axes_mem.get_data_handle();
         axes = std::vector<int64_t>(p_axes_data, p_axes_data + axes_dims[0]);
       }
@@ -93,7 +93,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   //We need to calculate output tensor shape
   //First we initialize it with input shape and then we modify it based on the attribute values
   //This is because the DNNL primitive functionality is determined by the input and output shapes.
-  auto src_dims = src_md.dims();
+  auto src_dims = src_md.get_dims();
   auto ndim = src_dims.size();
 
   // convert negative axis values to the positive axis
@@ -120,13 +120,13 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto dst_shape = TensorShape(src_dims.data(), ndim);
   dnnl::memory::dims dst_dims_mkl(dst_shape.GetDims().begin(), dst_shape.GetDims().end());
-  auto dst_md = dnnl::memory::desc({dst_dims_mkl}, src_md.data_type(), dnnl::memory::format_tag::any);
+  auto dst_md = dnnl::memory::desc({dst_dims_mkl}, src_md.get_data_type(), dnnl::memory::format_tag::any);
 
   // Check to see if the destination shape and source shape are the same.
   bool src_and_dst_dims_equal = true;
-  if (src_md.dims().size() == dst_md.dims().size()) {
-    for (size_t i = 0; i < src_md.dims().size(); ++i) {
-      if (src_md.dims()[i] != dst_md.dims()[i]) {
+  if (src_md.get_dims().size() == dst_md.get_dims().size()) {
+    for (size_t i = 0; i < src_md.get_dims().size(); ++i) {
+      if (src_md.get_dims()[i] != dst_md.get_dims()[i]) {
         src_and_dst_dims_equal = false;
         break;
       }
@@ -164,22 +164,25 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   dnnl::primitive_attr dnnl_primitive_attr;
   if ((reduce_op == ReduceLogSum || reduce_op == ReduceLogSumExp ) && !src_and_dst_dims_equal) {
     dnnl::post_ops eltwise_post_op;
-    eltwise_post_op.append_eltwise(1.0f, dnnl::algorithm::eltwise_log, 1.0f, 1.0f);
+    eltwise_post_op.append_eltwise(dnnl::algorithm::eltwise_log, 1.0f, 1.0f);
     dnnl_primitive_attr.set_post_ops(eltwise_post_op);
   }
 
   if (reduce_op == ReduceLogSumExp) {
     if (!src_and_dst_dims_equal) {
-      auto elementwise_desc = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, dnnl::algorithm::eltwise_exp, src_md);
-      auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(elementwise_desc, dnnl_engine);
+      auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference,
+                                                                  dnnl::algorithm::eltwise_exp, src_md,
+                                                                  dnnl::memory::desc(src_md.get_dims(),
+                                                                                     src_md.get_data_type(),
+                                                                                     dnnl::memory::format_tag::any));
 
       auto elementwise_dst_mem = dnnl::memory(elementwise_pd.dst_desc(), dnnl_engine);
 
       auto elemenwise_primitive = dnnl::eltwise_forward(elementwise_pd);
       sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, src_mem},
                                            {DNNL_ARG_DST, elementwise_dst_mem}});
-      auto reduce_desc = dnnl::reduction::desc(algo, src_md, dst_md, 0.f, 0.f);
-      auto reduce_pd = dnnl::reduction::primitive_desc(reduce_desc, dnnl_primitive_attr, dnnl_engine);
+      auto reduce_pd = dnnl::reduction::primitive_desc(dnnl_engine, algo, src_md, dst_md, 0.f, 0.f,
+                                                      dnnl_primitive_attr);
 
       reduce_dst_mem = dnnl::memory(reduce_pd.dst_desc(), dnnl_engine);
 
@@ -190,8 +193,11 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       reduce_dst_mem = src_mem;
     }
   } else if(reduce_op == ReduceSumSquare) {
-    auto elementwise_desc = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, dnnl::algorithm::eltwise_square, src_md);
-    auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(elementwise_desc, dnnl_engine);
+    auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference,
+                                                                dnnl::algorithm::eltwise_square, src_md,
+                                                                dnnl::memory::desc(src_md.get_dims(),
+                                                                                   src_md.get_data_type(),
+                                                                                   dnnl::memory::format_tag::any));
 
     auto elementwise_dst_mem = dnnl::memory(elementwise_pd.dst_desc(), dnnl_engine);
 
@@ -199,8 +205,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, src_mem},
                                            {DNNL_ARG_DST, elementwise_dst_mem}});
     if (!src_and_dst_dims_equal) {
-      auto reduce_desc = dnnl::reduction::desc(algo, src_md, dst_md, 0.f, 0.f);
-      auto reduce_pd = dnnl::reduction::primitive_desc(reduce_desc, dnnl_engine);
+      auto reduce_pd = dnnl::reduction::primitive_desc(dnnl_engine, algo, src_md, dst_md, 0.f, 0.f);
 
       reduce_dst_mem = dnnl::memory(reduce_pd.dst_desc(), dnnl_engine);
 
@@ -220,8 +225,8 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
         p_val = 2.0f;
       }
 
-      auto reduce_desc = dnnl::reduction::desc(algo, src_md, dst_md, p_val, 0.f);
-      auto reduce_pd = dnnl::reduction::primitive_desc(reduce_desc, dnnl_primitive_attr, dnnl_engine);
+      auto reduce_pd = dnnl::reduction::primitive_desc(dnnl_engine, algo, src_md, dst_md, p_val, 0.f,
+                                                      dnnl_primitive_attr);
 
       // If using GPU this will move the memory from the CPU to the GPU.
       reduce_src_mem = sp.GetMemoryAndReshape(node.Input(IN_DATA), reduce_pd.src_desc(), dnnl_engine);
@@ -232,8 +237,11 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
                                       {DNNL_ARG_DST, reduce_dst_mem}});
     } else {
       if (reduce_op == ReduceLogSum) {
-        auto elementwise_desc = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, dnnl::algorithm::eltwise_log, src_md);
-        auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(elementwise_desc, dnnl_engine);
+        auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference,
+                                                                    dnnl::algorithm::eltwise_log, src_md,
+                                                                    dnnl::memory::desc(src_md.get_dims(),
+                                                                                       src_md.get_data_type(),
+                                                                                       dnnl::memory::format_tag::any));
 
         reduce_dst_mem = dnnl::memory(elementwise_pd.dst_desc(), dnnl_engine);
 
@@ -274,7 +282,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       if ((j < axes.size() && axes[j] == static_cast<int64_t>(i) && src_dims[i] == 0) ||
           (axes.size() == 0 && src_dims[i] == 0)) {
         if (!keepdims) {
-          auto dims = src_md.dims();
+          auto dims = src_md.get_dims();
           ORT_ENFORCE(keepdims,
                       "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                       "Invalid output shape would be produced. input_shape:",

@@ -81,7 +81,9 @@ class RocmKernel : public OpKernel {
     return stream ? static_cast<hipStream_t>(stream->GetHandle()) : nullptr;
   }
 
-  bool IsTunableOpEnabled() const { return provider_->IsTunableOpEnabled(); }
+  tunable::RocmTuningContext* GetTuningContext() const {
+    return static_cast<tunable::RocmTuningContext*>(provider_->GetTuningContext());
+  }
 
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished

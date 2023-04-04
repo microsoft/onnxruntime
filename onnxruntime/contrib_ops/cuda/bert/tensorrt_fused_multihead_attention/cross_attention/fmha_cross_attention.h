@@ -186,11 +186,11 @@ static Fused_multihead_attention_params_mhca getMHCAParams(
     void const* q_packed_d, void const* kv_packed_d, void* cu_seqlens_q_d, void* cu_seqlens_kv_d, void* o_packed_d) {
   Fused_multihead_attention_params_mhca params{};
 
-  int32_t const d_padded = static_cast<int>(std::pow(2, std::ceil(std::log(d) / std::log(2))));
+  int32_t const d_padded = d <= 64 ? 64 : static_cast<int>(std::pow(2, std::ceil(std::log(d) / std::log(2))));
 
   // Set the pointers.
   params.o_ptr = o_packed_d;
-  params.o_stride_in_bytes = h * d * sizeof(half);
+  params.o_stride_in_bytes = static_cast<int64_t>(h) * d * sizeof(half);
 
   // Set the dimensions.
   params.b = b;
@@ -211,13 +211,13 @@ static Fused_multihead_attention_params_mhca getMHCAParams(
 
   // Set the pointers.
   params.gmem_q_params.ptr = const_cast<void*>(q_packed_d);
-  params.gmem_q_params.stride_in_bytes = h * d * sizeof(half);
+  params.gmem_q_params.stride_in_bytes = static_cast<int64_t>(h) * d * static_cast<int64_t>(sizeof(half));
   params.gmem_q_params.h = h;
   params.gmem_q_params.d = d;
   params.gmem_q_params.cu_seqlens = static_cast<int32_t*>(cu_seqlens_q_d);
 
   params.gmem_kv_params.ptr = const_cast<void*>(kv_packed_d);
-  params.gmem_kv_params.stride_in_bytes = h * 2 * d * sizeof(half);
+  params.gmem_kv_params.stride_in_bytes = static_cast<int64_t>(h) * 2 * d * static_cast<int64_t>(sizeof(half));
   params.gmem_kv_params.h = h;
   params.gmem_kv_params.d = d;
   params.gmem_kv_params.cu_seqlens = static_cast<int32_t*>(cu_seqlens_kv_d);
@@ -269,11 +269,11 @@ using FusedMHACrossKernelFactory = TSharedCubinKernelFactory<FusedMultiHeadCross
 // Below are public interface
 
 inline bool has_fused_cross_attention_kernel(int sm, int head_size, int kv_sequence_length) {
-  constexpr int min_head_size = 32;
+  constexpr int min_head_size = 0;
   const int max_head_size = (sm == 75 ? 64 : 256);
   return (sm == 75 || sm == 80 || sm == 86 || sm == 89) &&
          (head_size > min_head_size) && (head_size <= max_head_size) &&
-         (kv_sequence_length <= 128); // TODO: shall we remove this constraint on kv_sequence_length?
+         (kv_sequence_length <= 128);  // TODO: shall we remove this constraint on kv_sequence_length?
 }
 
 inline FusedMultiHeadCrossAttentionKernel const* get_fused_cross_attention_kernels(int32_t sm) {

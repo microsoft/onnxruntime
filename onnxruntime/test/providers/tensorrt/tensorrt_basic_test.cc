@@ -11,6 +11,8 @@
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
 #include <string>
 #include <thread>
+#include <filesystem>
+#include <chrono>
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -109,7 +111,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
@@ -149,6 +151,9 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
       nullptr,
       0,
       nullptr,
+      0,
+      0,
+      0,
       0,
       0,
       0};
@@ -180,7 +185,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
@@ -220,6 +225,9 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
       nullptr,
       0,
       nullptr,
+      0,
+      0,
+      0,
       0,
       0,
       0};
@@ -343,7 +351,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
@@ -384,6 +392,9 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       nullptr,
       0,
       nullptr,
+      0,
+      0,
+      0,
       0,
       0,
       0};
@@ -498,9 +509,68 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     }
   } else if (cache_type.compare("timing") == 0) {
      // add test code here
+
+    /* Following code block tests the functionality of engine and optimization profile of ORT TRT, including:
+     * - timing cache cache serialization/de-serialization
+     * - benefir of usign a timing cache no matter if dynamic / static input
+     */
+    uint64_t compilation_without_cache_ms, compilation_with_cache_ms;
+
+    params.trt_timing_cache_enable = 1;
+    //  std::chrono
+    {
+      auto start = chrono::steady_clock::now();
+      std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+      EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+      auto status = session_object.Load(model_name);
+      ASSERT_TRUE(status.IsOK());
+      status = session_object.Initialize();
+      ASSERT_TRUE(status.IsOK());
+
+      // run inference
+      // TRT timing cache should be created under the situation of non-dynamic/dynamic shape input
+      status = session_object.Run(run_options, feeds, output_names, &fetches);
+      auto end = chrono::steady_clock::now();
+      ASSERT_TRUE(status.IsOK());
+      VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+      ASSERT_TRUE(IsCacheExistedByType("./", ".timing"));
+      compilation_without_cache_ms = chrono::duration_cast<chrono::microseconds>(end - start).count();
+    }
+
+    // get new session and reinitialize model
+    // second same inference should resuse the cache and therefore have a faster build
+    if (input_type.compare("static") == 0) {
+      {
+        InferenceSession session_object_new{so, GetEnvironment()};
+        {
+          auto start = chrono::steady_clock::now();
+          std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+          EXPECT_TRUE(session_object_new.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+          auto status = session_object_new.Load(model_name);
+          ASSERT_TRUE(status.IsOK());
+          status = session_object_new.Initialize();
+          ASSERT_TRUE(status.IsOK());
+
+          // run inference
+          // TRT timing cache should be created under the situation of non-dynamic/dynamic shape input
+          status = session_object_new.Run(run_options, feeds, output_names, &fetches);
+          // TODO narrow down actual compilation section
+          auto end = chrono::steady_clock::now();
+
+          ASSERT_TRUE(status.IsOK());
+          VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+          ASSERT_TRUE(IsCacheExistedByType("./", ".timing"));
+          compilation_with_cache_ms = chrono::duration_cast<chrono::microseconds>(end - start).count();
+        }
+      }
+      ASSERT_TRUE(compilation_with_cache_ms <= compilation_without_cache_ms);
+    } else {
+      // TODO test dynamic shapes
+    }
   }
 
   // clean up caches
+  RemoveCachesByType("./", ".timing");
   RemoveCachesByType("./", ".engine");
   RemoveCachesByType("./", ".profile");
 }
@@ -515,11 +585,13 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
  * We have following test parameters:
  * - engine_static: engine cache enabled with non-dynamic input shape
  * - engine_dynamic: engine cache enabled with dynamic input shape
- * - timing_static: will be added
- * - timing_dynamic: will be added
+ * - timing_static: timing cache enabled, static input shape
+ * - timing_dynamic: timing cache enabled, static input shape
  */
 INSTANTIATE_TEST_SUITE_P(TensorrtExecutionProviderCacheTests, TensorrtExecutionProviderCacheTest, testing::Values("engine_static",
-                                                                                                                  "engine_dynamic"),
+                                                                                                                  "engine_dynamic",
+                                                                                                                  "timing_static",
+                                                                                                                  "timing_dynamic"),
                                                                                                   [](const ::testing::TestParamInfo<TensorrtExecutionProviderCacheTest::ParamType>& info) {return info.param;});
 
 TEST(TensorrtExecutionProviderTest, FunctionTest) {
@@ -566,7 +638,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
 
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -670,7 +742,7 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
 
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<bool> values_mul_x = {true, false, true, false, true, false};
@@ -791,7 +863,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
 
   OrtValue ml_value_x;
   CreateMLValue<bool>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);

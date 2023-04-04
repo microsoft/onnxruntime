@@ -1,5 +1,11 @@
-RWStructuredBuffer<float> src : register(u0);
-RWStructuredBuffer<float> dst : register(u1);
+// TBUFFER is the data type to read from src and write to dst. 
+// Arithmetic is always done in FP32.
+#if !defined(TBUFFER)
+#define TBUFFER float
+#endif
+
+RWStructuredBuffer<TBUFFER> src : register(u0);
+RWStructuredBuffer<TBUFFER> dst : register(u1);
 
 cbuffer Constants
 {
@@ -62,8 +68,8 @@ void DFT(uint3 dtid : SV_DispatchThreadId)
     if (index < ElementCount)
     {
         uint halfTotalDFTLength = DFTLength / 2;
-        uint N = 1 << DFTIteration;
-        uint halfN = 1 << (DFTIteration - 1);
+        uint N = 1U << DFTIteration;
+        uint halfN = 1U << (DFTIteration - 1);
 
         // Get input even and odd indices
         // Decompose the current index into its location in the packed tensor
@@ -91,7 +97,7 @@ void DFT(uint3 dtid : SV_DispatchThreadId)
         float2 w = float2(cos(theta), sin(theta));
 
         uint2 outputIndex = ComputeDestIndex(index);
-        dst[outputIndex.x] = Scale * (inputEvenValue.x + (w.x * inputOddValue.x - w.y * inputOddValue.y));
-        dst[outputIndex.y] = Scale * (inputEvenValue.y + (w.x * inputOddValue.y + w.y * inputOddValue.x));
+        dst[outputIndex.x] = (TBUFFER)(Scale * (inputEvenValue.x + (w.x * inputOddValue.x - w.y * inputOddValue.y)));
+        dst[outputIndex.y] = (TBUFFER)(Scale * (inputEvenValue.y + (w.x * inputOddValue.y + w.y * inputOddValue.x)));
     }
 }

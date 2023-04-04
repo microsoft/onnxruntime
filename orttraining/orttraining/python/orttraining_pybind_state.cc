@@ -49,7 +49,6 @@ using namespace onnxruntime;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 
-Environment& GetTrainingORTEnv();
 ORTTrainingPythonEnv& GetTrainingEnv();
 
 void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
@@ -169,9 +168,12 @@ struct TrainingConfigurationResult {
 struct PyOptimizer {
   PyOptimizer(const std::string optimizer_model_uri,
               onnxruntime::training::api::Module* model, std::vector<std::shared_ptr<IExecutionProvider>> provider)
-      : optimizer_(std::make_unique<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
-                                                                           model->NamedParameters(), onnxruntime::SessionOptions(),
-                                                                           GetTrainingORTEnv(), provider)) {
+      : optimizer_() {
+    auto env = GetTrainingEnv().GetORTEnv();
+    // XXX: We hope that env will be around when optimizer needs it.
+    optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
+                                                                         model->NamedParameters(), onnxruntime::SessionOptions(),
+                                                                         *env, provider);
   }
 
   std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
@@ -523,6 +525,14 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         ORT_UNUSED_PARAMETER(obj);
 #endif
   });
+  m.def("register_miscellaneous_const_input", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterMiscellaneousConstInput(obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
   m.def("unregister_python_functions", []() -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     // Release all custom python functions registered.
@@ -549,20 +559,21 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
-    PyTrainingSession(Environment& env, const PySessionOptions& so)
-        : PyInferenceSession(std::make_unique<PipelineTrainingSession>(so.value, env)) {
+    PyTrainingSession(std::shared_ptr<Environment> env, const PySessionOptions& so)
+        : PyInferenceSession(env, std::make_unique<PipelineTrainingSession>(so.value, *env)) {
     }
+    ~PyTrainingSession() = default;
   };
 
   py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
   training_session
       .def(py::init([](const PySessionOptions& so) {
-        Environment& env = GetTrainingORTEnv();
-        return std::make_unique<PyTrainingSession>(env, so);
+        auto& training_env = GetTrainingEnv();
+        return std::make_unique<PyTrainingSession>(training_env.GetORTEnv(), so);
       }))
       .def(py::init([]() {
-        Environment& env = GetTrainingORTEnv();
-        return std::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
+        auto& training_env = GetTrainingEnv();
+        return std::make_unique<PyTrainingSession>(training_env.GetORTEnv(), GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
 #if defined(USE_MPI)
@@ -876,10 +887,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         onnxruntime::SessionOptions session_option;
         std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
 
+        auto env = GetTrainingEnv().GetORTEnv();
         return std::make_unique<onnxruntime::training::api::Module>(
             model_uri,
             state.module_checkpoint_state.named_parameters, session_option,
-            GetTrainingORTEnv(), provider, eval_model_uri);
+            *env, provider, eval_model_uri);
       }))
       .def("train_step",
            [](onnxruntime::training::api::Module* model,

@@ -299,6 +299,22 @@ int FusedMHARunnerFP16v2::getSFromMaxSeqLen(const int max_seq_len) const {
   return pimpl->getSFromMaxSeqLen(max_seq_len);
 }
 
+std::unique_ptr<MHARunner> FusedMHARunnerFP16v2::Create(const int numHeads,
+                                                                   const int headSize,
+                                                                   const int sm,
+                                                                   bool causal_mask,
+                                                                   bool enable_flash_attention,
+                                                                   const float scale) {
+#ifdef _MSC_VER
+  return std::make_unique<FusedMHARunnerFP16v2>(numHeads, headSize, sm, causal_mask, enable_flash_attention, scale);
+#else
+  // Linux build has error using make_unique: invalid application of ‘sizeof’ to incomplete type ‘onnxruntime::contrib::cuda::FusedMHARunnerFP16v2::mhaImpl
+  std::unique_ptr<MHARunner> runner;
+  runner.reset(new FusedMHARunnerFP16v2(numHeads, headSize, sm, causal_mask, enable_flash_attention, scale));
+  return runner;
+#endif
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

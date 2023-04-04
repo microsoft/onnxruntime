@@ -277,7 +277,9 @@ inline void wait_event_in_tensor(const Tensor& event_id_tensor) { return g_host_
 
 // From aten_op.h
 inline bool IsATenOperatorExecutorInitialized() { return g_host_cpu.contrib__IsATenOperatorExecutorInitialized(); }
-inline Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) { return g_host_cpu.contrib__ExecuteReduceSumATen(p_ctx, axes, keepdims); }
+inline Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) {
+  return g_host_cpu.contrib__ExecuteReduceSumATen(p_ctx, axes, keepdims);
+}
 }  // namespace contrib
 #endif  // ENABLE_TRAINING
 #endif  // USE_CUDA || USE_ROCM

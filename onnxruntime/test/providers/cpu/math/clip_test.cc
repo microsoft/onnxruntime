@@ -123,6 +123,44 @@ TEST(MathOpTest, Clip_Default_uint64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(MathOpTest, Clip_int32) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<int32_t>("X", dims,
+                        {-1, 0, 1,
+                        -16, 12, -6,
+                        -5, 2, 16});
+  test.AddInput<int32_t>("min", {}, {-10});
+  test.AddInput<int32_t>("max", {}, {10});
+  test.AddOutput<int32_t>("Y", dims,
+                        {-1, 0, 1,
+                          -10, 10, -6,
+                          -5, 2, 10});
+
+  // TensorRT does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(MathOpTest, Clip_uint32) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<uint32_t>("X", dims,
+                        {0, 0, 1,
+                        5, 12, 3,
+                        2, 7, 16});
+  test.AddInput<uint32_t>("min", {}, {3});
+  test.AddInput<uint32_t>("max", {}, {10});
+  test.AddOutput<uint32_t>("Y", dims,
+                        {3, 3, 3,
+                          5, 10, 3,
+                          3, 7, 10});
+
+  // TensorRT does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(MathOpTest, Clip) {
   // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {
@@ -211,7 +249,8 @@ TEST(MathOpTest, ClipDimWithZero) {
 
   // Tensorrt does not support Clip opset 11 yet.
   // CoreML EP does not support empty inputs
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
+  // QNN can't handle zero dim
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider});
 
   OpTester test1("Clip");  //
   test1.AddInput<float>("X", dims, {});
@@ -220,7 +259,8 @@ TEST(MathOpTest, ClipDimWithZero) {
   test1.AddOutput<float>("Y", dims, {});
   // TRT doesn't handle this
   // CoreML EP does not support empty inputs
-  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
+  // QNN can't handle zero dim
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider});
 }
 
 }  // namespace test
