@@ -18,9 +18,11 @@ namespace onnxruntime::optimizer::compute_optimizer {
  * be sliced.
  */
 struct SliceInfo : public UpstreamOperatorInfoBase {
-  static constexpr int kSliceDataInputIndex = 0;
-  static constexpr int kSliceOutputIndex = 0;
+ private:
+  static constexpr int kSliceDataInputIndex_ = 0;
+  static constexpr int kSliceOutputIndex_ = 0;
 
+ public:
   SliceInfo(const Graph& graph, Node* slice_node,
             bool is_slice_scalar,
             const std::string& slice_axis_attr_name,
@@ -29,8 +31,8 @@ struct SliceInfo : public UpstreamOperatorInfoBase {
       : UpstreamOperatorInfoBase(slice_node, is_entry_node_ptr), is_scalar_slice(is_slice_scalar) {
     axis_attr_name = slice_axis_attr_name;
 
-    const NodeArg* input = node_ptr->InputDefs()[kSliceDataInputIndex];
-    const NodeArg* output = node_ptr->OutputDefs()[kSliceOutputIndex];
+    const NodeArg* input = node_ptr->InputDefs()[kSliceDataInputIndex_];
+    const NodeArg* output = node_ptr->OutputDefs()[kSliceOutputIndex_];
     input_rank = input->Shape()->dim_size();
     non_negative_axis = slice_axis < 0 ? input_rank + slice_axis : slice_axis;
 
@@ -45,21 +47,21 @@ struct SliceInfo : public UpstreamOperatorInfoBase {
     const Node* producer = graph.GetProducerNode(input->Name());
     if (producer) {
       // Allow the data input to be graph input or initializer, but this won't be passed through further.
-      slice_data_producer_output_index = optimizer_utils::IndexOfNodeOutput(*producer, *input);
+      slice_data_producer_output_index_ = optimizer_utils::IndexOfNodeOutput(*producer, *input);
     }
   }
 
   int GetDataInputIndex() const {
-    return kSliceDataInputIndex;
+    return kSliceDataInputIndex_;
   }
 
   int GetOutputIndex() const {
-    return kSliceOutputIndex;
+    return kSliceOutputIndex_;
   }
 
   int GetDataProducerOutputIndex() const {
-    ORT_ENFORCE(slice_data_producer_output_index >= 0, "Data producer output index is not set");
-    return slice_data_producer_output_index;
+    ORT_ENFORCE(slice_data_producer_output_index_ >= 0, "Data producer output index is not set");
+    return slice_data_producer_output_index_;
   }
 
   bool is_scalar_slice;  // whether the slice is a scalar, if it is after Gather, the rank will be reduced by 1.
@@ -75,7 +77,7 @@ struct SliceInfo : public UpstreamOperatorInfoBase {
   ONNX_NAMESPACE::TensorShapeProto_Dimension output_dim_on_axis;
 
  private:
-  int slice_data_producer_output_index{-1};
+  int slice_data_producer_output_index_{-1};
 };
 
 /**

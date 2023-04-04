@@ -32,6 +32,9 @@
 
 #include "test/compare_ortvalue.h"
 #include "test/framework/test_utils.h"
+#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/optimizer/graph_transform_test_fixture.h"
+
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/temp_dir.h"
@@ -1599,6 +1602,612 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
       auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
                                  per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [4, 32, 256] (int64_t)            graph input [4, 32, 256] (int64_t)
+                            |                                |
+                             \_____________   ______________/
+                                           \ /
+                                           Add
+                                            |
+                                         Reshape
+                                            |
+                                         Identity
+                                            |
+                                    graph out [128, 256] (int64_t)
+
+Add an Identity node because currently we don't allow Reshape generate graph output.
+*/
+TEST(ComputeOptimizerTests, ReshapeElementwiseOps_PropagationOnTwoBranches) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Reshape"] == 2);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Add") {
+        const auto& input_defs = node.InputDefs();
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          TEST_RETURN_IF_NOT(producer_node != nullptr);
+          TEST_RETURN_IF_NOT(producer_node->OpType() == "Reshape");
+
+          InlinedVector<int64_t> values;
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+          TEST_RETURN_IF_NOT(values.size() == 2);
+          TEST_RETURN_IF_NOT(values[0] == -1);
+          TEST_RETURN_IF_NOT(values[1] == 256);
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+          TEST_RETURN_IF_NOT(producer_node != nullptr);
+          TEST_RETURN_IF_NOT(producer_node->OpType() == "Reshape");
+
+          InlinedVector<int64_t> values;
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+          TEST_RETURN_IF_NOT(values.size() == 2);
+          TEST_RETURN_IF_NOT(values[0] == -1);
+          TEST_RETURN_IF_NOT(values[1] == 256);
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  std::vector<int> fist_dim_values = {-1, 128};
+  for (auto first_dim_value : fist_dim_values) {
+    auto build_test_case = [&first_dim_value](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+      auto* input2_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+      auto* add_out = builder.MakeIntermediate();
+      builder.AddNode("Add", {input1_arg, input2_arg}, {add_out});
+
+      auto* shape_initializer = builder.MakeInitializer<int64_t>({2}, {first_dim_value, 256});
+      auto* reshape_out = builder.MakeIntermediate();
+      builder.AddNode("Reshape", {add_out, shape_initializer}, {reshape_out});
+
+      auto* identity_out = builder.MakeOutput();
+      builder.AddNode("Identity", {reshape_out}, {identity_out});
+    };
+
+    const std::vector<int> opsets{12, 13, 14};
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [4, 32, 256] (int64_t)            graph input [256] (int64_t)
+                            |                                |
+                             \_____________   ______________/
+                                           \ /
+                                           Add
+                                            |
+                                         Reshape
+                                            |
+                                         Identity
+                                            |
+                                    graph out [128, 256] (int64_t)
+
+Add an Identity node because currently we don't allow Reshape generate graph output.
+
+*/
+TEST(ComputeOptimizerTests, ReshapeElementwiseOps_PropagationOnOneBranch_1DBroadcast) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Add") {
+        const auto& input_defs = node.InputDefs();
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          TEST_RETURN_IF_NOT(producer_node != nullptr);
+          TEST_RETURN_IF_NOT(producer_node->OpType() == "Reshape");
+
+          InlinedVector<int64_t> values;
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+          TEST_RETURN_IF_NOT(values.size() == 2);
+          TEST_RETURN_IF_NOT(values[0] == -1);
+          TEST_RETURN_IF_NOT(values[1] == 256);
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+          TEST_RETURN_IF_NOT(producer_node == nullptr);
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+    auto* input2_arg = builder.MakeInput<int64_t>({{256}});
+    auto* add_out = builder.MakeIntermediate();
+    builder.AddNode("Add", {input1_arg, input2_arg}, {add_out});
+
+    auto* shape_initializer = builder.MakeInitializer<int64_t>({2}, {-1, 256});
+    auto* reshape_out = builder.MakeIntermediate();
+    builder.AddNode("Reshape", {add_out, shape_initializer}, {reshape_out});
+
+    auto* identity_out = builder.MakeOutput();
+    builder.AddNode("Identity", {reshape_out}, {identity_out});
+  };
+
+  const std::vector<int> opsets{12, 13, 14};
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1,
+                                          1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [4, 1, 256] (int64_t)            graph input [32, 256] (int64_t)
+                            |                                |
+                             \_____________   ______________/
+                                           \ /
+                                           Add
+                                            |
+                                         Reshape
+                                            |
+                                         Identity
+                                            |
+                                    graph out [128, 256] (int64_t)
+
+Add an Identity node because currently we don't allow Reshape generate graph output.
+
+*/
+TEST(ComputeOptimizerTests, ReshapeElementwiseOps_NoPropagation1) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Add") {
+        const auto& input_defs = node.InputDefs();
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          TEST_RETURN_IF_NOT(producer_node == nullptr);
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+          TEST_RETURN_IF_NOT(producer_node == nullptr);
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>({{4, 1, 256}});
+    auto* input2_arg = builder.MakeInput<int64_t>({{32, 256}});
+    auto* add_out = builder.MakeIntermediate();
+    builder.AddNode("Add", {input1_arg, input2_arg}, {add_out});
+
+    auto* shape_initializer = builder.MakeInitializer<int64_t>({2}, {-1, 256});
+    auto* reshape_out = builder.MakeIntermediate();
+    builder.AddNode("Reshape", {add_out, shape_initializer}, {reshape_out});
+
+    auto* identity_out = builder.MakeOutput();
+    builder.AddNode("Identity", {reshape_out}, {identity_out});
+  };
+
+  const std::vector<int> opsets{12, 13, 14};
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1,
+                                          1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [4, 32, 256] (int64_t)            graph input () (scalar, int64_t)
+                            |                                |
+                             \_____________   ______________/
+                                           \ /
+                                           Add
+                                            |
+                                         Reshape
+                                            |
+                                         Identity
+                                            |
+                                    graph out [128, 256] (int64_t)
+
+Add an Identity node because currently we don't allow Reshape generate graph output.
+
+*/
+TEST(ComputeOptimizerTests, ReshapeElementwiseOps_PropagationOnOneBranch_ScalarBroadcast) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Add") {
+        const auto& input_defs = node.InputDefs();
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          TEST_RETURN_IF_NOT(producer_node != nullptr);
+          TEST_RETURN_IF_NOT(producer_node->OpType() == "Reshape");
+
+          InlinedVector<int64_t> values;
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+          TEST_RETURN_IF_NOT(values.size() == 2);
+          TEST_RETURN_IF_NOT(values[0] == -1);
+          TEST_RETURN_IF_NOT(values[1] == 256);
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+          TEST_RETURN_IF_NOT(producer_node == nullptr);
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+    auto* input2_arg = builder.MakeScalarInitializer<int64_t>(2);
+    auto* add_out = builder.MakeIntermediate();
+    builder.AddNode("Add", {input1_arg, input2_arg}, {add_out});
+
+    auto* shape_initializer = builder.MakeInitializer<int64_t>({2}, {-1, 256});
+    auto* reshape_out = builder.MakeIntermediate();
+    builder.AddNode("Reshape", {add_out, shape_initializer}, {reshape_out});
+
+    auto* identity_out = builder.MakeOutput();
+    builder.AddNode("Identity", {reshape_out}, {identity_out});
+  };
+
+  const std::vector<int> opsets{12, 13, 14};
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
+                                          TransformerLevel::Level1,
+                                          1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [4, 32, 256] (float)            graph input [256, 256] (float)
+                            |                                |
+                             \_____________   ______________/
+                                           \ /
+                                          MatMul
+                                            |
+                                         Reshape
+                                            |
+                                         Identity
+                                            |
+                                    graph out [128, 256] (float)
+
+Add an Identity node because currently we don't allow Reshape generate graph output.
+*/
+TEST(ComputeOptimizerTests, ReshapeMatMul_PropagationOnLeftBranch) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["MatMul"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["MatMul"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "MatMul") {
+        const auto& input_defs = node.InputDefs();
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          TEST_RETURN_IF_NOT(producer_node != nullptr);
+          TEST_RETURN_IF_NOT(producer_node->OpType() == "Reshape");
+
+          InlinedVector<int64_t> values;
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+          TEST_RETURN_IF_NOT(values.size() == 2);
+          TEST_RETURN_IF_NOT(values[0] == -1);
+          TEST_RETURN_IF_NOT(values[1] == 256);
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+          TEST_RETURN_IF_NOT(producer_node == nullptr);
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  std::vector<int> fist_dim_values = {-1, 128};
+  for (auto first_dim_value : fist_dim_values) {
+    auto build_test_case = [&first_dim_value](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{4, 32, 256}});
+      auto* input2_arg = builder.MakeInput<float>({{256, 256}});
+      auto* matmul_out = builder.MakeIntermediate();
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_out});
+
+      auto* shape_initializer = builder.MakeInitializer<int64_t>({2}, {first_dim_value, 256});
+      auto* reshape_out = builder.MakeIntermediate();
+      builder.AddNode("Reshape", {matmul_out, shape_initializer}, {reshape_out});
+
+      auto* identity_out = builder.MakeOutput();
+      builder.AddNode("Identity", {reshape_out}, {identity_out});
+    };
+
+    const std::vector<int> opsets{12, 13, 14};
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [4, 32, 1024] (float)       graph input [1024] (float)     graph input [1024] (float)
+                            |                         |                             /
+                             \_____________   _______/  __________________________/
+                                           \ /         /
+                                    LayerNormalization
+                                            |
+                                         Reshape
+                                            |
+                                         Identity
+                                            |
+                                    graph out [128, 1024] (float)
+
+Add an Identity node because currently we don't allow Reshape generate graph output.
+*/
+TEST(ComputeOptimizerTests, ReshapeLayerNormalization_PropagationOnOneBranch) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["LayerNormalization"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["LayerNormalization"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "LayerNormalization") {
+        const auto& input_defs = node.InputDefs();
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          TEST_RETURN_IF_NOT(producer_node != nullptr);
+          TEST_RETURN_IF_NOT(producer_node->OpType() == "Reshape");
+
+          InlinedVector<int64_t> values;
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+          TEST_RETURN_IF_NOT(values.size() == 2);
+          TEST_RETURN_IF_NOT(values[0] == -1);
+          TEST_RETURN_IF_NOT(values[1] == 1024);
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+          TEST_RETURN_IF_NOT(producer_node == nullptr);
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[2]->Name());
+          TEST_RETURN_IF_NOT(producer_node == nullptr);
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  std::vector<int> fist_dim_values = {-1, 128};
+  for (auto first_dim_value : fist_dim_values) {
+    auto build_test_case = [&first_dim_value](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{4, 32, 1024}});
+      auto* input2_arg = builder.MakeInput<float>({{1024}});
+      auto* input3_arg = builder.MakeInput<float>({{1024}});
+      auto* ln_out = builder.MakeIntermediate();
+      builder.AddNode("LayerNormalization", {input1_arg, input2_arg, input3_arg}, {ln_out})
+          .AddAttribute("axis", static_cast<int64_t>(-1));
+
+      auto* shape_initializer = builder.MakeInitializer<int64_t>({2}, {first_dim_value, 1024});
+      auto* reshape_out = builder.MakeIntermediate();
+      builder.AddNode("Reshape", {ln_out, shape_initializer}, {reshape_out});
+
+      auto* identity_out = builder.MakeOutput();
+      builder.AddNode("Identity", {reshape_out}, {identity_out});
+    };
+
+    const std::vector<int> opsets{12, 13, 14};
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [4, 32, 1024] (float)       graph input [1024] (float)     graph input [1024] (float)
+                            |                         |                             /
+                             \_____________   _______/  __________________________/
+                                           \ /         /
+                                    LayerNormalization
+                                            |
+                                         Reshape
+                                            |
+                                         Identity
+                                            |
+                                    graph out [128, 1024] (float)
+
+Add an Identity node because currently we don't allow Reshape generate graph output.
+*/
+TEST(ComputeOptimizerTests, ReshapeLayerNormalization_NoPropagation) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["LayerNormalization"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["LayerNormalization"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "LayerNormalization") {
+        const auto& input_defs = node.InputDefs();
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          TEST_RETURN_IF_NOT(producer_node == nullptr);
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+          TEST_RETURN_IF_NOT(producer_node == nullptr);
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[2]->Name());
+          TEST_RETURN_IF_NOT(producer_node == nullptr);
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  std::vector<int> fist_dim_values = {-1, 128};
+  for (auto first_dim_value : fist_dim_values) {
+    auto build_test_case = [&first_dim_value](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{4, 32, 1024}});
+      auto* input2_arg = builder.MakeInput<float>({{1024}});
+      auto* input3_arg = builder.MakeInput<float>({{1024}});
+      auto* ln_out = builder.MakeIntermediate();
+      builder.AddNode("LayerNormalization", {input1_arg, input2_arg, input3_arg}, {ln_out})
+          .AddAttribute("axis", static_cast<int64_t>(1));
+
+      auto* shape_initializer = builder.MakeInitializer<int64_t>({2}, {first_dim_value, 1024});
+      auto* reshape_out = builder.MakeIntermediate();
+      builder.AddNode("Reshape", {ln_out, shape_initializer}, {reshape_out});
+
+      auto* identity_out = builder.MakeOutput();
+      builder.AddNode("Identity", {reshape_out}, {identity_out});
+    };
+
+    const std::vector<int> opsets{12, 13, 14};
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
     }
   }
 }

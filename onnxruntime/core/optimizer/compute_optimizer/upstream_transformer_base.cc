@@ -93,7 +93,7 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
 
       if (graph.GetConsumerNodes(input_tensor_producer_node->MutableOutputDefs()[0]->Name()).size() > 1) {
         LOG_DEBUG_INFO(logger, log_prefix + " stops at node " + input_tensor_producer_node->Name() +
-                                   " Since multiple consumers found");
+                                   " since multiple consumers found");
         continue;
       }
 
@@ -113,8 +113,11 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
     }
   }
 
+  // For `Node A` -> 'Entry Node B', one `passthrough` means, entry node B is moved ahead of node A on
+  // its every input branch. `passthrough_count` is the total number of times we move entry node B.
   LOG_DEBUG_INFO(logger, "Exit UpStreamGraphTransformerBase, reordered " + std::to_string(reordered_node_count) +
-                             " nodes, total passthrough count: " + std::to_string(passthrough_count));
+                             " nodes, total passthrough count (how many times we re-order the nodes): " +
+                             std::to_string(passthrough_count));
   return Status::OK();
 }
 

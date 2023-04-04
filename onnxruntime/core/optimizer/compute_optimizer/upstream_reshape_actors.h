@@ -18,15 +18,17 @@ namespace onnxruntime::optimizer::compute_optimizer {
  * all inputs are not supported to be reshaped.
  */
 struct ReshapeInfo : public UpstreamOperatorInfoBase {
-  static constexpr int kDataInputIndex = 0;
-  static constexpr int kReshapeOutputIndex = 0;
+ private:
+  static constexpr int kDataInputIndex_ = 0;
+  static constexpr int kReshapeOutputIndex_ = 0;
 
+ public:
   ReshapeInfo(const Graph& graph, Node* reshape_node,
               bool is_entry_node_ptr = false)
       : UpstreamOperatorInfoBase(reshape_node, is_entry_node_ptr) {
-    const NodeArg* input = reshape_node->InputDefs()[kDataInputIndex];
+    const NodeArg* input = reshape_node->InputDefs()[kDataInputIndex_];
     ORT_ENFORCE(input->Shape()->dim_size() == 3, "Only support data of 3D");
-    const NodeArg* output = node_ptr->OutputDefs()[kReshapeOutputIndex];
+    const NodeArg* output = node_ptr->OutputDefs()[kReshapeOutputIndex_];
     last_dim = output->Shape()->dim(0);
 
     if (is_entry_node_ptr) {
@@ -36,21 +38,21 @@ struct ReshapeInfo : public UpstreamOperatorInfoBase {
     const Node* producer = graph.GetProducerNode(input->Name());
     if (producer) {
       // Allow the data input to be graph input or initializer, but this won't be passed through further.
-      data_producer_output_index = optimizer_utils::IndexOfNodeOutput(*producer, *input);
+      data_producer_output_index_ = optimizer_utils::IndexOfNodeOutput(*producer, *input);
     }
   }
 
   int GetDataInputIndex() const {
-    return kDataInputIndex;
+    return kDataInputIndex_;
   }
 
   int GetOutputIndex() const {
-    return kReshapeOutputIndex;
+    return kReshapeOutputIndex_;
   }
 
   int GetDataProducerOutputIndex() const {
-    ORT_ENFORCE(data_producer_output_index >= 0, "Data producer output index is not set");
-    return data_producer_output_index;
+    ORT_ENFORCE(data_producer_output_index_ >= 0, "Data producer output index is not set");
+    return data_producer_output_index_;
   }
 
   std::string entry_reshape_arg_name;
@@ -59,7 +61,7 @@ struct ReshapeInfo : public UpstreamOperatorInfoBase {
   ONNX_NAMESPACE::TensorShapeProto_Dimension last_dim;
 
  private:
-  int data_producer_output_index{-1};
+  int data_producer_output_index_{-1};
 };
 
 /**

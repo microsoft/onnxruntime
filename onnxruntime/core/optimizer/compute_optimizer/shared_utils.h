@@ -149,6 +149,8 @@ enum class DimCompareRet {
  * @param target_shape Shape to compare, can have a dim value be 1 for broad-cast-able dimension.
  * @return A bool indicate whether check successfully or not.
  *         A vector of type DimCompareRet. The size of the vector is the same as full_broadcasted_shape.
+ *
+ * Be noted: full_broadcasted_shape's length should be >= target_shape's length, otherwise return false.
  */
 std::pair<bool, std::vector<DimCompareRet>> CompareInputShapeWithOutputShape(
     const ONNX_NAMESPACE::TensorShapeProto* full_broadcasted_shape,

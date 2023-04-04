@@ -9,7 +9,6 @@
 #include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 #include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
 
-using namespace onnxruntime::optimizer::compute_optimizer;
 namespace onnxruntime {
 
 /**
@@ -20,13 +19,16 @@ namespace onnxruntime {
  * by upstreaming the slicing operation, we can reduce the number of elements for more operators.
  */
 class UpStreamGatherGraphTransformer
-    : public UpStreamGraphTransformerBase<SliceInfo, UpStreamGatherOperatorActorBase> {
+    : public optimizer::compute_optimizer::UpStreamGraphTransformerBase<
+          optimizer::compute_optimizer::SliceInfo,
+          optimizer::compute_optimizer::UpStreamGatherOperatorActorBase> {
  public:
   UpStreamGatherGraphTransformer(
       const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept;
 
-  std::optional<SliceInfo> IsSupportedForUpstream(Graph& graph, Node& node,
-                                                  const logging::Logger& logger) const override;
+  std::optional<optimizer::compute_optimizer::SliceInfo> IsSupportedForUpstream(Graph& graph, Node& node,
+                                                                                const logging::Logger& logger)
+      const override;
 
  private:
   /**
@@ -40,9 +42,10 @@ class UpStreamGatherGraphTransformer
    * @param logger Logger.
    * @return true if pass-through is successful, false otherwise.
    */
-  bool UpStreamInternal(Graph& graph, std::deque<SliceInfo>& queue,
-                        Node& current_node, SliceInfo& info,
-                        const OpPassThroughConfig<UpStreamGatherOperatorActorBase>& pass_through_config,
+  bool UpStreamInternal(Graph& graph, std::deque<optimizer::compute_optimizer::SliceInfo>& queue,
+                        Node& current_node, optimizer::compute_optimizer::SliceInfo& info,
+                        const optimizer::compute_optimizer::OpPassThroughConfig<
+                            optimizer::compute_optimizer::UpStreamGatherOperatorActorBase>& pass_through_config,
                         const logging::Logger& logger) const override;
 
   /**
@@ -88,8 +91,10 @@ class UpStreamGatherGraphTransformer
    * @param new_axis The new axis (for the new Slice op) upon current_node's original current_node_input_index-th input.
    * @return  SliceInfo for newly created slicing op.
    */
-  SliceInfo PropagateSlicingForInput(Graph& graph, Node& slice_node, Node& current_node, int current_node_input_index,
-                                     SliceInfo& info, int new_axis, const logging::Logger& logger) const;
+  optimizer::compute_optimizer::SliceInfo PropagateSlicingForInput(Graph& graph, Node& slice_node, Node& current_node,
+                                                                   int current_node_input_index,
+                                                                   optimizer::compute_optimizer::SliceInfo& info,
+                                                                   int new_axis, const logging::Logger& logger) const;
 
   /**
    * @brief Remove the origin slicing op (for example Gather/GatherND) but don't update shapes.
@@ -116,7 +121,7 @@ class UpStreamGatherGraphTransformer
    * @return
    */
   Status RemoveOriginSlicingOp(Graph& graph, Node& slice_node, Node& current_node,
-                               const logging::Logger& logger, SliceInfo& info) const;
+                               const logging::Logger& logger, optimizer::compute_optimizer::SliceInfo& info) const;
 };
 
 }  // namespace onnxruntime

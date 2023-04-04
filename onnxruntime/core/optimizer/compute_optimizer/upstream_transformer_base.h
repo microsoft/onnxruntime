@@ -52,20 +52,20 @@ class UpStreamGraphTransformerBase : public GraphTransformer {
  protected:
   /**
    * @brief Check if the node is supported for upstream.
-   * @param graph  The graph is to be checked.
+   * @param graph  The graph that is to be checked.
    * @param node The node to be checked.
    * @param logger The logger.
-   * @return Return null if not supported, otherwise return the operator info.
+   * @return Return nullopt if not supported, otherwise return the operator info.
    */
   virtual std::optional<T1> IsSupportedForUpstream(Graph& graph, Node& node, const logging::Logger& logger) const = 0;
 
   /**
    * @brief The key function for the child class is to implement the upstream logic for the given node.
    *
-   * @param graph The graph is to be checked.
+   * @param graph The graph that is to be checked.
    * @param queue The upstream operator info queue. When handling current_node's pass-through, for those inputs that
    *     passed through the Gather/Reshape node, it can also be a candidate for further upstream.
-   * @param current_node The current node is to be checked.
+   * @param current_node The node that is to be checked.
    */
   virtual bool UpStreamInternal(Graph& graph, std::deque<T1>& queue,
                                 Node& current_node, T1& info,

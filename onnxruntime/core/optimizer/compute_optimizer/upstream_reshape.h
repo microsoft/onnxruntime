@@ -9,19 +9,20 @@
 #include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape_actors.h"
 
-using namespace onnxruntime::optimizer::compute_optimizer;
 namespace onnxruntime {
 
 /**
- * @brief Graph transformer that helps flatten the first two leading dimensions, to make it easier for other
- * transformer passes to do compute optimizer easier.
+ * @brief Graph transformer that helps upstream Reshape node (3D->2D, merging the first two dimensions),
+ * to make it easier for other transformer passes to perform compute optimization.
  *
- * Reshape nodes (from 3D to 2D, with the first two dimensions be flatten) are the entry operators that trigger
+ * Reshape nodes (from 3D to 2D, with the first two dimensions be merged) are the entry operators that trigger
  * the optimization search.
  *
  */
 class UpStreamReshapeGraphTransformer
-    : public UpStreamGraphTransformerBase<ReshapeInfo, UpStreamReshapeOperatorActorBase> {
+    : public optimizer::compute_optimizer::UpStreamGraphTransformerBase<
+          optimizer::compute_optimizer::ReshapeInfo,
+          optimizer::compute_optimizer::UpStreamReshapeOperatorActorBase> {
  public:
   UpStreamReshapeGraphTransformer(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept;
 
@@ -31,12 +32,14 @@ class UpStreamReshapeGraphTransformer
    * > input shape is a constant initializer, the untouched dim value MUST be constant.
    * > Reshape is merging the first dimension, so output data rank = 2.
    */
-  std::optional<ReshapeInfo> IsSupportedForUpstream(Graph& graph, Node& node,
-                                                    const logging::Logger& logger) const override;
+  std::optional<optimizer::compute_optimizer::ReshapeInfo> IsSupportedForUpstream(
+      Graph& graph, Node& node, const logging::Logger& logger) const override;
 
-  bool UpStreamInternal(Graph& graph, std::deque<ReshapeInfo>& queue,
-                        Node& current_node, ReshapeInfo& info,
-                        const OpPassThroughConfig<UpStreamReshapeOperatorActorBase>& pass_through_config,
+  bool UpStreamInternal(Graph& graph, std::deque<optimizer::compute_optimizer::ReshapeInfo>& queue,
+                        Node& current_node, optimizer::compute_optimizer::ReshapeInfo& info,
+                        const optimizer::compute_optimizer::OpPassThroughConfig<
+                            optimizer::compute_optimizer::UpStreamReshapeOperatorActorBase>&
+                            pass_through_config,
                         const logging::Logger& logger) const override;
 
  private:
@@ -81,9 +84,12 @@ class UpStreamReshapeGraphTransformer
    * @param logger Logger.
    * @return  ReshapeInfo for the newly created reshape op.
    */
-  ReshapeInfo PropagateReshapeForInput(Graph& graph, Node& reshape_node, Node& current_node,
-                                       int current_node_input_index, ReshapeInfo& info, std::vector<DimCompareRet>&,
-                                       const logging::Logger& logger) const;
+  optimizer::compute_optimizer::ReshapeInfo PropagateReshapeForInput(Graph& graph, Node& reshape_node,
+                                                                     Node& current_node,
+                                                                     int current_node_input_index,
+                                                                     optimizer::compute_optimizer::ReshapeInfo& info,
+                                                                     std::vector<optimizer::compute_optimizer::DimCompareRet>&,
+                                                                     const logging::Logger& logger) const;
 
   /**
    * @brief Remove the origin Reshape op but don't update shapes.
@@ -110,7 +116,7 @@ class UpStreamReshapeGraphTransformer
    * @return
    */
   Status RemoveOriginalReshapeNode(Graph& graph, Node& reshape_node, Node& current_node,
-                                   const logging::Logger& logger, ReshapeInfo& info) const;
+                                   const logging::Logger& logger, optimizer::compute_optimizer::ReshapeInfo& info) const;
 };
 
 }  // namespace onnxruntime
