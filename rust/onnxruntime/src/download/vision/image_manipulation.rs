@@ -17,7 +17,7 @@ pub enum ImageManipulation {
     /// > The Super Resolution machine learning model sharpens and upscales the input image to refine the
     /// > details and improve quality.
     ///
-    /// Source: [https://github.com/onnx/models/tree/main/vision/super_resolution/sub_pixel_cnn_2016](https://github.com/onnx/models/tree/main/vision/super_resolution/sub_pixel_cnn_2016)
+    /// Source: [https://github.com/onnx/models/tree/master/vision/super_resolution/sub_pixel_cnn_2016](https://github.com/onnx/models/tree/master/vision/super_resolution/sub_pixel_cnn_2016)
     ///
     /// Variant downloaded: ONNX Version 1.5 with Opset Version 10.
     SuperResolution,
@@ -25,15 +25,15 @@ pub enum ImageManipulation {
     ///
     /// > This artistic style transfer model mixes the content of an image with the style of another image.
     /// > Examples of the styles can be seen
-    /// > [in this PyTorch example](https://github.com/pytorch/examples/tree/main/fast_neural_style#models).
+    /// > [in this PyTorch example](https://github.com/pytorch/examples/tree/master/fast_neural_style#models).
     ///
-    /// Source: [https://github.com/onnx/models/tree/main/vision/style_transfer/fast_neural_style](https://github.com/onnx/models/tree/main/vision/style_transfer/fast_neural_style)
+    /// Source: [https://github.com/onnx/models/tree/master/vision/style_transfer/fast_neural_style](https://github.com/onnx/models/tree/master/vision/style_transfer/fast_neural_style)
     FastNeuralStyleTransfer(FastNeuralStyleTransferStyle),
 }
 
 /// Fast Neural Style Transfer Style
 ///
-/// Source: [https://github.com/onnx/models/tree/main/vision/style_transfer/fast_neural_style](https://github.com/onnx/models/tree/main/vision/style_transfer/fast_neural_style)
+/// Source: [https://github.com/onnx/models/tree/master/vision/style_transfer/fast_neural_style](https://github.com/onnx/models/tree/master/vision/style_transfer/fast_neural_style)
 ///
 /// Variant downloaded: ONNX Version 1.4 with Opset Version 9.
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ pub enum FastNeuralStyleTransferStyle {
 impl ModelUrl for ImageManipulation {
     fn fetch_url(&self) -> &'static str {
         match self {
-            ImageManipulation::SuperResolution => "https://github.com/onnx/models/raw/main/vision/super_resolution/sub_pixel_cnn_2016/model/super-resolution-10.onnx",
+            ImageManipulation::SuperResolution => "https://github.com/onnx/models/raw/master/vision/super_resolution/sub_pixel_cnn_2016/model/super-resolution-10.onnx",
             ImageManipulation::FastNeuralStyleTransfer(style) => style.fetch_url(),
         }
     }
@@ -62,11 +62,11 @@ impl ModelUrl for ImageManipulation {
 impl ModelUrl for FastNeuralStyleTransferStyle {
     fn fetch_url(&self) -> &'static str {
         match self {
-            FastNeuralStyleTransferStyle::Mosaic => "https://github.com/onnx/models/raw/main/vision/style_transfer/fast_neural_style/model/mosaic-9.onnx",
-            FastNeuralStyleTransferStyle::Candy => "https://github.com/onnx/models/raw/main/vision/style_transfer/fast_neural_style/model/candy-9.onnx",
-            FastNeuralStyleTransferStyle::RainPrincess => "https://github.com/onnx/models/raw/main/vision/style_transfer/fast_neural_style/model/rain-princess-9.onnx",
-            FastNeuralStyleTransferStyle::Udnie => "https://github.com/onnx/models/raw/main/vision/style_transfer/fast_neural_style/model/udnie-9.onnx",
-            FastNeuralStyleTransferStyle::Pointilism => "https://github.com/onnx/models/raw/main/vision/style_transfer/fast_neural_style/model/pointilism-9.onnx",
+            FastNeuralStyleTransferStyle::Mosaic => "https://github.com/onnx/models/raw/master/vision/style_transfer/fast_neural_style/model/mosaic-9.onnx",
+            FastNeuralStyleTransferStyle::Candy => "https://github.com/onnx/models/raw/master/vision/style_transfer/fast_neural_style/model/candy-9.onnx",
+            FastNeuralStyleTransferStyle::RainPrincess => "https://github.com/onnx/models/raw/master/vision/style_transfer/fast_neural_style/model/rain-princess-9.onnx",
+            FastNeuralStyleTransferStyle::Udnie => "https://github.com/onnx/models/raw/master/vision/style_transfer/fast_neural_style/model/udnie-9.onnx",
+            FastNeuralStyleTransferStyle::Pointilism => "https://github.com/onnx/models/raw/master/vision/style_transfer/fast_neural_style/model/pointilism-9.onnx",
         }
     }
 }

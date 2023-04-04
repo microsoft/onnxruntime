@@ -1,65 +1,56 @@
 //! Module containing tensor with memory owned by Rust
 
-use super::construct::{ConstructTensor, InputTensor};
-use crate::{
-    environment::ENV,
-    error::{assert_not_null_pointer, call_ort, status_to_result},
-    memory::MemoryInfo,
-    OrtError, Result, TensorElementDataType, TypeToTensorElementDataType,
-};
-use ndarray::{Array, Dimension};
-use onnxruntime_sys as sys;
-use std::{ffi, fmt::Debug};
-use sys::OrtAllocator;
+use std::{ffi, fmt::Debug, ops::Deref};
+
+use ndarray::Array;
 use tracing::{debug, error};
 
-/// An Input tensor.
+use onnxruntime_sys as sys;
+
+use crate::{
+    error::call_ort, error::status_to_result, g_ort, memory::MemoryInfo,
+    tensor::ndarray_tensor::NdArrayTensor, OrtError, Result, TensorElementDataType,
+    TypeToTensorElementDataType,
+};
+
+/// Owned tensor, backed by an [`ndarray::Array`](https://docs.rs/ndarray/latest/ndarray/type.Array.html)
 ///
-/// This ties the lifetime of T to the OrtValue; it is used to copy an
+/// This tensor bounds the ONNX Runtime to `ndarray`; it is used to copy an
 /// [`ndarray::Array`](https://docs.rs/ndarray/latest/ndarray/type.Array.html) to the runtime's memory.
 ///
 /// **NOTE**: The type is not meant to be used directly, use an [`ndarray::Array`](https://docs.rs/ndarray/latest/ndarray/type.Array.html)
 /// instead.
 #[derive(Debug)]
-pub struct OrtInputTensor<T>
+pub struct OrtTensor<'t, T, D>
 where
-    T: Debug,
+    T: TypeToTensorElementDataType + Debug + Clone,
+    D: ndarray::Dimension,
 {
     pub(crate) c_ptr: *mut sys::OrtValue,
-    pub(crate) shape: Vec<usize>,
-    #[allow(dead_code)]
-    item: T,
+    array: Array<T, D>,
+    memory_info: &'t MemoryInfo,
 }
 
-impl<T> OrtInputTensor<T>
+impl<'t, T, D> OrtTensor<'t, T, D>
 where
-    T: Debug,
+    T: TypeToTensorElementDataType + Debug + Clone,
+    D: ndarray::Dimension,
 {
-    /// The shape of the OrtTensor.
-    pub fn shape(&self) -> &[usize] {
-        &self.shape
-    }
-}
-
-impl<T, D> ConstructTensor for Array<T, D>
-where
-    T: TypeToTensorElementDataType + Debug,
-    D: Dimension,
-{
-    fn construct<'a>(
-        &'a mut self,
-        memory_info: &MemoryInfo,
-        allocator_ptr: *mut OrtAllocator,
-    ) -> Result<Box<dyn InputTensor + 'a>> {
+    pub(crate) fn from_array<'m>(
+        memory_info: &'m MemoryInfo,
+        allocator_ptr: *mut sys::OrtAllocator,
+        mut array: Array<T, D>,
+    ) -> Result<OrtTensor<'t, T, D>>
+    where
+        'm: 't, // 'm outlives 't
+    {
         // where onnxruntime will write the tensor data to
         let mut tensor_ptr: *mut sys::OrtValue = std::ptr::null_mut();
         let tensor_ptr_ptr: *mut *mut sys::OrtValue = &mut tensor_ptr;
 
-        let sh = self.shape().to_vec();
-
-        let shape: Vec<i64> = self.shape().iter().map(|d: &usize| *d as i64).collect();
+        let shape: Vec<i64> = array.shape().iter().map(|d: &usize| *d as i64).collect();
         let shape_ptr: *const i64 = shape.as_ptr();
-        let shape_len = self.shape().len();
+        let shape_len = array.shape().len();
 
         match T::tensor_element_data_type() {
             TensorElementDataType::Float
@@ -72,21 +63,18 @@ where
             | TensorElementDataType::Double
             | TensorElementDataType::Uint32
             | TensorElementDataType::Uint64 => {
-                let buffer_size = self.len() * std::mem::size_of::<T>();
-
                 // primitive data is already suitably laid out in memory; provide it to
                 // onnxruntime as is
                 let tensor_values_ptr: *mut std::ffi::c_void =
-                    self.as_mut_ptr().cast::<std::ffi::c_void>();
-
-                assert_not_null_pointer(tensor_values_ptr, "TensorValues")?;
+                    array.as_mut_ptr() as *mut std::ffi::c_void;
+                assert_ne!(tensor_values_ptr, std::ptr::null_mut());
 
                 unsafe {
                     call_ort(|ort| {
                         ort.CreateTensorWithDataAsOrtValue.unwrap()(
                             memory_info.ptr,
                             tensor_values_ptr,
-                            buffer_size,
+                            array.len() * std::mem::size_of::<T>(),
                             shape_ptr,
                             shape_len,
                             T::tensor_element_data_type().into(),
@@ -95,15 +83,10 @@ where
                     })
                 }
                 .map_err(OrtError::CreateTensorWithData)?;
-                assert_not_null_pointer(tensor_ptr, "Tensor")?;
+                assert_ne!(tensor_ptr, std::ptr::null_mut());
 
                 let mut is_tensor = 0;
-                let status = unsafe {
-                    ENV.get().unwrap().lock().unwrap().api().IsTensor.unwrap()(
-                        tensor_ptr,
-                        &mut is_tensor,
-                    )
-                };
+                let status = unsafe { g_ort().IsTensor.unwrap()(tensor_ptr, &mut is_tensor) };
                 status_to_result(status).map_err(OrtError::IsTensor)?;
             }
             TensorElementDataType::String => {
@@ -122,7 +105,7 @@ where
                 .map_err(OrtError::CreateTensor)?;
 
                 // create null-terminated copies of each string, as per `FillStringTensor` docs
-                let null_terminated_copies: Vec<ffi::CString> = self
+                let null_terminated_copies: Vec<ffi::CString> = array
                     .iter()
                     .map(|elt| {
                         let slice = elt
@@ -151,19 +134,32 @@ where
             }
         }
 
-        assert_not_null_pointer(tensor_ptr, "Tensor")?;
+        assert_ne!(tensor_ptr, std::ptr::null_mut());
 
-        Ok(Box::new(OrtInputTensor {
+        Ok(OrtTensor {
             c_ptr: tensor_ptr,
-            shape: sh,
-            item: self,
-        }))
+            array,
+            memory_info,
+        })
     }
 }
 
-impl<T> Drop for OrtInputTensor<T>
+impl<'t, T, D> Deref for OrtTensor<'t, T, D>
 where
-    T: Debug,
+    T: TypeToTensorElementDataType + Debug + Clone,
+    D: ndarray::Dimension,
+{
+    type Target = Array<T, D>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.array
+    }
+}
+
+impl<'t, T, D> Drop for OrtTensor<'t, T, D>
+where
+    T: TypeToTensorElementDataType + Debug + Clone,
+    D: ndarray::Dimension,
 {
     #[tracing::instrument]
     fn drop(&mut self) {
@@ -172,144 +168,94 @@ where
         if self.c_ptr.is_null() {
             error!("Null pointer, not calling free.");
         } else {
-            unsafe {
-                ENV.get()
-                    .unwrap()
-                    .lock()
-                    .unwrap()
-                    .api()
-                    .ReleaseValue
-                    .unwrap()(self.c_ptr)
-            }
+            unsafe { g_ort().ReleaseValue.unwrap()(self.c_ptr) }
         }
 
         self.c_ptr = std::ptr::null_mut();
     }
 }
 
-impl<T, D> InputTensor for OrtInputTensor<&mut Array<T, D>>
+impl<'t, T, D> OrtTensor<'t, T, D>
 where
-    T: TypeToTensorElementDataType + Debug,
-    D: Dimension,
+    T: TypeToTensorElementDataType + Debug + Clone,
+    D: ndarray::Dimension,
 {
-    fn ptr(&self) -> *mut sys::OrtValue {
-        self.c_ptr
-    }
-
-    fn shape(&self) -> &[usize] {
-        &self.shape
+    /// Apply a softmax on the specified axis
+    pub fn softmax(&self, axis: ndarray::Axis) -> Array<T, D>
+    where
+        D: ndarray::RemoveAxis,
+        T: ndarray::NdFloat + std::ops::SubAssign + std::ops::DivAssign,
+    {
+        self.array.softmax(axis)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        environment::{tests::ONNX_RUNTIME_LIBRARY_PATH, Environment},
-        AllocatorType, LoggingLevel, MemType,
-    };
+    use crate::{AllocatorType, MemType};
     use ndarray::{arr0, arr1, arr2, arr3};
-    use once_cell::sync::Lazy;
-    use std::env::var;
-    use test_log::test;
-
-    static ENV: Lazy<Environment> = Lazy::new(|| {
-        let path = var(ONNX_RUNTIME_LIBRARY_PATH).ok();
-
-        let builder = Environment::builder()
-            .with_name("test")
-            .with_log_level(LoggingLevel::Warning);
-        let builder = if let Some(path) = path {
-            builder.with_library_path(path)
-        } else {
-            builder
-        };
-
-        builder.build().unwrap()
-    });
+    use std::ptr;
+    use test_env_log::test;
 
     #[test]
     fn orttensor_from_array_0d_i32() {
-        let env = &*ENV;
-
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
-        let mut array = arr0::<i32>(123);
-        let tensor = array
-            .construct(&memory_info, ort_default_allocator())
-            .unwrap();
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let array = arr0::<i32>(123);
+        let tensor = OrtTensor::from_array(&memory_info, ptr::null_mut(), array).unwrap();
         let expected_shape: &[usize] = &[];
         assert_eq!(tensor.shape(), expected_shape);
     }
 
     #[test]
     fn orttensor_from_array_1d_i32() {
-        let env = &*ENV;
-
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
-        let mut array = arr1(&[1_i32, 2, 3, 4, 5, 6]);
-        let tensor = array
-            .construct(&memory_info, ort_default_allocator())
-            .unwrap();
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let array = arr1(&[1_i32, 2, 3, 4, 5, 6]);
+        let tensor = OrtTensor::from_array(&memory_info, ptr::null_mut(), array).unwrap();
         let expected_shape: &[usize] = &[6];
         assert_eq!(tensor.shape(), expected_shape);
     }
 
     #[test]
     fn orttensor_from_array_2d_i32() {
-        let env = &*ENV;
-
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
-        let mut array = arr2(&[[1_i32, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]]);
-        let tensor = array
-            .construct(&memory_info, ort_default_allocator())
-            .unwrap();
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let array = arr2(&[[1_i32, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]]);
+        let tensor = OrtTensor::from_array(&memory_info, ptr::null_mut(), array).unwrap();
         assert_eq!(tensor.shape(), &[2, 6]);
     }
 
     #[test]
     fn orttensor_from_array_3d_i32() {
-        let env = &*ENV;
-
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
-        let mut array = arr3(&[
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let array = arr3(&[
             [[1_i32, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]],
             [[13, 14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24]],
             [[25, 26, 27, 28, 29, 30], [31, 32, 33, 34, 35, 36]],
         ]);
-        let tensor = array
-            .construct(&memory_info, ort_default_allocator())
-            .unwrap();
+        let tensor = OrtTensor::from_array(&memory_info, ptr::null_mut(), array).unwrap();
         assert_eq!(tensor.shape(), &[3, 2, 6]);
     }
 
     #[test]
     fn orttensor_from_array_1d_string() {
-        let env = &*ENV;
-
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
-        let mut array = arr1(&[
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let array = arr1(&[
             String::from("foo"),
             String::from("bar"),
             String::from("baz"),
         ]);
-        let tensor = array
-            .construct(&memory_info, ort_default_allocator())
-            .unwrap();
+        let tensor = OrtTensor::from_array(&memory_info, ort_default_allocator(), array).unwrap();
         assert_eq!(tensor.shape(), &[3]);
     }
 
     #[test]
     fn orttensor_from_array_3d_str() {
-        let env = &*ENV;
-
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, env).unwrap();
-        let mut array = arr3(&[
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default).unwrap();
+        let array = arr3(&[
             [["1", "2", "3"], ["4", "5", "6"]],
             [["7", "8", "9"], ["10", "11", "12"]],
         ]);
-        let tensor = array
-            .construct(&memory_info, ort_default_allocator())
-            .unwrap();
+        let tensor = OrtTensor::from_array(&memory_info, ort_default_allocator(), array).unwrap();
         assert_eq!(tensor.shape(), &[2, 2, 3]);
     }
 

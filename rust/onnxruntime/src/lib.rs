@@ -9,7 +9,7 @@
 //!
 //! > ONNX Runtime is a cross-platform, high performance ML inferencing and training accelerator.
 //!
-//! The (highly) unsafe [C API](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h)
+//! The (highly) unsafe [C API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_c_api.h)
 //! is wrapped using bindgen as [`onnxruntime-sys`](https://crates.io/crates/onnxruntime-sys).
 //!
 //! The unsafe bindings are wrapped in this crate to expose a safe API.
@@ -21,58 +21,41 @@
 //! The C++ example that uses the C API
 //! ([`C_Api_Sample.cpp`](https://github.com/microsoft/onnxruntime/blob/v1.3.1/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp))
 //! was ported to
-//! [`onnxruntime`](https://github.com/nbigaouette/onnxruntime-rs/blob/main/onnxruntime/examples/sample.rs).
+//! [`onnxruntime`](https://github.com/nbigaouette/onnxruntime-rs/blob/master/onnxruntime/examples/sample.rs).
 //!
 //! First, an environment must be created using and [`EnvBuilder`](environment/struct.EnvBuilder.html):
 //!
 //! ```no_run
 //! # use std::error::Error;
-//! # use std::env::var;
 //! # use onnxruntime::{environment::Environment, LoggingLevel};
 //! # fn main() -> Result<(), Box<dyn Error>> {
-//! # let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
-//!
-//! let builder = Environment::builder()
+//! let environment = Environment::builder()
 //!     .with_name("test")
-//!     .with_log_level(LoggingLevel::Warning);
-//!
-//!  let builder = if let Some(path) = path {
-//!     builder.with_library_path(path)
-//!  } else {
-//!     builder
-//!  };
-//!  let environment = builder.build()?;
-//!  Ok(())
-//!  }
+//!     .with_log_level(LoggingLevel::Verbose)
+//!     .build()?;
+//! # Ok(())
+//! # }
 //! ```
 //!
-//! Then a [`Session`](session/struct.Session.html) is created from the environment, some options and an ONNX model file:
+//! Then a [`Session`](session/struct.Session.html) is created from the environment, some options and an ONNX archive:
 //!
 //! ```no_run
 //! # use std::error::Error;
-//! # use std::env::var;
 //! # use onnxruntime::{environment::Environment, LoggingLevel, GraphOptimizationLevel};
 //! # fn main() -> Result<(), Box<dyn Error>> {
-//! # let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
-//! #
-//! # let builder = Environment::builder()
-//! #    .with_name("test")
-//! #    .with_log_level(LoggingLevel::Warning);
-//! #
-//! # let builder = if let Some(path) = path {
-//! #    builder.with_library_path(path)
-//! # } else {
-//! #    builder
-//! # };
-//! # let environment = builder.build()?;
+//! # let environment = Environment::builder()
+//! #     .with_name("test")
+//! #     .with_log_level(LoggingLevel::Verbose)
+//! #     .build()?;
 //! let mut session = environment
 //!     .new_session_builder()?
-//!     .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
-//!     .with_intra_op_num_threads(1)?
+//!     .with_optimization_level(GraphOptimizationLevel::Basic)?
+//!     .with_number_threads(1)?
 //!     .with_model_from_file("squeezenet.onnx")?;
 //! # Ok(())
 //! # }
 //! ```
+//!
 #![cfg_attr(
     feature = "model-fetching",
     doc = r##"
@@ -83,26 +66,16 @@ a model can be fetched directly from the [ONNX Model Zoo](https://github.com/onn
 
 ```no_run
 # use std::error::Error;
-# use std::env::var;
 # use onnxruntime::{environment::Environment, download::vision::ImageClassification, LoggingLevel, GraphOptimizationLevel};
 # fn main() -> Result<(), Box<dyn Error>> {
-# let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
-#
-# let builder = Environment::builder()
-#    .with_name("test")
-#    .with_log_level(LoggingLevel::Warning);
-#
-# let builder = if let Some(path) = path {
-#    builder.with_library_path(path)
-# } else {
-#    builder
-# };
-# let environment = builder.build()?;
-
+# let environment = Environment::builder()
+#     .with_name("test")
+#     .with_log_level(LoggingLevel::Verbose)
+#     .build()?;
 let mut session = environment
     .new_session_builder()?
-    .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
-    .with_intra_op_num_threads(1)?
+    .with_optimization_level(GraphOptimizationLevel::Basic)?
+    .with_number_threads(1)?
     .with_model_downloaded(ImageClassification::SqueezeNet)?;
 # Ok(())
 # }
@@ -117,39 +90,34 @@ to download.
 //!
 //! ```no_run
 //! # use std::error::Error;
-//! # use std::env::var;
-//! # use onnxruntime::{environment::Environment, LoggingLevel, GraphOptimizationLevel, tensor::construct::ConstructTensor};
+//! # use onnxruntime::{environment::Environment, LoggingLevel, GraphOptimizationLevel, tensor::OrtOwnedTensor};
 //! # fn main() -> Result<(), Box<dyn Error>> {
-//! # let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
-//! #
-//! # let builder = Environment::builder()
-//! #    .with_name("test")
-//! #    .with_log_level(LoggingLevel::Warning);
-//! #
-//! # let builder = if let Some(path) = path {
-//! #    builder.with_library_path(path)
-//! # } else {
-//! #    builder
-//! # };
-//! # let environment = builder.build()?;
+//! # let environment = Environment::builder()
+//! #     .with_name("test")
+//! #     .with_log_level(LoggingLevel::Verbose)
+//! #     .build()?;
 //! # let mut session = environment
 //! #     .new_session_builder()?
-//! #     .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
-//! #     .with_intra_op_num_threads(1)?
+//! #     .with_optimization_level(GraphOptimizationLevel::Basic)?
+//! #     .with_number_threads(1)?
 //! #     .with_model_from_file("squeezenet.onnx")?;
 //! let array = ndarray::Array::linspace(0.0_f32, 1.0, 100);
 //! // Multiple inputs and outputs are possible
-//! let input_tensor = vec![array.into()];
-//! let outputs = session.run(input_tensor)?;
+//! let input_tensor = vec![array];
+//! let outputs: Vec<OrtOwnedTensor<f32,_>> = session.run(input_tensor)?;
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! The outputs are of type [`OrtOwnedTensor`](tensor/ort_owned_tensor/struct.OrtOwnedTensor.html)s inside a vector,
+//! The outputs are of type [`OrtOwnedTensor`](tensor/struct.OrtOwnedTensor.html)s inside a vector,
 //! with the same length as the inputs.
 //!
-//! See the [`sample.rs`](https://github.com/nbigaouette/onnxruntime-rs/blob/main/onnxruntime/examples/sample.rs)
+//! See the [`sample.rs`](https://github.com/nbigaouette/onnxruntime-rs/blob/master/onnxruntime/examples/sample.rs)
 //! example for more details.
+
+use std::sync::{atomic::AtomicPtr, Arc, Mutex};
+
+use lazy_static::lazy_static;
 
 use onnxruntime_sys as sys;
 
@@ -186,6 +154,35 @@ use sys::OnnxEnumInt;
 
 // Re-export ndarray as it's part of the public API anyway
 pub use ndarray;
+
+lazy_static! {
+    // use onnxruntime_sys as sys;
+    // static ref G_ORT: Arc<Mutex<AtomicPtr<sys::OrtApi>>> =
+    //     Arc::new(Mutex::new(AtomicPtr::new(unsafe {
+    //         sys::OrtGetApiBase().as_ref().unwrap().GetApi.unwrap()(sys::ORT_API_VERSION)
+    //     } as *mut sys::OrtApi)));
+    // static ref pacoTesting = unsafe { sys::OrtGetApiBase() };
+    static ref G_ORT_API: Arc<Mutex<AtomicPtr<sys::OrtApi>>> = {
+        let base: *const sys::OrtApiBase = unsafe { sys::OrtGetApiBase() };
+        assert_ne!(base, std::ptr::null());
+        let get_api: extern_system_fn!{ unsafe fn(u32) -> *const onnxruntime_sys::OrtApi } =
+            unsafe { (*base).GetApi.unwrap() };
+        let api: *const sys::OrtApi = unsafe { get_api(sys::ORT_API_VERSION) };
+        Arc::new(Mutex::new(AtomicPtr::new(api as *mut sys::OrtApi)))
+    };
+}
+
+fn g_ort() -> sys::OrtApi {
+    let mut api_ref = G_ORT_API
+        .lock()
+        .expect("Failed to acquire lock: another thread panicked?");
+    let api_ref_mut: &mut *mut sys::OrtApi = api_ref.get_mut();
+    let api_ptr_mut: *mut sys::OrtApi = *api_ref_mut;
+
+    assert_ne!(api_ptr_mut, std::ptr::null_mut());
+
+    unsafe { *api_ptr_mut }
+}
 
 fn char_p_to_string(raw: *const i8) -> Result<String> {
     let c_string = unsafe { std::ffi::CStr::from_ptr(raw as *mut i8).to_owned() };
@@ -291,7 +288,7 @@ mod onnxruntime {
 }
 
 /// Logging level of the ONNX Runtime C API
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 #[cfg_attr(not(windows), repr(u32))]
 #[cfg_attr(windows, repr(i32))]
 pub enum LoggingLevel {
@@ -321,7 +318,7 @@ impl From<LoggingLevel> for sys::OrtLoggingLevel {
 
 /// Optimization level performed by ONNX Runtime of the loaded graph
 ///
-/// See the [official documentation](https://github.com/microsoft/onnxruntime/blob/main/docs/ONNX_Runtime_Graph_Optimizations.md)
+/// See the [official documentation](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md)
 /// for more information on the different optimization levels.
 #[derive(Debug)]
 #[cfg_attr(not(windows), repr(u32))]
@@ -339,7 +336,7 @@ pub enum GraphOptimizationLevel {
 
 impl From<GraphOptimizationLevel> for sys::GraphOptimizationLevel {
     fn from(val: GraphOptimizationLevel) -> Self {
-        use GraphOptimizationLevel::{All, Basic, DisableAll, Extended};
+        use GraphOptimizationLevel::*;
         match val {
             DisableAll => sys::GraphOptimizationLevel::ORT_DISABLE_ALL,
             Basic => sys::GraphOptimizationLevel::ORT_ENABLE_BASIC,
@@ -392,9 +389,7 @@ pub enum TensorElementDataType {
 
 impl From<TensorElementDataType> for sys::ONNXTensorElementDataType {
     fn from(val: TensorElementDataType) -> Self {
-        use TensorElementDataType::{
-            Double, Float, Int16, Int32, Int64, Int8, String, Uint16, Uint32, Uint64, Uint8,
-        };
+        use TensorElementDataType::*;
         match val {
             Float => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
             Uint8 => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,
@@ -468,9 +463,9 @@ impl_type_trait!(u64, Uint64);
 
 /// Adapter for common Rust string types to Onnx strings.
 ///
-/// It should be easy to use both `String` and `&str` as [`TensorElementDataType::String`] data, but
+/// It should be easy to use both `String` and `&str` as [TensorElementDataType::String] data, but
 /// we can't define an automatic implementation for anything that implements `AsRef<str>` as it
-/// would conflict with the implementations of [`TypeToTensorElementDataType`] for primitive numeric
+/// would conflict with the implementations of [TypeToTensorElementDataType] for primitive numeric
 /// types (which might implement `AsRef<str>` at some point in the future).
 pub trait Utf8Data {
     /// Returns the utf8 contents.
@@ -512,7 +507,7 @@ pub enum AllocatorType {
 
 impl From<AllocatorType> for sys::OrtAllocatorType {
     fn from(val: AllocatorType) -> Self {
-        use AllocatorType::{Arena, Device};
+        use AllocatorType::*;
         match val {
             // Invalid => sys::OrtAllocatorType::Invalid,
             Device => sys::OrtAllocatorType::OrtDeviceAllocator,
@@ -537,7 +532,7 @@ pub enum MemType {
 
 impl From<MemType> for sys::OrtMemType {
     fn from(val: MemType) -> Self {
-        use MemType::Default;
+        use MemType::*;
         match val {
             // CPUInput => sys::OrtMemType::OrtMemTypeCPUInput,
             // CPUOutput => sys::OrtMemType::OrtMemTypeCPUOutput,
