@@ -58,6 +58,11 @@ class Tensor final {
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
          ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
+  Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
+               gsl::span<const int64_t> strides={});
+
+  static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
+                          OrtValue& ort_value, gsl::span<const int64_t> strides={});
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
   /// initializes OrtValue with it.
@@ -348,10 +353,8 @@ class Tensor final {
   // More API methods.
  private:
   void Init(MLDataType p_type,
+            std::shared_ptr<Storage> storage,
             const TensorShape& shape,
-            void* p_raw_data,
-            AllocatorPtr deleter,
-            ptrdiff_t offset = 0,
             gsl::span<const int64_t> strides = {});
 
   void ReleaseBuffer();

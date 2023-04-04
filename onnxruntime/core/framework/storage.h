@@ -16,7 +16,8 @@
 
 namespace onnxruntime {
 
-using DeleterFnPtr = void (*)(void*);
+//using DeleterFnPtr = void (*)(void*);
+using DeleterFnPtr = std::function<void(void*)>;
 //using ShardDim = std::array<std::int32_t, 5>;
 
 //typedef int32_t ShardDim[16];
@@ -33,7 +34,7 @@ using DeleterFnPtr = void (*)(void*);
 
 struct Buffer {
     Buffer() = default;
-    explicit Buffer(std::size_t sizeInBytes, MemoryLocation location, std::size_t offset, void *ptr, DeleterFnPtr deleter)
+    Buffer(std::size_t sizeInBytes, MemoryLocation location, std::size_t offset, void *ptr, DeleterFnPtr deleter)
         : sizeInBytes_(sizeInBytes),
           memoryLocation_(location),
           byte_offset_(offset),

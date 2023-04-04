@@ -207,7 +207,7 @@ std::vector<AllocatorPtr> IExecutionFrame::GetAllocator(OrtMemoryInfo info, std:
     std::vector<AllocatorPtr> ptrs;
     for (auto const& location : shardInfo.value().locations_)
     {
-      ptrs.emplace_back(GetAllocatorImpl(info.SetLocation(location)));
+      ptrs.emplace_back(GetAllocatorImpl(info.SetLocation(static_cast<MemoryLocation>(location))));
     }
     assert(!ptrs.empty());
     return ptrs;
