@@ -871,3 +871,47 @@ def test_eval_model_has_no_training_mode_batchnorm():
                         flag = True
 
         assert flag
+
+
+def test_label_encoder_composition():
+    device = "cuda"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    base_model.opset_import.append(
+        onnx.helper.make_opsetid("ai.onnx.ml", onnx.defs.onnx_opset_version()),
+    )
+
+    all_nodes = [node.op_type for node in base_model.graph.node]
+    assert "LabelEncoder" not in all_nodes
+
+    class SCELossWithLabelEncoder(onnxblock.ForwardBlock):
+        def __init__(self):
+            super().__init__()
+            self._loss = onnxblock.loss.CrossEntropyLoss()
+
+        def build(self, output_name):
+            keys_int64s = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+            values_int64s = [521, 522, 523, 524, 525, 526, 527, 528, 529, 530]
+
+            # Create a new graph input for the labels
+            labels_name = "labels"
+            labels_input = copy.deepcopy(self.base.graph.output[0])
+            labels_input.type.tensor_type.elem_type = onnx.TensorProto.INT64
+            labels_input.name = labels_name
+            del labels_input.type.tensor_type.shape.dim[1]
+            self.base.graph.input.append(labels_input)
+
+            label_encoder = onnxblock.blocks.LabelEncoder(
+                default_int64=521, keys_int64s=keys_int64s, values_int64s=values_int64s
+            )
+
+            return self._loss(output_name, label_encoder(labels_name))
+
+    block = SCELossWithLabelEncoder()
+    model = None
+    with onnxblock.base(base_model):
+        _ = block(base_model.graph.output[0].name)
+        model = block.to_model_proto()
+
+    all_nodes = [node.op_type for node in model.graph.node]
+    assert "LabelEncoder" in all_nodes
