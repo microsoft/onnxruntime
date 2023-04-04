@@ -278,6 +278,23 @@ TEST(ReductionOpTest, ReduceL1_int32) {
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 45});
   test.Run();
 }
+
+TEST(ReductionOpTest, ReduceL1_int64) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {1, 2, 1}, {33, 45});
+  test.Run();
+}
+
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_bfloat16) {
 #ifdef USE_DNNL
@@ -827,6 +844,23 @@ TEST(ReductionOpTest, ReduceLogSumExp_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {10, 12});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_int64) {
+  OpTester test("ReduceLogSumExp");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {1, 2, 1}, {10, 12});
   test.Run();
 }
 
@@ -2458,6 +2492,23 @@ TEST(ReductionOpTest, ReduceSumSquare_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {247, 403});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
+}
+
+TEST(ReductionOpTest, ReduceSumSquare_int64) {
+  OpTester test("ReduceSumSquare");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {1, 2, 1}, {247, 403});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
 }
 
