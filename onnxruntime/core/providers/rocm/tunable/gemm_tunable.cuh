@@ -10,6 +10,7 @@
 #include "core/providers/rocm/tunable/gemm_rocblas.h"
 #include "core/providers/rocm/tunable/gemm_common.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
+#include "core/providers/rocm/tunable/gemm_hipblaslt.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -37,6 +38,10 @@ class GemmTunableOp : public TunableOp<GemmParams<T>> {
  public:
   GemmTunableOp() {
     this->RegisterOp(RocBlasGemmOp<T>);
+
+#ifdef USE_HIPBLASLT
+    this->RegisterOp(HipBlasLtGemmOp<T, GemmParams<T>>{});
+#endif
 
 #ifdef USE_ROCBLAS_EXTENSION_API
     this->RegisterNestedTunableOp(&rocblas_gemm_tunable_op_);
@@ -138,6 +143,10 @@ class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>
  public:
   StridedBatchedGemmTunableOp() {
     this->RegisterOp(RocBlasStridedBatchedGemmOp<T>);
+
+#ifdef USE_HIPBLASLT
+    this->RegisterOp(HipBlasLtGemmOp<T, StridedBatchedGemmParams<T>>{});
+#endif
 
 #ifdef USE_ROCBLAS_EXTENSION_API
     this->RegisterNestedTunableOp(&rocblas_strided_batched_gemm_tunable_op_);
