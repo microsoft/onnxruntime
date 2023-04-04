@@ -330,7 +330,6 @@ def quantize_static(
                     Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                     minimum and maximum values. Effective only when the calibration method selected is MinMax and
                     when CalibMovingAverage is set to True.
-                SmoothQuant = True/False :
     """
 
     extra_options = extra_options or {}
@@ -375,9 +374,6 @@ def quantize_static(
         calibrator.collect_data(calibration_data_reader)
         tensors_range = calibrator.compute_range()
         del calibrator
-
-    print("tensors_range")
-    print(tensors_range)
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
 
