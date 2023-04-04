@@ -112,6 +112,13 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::sha
   Init(p_type, std::make_shared<Storage>(std::move(buffers), shardDims), shape, strides);
 }
 
+void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
+                          OrtValue& ort_value, gsl::span<const int64_t> strides) {
+  auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocators), strides);
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+}
+
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
                           OrtValue& ort_value, gsl::span<const int64_t> strides) {
   auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocator), strides);

@@ -16,6 +16,7 @@
 #include "onnxruntime_config.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/storage.h"
 
 struct OrtValue;
 
@@ -187,7 +188,7 @@ class Tensor final {
     // Type check
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
-    return reinterpret_cast<T*>(storage_->MutableData(0));
+    return reinterpret_cast<T*>(storage_->Data(0));
   }
 
   /**
@@ -254,7 +255,7 @@ class Tensor final {
 
   template <typename T>
   gsl::span<T> MutableDataAsSpan(size_t offset) {
-    T* data = MutableData(offset);
+    T* data = MutableData<T>(offset);
     auto numElems = static_cast<size_t>(storage_->Size(offset) / dtype_->Size());
     return gsl::make_span(data, static_cast<size_t>(numElems));
   }
@@ -311,7 +312,7 @@ class Tensor final {
    * @warning use with caution - make sure you do boundary check before calling this method (see view.cc)
    */
   inline ptrdiff_t ByteOffset() const {
-    return byte_offset_;
+    return storage_->Offset(0);
   }
 
   /**
@@ -319,7 +320,7 @@ class Tensor final {
    * @warning this is a temporary solution for reusing the buffer bigger than needed.
    */
   inline void SetByteOffset(ptrdiff_t byte_offset) {
-    byte_offset_ = byte_offset;
+    storage_->SetOffset(byte_offset);
   }
 
   /**

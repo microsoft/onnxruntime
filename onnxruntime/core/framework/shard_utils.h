@@ -29,7 +29,7 @@ struct ShardUtils {
     {
         ShardDim shardStride;
         auto accumulator = 1u;
-        for (auto i = shardDims.size() - 1; i >= 0; --i)
+        for (int64_t i = shardDims.size() - 1; i >= 0; --i)
         {
             shardStride[i] = accumulator;
             accumulator *= shardDims[i];
@@ -83,7 +83,7 @@ struct ShardUtils {
         ShardDim shardStride;
         auto accumulator = 1u;
         auto offset = 0u;
-        for (auto i = shardDims.size() - 1; i >= 0; --i)
+        for (int64_t i = shardDims.size() - 1; i >= 0; --i)
         {
             offset += offsets[i] * accumulator;
             accumulator *= shardDims[i];
@@ -97,7 +97,7 @@ struct ShardUtils {
         const auto lastShardDim = shardDims.size() - 1;
         auto accumulator = 1ul;
         size_t offset = 0;
-        for (auto i = lastShardDim; i >= 0; --i)
+        for (int64_t i = lastShardDim; i >= 0; --i)
         {
             //stride[i] = accumulator;
             offset += shardIdx[i] * accumulator;
@@ -107,30 +107,24 @@ struct ShardUtils {
     }
 };
 
-struct ShardInfo
-{
-    ShardDim shardDims_;
-    Buffer const& buffer_;
-};
 
-using MemoryLocations = std::array<MemoryLocation, onnxruntime::kTensorShapeSmallBufferElementsSize>;
+
 
 struct ShardSpec : TensorShape {
     ShardSpec(TensorShape const& shape)
-        : TensorShape(shape), shardDims_(shape.shardDims())
+        : TensorShape(shape), shardLocations_(shape.shardInfo().value_or(ShardInfo{}))
     {
     }
 
-    ShardSpec(TensorShape const& shape, TensorShape shardDim, MemoryLocations const& locations)
-        : TensorShape(shape), shardDims_(shardDim), locations_(locations)
+    ShardSpec(TensorShape const& shape, ShardDim const& shardDim, MemoryLocations const& locations)
+        : TensorShape(shape), shardLocations_(ShardInfo{shardDim, locations})
     {
     }
 
-    std::optional<ShardDim> shardDims() const override { return shardDims_; }
+    std::optional<ShardInfo> shardInfo() const override { return std::make_optional(shardLocations_); }
 
 private:
-    ShardDim shardDims_;
-    MemoryLocations locations_;
+    ShardInfo shardLocations_;
 };
 
 }
