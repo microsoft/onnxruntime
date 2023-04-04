@@ -585,33 +585,49 @@ class GraphImpl implements Graph, Graph.Transformer {
   finalizeGraph() {
     let offset = 0;
     // delete all nodes that are not being executed
+    // The graph is represented using these two arrays
+    // this._nodes - Array holding the kernels to execute - each entry is a kernel pointing to this._allData
+    // this._allData - hold 2 fields - to [] & from - these feileds hold the graph map for inputs and outputs per node
+    // newIndices - remapping the graph after reading the flag 'executeNode'
+    const newIndices = new Array<number>(this._nodes.length, 0);
+    let nodePossition = 0;
+
     for (let i = 0; i < this._nodes.length; i++) {
-      if (!this._nodes[i].executeNode) {
-        // delete this node and shift all subsequent nodes up
-        offset++;
+      // giving new indexes to the nodes based on execution flag
+      newIndices[i] = nodePossition;
+      if (this._nodes[i].executeNode) {
+        if (nodePossition !== i) {
+          this._nodes[nodePossition] = this._nodes[i];
+        }
+        nodePossition++;
+
+      } else {
         // delete all output values
         this._nodes[i].outputs.forEach(ind => {
           this._allData[ind]._from = -2;
         });
-        this._nodes.splice(i, 1);
-        i--;
-        continue;
-      }
-      if (offset > 0) {
-        // update the value table
-        this._nodes[i].inputs.forEach(value => {
-          const ind = this._allData[value]._to.indexOf(i + offset);
-          if (ind !== -1) {
-            this._allData[value]._to[ind] = i;
-          }
-        });
-        this._nodes[i].outputs.forEach(value => {
-          if (this._allData[value]._from && this._allData[value]._from! === i + offset) {
-            this._allData[value]._from! = i;
-          }
-        });
       }
     }
+
+    // removing the unused nodes
+    this._nodes.splice(nodePossition, this._nodes.length - nodePossition);
+
+    // Updating this._allData according to the new this._nodes
+    for (let i = 0; i < this._allData.length; i++) {
+      const currentData = this._allData[i];
+      if (currentData._from !== undefined && currentData._from !== -1 && currentData._from !== -2) {
+        currentData._from = newIndices[currentData._from];
+      }
+
+      for (let j = 0; j < currentData._to.length; j++) {
+        if (currentData._to[j] >= 0) {
+          currentData._to[j] = newIndices[currentData._to[j]];
+        } else {
+          throw new Error('Trying to update a removed node');
+        }
+      }
+    }
+
     offset = 0;
     // delete all values that are not being referenced
     for (let i = 0; i < this._allData.length; i++) {
@@ -679,12 +695,14 @@ class GraphImpl implements Graph, Graph.Transformer {
     const nodesConsumingOutput = this._allData[outputValueIndex].to;
 
     // remove this node from the to property of the input Value
-    const delIndex = this._allData[inputValueIndex].to.indexOf(nodeIndex);
-    // should not happen
-    if (delIndex === -1) {
-      throw new Error('The Value object doesn\'t have the current Node in it\'s \'to\' property ');
+    for (let i = 0; i < node.inputs.length; i++) {
+      const delIndex = this._allData[node.inputs[i]].to.indexOf(nodeIndex);
+      // should not happen
+      if (delIndex === -1) {
+        throw new Error('The Value object doesn\'t have the current Node in it\'s \'to\' property ');
+      }
+      this._allData[node.inputs[i]].to.splice(delIndex, 1);
     }
-    this._allData[inputValueIndex].to.splice(delIndex, 1);
 
     // clear node indices consuming this output Value
     this._allData[outputValueIndex]._to = [];

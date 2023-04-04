@@ -227,7 +227,7 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
     HRESULT STDMETHODCALLTYPE GetInputTensorDimensionCount(uint32_t inputIndex, uint32_t* dimensionCount) const noexcept;
     HRESULT STDMETHODCALLTYPE GetInputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept;
 
-    HRESULT STDMETHODCALLTYPE GetSequenceInputCount(uint32_t inputIndex, uint32_t* inputCount) const noexcept;
+    HRESULT STDMETHODCALLTYPE GetSequenceInputInfo(uint32_t inputIndex, uint32_t* inputCount, MLOperatorTensorDataType* dataType) const noexcept;
     HRESULT STDMETHODCALLTYPE GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex, uint32_t* dimensionCount) const noexcept;
     HRESULT STDMETHODCALLTYPE GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept;
 
@@ -480,8 +480,12 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
     OpKernelContextWrapper(onnxruntime::OpKernelContext* context, const onnxruntime::IExecutionProvider* provider, bool isInternalOperator, const EdgeShapes* outputShapes);
 
     bool STDMETHODCALLTYPE IsSequenceInputTensor(uint32_t inputIndex) const noexcept override;
-    HRESULT STDMETHODCALLTYPE GetSequenceInputCount(uint32_t inputIndex, uint32_t* inputCount) const noexcept override;
+    HRESULT STDMETHODCALLTYPE GetSequenceInputInfo(uint32_t inputIndex, uint32_t* inputCount, MLOperatorTensorDataType* dataType) const noexcept override;
     HRESULT STDMETHODCALLTYPE GetSequenceInputTensor(uint32_t inputIndex, uint32_t sequenceIndex, IMLOperatorTensor** tensor) const noexcept override;
+
+    HRESULT STDMETHODCALLTYPE PrepareSequenceOutput(
+        uint32_t outputIndex,
+        MLOperatorTensorDataType dataType) const noexcept override;
 
     HRESULT STDMETHODCALLTYPE GetSequenceOutputTensor(
         uint32_t outputIndex,
