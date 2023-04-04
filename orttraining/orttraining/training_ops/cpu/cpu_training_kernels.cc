@@ -89,8 +89,13 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1,
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, InplaceClipGradNorm);
 
+// Quantization kernels
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, FakeQuant);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, FakeQuantGrad);
+
+// RNN Kernels
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, LSTMTraining);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, LSTMGrad);
 
 // the kernels within the following ifdef are not included in a build with
 // --enable_training_ops but without --enable_training
@@ -211,6 +216,11 @@ Status RegisterCpuTrainingKernels(KernelRegistry& kernel_registry) {
           kCpuExecutionProvider, kMSDomain, 1, float, FakeQuant)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(
           kCpuExecutionProvider, kMSDomain, 1, float, FakeQuantGrad)>,
+
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(
+          kCpuExecutionProvider, kMSDomain, 1, float, LSTMTraining)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(
+          kCpuExecutionProvider, kMSDomain, 1, float, LSTMGrad)>,
 
 // the kernels within the following ifdef are not included in a build with
 // --enable_training_ops but without --enable_training

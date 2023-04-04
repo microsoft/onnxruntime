@@ -3,7 +3,7 @@ from onnx import TensorProto, helper
 
 
 # Create a model with metadata to test ORT conversion
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [
         helper.make_node("Sigmoid", ["X"], ["Y"], "sigmoid"),
     ]

@@ -136,7 +136,7 @@ using UpdateGptFeedsFunc = std::function<Status(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention)>;
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention)>;
 
 // Create encoder inputs (for encoder-decoder model like T5).
 using CreateEncoderInputsFunc = std::function<Status(
@@ -273,7 +273,7 @@ Status UpdateGptFeeds(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5
@@ -305,6 +305,21 @@ Status UpdateDecoderFeeds(
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
+
+// ---------------------------------------------------------------
+// Functions for encoder-decoder model with float input like Whisper
+// ---------------------------------------------------------------
+
+Status CreateWhisperEncoderInputs(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* attn_mask_value,
+    int pad_token_id,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_ids,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids);
+
 
 // ---------------------------------------------------------------
 // Utility Functions

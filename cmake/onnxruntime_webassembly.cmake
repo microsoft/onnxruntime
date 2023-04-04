@@ -97,7 +97,7 @@ target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
-      nsync_cpp
+      nsync::nsync_cpp
       ${PROTOBUF_LIB}
       onnx
       onnx_proto
@@ -172,7 +172,7 @@ else()
   endif()
 
   target_link_libraries(onnxruntime_webassembly PRIVATE
-    nsync_cpp
+    nsync::nsync_cpp
     ${PROTOBUF_LIB}
     onnx
     onnx_proto
@@ -202,12 +202,10 @@ else()
                         -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
                         -s \"EXPORTED_FUNCTIONS=_malloc,_free\" \
                         -s MAXIMUM_MEMORY=4294967296 \
-                        -s WASM=1 \
                         -s EXIT_RUNTIME=0 \
                         -s ALLOW_MEMORY_GROWTH=1 \
                         -s MODULARIZE=1 \
                         -s EXPORT_ALL=0 \
-                        -s LLD_REPORT_UNDEFINED \
                         -s VERBOSE=0 \
                         -s FILESYSTEM=0 \
                         ${WASM_API_EXCEPTION_CATCHING} \

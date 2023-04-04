@@ -5,7 +5,6 @@
 #include <onnx/onnx_pb.h>
 #include <unordered_set>
 
-#include "core/common/inlined_containers.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"

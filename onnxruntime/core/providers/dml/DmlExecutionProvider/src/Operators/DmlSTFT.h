@@ -378,8 +378,7 @@ public:
             ORT_THROW_IF_FAILED(executionObject.As(&commandList));
 
             ComPtr<ID3D12Resource> framingOutputResource;
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(m_framingOperator.outputBufferSizeInBytes, &framingOutputResource));
-
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(onnxruntime::narrow<size_t>(m_framingOperator.outputBufferSizeInBytes), &framingOutputResource));
             DispatchFramingOperator(commandList.Get(), context, framingOutputResource.Get());
 
             ComPtr<ID3D12Resource> outputResource = DmlSTFTHelpers::GetOutputResourceFromKernelContext(context, 0);
@@ -450,7 +449,7 @@ public:
         auto tempBufferSize = bindingProps.TemporaryResourceSize;
         if (tempBufferSize > 0)
         {
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(tempBufferSize, &tempBuffer));
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(onnxruntime::narrow<size_t>(tempBufferSize), &tempBuffer));
 
             DML_BUFFER_BINDING bufferBinding = { tempBuffer.Get(), 0, tempBufferSize };
             DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };

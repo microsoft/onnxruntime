@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import os
+import os  # noqa: F401
 
 # -*- coding: UTF-8 -*-
 import unittest
@@ -13,7 +13,7 @@ import onnxruntime as onnxrt
 
 
 class TestInferenceSession(unittest.TestCase):
-    def testZipMapStringFloat(self):
+    def testZipMapStringFloat(self):  # noqa: N802
         sess = onnxrt.InferenceSession(
             get_name("zipmap_stringfloat.onnx"),
             providers=onnxrt.get_available_providers(),
@@ -37,7 +37,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
         self.assertEqual(output_expected, res[0])
 
-    def testZipMapInt64Float(self):
+    def testZipMapInt64Float(self):  # noqa: N802
         sess = onnxrt.InferenceSession(
             get_name("zipmap_int64float.onnx"),
             providers=onnxrt.get_available_providers(),
@@ -58,7 +58,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
         self.assertEqual(output_expected, res[0])
 
-    def testDictVectorizer(self):
+    def testDictVectorizer(self):  # noqa: N802
         sess = onnxrt.InferenceSession(
             get_name("pipeline_vectorize.onnx"),
             providers=onnxrt.get_available_providers(),
@@ -108,7 +108,7 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.array([[49.752754]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testLabelEncoder(self):
+    def testLabelEncoder(self):  # noqa: N802
         sess = onnxrt.InferenceSession(get_name("LabelEncoder.onnx"), providers=onnxrt.get_available_providers())
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "input")

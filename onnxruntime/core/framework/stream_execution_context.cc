@@ -181,6 +181,19 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     return;
   }
 
+#ifdef USE_CANN
+  // For CANN EP, it is necessary to explicitly create a corresponding Context for each thread in the thread pool,
+  // which is different from CUDA Runtime API, but similar to CUDA Driver API.
+  auto& execution_providers = ctx.GetSessionState().GetExecutionProviders();
+  for (auto& xp : execution_providers) {
+    auto status = xp->OnRunStart();
+    if (!status.IsOK()) {
+      ctx.SetStatus(status);
+      return;
+    }
+  }
+#endif
+
   // get logic stream
   auto& execution_plan = ctx.GetSessionState().GetExecutionPlan()->execution_plan;
   auto& logic_stream = execution_plan[stream_idx];

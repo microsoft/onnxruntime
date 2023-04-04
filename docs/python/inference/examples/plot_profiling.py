@@ -59,10 +59,10 @@ print(prof_file)
 ###########################
 # The results are stored un a file in JSON format.
 # Let's see what it contains.
-import json
+import json  # noqa: E402
 
-with open(prof_file, "r") as f:
+with open(prof_file) as f:
     sess_time = json.load(f)
-import pprint
+import pprint  # noqa: E402
 
 pprint.pprint(sess_time)

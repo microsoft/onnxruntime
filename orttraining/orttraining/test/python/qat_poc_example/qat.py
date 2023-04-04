@@ -2,7 +2,6 @@ import logging
 import os
 
 import onnx
-
 import quantize
 import utils
 from model import create_training_artifacts, get_models

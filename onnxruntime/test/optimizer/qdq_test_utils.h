@@ -134,6 +134,141 @@ GetQDQTestCaseFn BuildQDQInstanceNormTestCase(const std::vector<int64_t>& input_
   };
 }
 
+// Creates the following graph if axes is an input (newer opsets):
+//                                _______________________
+//    input (f32) -> Q -> DQ ->  |                       | -> Q -> DQ -> output (f32)
+// axes (int32, initializer) ->  |       Reduce___       |
+//                               |_______________________|
+//
+// Creates the following graph if axes is an attribute (older opsets):
+//                                _______________________
+//    input (f32) -> Q -> DQ ->  |                       | -> Q -> DQ -> output (f32)
+//                               |       Reduce___       |
+//                               |_______________________|
+//
+// Currently used to test QNN EP.
+template <typename QuantType>
+GetQDQTestCaseFn BuildQDQReduceOpTestCase(const std::string& reduce_op_type, const std::vector<int64_t>& input_shape,
+                                          bool axes_as_input, std::vector<int64_t> axes, bool keepdims,
+                                          bool noop_with_empty_axes, const std::string& domain = "") {
+  return [reduce_op_type, input_shape, axes_as_input, axes, keepdims,
+          noop_with_empty_axes, domain](ModelTestBuilder& builder) {
+    using QuantTypeLimits = std::numeric_limits<QuantType>;
+    QuantType input_quant_min_value = QuantTypeLimits::min();
+    QuantType input_quant_max_value = QuantTypeLimits::max();
+
+    auto* input_data = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* final_output = builder.MakeOutput();
+
+    // input_data -> Q/DQ ->
+    auto* input_qdq_output = AddQDQNodePair<QuantType>(builder, input_data, .04f,
+                                                       (input_quant_min_value + input_quant_max_value) / 2 + 1);
+
+    // -> ReduceOp (e.g., ReduceSum) ->
+    std::vector<NodeArg*> reduce_op_inputs;
+    reduce_op_inputs.push_back(input_qdq_output);
+
+    if (axes_as_input) {
+      reduce_op_inputs.push_back(builder.MakeInitializer({static_cast<int64_t>(axes.size())}, axes));
+    }
+
+    auto* reduce_sum_output = builder.MakeIntermediate();
+    Node& reduce_sum_node = builder.AddNode(reduce_op_type, reduce_op_inputs, {reduce_sum_output},
+                                            domain);
+    reduce_sum_node.AddAttribute("keepdims", static_cast<int64_t>(keepdims));
+
+    if (axes_as_input) {
+      reduce_sum_node.AddAttribute("noop_with_empty_axes", static_cast<int64_t>(noop_with_empty_axes));
+    } else {
+      reduce_sum_node.AddAttribute("axes", axes);
+    }
+
+    // -> Q/DQ -> final_output
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<QuantType>(reduce_sum_output, .039f,
+                                             (QuantTypeLimits::min() + QuantTypeLimits::max()) / 2 + 1,
+                                              q_output);
+
+    builder.AddDequantizeLinearNode<QuantType>(q_output, .039f,
+                                               (QuantTypeLimits::min() + QuantTypeLimits::max()) / 2 + 1,
+                                               final_output);
+  };
+}
+
+// Creates the following graph:
+//                                _______________________
+//    input (f32) -> Q -> DQ ->  |                       | -> Q -> DQ -> output (f32)
+// axes (int32, initializer) ->  |         Gather        |
+//                               |_______________________|
+//
+template <typename QuantType, typename IndicesType>
+GetQDQTestCaseFn BuildQDQGatherOpTestCase(const std::vector<int64_t>& input_shape,
+                                          const std::vector<IndicesType> indices,
+                                          const std::vector<int64_t>& indices_shape,
+                                          int64_t axis) {
+  return [input_shape, indices, indices_shape, axis](ModelTestBuilder& builder) {
+
+    auto* input_data = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* final_output = builder.MakeOutput();
+
+    // input_data -> Q/DQ ->
+    auto* input_qdq_output = AddQDQNodePair<QuantType>(builder, input_data, .003f, 1);
+
+    std::vector<NodeArg*> gather_op_inputs;
+    gather_op_inputs.push_back(input_qdq_output);
+
+    auto* indices_input = builder.MakeInitializer<IndicesType>(indices_shape, indices);
+
+    auto* gather_output = builder.MakeIntermediate();
+    Node& gather_node = builder.AddNode("Gather", {input_qdq_output, indices_input}, {gather_output});
+    gather_node.AddAttribute("axis", axis);
+
+    // -> Q/DQ -> final_output
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<QuantType>(gather_output, .003f, 1,
+                                             q_output);
+
+    builder.AddDequantizeLinearNode<QuantType>(q_output, .003f, 1,
+                                               final_output);
+  };
+}
+
+// Creates the following graph:
+//                                _______________________
+//    input (f32) -> Q -> DQ ->  |                       | -> Q -> DQ -> output (f32)
+// axes (int32, initializer) ->  |         Gather        |
+//                               |_______________________|
+//
+template <typename QuantType, typename IndicesType>
+GetQDQTestCaseFn BuildQDQGatherOpScalarIndicesTestCase(const std::vector<int64_t>& input_shape,
+                                                       const IndicesType indices,
+                                                       int64_t axis) {
+  return [input_shape, indices, axis](ModelTestBuilder& builder) {
+    auto* input_data = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* final_output = builder.MakeOutput();
+
+    // input_data -> Q/DQ ->
+    auto* input_qdq_output = AddQDQNodePair<QuantType>(builder, input_data, .003f, 1);
+
+    std::vector<NodeArg*> gather_op_inputs;
+    gather_op_inputs.push_back(input_qdq_output);
+
+    auto* indices_input = builder.MakeScalarInitializer<IndicesType>(indices);
+
+    auto* gather_output = builder.MakeIntermediate();
+    Node& gather_node = builder.AddNode("Gather", {input_qdq_output, indices_input}, {gather_output});
+    gather_node.AddAttribute("axis", axis);
+
+    // -> Q/DQ -> final_output
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<QuantType>(gather_output, .003f, 1,
+                                             q_output);
+
+    builder.AddDequantizeLinearNode<QuantType>(q_output, .003f, 1,
+                                               final_output);
+  };
+}
+
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {
