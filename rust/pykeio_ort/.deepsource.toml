@@ -1,0 +1,8 @@
+version = 1
+
+[[analyzers]]
+name = "rust"
+enabled = true
+
+  [analyzers.meta]
+  msrv = "stable"

@@ -1,0 +1,26 @@
+root = true
+
+[*]
+indent_style = tab
+tab_width = 4
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+curly_bracket_next_line = false
+spaces_around_operators = true
+spaces_around_brackets = both
+
+[*.{rs,cc,hh,js,ts}]
+trim_trailing_whitespace = true
+max_line_length = 160
+
+[*.{html,css,js,ts}]
+quote_type = single
+
+[*.yml]
+indent_style = space
+tab_width = 2
+
+[*.{md,mdx}]
+indent_style = space
+tab_width = 4
