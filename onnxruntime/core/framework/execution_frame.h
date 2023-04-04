@@ -84,6 +84,7 @@ class IExecutionFrame {
   Status GetOutputs(std::vector<OrtValue>& fetches);
 
   AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const;
+  std::vector<AllocatorPtr> GetAllocator(OrtMemoryInfo info, std::optional<ShardInfo> shardInfo) const;
 
   Status ReleaseMLValue(int ort_value_idx);
 

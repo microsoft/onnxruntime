@@ -202,10 +202,10 @@ AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
 }
 
 std::vector<AllocatorPtr> IExecutionFrame::GetAllocator(OrtMemoryInfo info, std::optional<ShardInfo> shardInfo) const {
-  if (shardInfo.value())
+  if (shardInfo.has_value())
   {
     std::vector<AllocatorPtr> ptrs;
-    for (auto const& location : shardInfo.locations_)
+    for (auto const& location : shardInfo.value().locations_)
     {
       ptrs.emplace_back(GetAllocatorImpl(info.SetLocation(location)));
     }
@@ -214,7 +214,7 @@ std::vector<AllocatorPtr> IExecutionFrame::GetAllocator(OrtMemoryInfo info, std:
   }
   else
   {
-    return {GetAllocator(info)};
+    return {GetAllocatorImpl(info)};
   }
 }
 
