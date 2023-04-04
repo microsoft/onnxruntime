@@ -11,9 +11,9 @@ namespace onnxruntime {
 namespace cuda {
 namespace tunable {
 
-class Timer : public ::onnxruntime::tunable::Timer<cudaStream_t> {
+class Timer : public ITimer<cudaStream_t> {
  public:
-  using TimerBase = ::onnxruntime::tunable::Timer<cudaStream_t>;
+  using TimerBase = ITimer<cudaStream_t>;
 
   explicit Timer(cudaStream_t stream);
 

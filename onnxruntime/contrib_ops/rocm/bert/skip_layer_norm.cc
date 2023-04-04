@@ -43,6 +43,10 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* output = ctx->Output(0, input->Shape());
 
+  // For inferencing, we support one more optional output which is the sum
+  // of the input and skip tensors
+  Tensor* skip_input_bias_add_output = ctx->Output(3, input->Shape());
+
   if (input->Shape() != skip->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "skip is expected to have same shape as input");
@@ -98,9 +102,10 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
   return LaunchSkipLayerNormKernel<HipT>(
-      IsTunableOpEnabled(),
+      GetTuningContext(),
       Stream(ctx),
       reinterpret_cast<HipT*>(output->MutableData<T>()),
+      skip_input_bias_add_output != nullptr ? reinterpret_cast<HipT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr,
       reinterpret_cast<const HipT*>(input->Data<T>()),
       reinterpret_cast<const HipT*>(skip->Data<T>()),
       reinterpret_cast<const HipT*>(gamma->Data<T>()),

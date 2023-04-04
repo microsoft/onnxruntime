@@ -22,7 +22,7 @@ void DnnlUnsqueeze::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // To counter this data_dims is left empty if the input is from a scalar.
   dnnl::memory::dims data_dims;
   if (!data_is_scalar) {
-    data_dims = data_mem.get_desc().dims();
+    data_dims = data_mem.get_desc().get_dims();
   }
 
   std::vector<int64_t> axes_data;
@@ -30,7 +30,7 @@ void DnnlUnsqueeze::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // ONNX Unsqueeze before version 13 axes comes from an Attribute.
   if (node.Input(IN_AXES).Exists()) {
     auto axes_mem = sp.GetMemory(node.Input(IN_AXES));
-    dnnl::memory::dims axes_dims = axes_mem.get_desc().dims();
+    dnnl::memory::dims axes_dims = axes_mem.get_desc().get_dims();
     int64_t* p_axes_data = (int64_t*)axes_mem.get_data_handle();
     axes_data = std::vector<int64_t>(p_axes_data, p_axes_data + axes_dims[0]);
   } else {

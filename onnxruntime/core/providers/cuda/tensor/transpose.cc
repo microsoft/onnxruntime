@@ -146,7 +146,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 
   for (auto i = new_rank - 1; i > 0; i--) {
     auto curr = new_permutations[i];
-    auto prev = new_permutations[i - 1];
+    auto prev = new_permutations[static_cast<ptrdiff_t>(i) - 1];
     if (prev + 1 == curr) {
       // all dims bigger than curr need to be reduced by 1 due to the merging.
       for (auto j = 0; j < new_rank; j++) {

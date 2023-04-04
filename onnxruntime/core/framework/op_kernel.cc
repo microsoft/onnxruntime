@@ -21,8 +21,8 @@ const onnxruntime::KernelDef& OpKernel::KernelDef() const {
   return op_kernel_info_->GetKernelDef();
 }
 
-const OrtMemoryInfo& OpKernel::Allocator(int id, OrtMemType mem_type) const {
-  return op_kernel_info_->GetMemoryInfo(id, mem_type);
+const OrtMemoryInfo& OpKernel::Allocator(OrtMemType mem_type) const {
+  return op_kernel_info_->GetMemoryInfo(mem_type);
 }
 
 OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
@@ -93,7 +93,7 @@ int OpKernelContext::NumVariadicInputs(size_t arg_num) const {
 }
 
 Status OpKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
-  *output = execution_frame_->GetAllocator(kernel_->Allocator(0, OrtMemTypeDefault));
+  *output = execution_frame_->GetAllocator(kernel_->Allocator(OrtMemTypeDefault));
   if (!*output)
     return Status(common::ONNXRUNTIME, common::FAIL, "TempSpace allocator not found");
   return Status::OK();

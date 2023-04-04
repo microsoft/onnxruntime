@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /* Modifications Copyright (c) Microsoft. */
 
@@ -29,7 +29,8 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-Status dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count) {
+Status dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, const input_t* src, int softmax_elements,
+                                         int softmax_elements_stride, int batch_count) {
   if (softmax_elements == 0) {
     return Status::OK();
   } else {
@@ -102,16 +103,23 @@ Status dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, con
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(input_t, output_t, acc_t)                                                                 \
-  template Status dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, false>(cudaStream_t stream, output_t * dst,           \
-                                                                                     const input_t* src, int softmax_elements,      \
-                                                                                     int softmax_elements_stride, int batch_count); \
-  template Status dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(cudaStream_t stream, output_t * dst,            \
-                                                                                    const input_t* src, int softmax_elements,       \
-                                                                                    int softmax_elements_stride, int batch_count);
+#define SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(input_t, output_t, acc_t)                                               \
+  template Status dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, false>(cudaStream_t stream,         \
+                                                                                     output_t * dst,              \
+                                                                                     const input_t* src,          \
+                                                                                     int softmax_elements,        \
+                                                                                     int softmax_elements_stride, \
+                                                                                     int batch_count);            \
+  template Status dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(cudaStream_t stream,          \
+                                                                                    output_t * dst,               \
+                                                                                    const input_t* src,           \
+                                                                                    int softmax_elements,         \
+                                                                                    int softmax_elements_stride,  \
+                                                                                    int batch_count);
 
 SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(half, half, float)
+SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(half, float, float)
 SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(double, double, double)
 SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(BFloat16, BFloat16, float)
 
@@ -143,12 +151,8 @@ Status dispatch_blockwise_softmax_forward(cudaStream_t stream, output_t* output,
 
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, half, float)
+SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, float, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(double, double, double)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(BFloat16, BFloat16, float)
-
-#ifndef DISABLE_CONTRIB_OPS
-SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, float, float)  // used by BeamSearch op
-#endif
-
 }  // namespace cuda
 }  // namespace onnxruntime

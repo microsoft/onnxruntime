@@ -92,7 +92,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c220895fd1163c01f0a8b44229fb9e4fe0ae0958",
+          "commitHash": "0ab19024f08c6673a713e454ef8bd95e174c807f",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -302,7 +302,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1ba785612a79fe749aa1e478336e534743372639",
+          "commitHash": "ad834eb73ee0cd9b6fa9ea892caeed5fa17d7dc0",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "onnx"
@@ -326,16 +326,6 @@
           "repositoryUrl": "https://github.com/Maratyszcza/psimd.git"
         },
         "comments": "psimd"
-      }
-    },
-    {
-        "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "a20c65f2cd549445fda907f7b83894c8eb7427d6",
-          "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
-        },
-        "comments": "protobuf"
       }
     },
     {
@@ -455,28 +445,7 @@
           "commitHash": "75a84807a019bf4961faf713df9d748f0fc83b47",
           "repositoryUrl": "https://github.com/triton-inference-server/server.git"
         },
-        "comments": "triton server"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "3712ec3f0426f7132d3759b84683d7d11e9ba683",
-          "repositoryUrl": "https://github.com/triton-inference-server/client.git"
-        },
-        "comments": "triton client"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "pthread",
-          "Version": "3.0.0",
-          "DownloadUrl": "https://sourceforge.net/projects/pthreads4w/files/pthreads4w-code-v3.0.0.zip"
-        },
-        "comments": "posix pthread library"
+        "comments": "triton"
       }
     }
   ]

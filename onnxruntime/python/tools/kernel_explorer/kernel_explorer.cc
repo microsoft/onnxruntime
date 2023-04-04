@@ -7,8 +7,9 @@
 #include "python/tools/kernel_explorer/kernels/vector_add.h"
 #include "python/tools/kernel_explorer/kernels/rocm/fast_gelu.h"
 #include "python/tools/kernel_explorer/kernels/rocm/gemm.h"
-#include "python/tools/kernel_explorer/kernels/rocm/skip_layer_norm.h"
 #include "python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu.h"
+#include "python/tools/kernel_explorer/kernels/rocm/skip_layer_norm.h"
+#include "python/tools/kernel_explorer/kernels/rocm/softmax.h"
 
 namespace py = pybind11;
 
@@ -24,6 +25,7 @@ PYBIND11_MODULE(_kernel_explorer, m) {
   InitGemm(m);
   InitSkipLayerNorm(m);
   InitGemmFastGelu(m);
+  InitSoftmax(m);
 #endif
 
   m.def("is_composable_kernel_available", []() {

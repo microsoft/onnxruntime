@@ -133,7 +133,7 @@
         "^test_softplus_example_expanded_cuda",
         "^test_softplus_expanded_cuda",
 
-        // TODO: Recover these real model tests from onnx
+        // TODO(https://github.com/onnx/onnx/issues/4885): remove these tests after they are deprecated in onnx
         "^test_vgg19",
         "^test_zfnet512",
         "^test_bvlc_alexnet",

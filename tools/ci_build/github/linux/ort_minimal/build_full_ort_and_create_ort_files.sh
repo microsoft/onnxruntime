@@ -55,6 +55,13 @@ python3 /onnxruntime_src/tools/python/create_reduced_build_config.py --format OR
     /onnxruntime_src/onnxruntime/test/testdata \
     /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config
 
+# Append the info for ops involved from inside custom ops. These can't be read from the models as they're
+# dynamically created at runtime when the kernel is created.
+cat /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data/required_ops.standalone_invoker.config >> \
+    /home/onnxruntimedev/.test_data/required_ops.ort_models.config
+cat /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data/required_ops.standalone_invoker.config >> \
+    /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config
+
 # Test that we can convert an ONNX model with custom ops to ORT format
 mkdir /home/onnxruntimedev/.test_data/custom_ops_model
 cp /onnxruntime_src/onnxruntime/test/testdata/custom_op_library/*.onnx /home/onnxruntimedev/.test_data/custom_ops_model/

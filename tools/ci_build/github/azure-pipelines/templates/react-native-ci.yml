@@ -60,9 +60,7 @@ jobs:
       brew install coreutils ninja npm yarn
     displayName: Install coreutils, ninja, npm, and yarn
 
-  - script:
-      /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-    displayName: Setup gradle wrapper to use gradle 6.8.3
+  - template: set-up-gradle-wrapper-step.yml
 
   - script: |
       python3 -m pip install -q flatbuffers
@@ -214,39 +212,39 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Pod install for onnxruntime react native ios e2e tests
 
-  - script: |
-      keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
-        -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-    displayName: Generate a debug keystore
+  #- script: |
+  #    keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
+  #      -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+  #  displayName: Generate a debug keystore
 
-  - task: CopyFiles@2
-    inputs:
+  #- task: CopyFiles@2
+  #  inputs:
       # Mobile build:
       #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
       #  contents: onnxruntime-mobile-*.aar
-      sourceFolder: $(Build.BinariesDirectory)/android-full-aar
-      contents: onnxruntime-*.aar
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
-    displayName: Copy Android package to Android e2e test directory
+  #    sourceFolder: $(Build.BinariesDirectory)/android-full-aar
+  #    contents: onnxruntime-*.aar
+  #    targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
+  #  displayName: Copy Android package to Android e2e test directory
 
-  - template: android-dump-logs-from-steps.yml
-    parameters:
-      steps:
-      - task: Gradle@3
-        inputs:
-          gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
-          workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-          options: '--stacktrace'
-          tasks: ':app:connectedDebugAndroidTest'
-          publishJUnitResults: true
-          testResultsFiles: '**/TEST-*.xml'
-          testRunTitle: 'React Native Android e2e Test results'
-          javaHomeOption: 'path'
-          jdkDirectory: '$(JAVA_HOME_11_X64)'
-          sonarQubeRunAnalysis: false
-          spotBugsAnalysis: false
-        displayName: Run React Native Android e2e Tests
+  #- template: android-dump-logs-from-steps.yml
+  #  parameters:
+  #    steps:
+  #    - task: Gradle@3
+  #      inputs:
+  #        gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
+  #        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+  #        options: '--stacktrace'
+  #        tasks: ':app:connectedDebugAndroidTest'
+  #        publishJUnitResults: true
+  #        testResultsFiles: '**/TEST-*.xml'
+  #        testRunTitle: 'React Native Android e2e Test results'
+  #        javaHomeOption: 'path'
+  #        jdkDirectory: '$(JAVA_HOME_11_X64)'
+  #        sonarQubeRunAnalysis: false
+  #        spotBugsAnalysis: false
+  #      displayName: Run React Native Android e2e Tests
 
   - script: |
       export FORCE_BUNDLING=1

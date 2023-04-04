@@ -408,6 +408,49 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kQnnExecutionProvider) {
+#ifdef USE_QNN
+#ifdef _MSC_VER
+    std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(option_string);
+    std::string token;
+    std::unordered_map<std::string, std::string> qnn_options;
+
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("Use a '|' to separate the key and value for the run-time option you are trying to use.");
+      }
+
+      std::string key(token.substr(0, pos));
+      std::string value(token.substr(pos + 1));
+
+      if (key == "backend_path") {
+        std::set<std::string> qnn_backend_path;
+        if (value.empty()) {
+          ORT_THROW("Please provide the QNN backend path.");
+        } else {
+          qnn_options[key] = value;
+        }
+      } else if (key == "profiling_level") {
+        qnn_options[key] = value;
+      } else if (key == "rpc_control_latency") {
+        qnn_options[key] = value;
+      } else {
+        ORT_THROW(R"(Wrong key type entered. Choose from options: 
+['backend_path', 'profiling_level', 'rpc_control_latency'])");
+      }
+    }
+    session_options.AppendExecutionProvider("QNN", qnn_options);
+#else
+    ORT_THROW("QNN is not supported in this build\n");
+#endif
   } else if (provider_name == onnxruntime::kSnpeExecutionProvider) {
 #ifdef USE_SNPE
 #ifdef _MSC_VER

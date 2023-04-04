@@ -177,6 +177,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 return CreateNamedOnnxValueFromRawData<byte>(nodeName, tensor.RawData.ToArray(), sizeof(byte), intDims);
             }
+            else if (nodeMeta.ElementType == typeof(sbyte))
+            {
+                return CreateNamedOnnxValueFromRawData<sbyte>(nodeName, tensor.RawData.ToArray(), sizeof(sbyte), intDims);
+            }
             else if (nodeMeta.ElementType == typeof(bool))
             {
                 return CreateNamedOnnxValueFromRawData<bool>(nodeName, tensor.RawData.ToArray(), sizeof(bool), intDims);
@@ -192,7 +196,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             else
             {
                 //TODO: Add support for remaining types
-                throw new Exception($"Tensors of type {nameof(nodeMeta.ElementType)} not currently supporte in the LoadTensorFromEmbeddedResource");
+                throw new Exception($"Tensors of type {nameof(nodeMeta.ElementType)} not currently supported in the LoadTensorFromEmbeddedResource");
             }
         }
 

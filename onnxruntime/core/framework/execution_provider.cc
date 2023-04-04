@@ -18,8 +18,12 @@ inline int MakeKey(int id, OrtMemType mem_type) {
 }
 }  // namespace
 
-AllocatorPtr IExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type) const {
-  // TODO(leca): ORT_ENFORCE(mem_type != OrtMemType::OrtMemTypeDefault || device_id == GetDeviceId(), "Rule out the case that search on OrtMemTypeDefault but device_id doesn't match GetDeviceId()");
+AllocatorPtr IExecutionProvider::GetAllocator(OrtMemType mem_type) const {
+  // if mem_type is OrtMemType::OrtMemTypeDefault, it will allocate memory from the current device
+  // otherwise (mem_type is OrtMemTypeCpu...) it will allocate memory from Cpu as input/output, thus set the device_id
+  // to 0 as there is only 1 CPU in each machine.
+  int device_id = GetDeviceId();
+  if (mem_type != OrtMemType::OrtMemTypeDefault) device_id = 0;
   auto iter = allocators_.find(MakeKey(device_id, mem_type));
   if (iter != allocators_.end()) {
     return iter->second;

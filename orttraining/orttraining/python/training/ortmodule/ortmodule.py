@@ -104,6 +104,10 @@ class ORTModule(torch.nn.Module):
         # else, they will be assigned to self._torch_module.original_module instead.
         self._is_initialized = True
 
+        # del the ort._modules so that all reference to  ort._modules will be forward to the underlying torch_model
+        # through '__getattr__'
+        del self._modules
+
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only
     # The actual forward implementation is bound during ORTModule initialization

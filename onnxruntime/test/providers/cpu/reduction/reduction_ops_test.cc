@@ -3056,7 +3056,7 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
                                     : OpTester::ExpectResult::kExpectFailure;
 
     // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
   };
 
   // reduce on all axes keeping dims. should allow the 0 to be the reduced value
@@ -3097,7 +3097,7 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
                                     : OpTester::ExpectResult::kExpectFailure;
 
     // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
   };
 
   // reduction without keeping dims on all axes. can't reduce on an axis with value of 0
@@ -3135,7 +3135,7 @@ TEST(ReductionOpTest, ReduceSum_ReduceDimWithZero3) {
                                     : OpTester::ExpectResult::kExpectFailure;
 
     // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
   };
 
   // reduction is possible without keeping dims if we only reduce on non-zero dims

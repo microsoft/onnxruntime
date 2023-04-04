@@ -5,8 +5,15 @@
 
 #include "../External/D3DX12/d3dx12.h"
 
-// The shader header is produced using "fxc.exe dft_shader.hlsl -E DFT -T cs_5_0 -Zi /Fh"
-#include "GeneratedShaders/stockham.h"
+// The shader headers are produced using "GeneratedShaders/GenerateShaders.bat"
+namespace DFTFloat32
+{
+    #include "GeneratedShaders/stockham.h"
+}
+namespace DFTFloat16
+{
+    #include "GeneratedShaders/stockham_fp16.h"
+}
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -21,6 +28,11 @@ namespace DFTHelpers {
     {
         UINT64 temp = static_cast<UINT64>(dividend) + divisor - 1;
         return static_cast<uint32_t>(temp / divisor);
+    }
+
+    inline bool IsPowerOfTwo(uint32_t x)
+    {
+        return (x != 0) && ((x & (x - 1)) == 0);
     }
 
     // Gets the next number of elements to dispatch to the GPU within a loop handling a large
@@ -57,7 +69,6 @@ namespace DFTHelpers {
         // Update the pending element count
         pendingElementCount = (dispatchedElementCount < elementCount) ? elementCount - dispatchedElementCount : 0;
     }
-
 }
 
 class GpuDFTOperator : public WRL::Base<IMLOperatorKernel>
@@ -135,6 +146,15 @@ private:
     };
 
 public:
+    GpuDFTOperator(ID3D12Device* device, uint32_t axis = 1, bool isOnesided = true, bool isInverse = false, MLOperatorTensorDataType dataType = MLOperatorTensorDataType::Float)
+     : m_device(device)
+     , m_axis(axis)
+     , m_isOnesided(isOnesided)
+     , m_isInverse(isInverse)
+    {
+        PrepareGpuResources(dataType);
+    }
+
     GpuDFTOperator(IMLOperatorKernelCreationContext* context)
     {
         ComPtr<IUnknown> executionObject;
@@ -155,10 +175,14 @@ public:
         ORT_THROW_IF_FAILED(context->GetAttribute("onesided", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isOnesidedInt)));
         m_isOnesided = static_cast<bool>(isOnesidedInt);
 
-        PrepareGpuResources();
+        MLOperatorEdgeDescription edgeDesc;
+        ORT_THROW_IF_FAILED(context->GetInputEdgeDescription(0, &edgeDesc));
+        assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+
+        PrepareGpuResources(edgeDesc.tensorDataType);
     }
 
-    void PrepareGpuResources()
+    void PrepareGpuResources(MLOperatorTensorDataType dataType)
     {
         // Compute root signature.
         const int uavCount = 2;
@@ -195,7 +219,31 @@ public:
         // Describe and create the compute pipeline state object (PSO).
         D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
         computePsoDesc.pRootSignature = m_rootSignature.Get();
-        computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(g_DFT, sizeof(g_DFT));
+
+        switch (dataType)
+        {
+            case MLOperatorTensorDataType::Float:
+            computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(DFTFloat32::g_DFT, sizeof(DFTFloat32::g_DFT));
+            break;
+
+            case MLOperatorTensorDataType::Float16:
+            {
+                D3D12_FEATURE_DATA_D3D12_OPTIONS4 featureOptions = {};
+                ORT_THROW_IF_FAILED(m_device->CheckFeatureSupport(
+                    D3D12_FEATURE_D3D12_OPTIONS4,
+                    &featureOptions,
+                    sizeof(featureOptions))
+                );
+
+                ORT_THROW_HR_IF(E_INVALIDARG, !featureOptions.Native16BitShaderOpsSupported);
+
+                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(DFTFloat16::g_DFT, sizeof(DFTFloat16::g_DFT));
+            }
+            break;
+
+            default:
+            ORT_THROW_HR(E_INVALIDARG);
+        }
 
         ORT_THROW_IF_FAILED(m_device->CreateComputePipelineState(&computePsoDesc, IID_ID3D12PipelineState, &m_pipelineState));
     }
@@ -220,26 +268,77 @@ public:
                 return E_UNEXPECTED;
             }
 
-            if (outputTensor->GetTensorDataType() != MLOperatorTensorDataType::Float ||
-                inputTensor->GetTensorDataType() != MLOperatorTensorDataType::Float)
-            {
-                return E_UNEXPECTED;
-            }
-
             ComPtr<IUnknown> executionObject;
             ComPtr<ID3D12GraphicsCommandList> commandList;
             context->GetExecutionInterface(executionObject.GetAddressOf());
             executionObject.As(&commandList);
 
-            auto dftParams = PrepareDFT(context);
+            // Get the input and output shape sizes
+            auto inputDims = GetTensorDimensions(inputTensor.Get());
+            ML_CHECK_VALID_ARGUMENT(static_cast<size_t>(m_axis) < inputDims.size())
+            auto outputDims = GetTensorDimensions(outputTensor.Get());
+            ORT_THROW_HR_IF(E_FAIL, inputDims.size() != outputDims.size());
+
+            ComPtr<IUnknown> inputUnknown;
+            ComPtr<ID3D12Resource> inputResource;
+            inputTensor->GetDataInterface(inputUnknown.GetAddressOf());
+            ORT_THROW_IF_FAILED(inputUnknown.As(&inputResource));
+
+            ComPtr<IUnknown> outputUnknown;
+            ComPtr<ID3D12Resource> outputResource;
+            outputTensor->GetDataInterface(outputUnknown.GetAddressOf());
+            ORT_THROW_IF_FAILED(outputUnknown.As(&outputResource));
+
+            // Get optional dft_length input
+            uint32_t dftLength = inputDims[m_axis];
+            ComPtr<IMLOperatorTensor> dftLengthTensor;
+            if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)) && dftLengthTensor != nullptr)
+            {
+                MLOperatorTensor tensor(dftLengthTensor.Get());
+                dftLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
+            }
+
+            return Compute(
+                commandList.Get(),
+                context,
+                inputResource.Get(),
+                inputDims,
+                outputResource.Get(),
+                outputDims,
+                dftLength
+            );
+        }
+        catch (...)
+        {
+            return E_FAIL;
+        }
+
+        return S_OK;
+    }
+
+    HRESULT Compute(
+        ID3D12GraphicsCommandList* commandList,
+        IMLOperatorKernelContext* context,
+        ID3D12Resource* inputResource,
+        gsl::span<const uint32_t> inputDims,
+        ID3D12Resource* outputResource,
+        gsl::span<const uint32_t> outputDims,
+        uint32_t dftLength
+        )
+    {
+        try
+        {
+            auto dftParams = PrepareDFT(context, inputResource, inputDims, outputResource, outputDims, dftLength);
+
             switch (dftParams.Type)
             {
                 case DFTType::Stockham:
                 {
-                    StockhamFFT(dftParams, commandList.Get());
+                    StockhamFFT(dftParams, commandList);
                     break;
                 }
                 case DFTType::BluesteinZChirp:
+                    // Remove the power-of-two check in DmlSTFTParameters (DmlSTFT.h) if this case is implemented.
                     __fallthrough;
                 default:
                     return E_NOTIMPL;
@@ -253,36 +352,20 @@ public:
         return S_OK;
     }
 
-    DFTParameters PrepareDFT(IMLOperatorKernelContext* context)
+    DFTParameters PrepareDFT(
+        IMLOperatorKernelContext* context,
+        ID3D12Resource* inputResource,
+        gsl::span<const uint32_t> inputDims,
+        ID3D12Resource* outputResource,
+        gsl::span<const uint32_t> outputDims,
+        uint32_t dftLength
+        )
     {
         DFTParameters params = {};
 
-        // Get the input and output shape sizes
-        ComPtr<IMLOperatorTensor> inputTensor;
-        ORT_THROW_IF_FAILED(context->GetInputTensor(0, &inputTensor));
-        auto inputDims = GetTensorDimensions(inputTensor.Get());
-        ML_CHECK_VALID_ARGUMENT(static_cast<size_t>(m_axis) < inputDims.size())
+        params.DFTLength = dftLength;
 
-        ComPtr<IMLOperatorTensor> outputTensor;
-        ORT_THROW_IF_FAILED(context->GetOutputTensor(0, &outputTensor));
-        auto outputDims = GetTensorDimensions(outputTensor.Get());
-
-        ORT_THROW_HR_IF(E_FAIL, inputDims.size() != outputDims.size());
-
-        // Get optional dft_length input
-        ComPtr<IMLOperatorTensor> dftLengthTensor;
-        if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)) && dftLengthTensor != nullptr)
-        {
-            MLOperatorTensor tensor(dftLengthTensor.Get());
-            params.DFTLength = gsl::narrow_cast<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
-        }
-        else
-        {
-            params.DFTLength = inputDims[m_axis];
-        }
-
-        auto isPowerOfTwo = [](uint32_t n) { return (n != 0) && ((n & (n - 1)) == 0); };
-        if (!isPowerOfTwo(params.DFTLength))
+        if (!DFTHelpers::IsPowerOfTwo(params.DFTLength))
         {
             params.Type = DFTType::BluesteinZChirp;
             params.StockhamParams = {};
@@ -292,22 +375,12 @@ public:
             params.Type = DFTType::Stockham;
             params.StockhamParams = {};
 
-            ComPtr<IUnknown> inputUnknown;
-            ComPtr<ID3D12Resource> inputResource;
-            inputTensor->GetDataInterface(inputUnknown.GetAddressOf());
-            inputUnknown.As(&inputResource);
-
-            ComPtr<IUnknown> outputUnknown;
-            ComPtr<ID3D12Resource> outputResource;
-            outputTensor->GetDataInterface(outputUnknown.GetAddressOf());
-            outputUnknown.As(&outputResource);
-
             // { before_dft_axis, axis, after_dft_axis, real_or_complex }
             std::array<uint32_t, 4> reshapedInputSize = { 1, 1, 1, inputDims.back() };
             std::array<uint32_t, 4> reshapedOutputSize = { 1, 1, 1, outputDims.back() };
 
             size_t reshapedIndex = 0;
-            for (int i = 0; i < inputDims.size() - 1; i++)
+            for (int i = 0; i < static_cast<int>(inputDims.size()) - 1; i++)
             {
                 if (i == m_axis || i == (m_axis + 1))
                 {
@@ -597,7 +670,7 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 ComPtr<IMLOperatorTensor> dftLengthTensor;
                 ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(1, &dftLengthTensor));
                 MLOperatorTensor tensor(dftLengthTensor.Get());
-                auto dftLength = gsl::narrow_cast<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
+                auto dftLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
                 outputDims[axisIdx] = dftLength;
             }
 
@@ -657,7 +730,7 @@ public:
         t1Constraint.typeLabel = "T1";
         std::vector<MLOperatorEdgeDescription> t1AllowedEdges
         {
-            //MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float16 },
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float16 },
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float },
             //MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Double },
         };

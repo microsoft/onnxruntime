@@ -46,7 +46,7 @@ Status GptSubgraph::CreateInitialFeeds(
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(input_ids.Location());
 
   // Store allocator, which will be used in remaining feeds
-  auto default_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
+  auto default_allocator = provider->GetAllocator(OrtMemTypeDefault);
   allocator_ = default_allocator;
 
   // The ordering is the same as used in Setup

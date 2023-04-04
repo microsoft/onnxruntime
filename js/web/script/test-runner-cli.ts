@@ -146,6 +146,8 @@ run({
   log: args.logConfig,
   profile: args.profile,
   options: {
+    sessionOptions:
+        {graphOptimizationLevel: args.graphOptimizationLevel, optimizedModelFilePath: args.optimizedModelFilePath},
     debug: args.debug,
     cpuOptions: args.cpuOptions,
     webglOptions: args.webglOptions,

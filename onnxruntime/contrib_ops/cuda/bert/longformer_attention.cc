@@ -113,7 +113,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&is_copy_done, cudaEventDisableTiming));
   CUDA_RETURN_IF_ERROR(cudaEventRecord(is_copy_done, stream));
 
-  size_t qkv_size = batch_size * sequence_length * 3 * hidden_size * element_size;
+  size_t qkv_size = static_cast<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size;
   // Buffer for GEMM outputs of q, k, v, global_q, global_k and global_v
   // TODO(tianleiwu): compact global_q only need batch_size * window * hidden_size * element_size buffer size.
   auto gemm_buffer = GetScratchBuffer<void>(qkv_size + qkv_size, context->GetComputeStream());

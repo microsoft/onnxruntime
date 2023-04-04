@@ -121,27 +121,6 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: 'Test LORT with Python 3.9'
-    inputs:
-      script: |
-        docker run --rm \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuildlort \
-            bash -c "
-              export LORT_CHECK_BASELINE=1 && \
-              export LORT_DUMP_GRAPH=1 && \
-              export LORT_DUMP_ATEN_OP_HISTORY=1 && \
-              export PYTHONPATH=/build/Release && \
-              /opt/python/cp39-cp39/bin/python3.9 -m pip install /build/Release/dist/*.whl && \
-              /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_lort.py"
-      workingDirectory: $(Build.SourcesDirectory)
-      condition: succeededOrFailed()
-
-  - task: CmdLine@2
     displayName: 'Test DORT with Python 3.9'
     inputs:
       script: |

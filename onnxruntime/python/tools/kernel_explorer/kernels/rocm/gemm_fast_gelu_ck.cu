@@ -41,6 +41,7 @@ class CKGemmFastGelu : public IKernelExplorer {
     auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
     ORT_ENFORCE(supports_a && supports_b);
 
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     // rocblas handle is not used for ck
     params_.handle = nullptr;
@@ -91,7 +92,7 @@ class CKGemmFastGelu : public IKernelExplorer {
 
  private:
   using ParamsT = GemmFastGeluParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;

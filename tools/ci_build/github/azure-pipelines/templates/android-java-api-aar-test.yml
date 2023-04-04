@@ -39,8 +39,7 @@ jobs:
 
   - template: use-android-ndk.yml
 
-  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(Build.SourcesDirectory)
-    displayName: Setup gradle wrapper to use gradle 6.8.3
+  - template: set-up-gradle-wrapper-step.yml
 
   - script: |
       python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \

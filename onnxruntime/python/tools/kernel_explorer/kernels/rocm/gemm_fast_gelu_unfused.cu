@@ -31,7 +31,7 @@ class GemmFastGeluUnfused : public IKernelExplorer {
                       double beta,
                       DeviceArray& c, int64_t ldc) : params_{} {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
-    params_.tuning = true;
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;

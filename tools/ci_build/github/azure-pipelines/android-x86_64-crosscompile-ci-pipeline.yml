@@ -46,8 +46,7 @@ stages:
 
     - template: "templates/use-android-ndk.yml"
 
-    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-      displayName: Setup gradle wrapper to use gradle 6.8.3
+    - template: templates/set-up-gradle-wrapper-step.yml
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -131,8 +130,7 @@ stages:
 
     - template: "templates/use-android-ndk.yml"
 
-    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-      displayName: Setup gradle wrapper to use gradle 6.8.3
+    - template: templates/set-up-gradle-wrapper-step.yml
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -235,8 +233,7 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-        displayName: Setup gradle wrapper to use gradle 6.8.3
+      - template: templates/set-up-gradle-wrapper-step.yml
 
       - script: |
           python3 tools/python/run_android_emulator.py \
@@ -308,8 +305,7 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-        displayName: Setup gradle wrapper to use gradle 6.8.3
+      - template: templates/set-up-gradle-wrapper-step.yml
 
       - script: |
           python3 tools/python/run_android_emulator.py \
@@ -391,8 +387,7 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-        displayName: Setup gradle wrapper to use gradle 6.8.3
+      - template: templates/set-up-gradle-wrapper-step.yml
 
       # used by Build Minimal ORT
       - script: brew install coreutils ninja

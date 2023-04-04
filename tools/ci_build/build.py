@@ -397,7 +397,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.19", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.32", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -414,6 +414,7 @@ def parse_arguments():
         help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
         "behavior when disable exceptions.",
     )
+    parser.add_argument("--wasm_run_tests_in_browser", action="store_true", help="Run WebAssembly tests in browser")
 
     parser.add_argument(
         "--enable_wasm_profiling", action="store_true", help="Enable WebAsselby profiling and preserve function names"
@@ -484,6 +485,8 @@ def parse_arguments():
     parser.add_argument(
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
     )
+    parser.add_argument("--use_qnn", action="store_true", help="Build with QNN support.")
+    parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
     parser.add_argument("--use_preinstalled_eigen", action="store_true", help="Use pre-installed Eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed Eigen.")
@@ -852,6 +855,7 @@ def generate_build_tree(
     acl_libs,
     armnn_home,
     armnn_libs,
+    qnn_home,
     snpe_root,
     cann_home,
     path_to_protoc_exe,
@@ -955,6 +959,7 @@ def generate_build_tree(
         + ("ON" if args.enable_wasm_api_exception_catching else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING="
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER=" + ("ON" if args.wasm_run_tests_in_browser else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
@@ -1047,6 +1052,9 @@ def generate_build_tree(
 
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
+
+    if qnn_home and os.path.exists(qnn_home):
+        cmake_args += ["-Donnxruntime_QNN_HOME=" + qnn_home]
 
     if snpe_root and os.path.exists(snpe_root):
         cmake_args += ["-DSNPE_ROOT=" + snpe_root]
@@ -1166,6 +1174,11 @@ def generate_build_tree(
         if args.xcode_code_signing_team_id:
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
 
+    if args.use_qnn:
+        if args.qnn_home is None or os.path.exists(args.qnn_home) is False:
+            raise BuildError("qnn_home=" + qnn_home + " not valid." + " qnn_home paths must be specified and valid.")
+        cmake_args += ["-Donnxruntime_USE_QNN=ON"]
+
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
@@ -1220,6 +1233,9 @@ def generate_build_tree(
             add_default_definition(emscripten_settings, "MALLOC", args.wasm_malloc)
         add_default_definition(emscripten_settings, "MALLOC", "dlmalloc")
 
+        # set -s STACK_SIZE=1048576
+        add_default_definition(emscripten_settings, "STACK_SIZE", "1048576")
+
         if emscripten_settings:
             cmake_args += [f"-Donnxruntime_EMSCRIPTEN_SETTINGS={';'.join(emscripten_settings)}"]
 
@@ -1228,24 +1244,29 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_EXTENSIONS=ON"]
 
         # default path of onnxruntime-extensions, using git submodule
-        onnxruntime_extensions_path = os.path.join(cmake_dir, "external", "onnxruntime-extensions")
+        for config in configs:
+            onnxruntime_extensions_path = os.path.join(build_dir, config, "_deps", "extensions-src")
+            onnxruntime_extensions_path = os.path.abspath(onnxruntime_extensions_path)
 
-        if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
-            # use absolute path here because onnxruntime-extensions is outside onnxruntime
-            onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+            if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
+                # use absolute path here because onnxruntime-extensions is outside onnxruntime
+                onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+                cmake_args += ["-Donnxruntime_EXTENSIONS_OVERRIDDEN=ON"]
+                print("[onnxruntime-extensions] Loading onnxruntime-extensions from: ", onnxruntime_extensions_path)
+            else:
+                print("[onnxruntime-extensions] Loading onnxruntime-extensions from: FetchContent")
 
-        cmake_args += ["-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
-        print("[onnxruntime-extensions] onnxruntime_extensions_path: ", onnxruntime_extensions_path)
+            cmake_args += ["-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
 
-        if is_reduced_ops_build(args):
-            operators_config_file = os.path.abspath(args.include_ops_by_config)
-            cmake_tool_dir = os.path.join(onnxruntime_extensions_path, "tools")
+            if is_reduced_ops_build(args):
+                operators_config_file = os.path.abspath(args.include_ops_by_config)
+                cmake_tool_dir = os.path.join(onnxruntime_extensions_path, "tools")
 
-            # generate _selectedoplist.cmake by operators config file
-            run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
+                # generate _selectedoplist.cmake by operators config file
+                run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
 
     if path_to_protoc_exe:
-        cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
+        cmake_args += [f"-DONNX_CUSTOM_PROTOC_EXECUTABLE={path_to_protoc_exe}"]
 
     if args.fuzz_testing:
         if not (
@@ -1929,6 +1950,7 @@ def build_python_wheel(
     use_dml,
     use_cann,
     use_azure,
+    use_qnn,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -1989,6 +2011,8 @@ def build_python_wheel(
             args.append("--use_cann")
         elif use_azure:
             args.append("--use_azure")
+        elif use_qnn:
+            args.append("--use_qnn")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2407,6 +2431,8 @@ def main():
     armnn_home = args.armnn_home
     armnn_libs = args.armnn_libs
 
+    qnn_home = args.qnn_home
+
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = setup_tensorrt_vars(args)
 
@@ -2616,6 +2642,7 @@ def main():
             acl_libs,
             armnn_home,
             armnn_libs,
+            qnn_home,
             snpe_root,
             cann_home,
             path_to_protoc_exe,
@@ -2681,6 +2708,7 @@ def main():
                 args.use_dml,
                 args.use_cann,
                 args.use_azure,
+                args.use_qnn,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,

@@ -39,7 +39,6 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
-
         cwd = os.getcwd()
         test_model_dir = os.path.join(cwd, "..", "models")
         for filename in Path(test_model_dir).rglob("*.onnx"):
@@ -426,6 +425,42 @@ class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
 
     def test_flip_of_concat(self):
         self.check_slice_of_concat(["N", "N", "N"], "-one", "-intmax", "-one", "3*N")
+
+    def test_slice_of_min(self):
+        graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, ["N"])
+        graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
+        const_size = 42
+        half_const_size = const_size // 2
+        initializers = [
+            onnx.helper.make_tensor("const_tensor", TensorProto.FLOAT, [const_size], [42.0] * const_size),
+            onnx.helper.make_tensor("half_const_size", TensorProto.INT64, [], [half_const_size]),
+            onnx.helper.make_tensor("zeros", TensorProto.INT64, [1], [0]),
+            onnx.helper.make_tensor("ones", TensorProto.INT64, [1], [1]),
+        ]
+
+        nodes = [
+            # Get the shape of the input tensor: `input_tensor_shape = [N]`.
+            onnx.helper.make_node("Shape", ["input"], ["input_tensor_shape"]),
+            # The starts of the const tensor slice: `starts = [21 - N + 1]`.
+            onnx.helper.make_node("Sub", ["half_const_size", "input_tensor_shape"], ["starts_aux"]),
+            onnx.helper.make_node("Add", ["ones", "starts_aux"], ["starts"]),
+            # The ends of the const tensor slice: `ends = [21 + N]`.
+            onnx.helper.make_node("Add", ["half_const_size", "input_tensor_shape"], ["ends"]),
+            # Slice the const tensor: `slice_out = const_tensor[starts:ends]`.
+            onnx.helper.make_node("Slice", ["const_tensor", "starts", "ends", "zeros", "ones"], ["slice_out"]),
+            # Crop the const tensor slice using the shape of the input tensor: `slice_out_cropped = slice_out[0:input_tensor_shape]`.
+            onnx.helper.make_node(
+                "Slice", ["slice_out", "zeros", "input_tensor_shape", "zeros", "ones"], ["slice_out_cropped"]
+            ),
+            # Add the const tensor slice to the input tensor: `output = input + slice_out_cropped`.
+            onnx.helper.make_node("Add", ["slice_out_cropped", "input"], ["output"]),
+        ]
+
+        graph_def = onnx.helper.make_graph(nodes, "SliceOfMin", [graph_input], [graph_output], initializer=initializers)
+        model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
+        output_dims = unique_element(model.graph.output).type.tensor_type.shape.dim
+        self.assertEqual(len(output_dims), 1)
+        self.assertEqual(output_dims[0].dim_param, "N")
 
 
 if __name__ == "__main__":

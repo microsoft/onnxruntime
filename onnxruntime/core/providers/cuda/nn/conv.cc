@@ -173,7 +173,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     TensorShapeVector slice_axes;
     slice_axes.reserve(kernel_rank);
 
-    const size_t spatial_dim_start = channels_last ? 1 : 2;
+    constexpr size_t spatial_dim_start = channels_last ? 1 : 2;
     const size_t spatial_dim_end = spatial_dim_start + kernel_rank;
     TensorShape spatial_shape = X->Shape().Slice(spatial_dim_start, spatial_dim_end);
 

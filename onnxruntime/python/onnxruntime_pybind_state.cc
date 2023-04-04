@@ -198,7 +198,7 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
     py::object obj;
-    GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
+    GetPyObjFromTensor(rtensor.Get<Tensor>(), obj, data_transfer_manager, mem_cpy_to_host_functions);
     py_list.append(obj);
   }
   // XToolChain kills the build
@@ -534,11 +534,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
       } else {
         if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
-          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
+          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
         }
       }
     }
-    LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+    LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
@@ -758,6 +758,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kAzureExecutionProvider) {
 #ifdef USE_AZURE
     return onnxruntime::AzureProviderFactoryCreator::Create({})->CreateProvider();
+#endif
+  } else if (type == kQnnExecutionProvider) {
+#ifdef USE_QNN
+    auto cit = provider_options_map.find(type);
+    return onnxruntime::QNNProviderFactoryCreator::Create(
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)->CreateProvider();
 #endif
   } else {
     // check whether it is a dynamic load EP:
@@ -1664,6 +1670,57 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           status = sess->GetSessionHandle()->Run(*run_options, *io_binding.Get());
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+      })
+      .def("get_tuning_results", [](PyInferenceSession* sess) -> py::list {
+#if !defined(ORT_MINIMAL_BUILD)
+        py::list ret;
+        for (const auto& trs : sess->GetSessionHandle()->GetTuningResults()) {
+          py::dict py_trs;
+          py_trs["ep"] = trs.ep;
+          py_trs["results"] = trs.results;
+          py_trs["validators"] = trs.validators;
+          ret.append(std::move(py_trs));
+        }
+
+        return ret;
+#else
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
+#endif
+      })
+      .def("set_tuning_results", [](PyInferenceSession* sess, py::list results, bool error_on_invalid) -> void {
+#if !defined(ORT_MINIMAL_BUILD)
+        std::vector<TuningResults> tuning_results;
+        for (auto handle: results) {
+          auto py_trs = handle.cast<py::dict>();
+          TuningResults trs;
+          trs.ep = py_trs["ep"].cast<py::str>();
+
+          for (const auto [py_op_sig, py_kernel_map]: py_trs["results"].cast<py::dict>()) {
+            KernelMap kernel_map;
+            for (const auto [py_params_sig, py_kernel_id]: py_kernel_map.cast<py::dict>()) {
+              kernel_map[py_params_sig.cast<py::str>()] = py_kernel_id.cast<py::int_>();
+            }
+            trs.results[py_op_sig.cast<py::str>()] = kernel_map;
+          }
+
+          for (const auto [k, v]: py_trs["validators"].cast<py::dict>()) {
+            trs.validators[k.cast<py::str>()] = v.cast<py::str>();
+          }
+
+          tuning_results.emplace_back(std::move(trs));
+        }
+
+        Status status = sess->GetSessionHandle()->SetTuningResults(tuning_results, error_on_invalid);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+        }
+#else
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_UNUSED_PARAMETER(results);
+        ORT_UNUSED_PARAMETER(error_on_invalid);
+        ORT_THROW("TunableOp and set_tuning_results are not supported in this build.");
+#endif
       });
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())

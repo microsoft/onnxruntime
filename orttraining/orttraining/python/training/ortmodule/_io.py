@@ -161,7 +161,9 @@ class _InputInfo(object):
         return args, kwargs
 
 
-def _combine_input_buffers_initializers(params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device):
+def _combine_input_buffers_initializers(
+    params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device, input_density_ob
+):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
@@ -231,6 +233,8 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         if inp is not None:
             if _PrimitiveType.is_primitive_type(inp):
                 inp = _PrimitiveType.get_tensor(inp, device)
+
+            input_density_ob.inspect_from_input_data(name, inp)
             result.append(inp)
         else:
             raise wrap_exception(
@@ -481,17 +485,17 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
             dynamic_axes[name].update({dim_idx: f"{name}_dim{dim_idx}"})
         return dynamic_axes
 
-    def _add_input(name, input, onnx_graph, onnx_graph_input_names):
+    def _add_input(name, input_value, onnx_graph, onnx_graph_input_names):
         """Returns number of expanded non none inputs that _add_input processed"""
 
-        if input is None or isinstance(input, str):
+        if name in input_names or input_value is None or isinstance(input_value, str):
             # Drop all None and string inputs and return 0.
             return
 
-        if isinstance(input, abc.Sequence):
+        if isinstance(input_value, abc.Sequence):
             # If the input is a sequence (like a list), expand the list so that
             # each element of the list is an input by itself.
-            for i, val in enumerate(input):
+            for i, val in enumerate(input_value):
                 # Name each input with the index appended to the original name of the
                 # argument.
                 _add_input(f"{name}_{i}", val, onnx_graph, onnx_graph_input_names)
@@ -499,10 +503,10 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
             # Return here since the list by itself is not a valid input.
             # All the elements of the list have already been added as inputs individually.
             return
-        elif isinstance(input, abc.Mapping):
+        elif isinstance(input_value, abc.Mapping):
             # If the input is a mapping (like a dict), expand the dict so that
             # each element of the dict is an input by itself.
-            for key, val in input.items():
+            for key, val in input_value.items():
                 _add_input(f"{name}_{key}", val, onnx_graph, onnx_graph_input_names)
 
             # Return here since the dict by itself is not a valid input.
@@ -513,11 +517,11 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
         # a part of the onnx graph or not.
         input_names.append(name)
 
-        if (onnx_graph is None or name in onnx_graph_input_names) and isinstance(input, torch.Tensor):
-            if input.requires_grad:
+        if (onnx_graph is None or name in onnx_graph_input_names) and isinstance(input_value, torch.Tensor):
+            if input_value.requires_grad:
                 input_names_require_grad.append(name)
-            dynamic_axes.update(_add_dynamic_shape(name, input))
-            input_shape.append(list(input.size()))
+            dynamic_axes.update(_add_dynamic_shape(name, input_value))
+            input_shape.append(list(input_value.size()))
 
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs
@@ -557,8 +561,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
         elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
             # **kwargs is always the last argument of forward()
             for name, inp in kwargs.items():
-                if name not in input_names:
-                    _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+                _add_input(name, inp, onnx_graph, onnx_graph_input_names)
 
     return _InputInfo(
         names=input_names,

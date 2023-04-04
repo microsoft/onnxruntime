@@ -109,7 +109,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
@@ -180,7 +180,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
@@ -343,7 +343,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
@@ -566,7 +566,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
 
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -670,7 +670,7 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
 
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<bool> values_mul_x = {true, false, true, false, true, false};
@@ -791,7 +791,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
 
   OrtValue ml_value_x;
   CreateMLValue<bool>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);

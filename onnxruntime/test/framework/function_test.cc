@@ -52,7 +52,7 @@ static void Check(const char* source,
 
   std::unique_ptr<CPUExecutionProvider> provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   OrtValue ort_value;
-  CreateMLValue<float>(provider->GetAllocator(0, OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
+  CreateMLValue<float>(provider->GetAllocator(OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
 
   feeds.insert(std::make_pair(std::string(input_name), ort_value));
 
@@ -351,6 +351,26 @@ TEST(FunctionTest, Variadics) {
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(model_uri));
   ASSERT_STATUS_OK(session_object.Initialize());
+}
+
+// Test use of outer-scope names inside sub-graphs in functions that are inlined.
+TEST(FunctionTest, OuterScopeName) {
+  const char* code = R"(
+        <ir_version: 8, opset_import: [ "" : 17 ]>
+        agraph (float[N] x) => (float[N] y)
+        {
+            xseq = SequenceConstruct (x)
+            zeros = Constant <value = float[3] {0.0, 0.0, 0.0}> ()
+            yseq = SequenceMap (xseq) <body =
+              zeropad (float[3] lx) => (float[6] ly) {
+                ly = Concat <axis = 0> (lx, zeros)
+              }>
+            zero = Constant <value = int64{0}> ()
+            y = SequenceAt (yseq, zero)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 2.0, 3.0, 0.0, 0.0, 0.0});
 }
 }  // namespace test
 }  // namespace onnxruntime

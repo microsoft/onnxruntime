@@ -25,10 +25,10 @@ void DnnlSum::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     scales.push_back(1.0f);
   }
 
-  auto dst_dims = srcs_pd[0].dims();
+  auto dst_dims = srcs_pd[0].get_dims();
   auto dst_md =  dnnl::memory::desc({dst_dims}, node.Input(IN_DATA_0).Type(), dnnl::memory::format_tag::any);
 
-  auto sum_pd = dnnl::sum::primitive_desc(dst_md, scales, srcs_pd, dnnl_engine);
+  auto sum_pd = dnnl::sum::primitive_desc(dnnl_engine, dst_md, scales, srcs_pd);
 
   for (size_t i = 0; i < src_mems.size(); ++i) {
     src_mems[i] = sp.GetMemoryAndReshape(node.Input(static_cast<int>(IN_DATA_0 + i)), sum_pd.src_desc(), dnnl_engine);

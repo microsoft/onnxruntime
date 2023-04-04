@@ -1848,6 +1848,11 @@ inline void CustomOpApi::ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_c
   api_.ReleaseKernelInfo(info_copy);
 }
 
+inline std::string GetVersionString() {
+  std::string result = OrtGetApiBase()->GetVersionString();
+  return result;
+}
+
 inline std::vector<std::string> GetAvailableProviders() {
   char** providers;
   int len;

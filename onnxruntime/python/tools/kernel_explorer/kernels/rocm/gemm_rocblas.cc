@@ -34,6 +34,7 @@ class RocBlasGemm : public IKernelExplorer {
               double beta,
               DeviceArray& c, int64_t ldc) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -72,7 +73,7 @@ class RocBlasGemm : public IKernelExplorer {
   rocblas_handle rocblas_handle_;
 
   using ParamsT = GemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
 
   ParamsT params_{};
   OpT op_{RocBlasGemmOp<T>};
@@ -91,6 +92,7 @@ class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
                      int64_t batch) {
     this->CopyAsBsCsPointersToDevice(as, bs, cs, batch);
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.tuning_ctx = this->TuningContext();
     params_.stream = this->Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -130,7 +132,7 @@ class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
   rocblas_handle rocblas_handle_;
 
   using ParamsT = BatchedGemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
 
   ParamsT params_{};
   OpT op_{RocBlasBatchedGemmOp<T>};
@@ -148,6 +150,7 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
                             DeviceArray& c, int64_t ldc, int64_t stride_c,
                             int64_t batch) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -190,7 +193,7 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
   rocblas_handle rocblas_handle_;
 
   using ParamsT = StridedBatchedGemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
 
   ParamsT params_{};
   OpT op_{RocBlasStridedBatchedGemmOp<T>};

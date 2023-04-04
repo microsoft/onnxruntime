@@ -22,53 +22,79 @@ Status CheckInputs(const T* query,
                    int num_heads,
                    float mask_filter_value,
                    int max_threads_per_block) {
+  //     key_padding_mask (K/V)     : (B) or (B, L) or None
+  //     relative_position_bias     : (B, 1, S, L)
+  // When no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D)
   //     value            (V)       : (B, L, D_v)
   //     bias             (Q/K/V)   : (D + D + D_v)
-  //     key_padding_mask (K/V)     : (B) or (B, L) or None
-  //     relative_position_bias     : (B, 1, S, L)
   // When packed kv is used:
+  //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, N, 2, H)
+  //     value            (V)       : None
+  //     bias             (Q/K/V)   : None
+  // When packed qkv is used:
+  //     query            (Q)       : (B, L, N, 3, H)
+  //     key              (K)       : None
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None
 
   const auto& query_dims = query->Shape().GetDims();
-  if (query_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
+  if (query_dims.size() != 3 && query_dims.size() != 5) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 or 5 dimensions, got ",
                            query_dims.size());
-  }
-
-  const auto& key_dims = key->Shape().GetDims();
-  if (key_dims.size() != 3 && key_dims.size() != 5) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 or 5 dimensions, got ",
-                           key_dims.size());
-  }
-  if (query_dims[0] != key_dims[0]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query' and 'key' shall have same dim 0 (batch size)");
   }
 
   int batch_size = static_cast<int>(query_dims[0]);
   int sequence_length = static_cast<int>(query_dims[1]);
-  int hidden_size = static_cast<int>(query_dims[2]);
+  int hidden_size = query_dims.size() == 3 ? static_cast<int>(query_dims[2]) : (num_heads * static_cast<int>(query_dims[4]));
   int head_size = static_cast<int>(hidden_size) / num_heads;
-  int kv_sequence_length = static_cast<int>(key_dims[1]);
+  int kv_sequence_length = sequence_length;
 
-  if (key_dims.size() == 3) {
-    if (key_dims[2] != query_dims[2]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'key' shall have same dim 2 (hidden_size)");
+  if (key != nullptr) {
+    if (query_dims.size() != 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions when key is given, got ",
+                             query_dims.size());
     }
-  } else  // if (key_dims.size() == 5)
-  {
-    if (static_cast<int>(key_dims[2]) != num_heads || static_cast<int>(key_dims[3]) != 2 || static_cast<int>(key_dims[4]) != head_size) {
+
+    const auto& key_dims = key->Shape().GetDims();
+    if (key_dims.size() != 3 && key_dims.size() != 5) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 or 5 dimensions, got ",
+                             key_dims.size());
+    }
+    if (query_dims[0] != key_dims[0]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'query' and 'key' shall have same dim 0 (batch size)");
+    }
+
+    if (key_dims.size() == 3) {
+      if (key_dims[2] != query_dims[2]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'query' and 'key' shall have same dim 2 (hidden_size)");
+      }
+    } else  // if (key_dims.size() == 5)
+    {
+      if (static_cast<int>(key_dims[2]) != num_heads || static_cast<int>(key_dims[3]) != 2 || static_cast<int>(key_dims[4]) != head_size) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT,
+            "Expect 'key' shape (batch_size, kv_sequence_length, num_heads, 2, head_size) for packed kv");
+      }
+      if (value != nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'value' be none when 'key' has packed kv format.");
+      }
+    }
+
+    kv_sequence_length = static_cast<int>(key_dims[1]);
+  } else {  // packed QKV
+    if (query_dims.size() != 5) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 5 dimensions when key is empty, got ",
+                             query_dims.size());
+    }
+    if (static_cast<int>(query_dims[2]) != num_heads || static_cast<int>(query_dims[3]) != 3) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
-          "Expect 'key' shape (batch_size, kv_sequence_length, num_heads, 2, head_size) for packed kv");
-    }
-    if (value != nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'value' be none when 'key' has packed kv format.");
+          "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed kv");
     }
   }
 
@@ -82,7 +108,7 @@ Status CheckInputs(const T* query,
     // Currently, bias is not allowed for packed KV. This constraint can be removed later.
     // Here we assume that fusion tool will not include bias for packed KV.
     if (value == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "'bias' is not allowed for packed kv. ");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "'bias' is not allowed for packed qkv or kv. ");
     }
   }
 
@@ -90,9 +116,9 @@ Status CheckInputs(const T* query,
   if (key_padding_mask != nullptr) {
     mask_type = AttentionMaskType::MASK_UNKNOWN;
     const auto& mask_dims = key_padding_mask->Shape().GetDims();
-    if (mask_dims.size() == 1 && mask_dims[0] == key_dims[0]) {
+    if (mask_dims.size() == 1 && mask_dims[0] == static_cast<int64_t>(batch_size)) {
       mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-    } else if (mask_dims.size() == 2 && mask_dims[0] == key_dims[0] && mask_dims[1] == key_dims[1]) {
+    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
     }
 
@@ -115,7 +141,7 @@ Status CheckInputs(const T* query,
                              "Input 'query' and 'value' shall have same dim 0 (batch_size)");
     }
 
-    if (key_dims[1] != value_dims[1]) {
+    if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'key' and 'value' shall have same same dim 1 (kv_sequence_length)");
     }

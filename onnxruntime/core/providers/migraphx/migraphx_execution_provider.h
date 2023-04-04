@@ -62,7 +62,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
 
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 

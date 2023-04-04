@@ -96,7 +96,7 @@ OrtValue create_ort_value(
     at::ScalarType type) {
   OrtValue ort_val;
   onnxruntime::Tensor::InitOrtValue(ort_scalar_type_from_aten(type), onnxruntime::TensorShape({}),
-                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ort_val);
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
   switch (type) {
     case at::ScalarType::Float: {
@@ -536,7 +536,7 @@ void resize_impl_ort_(
 
     OrtValue new_ort_value;
     onnxruntime::Tensor::InitOrtValue(self_ort_tensor->DataType(), new_shape,
-                                      invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
+                                      invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault),
                                       new_ort_value);
 
     auto* new_ort_tensor = new_ort_value.GetMutable<onnxruntime::Tensor>();
@@ -645,7 +645,7 @@ at::Tensor empty_strided(
   at::ScalarType dtype = c10::dtype_or_default(dtype_opt);
   auto& invoker = GetORTInvoker(*device_opt);
   onnxruntime::Tensor::InitOrtValue(ort_scalar_type_from_aten(dtype), onnxruntime::TensorShape(size.vec()),
-                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ot,
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), ot,
                                     stride.vec());
   return aten_tensor_from_ort(
       std::move(ot),
@@ -683,7 +683,7 @@ at::Tensor as_strided(
   auto byte_offset = storage_offset.has_value() ? ((*storage_offset).expect_int() * tensor->DataType()->Size()) : 0;
   OrtValue ot;
   onnxruntime::Tensor::InitOrtValue(tensor->DataType(), onnxruntime::TensorShape(size.vec()), tensor->MutableDataRaw(),
-                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(),
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault)->Info(),
                                     ot, byte_offset, stride.vec());
   return aten_tensor_from_ort(
       std::move(ot),
@@ -788,7 +788,7 @@ at::Tensor& zero_(at::Tensor& self) {
   // construct a constant tensor
   auto element_type = onnxruntime::DataTypeImpl::GetType<int64_t>();
   onnxruntime::Tensor::InitOrtValue(element_type, onnxruntime::TensorShape({}),
-                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), flag_val);
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), flag_val);
   auto* ort_flag_tensor = flag_val.GetMutable<onnxruntime::Tensor>();
   int64_t one = 1;
   CopyVectorToTensor<int64_t>(invoker, &one, 1, *ort_flag_tensor);
@@ -853,7 +853,7 @@ at::Tensor slice_Tensor(
   OrtValue ot;
   onnxruntime::Tensor::InitOrtValue(
       ort_tensor->DataType(), onnxruntime::TensorShape(new_shape), ort_tensor->MutableDataRaw(),
-      invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(), ot, byte_offset, new_stride);
+      invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault)->Info(), ot, byte_offset, new_stride);
   return aten_tensor_from_ort(
       std::move(ot),
       self.options());

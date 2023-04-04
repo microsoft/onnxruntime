@@ -27,7 +27,7 @@ class FunctionKernel : public OpKernel {
     if (compute->create_state_func) {
       //TODO: we are only provide host allocate method in compute context.
       //Do we need to hold the ref-counting here?
-      funckernel->host_allocator_ = info.GetAllocator(0, OrtMemType::OrtMemTypeDefault);
+      funckernel->host_allocator_ = info.GetAllocator(OrtMemType::OrtMemTypeDefault);
       ComputeContext context = {allocate_helper_func, release_helper_func, funckernel->host_allocator_.get(),
                                 info.node().Name().c_str()};
       int ret = funckernel->compute_info_->create_state_func(&context, &funckernel->func_state_);

@@ -94,7 +94,7 @@ class ValidNodes {
    public:
     using iterator_category = std::input_iterator_tag;
     using value_type = T;
-    using difference_type = typename TIterator::difference_type;
+    using difference_type = typename std::iterator_traits<TIterator>::difference_type;
     using pointer = T*;
     using reference = T&;
     using const_reference = const T&;

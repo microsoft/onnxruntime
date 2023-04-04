@@ -24,7 +24,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from benchmark_helper import Precision
 from float16 import float_to_float16_max_diff
-from fusion_options import AttentionMaskFormat
 from io_binding_helper import IOBindingHelper
 from onnx_model import OnnxModel
 from torch_onnx_export_helper import torch_onnx_export
@@ -188,6 +187,7 @@ class Gpt2Helper:
         input_ids_dtype: torch.dtype = torch.int32,
         position_ids_dtype: torch.dtype = torch.int32,
         attention_mask_dtype: torch.dtype = torch.int32,
+        left_side_padding: bool = True,
     ) -> Gpt2Inputs:
         """Create random inputs for GPT2 model.
         Returns torch tensors of input_ids, position_ids, attention_mask and a list of past state tensors.
@@ -218,9 +218,14 @@ class Gpt2Helper:
                 dtype=attention_mask_dtype,
                 device=device,
             )
+
             if total_sequence_length >= 2:
-                padding_position = random.randint(0, total_sequence_length - 1)  # test input with padding.
-                attention_mask[:, padding_position] = 0
+                for i in range(batch_size):
+                    padding_length = random.randint(0, total_sequence_length - 1)
+                    if left_side_padding:
+                        attention_mask[i, :padding_length] = 0
+                    else:  # right side padding
+                        attention_mask[i, total_sequence_length - padding_length :] = 0
 
         # Deduce position_ids from attention mask
         position_ids = None
@@ -516,11 +521,6 @@ class Gpt2Helper:
         from optimizer import optimize_model
 
         optimization_options = FusionOptions("gpt2")
-
-        if is_float16 and stage == 1:
-            # For init_decoder, enable mask index to use fused causal cuda kernel.
-            # Potentially, we can add other optimization like unpad for effective transformer
-            optimization_options.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
 
         # TODO(hasesh): Investigate parity issue for GPT-2 fp16 when SkipLayerNormalization
         # is enabled
@@ -841,6 +841,7 @@ class Gpt2Helper:
                 input_ids_dtype=input_ids_dtype,
                 position_ids_dtype=position_ids_dtype,
                 attention_mask_dtype=attention_mask_dtype,
+                left_side_padding=True,
             )
             outputs = Gpt2Helper.pytorch_inference(model, dummy_inputs)
             if use_io_binding:
@@ -868,6 +869,7 @@ class Gpt2Helper:
                 max_abs_diff_list.append(max_abs_diff)
             if is_all_close:
                 passed_test_cases += 1
+
             if is_top1_matched:
                 top1_matched_cases += 1
                 top1_matched_cases_per_run[run_id] += 1

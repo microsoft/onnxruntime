@@ -146,7 +146,7 @@ std::unique_ptr<IDataTransfer> TvmSoExecutionProvider::GetDataTransfer() const {
   }
 }
 
-AllocatorPtr TvmSoExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr TvmSoExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   return allocator_;
 }
 

@@ -60,6 +60,7 @@ namespace AttrName
     static constexpr const char* Min = "min";
     static constexpr const char* Mode = "mode";
     static constexpr const char* NearestMode = "nearest_mode";
+    static constexpr const char* NewAxis = "new_axis";
     static constexpr const char* NoopWithEmptyAxes = "noop_with_empty_axes";
     static constexpr const char* NormalizeVariance = "normalize_variance";
     static constexpr const char* P = "p";

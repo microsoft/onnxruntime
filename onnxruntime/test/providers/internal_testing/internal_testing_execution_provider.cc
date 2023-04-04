@@ -36,12 +36,12 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
       preferred_layout_{preferred_layout} {
 }
 
-AllocatorPtr InternalTestingExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type) const {
+AllocatorPtr InternalTestingExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   // replicate setup that some EPs have with a local allocator
   if (mem_type == OrtMemTypeDefault) {
     return local_allocator_;
   } else {
-    return IExecutionProvider::GetAllocator(device_id, mem_type);
+    return IExecutionProvider::GetAllocator(mem_type);
   }
 }
 
@@ -50,7 +50,7 @@ void InternalTestingExecutionProvider::RegisterAllocator(AllocatorManager& alloc
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
 
   // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
+  auto cpu_alloc = GetAllocator(OrtMemTypeDefault);
   if (!cpu_alloc) {
     // use shared allocator if available
     cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);

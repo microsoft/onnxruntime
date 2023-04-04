@@ -62,7 +62,8 @@ static void RunAttentionTest(
     const std::vector<float>& relative_position_bias_data = {},
     int kv_sequence_length = 0,
     bool past_present_share_buffer = false,
-    bool use_scale = false) {
+    bool use_scale = false,
+    bool do_neox_rotary = false) {
   input_hidden_size = (input_hidden_size == 0 ? hidden_size : input_hidden_size);  // By default, no pruning.
   kv_sequence_length = (kv_sequence_length == 0 ? sequence_length : kv_sequence_length);
   past_present_share_buffer = past_present_share_buffer && use_past_state;
@@ -81,6 +82,9 @@ static void RunAttentionTest(
     tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
     if (use_scale && !enable_rocm) {
       tester.AddAttribute<float>("scale", static_cast<float>(1.f / sqrt(head_size)));
+    }
+    if (do_neox_rotary && !enable_rocm) {
+      tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(do_neox_rotary ? 1 : 0));
     }
 
     int32_t qkv_hidden_size_sum;
@@ -267,19 +271,20 @@ static void RunAttentionTest(
     const std::vector<float>& relative_position_bias_data = {},
     int kv_sequence_length = 0,
     bool past_present_share_buffer = false,
-    bool use_scale = false) {
+    bool use_scale = false,
+    bool do_neox_rotary = false) {
   RunAttentionTest(input_data, weights_data, false, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, mask_type, input_hidden_size, max_sequence_length,
                    disable_cpu, disable_cuda, disable_rocm, qkv_sizes, relative_position_bias_data,
-                   kv_sequence_length, past_present_share_buffer, use_scale);
+                   kv_sequence_length, past_present_share_buffer, use_scale, do_neox_rotary);
   RunAttentionTest(input_data, weights_data, true, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, mask_type, input_hidden_size, max_sequence_length,
                    disable_cpu, disable_cuda, disable_rocm, qkv_sizes, relative_position_bias_data,
-                   kv_sequence_length, past_present_share_buffer, use_scale);
+                   kv_sequence_length, past_present_share_buffer, use_scale, do_neox_rotary);
 }
 
 TEST(AttentionTest, AttentionBatch1) {
@@ -930,7 +935,8 @@ TEST(AttentionTest, Causal_EmptyPastState) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "1"}}};
+            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"}}};
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
                      use_past_state, past_sequence_length, &past_data, &present_data);
@@ -941,7 +947,8 @@ TEST(AttentionTest, Causal_EmptyPastState) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"}}};
+            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"}}};
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
                      use_past_state, past_sequence_length, &past_data, &present_data);
@@ -952,7 +959,8 @@ TEST(AttentionTest, Causal_EmptyPastState) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"}}};
+            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"}}};
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
                      use_past_state, past_sequence_length, &past_data, &present_data);
@@ -1711,6 +1719,51 @@ TEST(AttentionTest, AttentionWithNormFactor) {
                    false /*disable_cpu*/, false /*disable_cuda*/, true /*disable_rocm*/, {} /*qkv_sizes*/,
                    {} /*relative_position_bias_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
                    true /*use_scale*/);
+}
+
+TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
+  int batch_size = 2;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  // Test mask start position > 0.
+  std::vector<int32_t> mask_index_data = {0, 1, 1, 1};
+
+  std::vector<float> output_data = {
+      3.0146f, 0.1142f, 3.9834f, 5.3394f,
+      8.69f, -0.13f, 4.25f, 5.65f,
+      8.69f, -0.13f, 4.25f, 5.65f,
+      -1.4697f, 0.3071f, 4.25f, 5.65f};
+
+  bool use_float16 = true;
+  bool is_unidirectional = true;
+  bool use_past_state = false;
+  int past_sequence_length = 0;
+  const std::vector<float>* past_data = nullptr;
+  const std::vector<float>* present_data = nullptr;
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data,
+                   AttentionMaskType::MASK_2D_KEY_PADDING, 0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
+                   true /*disable_cpu*/, false /*disable_cuda*/, true /*disable_rocm*/, {} /*qkv_sizes*/,
+                   {} /*relative_position_bias_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
+                   true /*use_scale*/, true /*use_neox_rotary_embedding*/);
 }
 
 TEST(AttentionTest, AttentionMask1DEndNoWord) {

@@ -3,12 +3,42 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # -------------------------------------------------------------------------
-
+import argparse
 import os
 import sys
 
 import numpy
 import torch
+
+
+def parse_arguments(namespace_filter=None):
+
+    parser = argparse.ArgumentParser()
+
+    # useful EPs that don't require the use of optmizer.py
+    parser.add_argument(
+        "-n",
+        "--no_optimize",
+        required=False,
+        action="store_false",
+        default=True,
+        dest="optimize",
+        help="Turn off onnxruntime optimizers (Default off optimizers ON)",
+    )
+
+    # useful for debugging and viewing state during test runs
+    parser.add_argument(
+        "-l",
+        "--log_verbose",
+        required=False,
+        action="store_true",
+        default=False,
+        help="Set Onnxruntime log_serverity_level=0 (VERBOSE) ",
+    )
+
+    args, remaining_args = parser.parse_known_args(namespace=namespace_filter)
+
+    return args, sys.argv[:1] + remaining_args
 
 
 def find_transformers_source(sub_dir_paths=[]):
@@ -74,13 +104,16 @@ def optimize_onnx(
     expected_op=None,
     use_gpu=False,
     opt_level=None,
+    verbose=False,
 ):
     if find_transformers_source():
         from optimizer import optimize_model
     else:
         from onnxruntime.transformers.optimizer import optimize_model
 
-    onnx_model = optimize_model(input_onnx_path, model_type="gpt2", use_gpu=use_gpu, opt_level=opt_level)
+    onnx_model = optimize_model(
+        input_onnx_path, model_type="gpt2", use_gpu=use_gpu, opt_level=opt_level, verbose=verbose
+    )
     onnx_model.save_model_to_file(optimized_onnx_path)
 
     if expected_op is not None:
@@ -130,22 +163,29 @@ def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
     return is_all_close, max(max_abs_diff)
 
 
-def create_ort_session(onnx_model_path, use_gpu=True):
+def create_ort_session(onnx_model_path, use_gpu=True, optimized=True, verbose=False):
     from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
-    from onnxruntime import __version__ as onnxruntime_version
 
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
     sess_options.intra_op_num_threads = 2
     sess_options.log_severity_level = 2
-    execution_providers = ["CPUExecutionProvider"]
+
+    if verbose:
+        sess_options.log_severity_level = 0
+
+    execution_providers = []
 
     if use_gpu:
         if torch.version.cuda:
             execution_providers.append("CUDAExecutionProvider")
         elif torch.version.hip:
-            execution_providers.append("MIGraphXExecutionProvider")
+            if not optimized:
+                execution_providers.append("MIGraphXExecutionProvider")
+
             execution_providers.append("ROCMExecutionProvider")
+
+    execution_providers.append("CPUExecutionProvider")
 
     return InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
 
@@ -172,7 +212,7 @@ def run_parity(
     passed_cases = 0
     max_diffs = []
     printed = False  # print only one sample
-    ort_session = create_ort_session(onnx_model_path, device.type == "cuda")
+    ort_session = create_ort_session(onnx_model_path, device.type == "cuda", optimized=optimized, verbose=verbose)
     for i in range(test_cases):
         input_hidden_states = create_inputs(batch_size, sequence_length, hidden_size, float16, device)
 

@@ -116,7 +116,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(original_encoder_input_ids.Location());
   if (cpu_allocator == nullptr) {
     const IExecutionProvider* provider = GetProvider();
-    cpu_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
+    cpu_allocator = provider->GetAllocator(OrtMemTypeDefault);
   }
   ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
 
