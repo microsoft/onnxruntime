@@ -117,7 +117,8 @@ class JsKernel : public OpKernel {
 
       int status = EM_ASM_INT({ return Module.jsepRun($0, $1); }, this, p_serialized_kernel_context);
 
-      // printf("outputs = %d. Y.data=%zu\n", context->OutputCount(), (size_t)(context->Output<Tensor>(0)->DataRaw()));
+      LOGS_DEFAULT(VERBOSE) << "outputs = " << context->OutputCount() << ". Y.data="
+                            << (size_t)(context->Output<Tensor>(0)->DataRaw()) << ".";
 
       alloc->Free(p_serialized_kernel_context);
 

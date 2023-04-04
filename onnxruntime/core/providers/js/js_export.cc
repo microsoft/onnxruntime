@@ -16,13 +16,11 @@ const void * JsepOutput(void * context, int index, void * data) {
         dims[i] = static_cast<int64_t>(*data_offset++);
     }
 
-#ifndef NDEBUG
-    printf("JsepOutput(%d, %s)\n", index, onnxruntime::TensorShape(dims).ToString().c_str());
-#endif
+    LOGF_DEFAULT(VERBOSE, "JsepOutput(%d, %s)", index, onnxruntime::TensorShape(dims).ToString().c_str());
+
     auto output = reinterpret_cast<onnxruntime::OpKernelContext*>(context)->Output(index, onnxruntime::TensorShape(dims));
     auto r = output->DataRaw();
-#ifndef NDEBUG
-    printf("JsepOutput -- data=%zu\n", (size_t)(r));
-#endif
+
+    LOGF_DEFAULT(VERBOSE, "JsepOutput -- data=%zu", (size_t)(r));
     return r;
 }
