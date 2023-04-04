@@ -5,6 +5,10 @@
 
 #include <emscripten.h>
 
+#ifndef NDEBUG
+#include <sstream>
+#endif
+
 #include "core/framework/op_kernel.h"
 #include "core/providers/js/js_execution_provider.h"
 
@@ -99,11 +103,13 @@ class JsKernel : public OpKernel {
       }
 
 #ifndef NDEBUG
-      printf("temp data size: %zu. Data: ", temp_data_size);
-      for (int i=0; i < (int)temp_data_size/4;i++) {
-        printf("%u ", p_serialized_kernel_context[i]);
+      std::ostringstream os;
+      os << "temp data size: " << temp_data_size << ". Data:";
+      size_t temp_data_count = temp_data_size >> 2;
+      for (size_t i = 0; i < temp_data_count; i++) {
+        os << " " << p_serialized_kernel_context[i];
       }
-      printf("\n");
+      LOGS_DEFAULT(VERBOSE) << os.str();
 #endif
 
       return p_serialized_kernel_context;
