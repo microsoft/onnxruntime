@@ -469,6 +469,23 @@ TEST(ReductionOpTest, ReduceL2_int32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
 }
 
+TEST(ReductionOpTest, ReduceL2_int64) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {2}, {15, 20});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
+}
+
 TEST(ReductionOpTest, ReduceL20DTensor) {
   OpTester test("ReduceL2");
   test.AddInput<float>("data", {}, {2});
