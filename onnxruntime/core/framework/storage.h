@@ -68,29 +68,28 @@ struct ShardInfo : Buffer {
 class ShardRange
 {
     public:
-    struct iterator
+    struct Iterator
     {
         using difference_type   = std::ptrdiff_t;
         using value_type        = ShardInfo;
-        using pointer           = ShardInfo*;
-        using reference         = ShardInfo&;
+        using pointer           = value_type*;
+        using reference         = value_type&;
         using iterator_category = std::forward_iterator_tag;
 
-        iterator() = delete;
-        iterator(Storage& storage, ShardDim& shape, std::int64_t pos)
+        Iterator() = delete;
+        Iterator(Storage& storage, ShardDim& shape, std::int64_t pos)
             : storage_(storage), shape_(shape), pos_(pos) {}
 
         value_type operator*() const { return storage_.ShardInfo(pos_); }
-        iterator&  operator++() { Advance(shape_, pos_); return *this; }
-        bool       operator==(iterator const& rhs) const { return (&storage_ == &rhs.storage_) && (shape_ == rhs.shape_) && (pos_ == rhs.pos_); }
+        Iterator&  operator++() { Advance(shape_, pos_); return *this; }
+        bool       operator==(Iterator const& rhs) const { return (&storage_ == &rhs.storage_) && (shape_ == rhs.shape_) && (pos_ == rhs.pos_); }
         private:
         Storage& storage_;
         ShardDim& shape_;
         ShardDim pos_;
-        //std::int64_t pos_;
     };
 
-    ShardRange(iterator pBegin, iterator pEnd) : begin_(pBegin), end_(pEnd)
+    ShardRange(Iterator pBegin, Iterator pEnd) : begin_(pBegin), end_(pEnd)
     {
         assert(begin_.shape_ != end_.shape_);
         assert(begin_.shardDims_ == end_.shardDims_);
@@ -99,11 +98,11 @@ class ShardRange
     explicit ShardRange(Storage& storage, ShardDim& shape)
         : begin_(storage, shape, 0), end_(storage, storage, ShardUtils::NumShards(storage_.ShardDims().value())) {}
 
-    iterator begin() const { return begin_; }
-    iterator end() const { return end_; }
+    Iterator begin() const { return begin_; }
+    Iterator end() const { return end_; }
 
     private:
-    iterator begin_, end_;
+    Iterator begin_, end_;
 };
 
 
@@ -114,6 +113,7 @@ struct IStorage {
     virtual size_t Size(uint32_t index) const=0;
     virtual ShardInfo Shard(uint32_t index) const=0;
     virtual void Apply(std::function<void(Buffer&)> fn)=0;
+    virtual std::optional<ShardDim> ShardDims() const { return std::nullopt_t; }
 };
 
 struct SingleShard : IStorage {
@@ -141,7 +141,7 @@ struct Storage : IStorage {
     size_t Size(uint32_t index) const  { return buffers_.at(index).Size(); }
     ShardInfo const& Shard(ShardDim const& offset) const { return { buffers_.at(ShardUtils::Index(offset, shardDims_)), offset, shardDims_ }; }
     void Apply(std::function<void(Buffer&)> fn) { std::for_each(buffers_.begin(), buffers_.end(), fn); }
-    ShardDim const& ShardDims() const { return shardDims_; }
+    std::optional<ShardDim> ShardDims() const { return std::make_optional(shardDims_); }
  private:
     std::vector<Buffer> buffers_;
     ShardDim shardDims_;

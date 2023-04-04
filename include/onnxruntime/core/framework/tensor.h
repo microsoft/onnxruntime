@@ -288,21 +288,8 @@ class Tensor final {
     return storage_->Data(offset);
   }
 
-  void* MutableDataRaw(size_t offset) noexcept { return storage_->Data(offset); }
-  const void* DataRaw(size_t offset) const noexcept { return storage_->Data(offset); }
-
-  template <typename T>
-  T* MutableData(ShardDim offset) { return MutableData(storage_->Offset(offset)); }
-  template <typename T>
-  gsl::span<T> MutableDataAsSpan(ShardDim offset) { return MutableDataAsSpan(storage_->Offset(offset)); }
-  template <typename T>
-  const T* Data(ShardDim offset) const { return Data(storage_->Offset(offset)); }
-  template <typename T>
-  gsl::span<const T> DataAsSpan(ShardDim offset) const { return DataAsSpan(storage_->Offset(offset)); }
-  void* MutableDataRaw(MLDataType type, ShardDim offset) { return MutableDataRaw(type, storage_->Offset(offset)); }
-  const void* DataRaw(MLDataType type, ShardDim offset) const { return DataRaw(type, storage_->Offset(offset)); }
-  void* MutableDataRaw(ShardDim offset) noexcept { return MutableDataRaw(storage_->Offset(offset)); }
-  const void* DataRaw(ShardDim offset) const noexcept { return DataRaw(storage_->Offset(offset)); }
+  void* MutableDataRaw(size_t index) noexcept { return storage_->Data(index); }
+  const void* DataRaw(size_t index) const noexcept { return storage_->Data(index); }
   /** End of accessors for shards */
 
   //
