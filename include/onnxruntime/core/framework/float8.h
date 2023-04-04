@@ -33,7 +33,7 @@ struct Float8E4M3FN {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E4M3FN(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E4M3FN(float v, bool saturate=true) {
+  inline ORT_HOST_DEVICE Float8E4M3FN(float v, bool saturate) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     val = __nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3);
 #else
@@ -198,7 +198,7 @@ struct Float8E4M3FNUZ {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E4M3FNUZ(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E4M3FNUZ(float v, bool saturate=true) {
+  inline ORT_HOST_DEVICE Float8E4M3FNUZ(float v, bool saturate) {
     // This type does not exist on CUDA.
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -351,7 +351,7 @@ struct Float8E5M2 {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E5M2(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E5M2(float v, bool saturate=true) {
+  inline ORT_HOST_DEVICE Float8E5M2(float v, bool saturate) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     val = __nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E5M2);
 #else
@@ -518,7 +518,7 @@ struct Float8E5M2FNUZ {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E5M2FNUZ(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E5M2FNUZ(float v, bool saturate=true) {
+  inline ORT_HOST_DEVICE Float8E5M2FNUZ(float v, bool saturate) {
     // This type does not exist on CUDA.
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;

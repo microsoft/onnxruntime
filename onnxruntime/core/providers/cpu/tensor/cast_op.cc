@@ -160,10 +160,10 @@ CastFromString(const std::string& input, DstType& output) {
 
 template <typename DstType>
 typename std::enable_if<IsOrtFloat8Type<DstType>::value, void>::type
-CastFromString(const std::string& input, DstType& output) {
+CastFromString(const std::string& input, DstType& output, bool saturate) {
   float intermediate;
   CastFromString(input, intermediate);
-  output = DstType(intermediate, true);
+  output = DstType(intermediate, saturate);
 }
 
 // type that is usable with Eigen cast
@@ -203,102 +203,103 @@ struct TensorCasterStd {
 template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCasterSat {
   void Cast(const OpKernelContext&, const TensorShape&, const Tensor&, Tensor&, bool) const {
-    ORT_THROW("This should be overridden for float 8 types.");
+    static_assert(false, "This should be overridden for float 8 types.");
   }
 };
 
 // float 8 types
 
-#define TENSOR_CAST_SRCDSTTYPE(SrcDstType)                                                             \
-  template <>                                                                                          \
-  struct TensorCasterStd<Float8E4M3FN, SrcDstType> {                                                      \
-    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<Float8E4M3FN>();                                                   \
-      auto* out_data = out.MutableData<SrcDstType>();                                                  \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = static_cast<SrcDstType>(in_data[i].ToFloat());                                   \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterStd<Float8E4M3FNUZ, SrcDstType> {                                                    \
-    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<Float8E4M3FNUZ>();                                                 \
-      auto* out_data = out.MutableData<SrcDstType>();                                                  \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = static_cast<SrcDstType>(in_data[i].ToFloat());                                   \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterStd<Float8E5M2, SrcDstType> {                                                        \
-    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<Float8E5M2>();                                                     \
-      auto* out_data = out.MutableData<SrcDstType>();                                                  \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = static_cast<SrcDstType>(in_data[i].ToFloat());                                   \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterStd<Float8E5M2FNUZ, SrcDstType> {                                                    \
-    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<Float8E5M2FNUZ>();                                                 \
-      auto* out_data = out.MutableData<SrcDstType>();                                                  \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = static_cast<float>(in_data[i].ToFloat());                                        \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterSat<SrcDstType, Float8E4M3FN> {                                                   \
+#define TENSOR_CAST_SRCDSTTYPE(SrcDstType)                                                                            \
+  template <>                                                                                                         \
+  struct TensorCasterStd<Float8E4M3FN, SrcDstType> {                                                                  \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {                \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<Float8E4M3FN>();                                                                  \
+      auto* out_data = out.MutableData<SrcDstType>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = static_cast<SrcDstType>(in_data[i].ToFloat());                                                  \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterStd<Float8E4M3FNUZ, SrcDstType> {                                                                \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {                \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<Float8E4M3FNUZ>();                                                                \
+      auto* out_data = out.MutableData<SrcDstType>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = static_cast<SrcDstType>(in_data[i].ToFloat());                                                  \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterStd<Float8E5M2, SrcDstType> {                                                                    \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {                \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<Float8E5M2>();                                                                    \
+      auto* out_data = out.MutableData<SrcDstType>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = static_cast<SrcDstType>(in_data[i].ToFloat());                                                  \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterStd<Float8E5M2FNUZ, SrcDstType> {                                                                \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {                \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<Float8E5M2FNUZ>();                                                                \
+      auto* out_data = out.MutableData<SrcDstType>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = static_cast<SrcDstType>(in_data[i].ToFloat());                                                  \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E4M3FN> {                                                                  \
     void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<SrcDstType>();                                                     \
-      auto* out_data = out.MutableData<Float8E4M3FN>();                                                \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = Float8E4M3FN(static_cast<float>(in_data[i]), saturate);                          \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterSat<SrcDstType, Float8E4M3FNUZ> {                                                 \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E4M3FN>();                                                               \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E4M3FN(static_cast<float>(in_data[i]), saturate);                                         \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E4M3FNUZ> {                                                                \
     void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<SrcDstType>();                                                     \
-      auto* out_data = out.MutableData<Float8E4M3FNUZ>();                                              \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = Float8E4M3FNUZ(static_cast<SrcDstType>(in_data[i]), saturate);                   \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterSat<SrcDstType, Float8E5M2> {                                                     \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E4M3FNUZ>();                                                             \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E4M3FNUZ(static_cast<float>(in_data[i]), saturate);                                       \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E5M2> {                                                                    \
     void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<SrcDstType>();                                                     \
-      auto* out_data = out.MutableData<Float8E5M2>();                                                  \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = Float8E5M2(static_cast<float>(in_data[i]), saturate);                            \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterSat<SrcDstType, Float8E5M2FNUZ> {                                                 \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E5M2>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E5M2(static_cast<float>(in_data[i]), saturate);                                           \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E5M2FNUZ> {                                                                \
     void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<SrcDstType>();                                                     \
-      auto* out_data = out.MutableData<Float8E5M2FNUZ>();                                              \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = Float8E5M2FNUZ(static_cast<float>(in_data[i]), saturate);                        \
-      }                                                                                                \
-    }                                                                                                  \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E5M2FNUZ>();                                                             \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E5M2FNUZ(static_cast<float>(in_data[i]), saturate);                                       \
+      }                                                                                                               \
+    }                                                                                                                 \
   };
 
+TENSOR_CAST_SRCDSTTYPE(bool)
 TENSOR_CAST_SRCDSTTYPE(float)
 TENSOR_CAST_SRCDSTTYPE(double)
 TENSOR_CAST_SRCDSTTYPE(int8_t)
@@ -310,98 +311,149 @@ TENSOR_CAST_SRCDSTTYPE(uint16_t)
 TENSOR_CAST_SRCDSTTYPE(uint32_t)
 TENSOR_CAST_SRCDSTTYPE(uint64_t)
 
-#define TENSOR_CAST_SRCDSTTYPE_16(SrcDstType)                                                          \
-  template <>                                                                                          \
-  struct TensorCasterStd<Float8E4M3FN, SrcDstType> {                                                   \
-    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<Float8E4M3FN>();                                                   \
-      auto* out_data = out.MutableData<SrcDstType>();                                                  \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = SrcDstType(in_data[i].ToFloat());                                                \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterStd<Float8E4M3FNUZ, SrcDstType> {                                                 \
-    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<Float8E4M3FNUZ>();                                                 \
-      auto* out_data = out.MutableData<SrcDstType>();                                                  \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = SrcDstType(in_data[i].ToFloat());                                                \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterStd<Float8E5M2, SrcDstType> {                                                     \
-    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<Float8E5M2>();                                                     \
-      auto* out_data = out.MutableData<SrcDstType>();                                                  \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = SrcDstType(in_data[i].ToFloat());                                                \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterStd<Float8E5M2FNUZ, SrcDstType> {                                                 \
-    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<Float8E5M2FNUZ>();                                                 \
-      auto* out_data = out.MutableData<SrcDstType>();                                                  \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = SrcDstType(in_data[i].ToFloat());                                                \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterSat<SrcDstType, Float8E4M3FN> {                                                   \
+#define TENSOR_CAST_SRCDSTTYPE_16(SrcDstType)                                                                         \
+  template <>                                                                                                         \
+  struct TensorCasterStd<Float8E4M3FN, SrcDstType> {                                                                  \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {                \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<Float8E4M3FN>();                                                                  \
+      auto* out_data = out.MutableData<SrcDstType>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = SrcDstType(in_data[i].ToFloat());                                                               \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterStd<Float8E4M3FNUZ, SrcDstType> {                                                                \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {                \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<Float8E4M3FNUZ>();                                                                \
+      auto* out_data = out.MutableData<SrcDstType>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = SrcDstType(in_data[i].ToFloat());                                                               \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterStd<Float8E5M2, SrcDstType> {                                                                    \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {                \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<Float8E5M2>();                                                                    \
+      auto* out_data = out.MutableData<SrcDstType>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = SrcDstType(in_data[i].ToFloat());                                                               \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterStd<Float8E5M2FNUZ, SrcDstType> {                                                                \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {                \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<Float8E5M2FNUZ>();                                                                \
+      auto* out_data = out.MutableData<SrcDstType>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = SrcDstType(in_data[i].ToFloat());                                                               \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E4M3FN> {                                                                  \
     void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<SrcDstType>();                                                     \
-      auto* out_data = out.MutableData<Float8E4M3FN>();                                                \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = Float8E4M3FN(static_cast<float>(in_data[i]), saturate);                          \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterSat<SrcDstType, Float8E4M3FNUZ> {                                                 \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E4M3FN>();                                                               \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E4M3FN(static_cast<float>(in_data[i]), saturate);                                         \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E4M3FNUZ> {                                                                \
     void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<SrcDstType>();                                                     \
-      auto* out_data = out.MutableData<Float8E4M3FNUZ>();                                              \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = Float8E4M3FNUZ(static_cast<SrcDstType>(in_data[i]), saturate);                   \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterSat<SrcDstType, Float8E5M2> {                                                     \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E4M3FNUZ>();                                                             \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E4M3FNUZ(static_cast<float>(in_data[i]), saturate);                                       \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E5M2> {                                                                    \
     void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<SrcDstType>();                                                     \
-      auto* out_data = out.MutableData<Float8E5M2>();                                                  \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = Float8E5M2(static_cast<float>(in_data[i]), saturate);                            \
-      }                                                                                                \
-    }                                                                                                  \
-  };                                                                                                   \
-  template <>                                                                                          \
-  struct TensorCasterSat<SrcDstType, Float8E5M2FNUZ> {                                                 \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E5M2>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E5M2(static_cast<float>(in_data[i]), saturate);                                           \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E5M2FNUZ> {                                                                \
     void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
-      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                          \
-      const auto* in_data = in.Data<SrcDstType>();                                                     \
-      auto* out_data = out.MutableData<Float8E5M2FNUZ>();                                              \
-      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                \
-        out_data[i] = Float8E5M2FNUZ(static_cast<float>(in_data[i]), saturate);                        \
-      }                                                                                                \
-    }                                                                                                  \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E5M2FNUZ>();                                                             \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E5M2FNUZ(static_cast<float>(in_data[i]), saturate);                                       \
+      }                                                                                                               \
+    }                                                                                                                 \
   };
 
 TENSOR_CAST_SRCDSTTYPE_16(MLFloat16)
 TENSOR_CAST_SRCDSTTYPE_16(BFloat16)
+
+#define TENSOR_CAST_SRCDSTTYPE_8(SrcDstType)                                                                          \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E4M3FN> {                                                                  \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E4M3FN>();                                                               \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E4M3FN(static_cast<float>(in_data[i]), saturate);                                         \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E4M3FNUZ> {                                                                \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E4M3FNUZ>();                                                             \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E4M3FNUZ(static_cast<float>(in_data[i]), saturate);                                       \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E5M2> {                                                                    \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E5M2>();                                                                 \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E5M2(static_cast<float>(in_data[i]), saturate);                                           \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };                                                                                                                  \
+  template <>                                                                                                         \
+  struct TensorCasterSat<SrcDstType, Float8E5M2FNUZ> {                                                                \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const { \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());                                         \
+      const auto* in_data = in.Data<SrcDstType>();                                                                    \
+      auto* out_data = out.MutableData<Float8E5M2FNUZ>();                                                             \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {                                                               \
+        out_data[i] = Float8E5M2FNUZ(static_cast<float>(in_data[i]), saturate);                                       \
+      }                                                                                                               \
+    }                                                                                                                 \
+  };
+
+TENSOR_CAST_SRCDSTTYPE_8(Float8E4M3FN)
+TENSOR_CAST_SRCDSTTYPE_8(Float8E4M3FNUZ)
+TENSOR_CAST_SRCDSTTYPE_8(Float8E5M2)
+TENSOR_CAST_SRCDSTTYPE_8(Float8E5M2FNUZ)
 
 // tensor X -> string
 template <typename SrcType>
@@ -429,6 +481,18 @@ struct TensorCasterStd<std::string, DstType> {
   }
 };
 
+template <typename DstType>
+struct TensorCasterSat<std::string, DstType> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<std::string>();
+    auto* out_data = out.MutableData<DstType>();
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      CastFromString(in_data[i], out_data[i], saturate);
+    }
+  }
+};
+
 #if defined(_M_AMD64) && !defined(_M_ARM64EC)
 // specializations to use optimized and Windows x64-specific
 // MlasConvertHalfToFloatBuffer() routine for MLFloat16 -> float conversion
@@ -449,23 +513,31 @@ Tensor GetIntermediateMLFloat16ToFloatTensor(
   AllocatorPtr allocator;
   ORT_THROW_IF_ERROR(context.GetTempSpaceAllocator(&allocator));
   Tensor out{DataTypeImpl::GetType<float>(), shape, allocator};
-  TensorCaster<MLFloat16, float>{}.Cast(context, shape, in, out);
+  TensorCasterStd<MLFloat16, float>{}.Cast(context, shape, in, out);
   return out;
 }
 
 template <typename DstType>
-void CastMLFloat16ThroughFloatTensor(
+void CastMLFloat16ThroughFloatTensorStd(
     const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) {
   // use optimized MLFloat16 -> float, then float -> DstType
   Tensor intermediate_tensor = GetIntermediateMLFloat16ToFloatTensor(context, shape, in);
-  TensorCaster<float, DstType>{}.Cast(context, shape, intermediate_tensor, out);
+  TensorCasterStd<float, DstType>{}.Cast(context, shape, intermediate_tensor, out);
+}
+
+template <typename DstType>
+void CastMLFloat16ThroughFloatTensorSat(
+    const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) {
+  // use optimized MLFloat16 -> float, then float -> DstType
+  Tensor intermediate_tensor = GetIntermediateMLFloat16ToFloatTensor(context, shape, in);
+  TensorCasterSat<float, DstType>{}.Cast(context, shape, intermediate_tensor, out, saturate);
 }
 
 // tensor MLFloat16 -> X
 template <typename DstType>
 struct TensorCasterStd<MLFloat16, DstType> {
   void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    CastMLFloat16ThroughFloatTensor<DstType>(context, shape, in, out);
+    CastMLFloat16ThroughFloatTensorStd<DstType>(context, shape, in, out);
   }
 };
 
@@ -473,7 +545,7 @@ struct TensorCasterStd<MLFloat16, DstType> {
 template <>
 struct TensorCasterStd<MLFloat16, std::string> {
   void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    CastMLFloat16ThroughFloatTensor<std::string>(context, shape, in, out);
+    CastMLFloat16ThroughFloatTensorStd<std::string>(context, shape, in, out);
   }
 };
 
@@ -491,7 +563,7 @@ class Cast final : public OpKernel {
     status = info.GetAttr("saturate", &saturate);
     if (!status.IsOK()) {
       saturate = 1;
-    } else if (to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN && 
+    } else if (to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN &&
                to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
                to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&
                to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ) {
@@ -525,8 +597,11 @@ template <typename TSrc>
 struct SrcDispatcherStd {
   void operator()(
       int32_t to, const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
+    using EnabledDstTypeWithoutFloat8 = boost::mp11::mp_set_difference<
+        EnabledSrcTypes,
+        boost::mp11::mp_list<Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ>>;
     using EnabledDstTypesWithoutSrcType =
-        boost::mp11::mp_remove_if_q<EnabledDstTypes, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
+        boost::mp11::mp_remove_if_q<EnabledDstTypeWithoutFloat8, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
     utils::MLTypeCallDispatcherFromTypeList<EnabledDstTypesWithoutSrcType> dispatcher{to};
     dispatcher.template InvokeWithLeadingTemplateArgs<DispatcherStd, TypeList<TSrc>>(context, shape, src, dst);
   }
@@ -536,8 +611,9 @@ template <typename TSrc>
 struct SrcDispatcherSat {
   void operator()(
       int32_t to, const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst, bool saturate) {
+    using EnabledDstTypeOnlyFloat8 = boost::mp11::mp_list<Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ>;
     using EnabledDstTypesWithoutSrcType =
-        boost::mp11::mp_remove_if_q<EnabledDstTypes, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
+        boost::mp11::mp_remove_if_q<EnabledDstTypeOnlyFloat8, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
     utils::MLTypeCallDispatcherFromTypeList<EnabledDstTypesWithoutSrcType> dispatcher{to};
     dispatcher.template InvokeWithLeadingTemplateArgs<DispatcherSat, TypeList<TSrc>>(context, shape, src, dst, saturate);
   }
@@ -562,7 +638,7 @@ Status Cast::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  if (to_ != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN && 
+  if (to_ != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN &&
       to_ != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
       to_ != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&
       to_ != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ) {
