@@ -71,7 +71,7 @@ Status ExpandBuffer(Stream* stream,
                     AllocatorPtr allocator,
                     OrtValue& expanded,
                     bool only_copy_shape,
-                    int max_sequence_length = 0) {
+                    int max_sequence_length) {
   // Input shape (batch_size, xxx). The input is required with data type T.
   // Output shape (batch_size * num_beams, xxx)
   // If max_sequence_length > 0, the output shape will be (batch_size * num_beams, num_heads,
@@ -80,6 +80,7 @@ Status ExpandBuffer(Stream* stream,
 
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
   const int64_t& batch_size = input_shape[0];
+  const int64_t& sequence_length = input_shape[2];
 
   int64_t dims[4] = {0};
   input_shape.CopyDims(dims, input_shape.NumDimensions());
@@ -102,21 +103,34 @@ Status ExpandBuffer(Stream* stream,
   T* target = expanded_data;
 
   if (max_sequence_length == 0) {
-    const int64_t& offset = static_cast<int64_t>(input_shape.Size() / batch_size);
+    const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
 
     for (int i = 0; i < batch_size; i++) {
       for (int j = 0; j < num_beams; j++) {
-        memcpy(target, input_data + i * offset, sizeof(T) * SafeInt<size_t>(offset));
-        target += offset;
+        memcpy(target, input_data + i * chunk_size, sizeof(T) * SafeInt<size_t>(chunk_size));
+        target += chunk_size;
       }
     }
     return Status::OK();
   }
 
   // Expand from [B, N, S, H] to [B*beam, N, S_max, H]
-  // const int64_t& input_offset =
-  // const int64_t& output_offset =
+  const int64_t& num_heads = input_shape[1];
+  const int64_t& head_size = input_shape[3];
+  const int64_t& input_offset = sequence_length * head_size;
+  const int64_t& output_offset = max_sequence_length * head_size;
+  const int64_t& NSH = input_offset * num_heads;
 
+  for (int i = 0; i < batch_size; i++) {
+    for (int j = 0; j < num_beams; j++) {
+      for (int k = 0; k < num_heads; k++) {
+        memcpy(target, input_data + i * NSH + k * input_offset, sizeof(T) * SafeInt<size_t>(input_offset));
+        target += output_offset;
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 Status CreateGptInputs(

@@ -47,6 +47,14 @@ namespace onnxruntime {
 namespace contrib {
 namespace GenerationCudaDeviceHelper {
 
+// This function assumes the Attention type is same as graph's past state type.
+// e.g In the case of past(fp32) -> cast to fp16 -> Attention(fp16), the reorder
+// function will use the fp32 chunk size and cause the model silently generate
+// the incorrect results.
+// TODO: Fix this issue. Either retrive the Attention op type from the graph or
+// check the type of past state as graph input should be same as Attention op type.
+// It might be better to forcefully require the same type since cast node generates
+// extra overhead.
 Status ReorderPastState(
     const void* cuda_device_prop,
     Tensor& past_state,
@@ -58,9 +66,13 @@ Status ReorderPastState(
 
   const auto& past_state_shape = past_state.Shape();
 
+  const auto& past_state_dims = past_state_shape.GetDims();
+  const bool packed_past = past_state_dims.size() == 5;
+
   // Copy the 'K' values into the temp staging buffer
+  size_t past_state_size = packed_past ? past_state.SizeInBytes() / 2 : past_state.SizeInBytes();
   void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state.SizeInBytes() / 2,
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state_size,
                                        cudaMemcpyDeviceToDevice, cuda_stream));
 
   // Now consider the original 'K' values to be of shape [B, N, max_length, head_size / x, x] and transpose it into
@@ -71,14 +83,16 @@ Status ReorderPastState(
   gsl::span<size_t> permutation(permutation_vector.data(), 5);
 
   // "Fake" the shapes of the input and output tensors of the Transpose operation to suit our need
-
-  TensorShape transpose_input_shape_override = {past_state_shape[1],
-                                                past_state_shape[2],
-                                                past_state_shape[3],
-                                                past_state_shape[4] / chunk_size,
+  size_t offset = packed_past ? 1 : 0;
+  TensorShape transpose_input_shape_override = {past_state_shape[offset],
+                                                past_state_shape[1 + offset],
+                                                past_state_shape[2 + offset],
+                                                past_state_shape[3 + offset] / chunk_size,
                                                 chunk_size};
 
-  TensorShape transpose_output_shape_override = {past_state_shape[1], past_state_shape[2], past_state_shape[4] / chunk_size, past_state_shape[3], chunk_size};
+  TensorShape transpose_output_shape_override = {past_state_shape[offset], past_state_shape[offset + 1],
+                                                 past_state_shape[offset + 3] / chunk_size, past_state_shape[offset + 2],
+                                                 chunk_size};
 
   // TODO(hasesh): Explore perf tuning for this Transpose operation
   return onnxruntime::cuda::Transpose::DoTranspose(*static_cast<const cudaDeviceProp*>(cuda_device_prop), cuda_stream,
@@ -1073,16 +1087,19 @@ Status ExpandBuffer(Stream* ort_stream,
                     AllocatorPtr allocator,
                     OrtValue& expanded,
                     bool only_copy_shape,
-                    int max_seqence_length) {
+                    int max_sequence_length) {
   // Input shape (batch_size, xxx). The input is required with data type T.
   // Output shape (batch_size * num_beams, xxx)
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
   const int64_t& batch_size = input_shape[0];
-  const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
+  const int64_t& sequence_length = input_shape[2];
 
   int64_t dims[4] = {0};
   input_shape.CopyDims(dims, input_shape.NumDimensions());
   dims[0] = batch_size * num_beams;
+  if (max_sequence_length > 0) {
+    dims[2] = max_sequence_length;
+  }
   TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
 
   MLDataType element_type = input.Get<Tensor>().DataType();
@@ -1098,16 +1115,44 @@ Status ExpandBuffer(Stream* ort_stream,
   const T* input_data = input.Get<Tensor>().Data<T>();
   T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
   T* target = expanded_data;
-  for (int i = 0; i < batch_size; i++) {
-    for (int j = 0; j < num_beams; j++) {
-      CUDA_RETURN_IF_ERROR(
+
+  if (max_sequence_length == 0) {
+    const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
+
+    for (int i = 0; i < batch_size; i++) {
+      for (int j = 0; j < num_beams; j++) {
+        CUDA_RETURN_IF_ERROR(
           cudaMemcpyAsync(
               target,
               input_data + i * chunk_size,
               sizeof(T) * chunk_size,
               cudaMemcpyDeviceToDevice,
               cuda_stream));
-      target += chunk_size;
+        target += chunk_size;
+      }
+    }
+    return Status::OK();
+  }
+
+  // Expand from [B, N, S, H] to [B*beam, N, S_max, H]
+  const int64_t& num_heads = input_shape[1];
+  const int64_t& head_size = input_shape[3];
+  const int64_t& input_offset = sequence_length * head_size;
+  const int64_t& output_offset = max_sequence_length * head_size;
+  const int64_t& NSH = input_offset * num_heads;
+
+  for (int i = 0; i < batch_size; i++) {
+    for (int j = 0; j < num_beams; j++) {
+      for (int k = 0; k < num_heads; k++) {
+        CUDA_RETURN_IF_ERROR(
+          cudaMemcpyAsync(
+            target,
+            input_data + i * NSH + k * input_offset,
+            sizeof(T) * SafeInt<size_t>(input_offset),
+            cudaMemcpyDeviceToDevice,
+            cuda_stream));
+        target += output_offset;
+      }
     }
   }
 

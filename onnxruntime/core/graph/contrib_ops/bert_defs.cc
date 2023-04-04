@@ -660,8 +660,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         {"tensor(int32)"},
                         "Constrain mask index to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          // TODO:
-          (void) (ctx);
+           MultiHeadAttentionTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(

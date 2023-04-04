@@ -196,7 +196,8 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
                                                num_beam,
                                                allocator,
                                                expanded_decoder_attention_masks,
-                                               false));
+                                               false,
+                                               0 /*max_sequence_length*/));
 
   decoder_feeds.push_back(expanded_decoder_attention_masks);
 
@@ -217,19 +218,21 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
                                                        num_beam,
                                                        allocator,
                                                        expanded_hidden_states,
-                                                       true));
+                                                       true,
+                                                       0 /*max_sequence_length*/));
       } else {
         ORT_RETURN_IF_ERROR(expand_buffer_float_func(stream,
                                                      encoder_fetches[j],
                                                      num_beam,
                                                      allocator,
                                                      expanded_hidden_states,
-                                                     true));
+                                                     true,
+                                                     0 /*max_sequence_length*/));
       }
       decoder_feeds.push_back(expanded_hidden_states);
     } else {
       // past key/value for cross attention does not need to be initialized with max_seq_len since they are static.
-      bool use_max_seq_len = (j - first_past_input_index_) < 2 * num_layers;
+      bool use_max_seq_len = (j - first_past_input_index_) < static_cast<size_t>(2 * num_layers);
 
       OrtValue expanded_cache;
       if (is_output_float16_) {
@@ -250,6 +253,40 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
                                                      use_max_seq_len ? past_present_share_buffer_max_seq_len : 0));
       }
       decoder_feeds.push_back(expanded_cache);
+    }
+  }
+
+  // TODO: This part shares the similar logic with CreateInitialFeeds() in subgraph_gpt.cc. We should refactor it.
+  if (past_present_share_buffer_) {
+    const IExecutionProvider* provider = GetProvider();
+    AllocatorPtr cpu_allocator = provider->GetAllocator(OrtMemTypeDefault);
+    ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
+
+    // Past sequence length feed
+    int64_t past_seq_len_dims[] = {1};
+    TensorShape past_seq_len_shape(&past_seq_len_dims[0], 1);
+    OrtValue past_seq_len_tensor_value;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), past_seq_len_shape, cpu_allocator, past_seq_len_tensor_value);
+    decoder_feeds.push_back(past_seq_len_tensor_value);
+    *past_seq_len_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = cur_len;
+
+    // Add beam search specific inputs
+    if (add_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
+      // Beam width feed
+      int64_t num_beams_dims[] = {1};
+      TensorShape num_beams_shape(&num_beams_dims[0], 1);
+      OrtValue num_beams_tensor_value;
+      Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), num_beams_shape, cpu_allocator, num_beams_tensor_value);
+      decoder_feeds.push_back(num_beams_tensor_value);
+      *num_beams_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = static_cast<int32_t>(num_beam);
+
+      // Cache indirection feed
+      int64_t cache_indirection_dims[] = {static_cast<int64_t>(batch_beam_size / num_beam), num_beam, past_present_share_buffer_max_seq_len};
+      TensorShape cache_indirection_shape(&cache_indirection_dims[0], 3);
+      OrtValue default_cache_indirection;
+      Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), cache_indirection_shape,
+                           allocator, default_cache_indirection);
+      decoder_feeds.push_back(default_cache_indirection);
     }
   }
 
