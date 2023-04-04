@@ -67,6 +67,10 @@ stages:
             PythonVersion: '3.10'
             MsbuildPlatform: x64
             buildArch: x64
+          Python311_x64:
+            PythonVersion: '3.11'
+            MsbuildPlatform: x64
+            buildArch: x64
           # Training build cannot support Win32 for now because one or more of its python
           # dependencies does not support Win32. So, don't build a training package for Win32
           ${{ if not(contains(parameters.build_py_parameters, '--enable_training')) }}:
@@ -80,6 +84,10 @@ stages:
               buildArch: x86
             Python310_x86:
               PythonVersion: '3.10'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python311_x86:
+              PythonVersion: '3.11'
               MsbuildPlatform: Win32
               buildArch: x86
       variables:
@@ -119,10 +127,16 @@ stages:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.6
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Install python modules'
+      - task: PythonScript@0
+        inputs:
+          scriptSource: inline
+          script: |
+            import sys
+            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+            import subprocess
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Install python modules'
 
       - template: download-deps.yml
 
@@ -280,6 +294,14 @@ stages:
 
       - template: py-win-gpu.yml
         parameters:
+          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
+          PYTHON_VERSION: '3.11'
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          ENV_SETUP_SCRIPT: setup_env_gpu.bat
+          EP_NAME: gpu
+
+      - template: py-win-gpu.yml
+        parameters:
           MACHINE_POOL: 'aiinfra-dml-winbuild'
           PYTHON_VERSION: '3.8'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
@@ -302,6 +324,14 @@ stages:
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
 
+      - template: py-win-gpu.yml
+        parameters:
+          MACHINE_POOL: 'aiinfra-dml-winbuild'
+          PYTHON_VERSION: '3.11'
+          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+          ENV_SETUP_SCRIPT: setup_env.bat
+          EP_NAME: directml
+
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
     - job: MacOS_py_Wheels
       timeoutInMinutes: 90
@@ -319,6 +349,8 @@ stages:
             PythonVersion: '3.9'
           Python310:
             PythonVersion: '3.10'
+          Python311:
+            PythonVersion: '3.11'
       steps:
       - checkout: self
         clean: true
@@ -381,6 +413,8 @@ stages:
             PythonVersion: '3.9'
           Python310:
             PythonVersion: '3.10'
+          Python311:
+            PythonVersion: '3.11'
       steps:
       - checkout: self
         clean: true

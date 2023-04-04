@@ -5,7 +5,7 @@ from onnx import TensorProto, helper
 # This is to test the operators without "Qlinear" support but still support uint8 input
 # These operators need to be internal to a graph/partition
 # def GenerateModel(model_name):
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [
         helper.make_node(
             "QuantizeLinear",

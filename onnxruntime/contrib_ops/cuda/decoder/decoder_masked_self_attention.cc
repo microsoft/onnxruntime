@@ -51,7 +51,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
 
   auto& device_prop = GetDeviceProp();
-  DecoderMaskedSelfAttentionParams parameters;
+  DecoderMaskedMultiHeadAttentionParams parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
@@ -73,10 +73,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedSelfAttention");
   }
 
-  // TODO(hasesh): In future, we may support CrossAttention. Currently, this kernel only supports SelfAttention.
-  if (parameters.sequence_length != parameters.kv_sequence_length) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedSelfAttention only supports self attention currently");
-  }
+  ORT_ENFORCE(parameters.sequence_length == parameters.kv_sequence_length);
 
   // TODO(hasesh): If there is a need, we will support this later
   if (parameters.head_size != parameters.v_head_size) {
@@ -189,6 +186,10 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   }
 
   switch (parameters.head_size) {
+    case 32:
+      mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
+      break;
+
     case 64:
       mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
       break;

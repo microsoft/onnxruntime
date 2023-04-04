@@ -79,11 +79,11 @@ if __name__ == "__main__":
         train(trainer, train_data, device, epoch, args)
         val_loss = evaluate(trainer, val_data)
         print("-" * 89)
-        print("| end of epoch {:3d} | valid loss {:5.2f} | ".format(epoch, val_loss))
+        print(f"| end of epoch {epoch:3d} | valid loss {val_loss:5.2f} | ")
         print("-" * 89)
 
     # Evaluate
     test_loss = evaluate(trainer, test_data)
     print("=" * 89)
-    print("| End of training | test loss {:5.2f}".format(test_loss))
+    print(f"| End of training | test loss {test_loss:5.2f}")
     print("=" * 89)

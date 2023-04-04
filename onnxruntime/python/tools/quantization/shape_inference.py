@@ -89,7 +89,7 @@ def quant_pre_process(
                 sess_option.optimized_model_filepath = opt_model_path
                 sess_option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
                 _ = onnxruntime.InferenceSession(input_model_path, sess_option, providers=["CPUExecutionProvider"])
-            except Exception as e:
+            except Exception:
                 logger.error(
                     "ONNX Runtime Model Optimization Failed! Consider rerun with option `--skip_optimization'."
                 )

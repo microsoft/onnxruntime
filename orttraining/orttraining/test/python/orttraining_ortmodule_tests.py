@@ -58,7 +58,7 @@ def run_ortmodule_fallback_tests(cwd, log, transformers_cache):
 
 
 def run_ortmodule_poc_net(cwd, log, no_cuda, data_dir):
-    log.debug("Running: ORTModule POCNet for MNIST with --no-cuda arg {}.".format(no_cuda))
+    log.debug(f"Running: ORTModule POCNet for MNIST with --no-cuda arg {no_cuda}.")
 
     command = [sys.executable, "orttraining_test_ortmodule_poc.py"]
     if no_cuda:
@@ -88,7 +88,7 @@ def run_ortmodule_torch_lightning(cwd, log, data_dir):
 
 
 def run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda, data_dir, transformers_cache):
-    log.debug("Running: ORTModule HuggingFace BERT for sequence classification with --no-cuda arg {}.".format(no_cuda))
+    log.debug(f"Running: ORTModule HuggingFace BERT for sequence classification with --no-cuda arg {no_cuda}.")
 
     env = get_env_with_transformers_cache(transformers_cache)
 

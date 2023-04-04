@@ -2,9 +2,9 @@
 # Licensed under the MIT License.
 # _torch_module_factory.py
 
+from ._fallback import _FallbackManager
 from ._torch_module_ort import TorchModuleORT
 from .debug_options import DebugOptions
-from ._fallback import _FallbackManager
 
 
 class TorchModuleFactory:

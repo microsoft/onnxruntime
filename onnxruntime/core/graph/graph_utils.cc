@@ -625,6 +625,11 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
   }
 
   for (const auto* input_def : node.InputDefs()) {
+    // For optional node inputs which are missing, we can safely ignore them
+    if (input_def->Name().empty()) {
+      continue;
+    }
+
     // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
     // because it can be overridden by the user at runtime. For constant folding to be applied, the initializer should
     // not appear in the graph's inputs (that is the only way to guarantee it will always be constant).

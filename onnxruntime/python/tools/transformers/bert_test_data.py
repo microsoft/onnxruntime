@@ -134,7 +134,7 @@ def output_test_data(directory: str, inputs: Dict[str, np.ndarray]):
     index = 0
     for name, data in inputs.items():
         tensor = numpy_helper.from_array(data, name)
-        with open(os.path.join(directory, "input_{}.pb".format(index)), "wb") as file:
+        with open(os.path.join(directory, f"input_{index}.pb"), "wb") as file:
             file.write(tensor.SerializeToString())
         index += 1
 
@@ -175,7 +175,7 @@ def fake_test_data(
     random.seed(random_seed)
 
     all_inputs = []
-    for test_case in range(test_cases):
+    for _test_case in range(test_cases):
         input_1 = fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size)
         inputs = {input_ids.name: input_1}
 
@@ -302,7 +302,7 @@ def find_bert_inputs(
         return input_ids, segment_ids, input_mask
 
     if len(graph_inputs) != 3:
-        raise ValueError("Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs)))
+        raise ValueError(f"Expect the graph to have 3 inputs. Got {len(graph_inputs)}")
 
     embed_nodes = onnx_model.get_nodes_by_op_type("EmbedLayerNormalization")
     if len(embed_nodes) == 1:
@@ -317,7 +317,7 @@ def find_bert_inputs(
                 if "mask" in input_name_lower:
                     input_mask = input
         if input_mask is None:
-            raise ValueError(f"Failed to find attention mask input")
+            raise ValueError("Failed to find attention mask input")
 
         return input_ids, segment_ids, input_mask
 
@@ -502,9 +502,9 @@ def create_and_save_test_data(
     for i, inputs in enumerate(all_inputs):
         directory = os.path.join(output_dir, "test_data_set_" + str(i))
         result = session.run(output_names, inputs)
-        for i, output_name in enumerate(output_names):
+        for i, output_name in enumerate(output_names):  # noqa: PLW2901
             tensor_result = numpy_helper.from_array(np.asarray(result[i]), output_name)
-            with open(os.path.join(directory, "output_{}.pb".format(i)), "wb") as file:
+            with open(os.path.join(directory, f"output_{i}.pb"), "wb") as file:
                 file.write(tensor_result.SerializeToString())
 
 
@@ -515,7 +515,7 @@ def main():
     if output_dir is None:
         # Default output directory is a sub-directory under the directory of model.
         p = Path(args.model)
-        output_dir = os.path.join(p.parent, "batch_{}_seq_{}".format(args.batch_size, args.sequence_length))
+        output_dir = os.path.join(p.parent, f"batch_{args.batch_size}_seq_{args.sequence_length}")
 
     if output_dir is not None:
         # create the output directory if not existed
