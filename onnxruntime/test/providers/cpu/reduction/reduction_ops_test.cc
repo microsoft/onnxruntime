@@ -483,7 +483,7 @@ TEST(ReductionOpTest, ReduceL2_int64) {
                           9, 10,
                           11, 12});
   test.AddOutput<int64_t>("reduced", {2}, {15, 20});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Int64 not allowed as input to this layer
 }
 
 TEST(ReductionOpTest, ReduceL20DTensor) {
@@ -2509,7 +2509,7 @@ TEST(ReductionOpTest, ReduceSumSquare_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {247, 403});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int64 not allowed as input to this layer
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_int64) {
@@ -2526,7 +2526,7 @@ TEST(ReductionOpTest, ReduceSumSquare_int64) {
                           9, 10,
                           11, 12});
   test.AddOutput<int64_t>("reduced", {1, 2, 1}, {247, 403});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int64 not allowed as input to this layer
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_default_axes_keepdims) {
