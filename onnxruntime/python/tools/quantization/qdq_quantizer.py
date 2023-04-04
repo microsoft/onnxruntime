@@ -6,7 +6,12 @@
 import logging
 from enum import Enum
 
+from pathlib import Path
+
+import numpy as np
+
 import onnx
+from .onnx_model import ONNXModel
 import onnx.numpy_helper
 from onnx import TensorProto
 from onnx import onnx_pb as onnx_proto
@@ -25,6 +30,7 @@ from .quant_utils import (
     add_quant_output_suffix,
     add_quant_suffix,
     find_by_name,
+    load_model,
 )
 from .registry import CreateQDQQuantizer
 
@@ -59,6 +65,7 @@ class QDQQuantizer(ONNXQuantizer):
         op_types_to_quantize,
         extra_options=None,
     ):
+        print("Test yilyu")
         ONNXQuantizer.__init__(
             self,
             model,
@@ -113,10 +120,14 @@ class QDQQuantizer(ONNXQuantizer):
         )
 
     def _is_tensor_quantizable(self, tensor_name):
+        # print("\n_is_tensor_quantizable")
         """
         Check if tensor can be quantized
         """
+        # print("tensor_name: " + tensor_name)
         weight = find_by_name(tensor_name, self.model.initializer())
+        # print("weight: ")
+        # print(weight)
         if weight is not None:
             if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 return True
@@ -130,6 +141,7 @@ class QDQQuantizer(ONNXQuantizer):
                     tensor_name
                 )
             )
+        print("\n")
 
         return False
 
@@ -428,3 +440,133 @@ class QDQQuantizer(ONNXQuantizer):
 
     def is_tensor_quantized(self, tensor_name):
         return tensor_name in self.tensors_to_quantize or tensor_name in self.bias_to_quantize
+
+
+def add_smoothfactor_suffix(tensor_name):
+    return tensor_name + "_SmoothFactor"
+
+
+def add_output_suffix(tensor_name):
+    return tensor_name + "_Output"
+
+
+def add_init_suffix(tensor_name):
+    return tensor_name + "_Init"
+
+
+def insert_smooth_factors(
+    model_path,
+    smooth_factors,
+    inserted_model_path="model_with_smooth_factors.onnx",
+    use_external_data_format=False,
+):
+
+    model_proto = load_model(Path(model_path), False)
+    model = ONNXModel(model_proto)
+
+    """
+    print("type(model_proto)")
+    print(type(model_proto))
+    print("type(model)")
+    print(type(model))
+    """
+
+    for node in model_proto.graph.node:
+        if node.op_type == "MatMul" and node.name in smooth_factors:
+            """
+            print("In insert_smooth_factors")
+            print("node.name")
+            print(node.name)
+
+            print("smooth_factors[node.name]:")
+            print(smooth_factors[node.name])
+            print("1/smooth_factors[node.name]:")
+            print(1 / smooth_factors[node.name])
+            """
+
+            #
+            # Add Mul for input A
+            #
+
+            input_A_name = node.input[0]
+            # print("smooth_factors[node.name].shape")
+            # print(smooth_factors[node.name].shape)
+            input_A_smoothfactor = smooth_factors[node.name][0]  # np.expand_dims(smooth_factors[node.name], -2)
+            # print("input_A_smoothfactor.shape")
+            # print(input_A_smoothfactor.shape)
+            input_A_smoothfactor_name = add_smoothfactor_suffix(node.name + "_input_A")
+            input_A_smoothfactor_output = add_output_suffix(input_A_smoothfactor_name)
+            input_A_smoothfactor_init_name = add_init_suffix(input_A_smoothfactor_name)
+
+            # model.replace_input_of_all_nodes(input_A_name, input_A_smoothfactor_output)
+            node.input[0] = input_A_smoothfactor_output
+
+            # Create the initializer
+            input_A_smoothfactor_init = onnx.helper.make_tensor(
+                input_A_smoothfactor_init_name,
+                onnx_proto.TensorProto.FLOAT,
+                input_A_smoothfactor.shape,
+                input_A_smoothfactor,
+            )
+            model.add_initializer(input_A_smoothfactor_init)
+
+            # Create the Mul node
+            input_A_mul_node = onnx.helper.make_node(
+                "Mul",
+                inputs=[input_A_name, input_A_smoothfactor_init_name],
+                outputs=[input_A_smoothfactor_output],
+                name=input_A_smoothfactor_name,
+            )
+            model.add_node(input_A_mul_node)
+
+            #
+            # Add Mul for input B
+            #
+
+            input_B_name = node.input[1]
+            # print("smooth_factors[node.name].shape")
+            # print(smooth_factors[node.name].shape)
+            input_B_smoothfactor = smooth_factors[node.name][1]  # np.expand_dims(1 / smooth_factors[node.name], -1)
+            # print("input_B_smoothfactor.shape")
+            # print(input_B_smoothfactor.shape)
+            input_B_smoothfactor_name = add_smoothfactor_suffix(node.name + "_input_B")
+            input_B_smoothfactor_output = add_output_suffix(input_B_smoothfactor_name)
+            input_B_smoothfactor_init_name = add_init_suffix(input_B_smoothfactor_name)
+
+            # model.replace_input_of_all_nodes(input_B_name, input_B_smoothfactor_output)
+            node.input[1] = input_B_smoothfactor_output
+
+            # Create the initializer
+            input_B_smoothfactor_init = onnx.helper.make_tensor(
+                input_B_smoothfactor_init_name,
+                onnx_proto.TensorProto.FLOAT,
+                input_B_smoothfactor.shape,
+                input_B_smoothfactor,
+            )
+            model.add_initializer(input_B_smoothfactor_init)
+
+            # Create the Mul node
+            input_mul_B_node = onnx.helper.make_node(
+                "Mul",
+                inputs=[input_B_name, input_B_smoothfactor_init_name],
+                outputs=[input_B_smoothfactor_output],
+                name=input_B_smoothfactor_name,
+            )
+            model.add_node(input_mul_B_node)
+
+    onnx.save(
+        model_proto,
+        inserted_model_path,
+        use_external_data_format,
+    )
+
+    inferred_model = load_model(Path(inserted_model_path), False)
+    try:
+        inferred_model = SymbolicShapeInference.infer_shapes(inferred_model)
+    except Exception as e:
+        print("Symbolic shape inference of insert smooth factors 1" + inserted_model_path + " error")
+    onnx.save(
+        inferred_model,
+        inserted_model_path,
+        use_external_data_format,
+    )
