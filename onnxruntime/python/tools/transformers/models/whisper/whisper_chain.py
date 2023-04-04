@@ -1,10 +1,13 @@
-import onnx
-import sys
 import os
+import sys
+
+import onnx
 from onnx import TensorProto, helper
 from transformers import WhisperConfig
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from convert_generation import get_shared_initializers
+from convert_generation import get_shared_initializers  # noqa: E402
+
 
 def add_attention_mask(model):
     # Add attention mask - required by BeamSearch but unused in Pytorch
@@ -12,6 +15,7 @@ def add_attention_mask(model):
         "encoder_attention_mask", TensorProto.INT32, shape=["batch", "feature_size", "sequence"]
     )
     model.graph.input.insert(1, mask)
+
 
 def chain_model(args):
     # Load encoder/decoder and insert necessary (but unused) graph inputs expected by BeamSearch op
