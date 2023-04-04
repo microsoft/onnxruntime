@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import collections
 import collections.abc
-import io
 import os
 import pathlib
 import typing
