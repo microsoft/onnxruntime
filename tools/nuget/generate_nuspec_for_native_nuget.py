@@ -478,7 +478,7 @@ def generate_files(line_list, args):
             + '" target="winmds\\Microsoft.AI.MachineLearning.Experimental.winmd" />'
         )
         if args.target_architecture == "x64":
-            interop_dll_path = "Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.17763.0"
+            interop_dll_path = "Microsoft.AI.MachineLearning.Interop\\net7.0-windows10.0.17763.0"
             interop_dll = interop_dll_path + "\\Microsoft.AI.MachineLearning.Interop.dll"
             files_list.append(
                 "<file src="
@@ -486,7 +486,7 @@ def generate_files(line_list, args):
                 + os.path.join(args.native_build_path, interop_dll)
                 + '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.dll" />'
             )
-            interop_pdb_path = "Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.17763.0"
+            interop_pdb_path = "Microsoft.AI.MachineLearning.Interop\\net7.0-windows10.0.17763.0"
             interop_pdb = interop_pdb_path + "\\Microsoft.AI.MachineLearning.Interop.pdb"
             files_list.append(
                 "<file src="
