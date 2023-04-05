@@ -89,7 +89,7 @@ def check_if_dlls_are_present(
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
         file_list_in_package = list()
-        for (dirpath, dirnames, filenames) in os.walk(package_path):
+        for dirpath, _dirnames, filenames in os.walk(package_path):
             file_list_in_package += [os.path.join(dirpath, file) for file in filenames]
     else:
         file_list_in_package = zip_file.namelist()
@@ -335,7 +335,7 @@ def main():
     elif args.package_type == "zip":
         validate_zip(args)
     else:
-        print("Package type {} is not supported".format(args.package_type))
+        print(f"Package type {args.package_type} is not supported")
 
 
 if __name__ == "__main__":

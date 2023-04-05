@@ -65,9 +65,9 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
         update_feeds_func_(update_feeds_func),
         cuda_device_prop_(cuda_device_prop),
         cuda_device_arch_(cuda_device_arch) {
-    if (gpt_subgraph_.has_decoder_masked_multihead_attention_) {
+    if (gpt_subgraph_.has_decoder_masked_self_attention_) {
       ORT_ENFORCE(cuda_device_arch_ >= 530,
-                  "Decoder masked multihead attention can only be used on "
+                  "Decoder masked self attention can only be used on "
                   "GPU cards of compute capability 5.3 or higher. "
                   "This card has compute capability ",
                   cuda_device_arch_);
@@ -203,7 +203,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
                     static_cast<int>(parameters->max_length),
                     static_cast<int>(parameters->num_heads),
                     static_cast<int>(parameters->head_size),
-                    gpt_subgraph_.has_decoder_masked_multihead_attention_,
+                    gpt_subgraph_.has_decoder_masked_self_attention_,
                     this->IsCuda());
 
   SamplingState<T> sampling_state;
@@ -330,8 +330,8 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
     ++current_length;
 
     // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
-    // contains DecoderMaskedMultiheadAttention nodes
-    if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_multihead_attention_) {
+    // contains DecoderMaskedSelfAttention nodes
+    if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_self_attention_) {
       size_t offset = static_cast<size_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
       // We will use the same staging buffer while transposing all the layers' past state
       // and this is okay because we use the same stream to do the staging copy and the transpose

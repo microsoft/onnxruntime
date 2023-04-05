@@ -49,7 +49,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
 
         try:
             from deepspeed.accelerator import get_accelerator
-        except ImportError as e:
+        except ImportError:
             warnings.warn("Unable to import get_accelerator from deepspeed.accelerator", UserWarning)
         else:
             if not get_accelerator().device_name().startswith("cuda"):

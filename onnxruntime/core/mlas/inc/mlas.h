@@ -78,12 +78,16 @@ Abstract:
 #endif
 
 #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
-// Visual Studio older than 2022 does not support fp16 intrinsic
-
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
+#if !defined(__APPLE__)
+// Had to temporary disable fp16 under APPLE ARM64, as compiling
+// the source files require a hardware specific compilation flag.
+// When building an universial binary for APPLE, this flag would
+// cause trouble for x64 target.
 
 #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
+#endif // 
 #endif // ARM64
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 
@@ -1603,3 +1607,82 @@ MlasHalfGemmConvertPackB(
     size_t ldb,
     void* PackedB
     );
+
+/**
+ * @brief Indirect Depthwise convolution for fp16
+ * @param Input         Supplies the indirect buffer for NHWC input
+ * @param Filter        Supplies the address for filter tensor
+ * @param Output        Supplies the address for the result tensor
+ * @param Channels      # of input channels
+ * @param OutputCount   # of output pixels
+ * @param KernelSize    # kernel size
+ * @return 
+*/
+void
+MLASCALL
+MlasConvDepthwise(
+    const MLAS_FP16* const* Input,
+    const MLAS_FP16* Filter,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize,
+    MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
+    );
+
+
+inline
+void
+MlasTranspose(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t M,
+    size_t N
+    )
+{
+    MlasTranspose(
+        reinterpret_cast<const uint16_t*>(Input),
+        reinterpret_cast<uint16_t*>(Output),
+        M, N);
+}
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+/**
+ * @brief Max Pooling for fp16 NHWC
+ * @param Input         Indirect buffer to activations
+ * @param Output        Address of the result tensor
+ * @param Channels      C in NHWC
+ * @param OutputCount   Number of output pixels
+ * @param KernelSize    Size of the kernel
+ * @return 
+*/
+void
+MLASCALL
+MlasNhwcMaxPool(
+    const MLAS_FP16* const* Input,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+/**
+ * @brief Avg Pooling for fp16 nhwc
+ * @param Input         Indirect buffer to activations
+ * @param Output        Address of the output data
+ * @param Channels      C in NHWC
+ * @param OutputCount   Number of output pixels
+ * @param KernelSize    size of the kernel
+ * @return 
+*/
+void
+MLASCALL
+MlasNhwcAvgPool(
+    const MLAS_FP16* const* Input,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+#endif

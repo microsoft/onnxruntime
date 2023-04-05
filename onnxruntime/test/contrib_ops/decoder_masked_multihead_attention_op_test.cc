@@ -634,7 +634,12 @@ std::vector<MLFloat16> Softmax_QK_Transpose_V(MLFloat16* softmax_qk_transpose_ma
 
   return output;
 }
-TEST(DecoderMaskedMultiheadAttentionTest, Test_fp32) {
+TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
+  // The kernel is only supported on CC 5.3 or higher GPUs
+  if (NeedSkipIfCudaArchLowerThan(530)) {
+    return;
+  }
+
   // Vary batch size
   for (int batch_size = 1; batch_size <= 5; batch_size += 2) {
     // Vary kv_lengths
@@ -642,12 +647,13 @@ TEST(DecoderMaskedMultiheadAttentionTest, Test_fp32) {
       int sequence_length = 1;
       int number_of_heads = 12;
       // Vary head_size / hidden_size
-      for (int hidden_size = 768; hidden_size <= 1536; hidden_size += 768) {
+      int hidden_sizes[3] = {384, 768, 1536};
+      for (int hidden_size : hidden_sizes) {
         int head_size = (hidden_size / number_of_heads);
         int total_sequence_length = sequence_length + past_sequence_length;
         int max_sequence_length = past_sequence_length + 1;  // Always keep >  past_sequence_length
 
-        OpTester tester("DecoderMaskedMultiheadAttention", 1, onnxruntime::kMSDomain);
+        OpTester tester("DecoderMaskedSelfAttention", 1, onnxruntime::kMSDomain);
         tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
         tester.AddAttribute<int64_t>("past_present_share_buffer", static_cast<int64_t>(1));
 
@@ -741,7 +747,12 @@ TEST(DecoderMaskedMultiheadAttentionTest, Test_fp32) {
   }
 }
 
-TEST(DecoderMaskedMultiheadAttentionTest, Test_fp16) {
+TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
+  // The kernel is only supported on CC 5.3 or higher GPUs
+  if (NeedSkipIfCudaArchLowerThan(530)) {
+    return;
+  }
+
   // Vary batch size
   for (int batch_size = 1; batch_size <= 5; batch_size += 2) {
     // Vary kv_lengths
@@ -750,12 +761,13 @@ TEST(DecoderMaskedMultiheadAttentionTest, Test_fp16) {
       int number_of_heads = 12;
 
       // Vary head_size / hidden_size
-      for (int hidden_size = 768; hidden_size <= 1536; hidden_size += 768) {
+      int hidden_sizes[3] = {384, 768, 1536};
+      for (int hidden_size : hidden_sizes) {
         int head_size = (hidden_size / number_of_heads);
         int total_sequence_length = sequence_length + past_sequence_length;
         int max_sequence_length = past_sequence_length + 1;  // Always keep >  past_sequence_length
 
-        OpTester tester("DecoderMaskedMultiheadAttention", 1, onnxruntime::kMSDomain);
+        OpTester tester("DecoderMaskedSelfAttention", 1, onnxruntime::kMSDomain);
         tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
         tester.AddAttribute<int64_t>("past_present_share_buffer", static_cast<int64_t>(1));
 

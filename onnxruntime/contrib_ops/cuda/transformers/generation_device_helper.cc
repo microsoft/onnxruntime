@@ -455,11 +455,12 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   if (num_beams <= 32) {
     constexpr size_t max_parts_of_vocab = 128;
+    size_t candidate_count = SafeInt<size_t>(batch_beam_size) * 2 * num_beams;
     float* topk_tmp_buffer = beam_state->topk_buffer.data();
     float* topk_scores_1st_stage = topk_tmp_buffer;
-    int32_t* topk_tokens_1st_stage = reinterpret_cast<int32_t*>(topk_scores_1st_stage + batch_beam_size * max_parts_of_vocab * 2 * num_beams);
-    float* topk_scores_2nd_stage = reinterpret_cast<float*>(topk_tokens_1st_stage + batch_beam_size * max_parts_of_vocab * 2 * num_beams);
-    int32_t* topk_tokens_2nd_stage = reinterpret_cast<int32_t*>(topk_scores_2nd_stage + batch_beam_size * 2 * num_beams);
+    int32_t* topk_tokens_1st_stage = reinterpret_cast<int32_t*>(topk_scores_1st_stage + candidate_count * max_parts_of_vocab);
+    float* topk_scores_2nd_stage = reinterpret_cast<float*>(topk_tokens_1st_stage + candidate_count * max_parts_of_vocab);
+    int32_t* topk_tokens_2nd_stage = reinterpret_cast<int32_t*>(topk_scores_2nd_stage + candidate_count);
 
     cuda::BeamSearchTopK(next_token_scores.data(),
                          batch_size,
@@ -570,7 +571,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   if (!beam_state_chosen_indices.empty()) {
     // If we have allocated `chosen_indices` in beam_state, it means that we
     // will be needing the chosen indices from BeamScorer as we are using
-    // DecoderMaskedMultiheadAttention, so copy it over.
+    // DecoderMaskedSelfAttention, so copy it over.
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state_chosen_indices.data(),
                                          chosen_indices.data(),
                                          chosen_indices.size_bytes(),
@@ -759,8 +760,8 @@ Status GreedySearchProcessLogits(
       cuda_stream);
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size);
-  dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size);
+  dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size, 1);
+  dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size, 1);
 #endif
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens.data(),
@@ -899,7 +900,7 @@ Status UpdateGptFeeds(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator updateFeedsRange("UpdateGptFeeds", profile::Color::Yellow);
   updateFeedsRange.Begin();
@@ -945,12 +946,12 @@ Status UpdateGptFeeds(
     const int past_sequence_length_idx = (static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx) + gpt_subgraph_first_past_input_idx;
     *(next_inputs[past_sequence_length_idx].GetMutable<Tensor>()->MutableData<int32_t>()) = past_sequence_len;
 
-    // Update beam search specific input for DecoderMaskedMultiheadAttention (cache indirection) if present
+    // Update beam search specific input for DecoderMaskedSelfAttention (cache indirection) if present
 
     // If the last input is not `past_sequence_length`, then the beam search specific inputs
-    // for `DecoderMaskedMultiheadAttention` is present
-    if (has_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
-      ORT_ENFORCE(!beam_indices_gpu.empty(), "Beam indices must be present on CUDA while using DecoderMaskedMultiheadAttention with BeamSearch");
+    // for `DecoderMaskedSelfAttention` is present
+    if (has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
+      ORT_ENFORCE(!beam_indices_gpu.empty(), "Beam indices must be present on CUDA while using DecoderMaskedSelfAttention with BeamSearch");
 
       // The cache indirection feed comes 2 feeds after the `past_sequence_length` feed
       const OrtValue& old_cache_indirection = next_inputs[past_sequence_length_idx + 2];
@@ -964,7 +965,7 @@ Status UpdateGptFeeds(
       int max_sequence_length = static_cast<int>(last_outputs[gpt_subgraph_first_present_output_idx].Get<Tensor>().Shape()[3]);
 
       // Launch kernel to update the cache indirection buffer
-      cuda::UpdateDecoderMaskedMultiheadAttentionCacheIndirection(cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>(),
+      cuda::UpdateDecoderMaskedSelfAttentionCacheIndirection(cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>(),
                                                                   old_cache_indirection.Get<Tensor>().Data<int32_t>(),
                                                                   reinterpret_cast<const int32_t*>(beam_indices_gpu.data()),
                                                                   batch_beam_size / num_beams,
@@ -1182,7 +1183,7 @@ template Status UpdateGptFeeds<float>(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
 // Float16
 template void InitBeamState<MLFloat16>(
@@ -1242,7 +1243,7 @@ template Status UpdateGptFeeds<MLFloat16>(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,
