@@ -147,11 +147,11 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
         }
       }
     }
-
-    shape_update_func = [&info](Node& node) -> void {
+    auto last_dim = info.last_dim;
+    shape_update_func = [last_dim](Node& node) -> void {
       for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
         node.MutableOutputDefs()[output_idx]->SetShape(
-            CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[output_idx]->Shape(), info.last_dim));
+            CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[output_idx]->Shape(), last_dim));
       }
     };
   } else {
@@ -207,10 +207,11 @@ bool MatMulReshapeActor::PreCheck(
   all_input_cmp_rets[0] = ret;
 
   propagate_input_indices.push_back(0);
-  shape_update_func = [&info](Node& node) -> void {
+  auto last_dim = info.last_dim;
+  shape_update_func = [last_dim](Node& node) -> void {
     ORT_ENFORCE(static_cast<size_t>(1) == node.MutableOutputDefs().size());
     node.MutableOutputDefs()[0]->SetShape(
-        CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[0]->Shape(), info.last_dim));
+        CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[0]->Shape(), last_dim));
   };
 
   return propagate_input_indices.size() > 0;
@@ -270,10 +271,11 @@ bool LayerNormalizationReshapeActor::PreCheck(
 
   // Only propagate the first input.
   propagate_input_indices.push_back(0);
-  shape_update_func = [&info](Node& node) -> void {
+  auto last_dim = info.last_dim;
+  shape_update_func = [last_dim](Node& node) -> void {
     for (size_t i = 0; i < node.MutableOutputDefs().size(); ++i) {
       node.MutableOutputDefs()[i]->SetShape(
-          CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[i]->Shape(), info.last_dim));
+          CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[i]->Shape(), last_dim));
     }
   };
 
