@@ -18,7 +18,21 @@ ai.onnx;9;Add,Cast,Concat,Constant,ConstantOfShape,Div,Exp,Gather,Gemm,LogSoftma
 `ai.onnx` is the opset domain, and `9` is the opset version. The remainings of the line show the names of the operators.
 
 You could also put a path to model directory in `create_reduced_build_config.py` and the script will search for all models in the directory. 
+
 You could find our latest [`hws_mobile_package.required_operators.config` here.](https://github.com/GoodNotes/onnxruntime/blob/develop/tools/ci_build/github/apple/hws_mobile_package.required_operators.config)
+As you may notice some additional operators come from `com.microsoft` domain,
+```
+# internal ops added by optimizers
+# Note: LayerNormalization is an internal op even though it is (incorrectly) registered in the ONNX domain.
+ai.onnx;1;LayerNormalization
+com.microsoft;1;DynamicQuantizeMatMul,FusedConv,FusedGemm,FusedMatMul,Gelu,MatMulIntegerToFloat,NhwcMaxPool,QLinearAdd,QLinearAveragePool,QLinearConv,QLinearGlobalAveragePool,QLinearMul,QLinearSigmoid,QuickGelu
+
+# NHWC transformer also uses this, so assuming it's valuable enough to include
+com.microsoft;1;QLinearLeakyRelu
+```
+These operators are discovered when the library is deployed in iOS. It was found that ONNXRuntime will optimize the graph so you should add these custom operators back to `hws_mobile_package.required_operators.config`.
+
+
 
 $ python tools/ci_build/github/apple/build_ios_framework.py --config Release --build_dir /Users/goodnotesci/goodnotes/handwriting_synthesis_rust/paco_macabi_arm64_release_v20230327_2320 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc-3.21.12.0 tools/ci_build/gitn:qhub/apple/default_full_ios_framework_build_settings.json
 $ python tools/ci_build/github/apple/build_macabi_framework.py --config Release --build_dir /Users/goodnotesci/goodnotes/handwriting_synthesis_rust/paco_ios_release --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc-3.21.12.0 tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
