@@ -364,11 +364,6 @@ extends:
         - NuGet_Packaging
         condition: succeeded()
         steps:
-        - task: UseDotNet@2
-          inputs:
-            packageType: 'runtime'
-            version: '5.x'
-
         - task: DownloadPipelineArtifact@2
           displayName: 'Download Pipeline Artifact'
           inputs:
