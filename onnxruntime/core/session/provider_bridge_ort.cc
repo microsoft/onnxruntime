@@ -375,12 +375,27 @@ struct ProviderHostImpl : ProviderHost {
   }
 #endif
 
+  // TypeProto_ShardedTensor (wrapped)
+#if !defined(DISABLE_SHARDED_TENSORS)
+  bool TypeProto_ShardedTensor__has_shape(const ONNX_NAMESPACE::TypeProto_ShardedTensor* p) override { return p->has_shape(); }
+  const ONNX_NAMESPACE::TensorShapeProto& TypeProto_ShardedTensor__shape(const ONNX_NAMESPACE::TypeProto_ShardedTensor* p) override {
+    return p->shape();
+  }
+  ONNX_NAMESPACE::TensorShapeProto* TypeProto_ShardedTensor__mutable_shape(ONNX_NAMESPACE::TypeProto_ShardedTensor* p) override {
+    return p->mutable_shape();
+  }
+  int32_t TypeProto_ShardedTensor__elem_type(const ONNX_NAMESPACE::TypeProto_ShardedTensor* p) override {
+    return p->elem_type();
+  }
+#endif
+
   // TypeProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::TypeProto>(); }
   void TypeProto__CopyFrom(ONNX_NAMESPACE::TypeProto* p, const ONNX_NAMESPACE::TypeProto* other) override { p->CopyFrom(*other); }
   const ONNX_NAMESPACE::TypeProto_Tensor& TypeProto__tensor_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->tensor_type(); }
   ONNX_NAMESPACE::TypeProto_Tensor* TypeProto__mutable_tensor_type(ONNX_NAMESPACE::TypeProto* p) override { return p->mutable_tensor_type(); }
   int TypeProto__value_case(const ONNX_NAMESPACE::TypeProto* p) override { return p->value_case(); }
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   const ONNX_NAMESPACE::TypeProto_SparseTensor& TypeProto__sparse_tensor_type(const ONNX_NAMESPACE::TypeProto* p) override {
     return p->sparse_tensor_type();

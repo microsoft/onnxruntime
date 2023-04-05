@@ -83,6 +83,10 @@ class OpKernelContext {
   SparseTensor* OutputSparse(int index, const TensorShape& shape);
 #endif
 
+#if !defined(DISABLE_SHARDED_TENSORS)
+  ShardedTensor* OutputSharded(int index, const TensorShape& shape);
+#endif
+
 #if !defined(DISABLE_OPTIONAL_TYPE)
   // Use this API to output a "None" of a specific type (e.g. Tensor) at specified index
   template <typename T>
@@ -231,6 +235,15 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
   OrtValue* p_ml_value = GetOutputMLValue(index);
   ORT_ENFORCE(p_ml_value, "Please fetch output sparse tensor with specified shape.");
   return p_ml_value->GetMutable<SparseTensor>();
+}
+#endif
+
+#if !defined(DISABLE_SHARDED_TENSORS)
+template <>
+inline ShardedTensor* OpKernelContext::Output<ShardedTensor>(int index) {
+  OrtValue* p_ml_value = GetOutputMLValue(index);
+  ORT_ENFORCE(p_ml_value, "Please fetch output sharded tensor with specified shape.");
+  return p_ml_value->GetMutable<ShardedTensor>();
 }
 #endif
 

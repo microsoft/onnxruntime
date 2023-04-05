@@ -295,6 +295,14 @@ struct ProviderHost {
   virtual int32_t TypeProto_SparseTensor__elem_type(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) = 0;
 #endif
 
+#if !defined(DISABLE_SHARDED_TENSORS)
+  // TypeProto_ShardedTensor
+  virtual bool TypeProto_ShardedTensor__has_shape(const ONNX_NAMESPACE::TypeProto_ShardedTensor* p) = 0;
+  virtual const ONNX_NAMESPACE::TensorShapeProto& TypeProto_ShardedTensor__shape(const ONNX_NAMESPACE::TypeProto_ShardedTensor* p) = 0;
+  virtual ONNX_NAMESPACE::TensorShapeProto* TypeProto_ShardedTensor__mutable_shape(ONNX_NAMESPACE::TypeProto_ShardedTensor* p) = 0;
+  virtual int32_t TypeProto_ShardedTensor__elem_type(const ONNX_NAMESPACE::TypeProto_ShardedTensor* p) = 0;
+#endif
+
   // TypeProto
   virtual std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__construct() = 0;
   virtual void TypeProto__CopyFrom(ONNX_NAMESPACE::TypeProto* p, const ONNX_NAMESPACE::TypeProto* other) = 0;

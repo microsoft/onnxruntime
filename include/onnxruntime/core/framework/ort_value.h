@@ -15,6 +15,9 @@ namespace onnxruntime {
 #if !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
+#if !defined(DISABLE_SHARDED_TENSORS)
+class ShardedTensor;
+#endif
 class TensorSeq;
 }  // namespace onnxruntime
 
@@ -76,7 +79,11 @@ struct OrtValue {
   }
 
   bool IsShardedTensor() const {
+#if !defined(DISABLE_SHARDED_TENSORS)
     return (type_ != nullptr && type_->IsShardedTensorType());
+#else
+    ORT_THROW("Sharded tensor is not supported in this build.");
+#endif
   }
 
   onnxruntime::MLDataType Type() const {
@@ -123,5 +130,19 @@ template <>
 inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor>() {
   ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
   return static_cast<onnxruntime::SparseTensor*>(data_.get());
+}
+#endif
+
+#if !defined(DISABLE_SHARDED_TENSORS)
+template <>
+inline const onnxruntime::ShardedTensor& OrtValue::Get<onnxruntime::ShardedTensor>() const {
+  ORT_ENFORCE(IsShardedTensor(), "Trying to get a ShardedTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
+  return *static_cast<onnxruntime::ShardedTensor*>(data_.get());
+}
+
+template <>
+inline onnxruntime::ShardedTensor* OrtValue::GetMutable<onnxruntime::ShardedTensor>() {
+  ORT_ENFORCE(IsShardedTensor(), "Trying to get a ShardedTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
+  return static_cast<onnxruntime::ShardedTensor*>(data_.get());
 }
 #endif

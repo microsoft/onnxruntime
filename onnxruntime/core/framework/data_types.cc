@@ -54,10 +54,12 @@ MLDataType DataTypeImpl::GetType<SparseTensor>() {
 }
 #endif
 
+#if !defined(DISABLE_SHARDED_TENSORS)
 template <>
 MLDataType DataTypeImpl::GetType<ShardedTensor>() {
   return ShardedTensorTypeBase::Type();
 }
+#endif
 
 template <>
 MLDataType DataTypeImpl::GetType<TensorSeq>() {
@@ -103,7 +105,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_SparseTensor& tensor_proto,
                   const ONNX_NAMESPACE::TypeProto_SparseTensor& type_proto);
 #endif
 
-#if !defined(DISABLE_SPARSE_TENSORS)
+#if !defined(DISABLE_SHARDED_TENSORS)
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_ShardedTensor& tensor_proto,
                   const ONNX_NAMESPACE::TypeProto_ShardedTensor& type_proto);
 #endif
@@ -204,6 +206,11 @@ static bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto_1,
         result = IsCompatible(type_proto_1.sparse_tensor_type(), type_proto_2.sparse_tensor_type());
         break;
 #endif
+#if !defined(DISABLE_SHARDED_TENSORS)
+      case TypeProto::ValueCase::kShardedTensorType:
+        result = IsCompatible(type_proto_1.sharded_tensor_type(), type_proto_2.sharded_tensor_type());
+        break;
+#endif
 #if !defined(DISABLE_OPTIONAL_TYPE)
       case TypeProto::ValueCase::kOptionalType:
         result = IsCompatible(type_proto_1.optional_type(), type_proto_2.optional_type());
@@ -255,7 +262,12 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_SparseTensor& tensor_proto,
   return type_proto.elem_type() == tensor_proto.elem_type();
 }
 #endif
-
+#if !defined(DISABLE_SHARDED_TENSORS)
+bool IsCompatible(const ONNX_NAMESPACE::TypeProto_ShardedTensor& tensor_proto,
+                  const ONNX_NAMESPACE::TypeProto_ShardedTensor& type_proto) {
+  return type_proto.elem_type() == tensor_proto.elem_type();
+}
+#endif
 void RegisterAllProtos(const std::function<void(MLDataType)>& /*reg_fn*/);
 
 class DataTypeRegistry {
@@ -1071,6 +1083,7 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
 }
 #endif
 
+#if !defined(DISABLE_SHARDED_TENSORS)
 const ShardedTensorTypeBase* DataTypeImpl::ShardedTensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
@@ -1105,6 +1118,7 @@ const ShardedTensorTypeBase* DataTypeImpl::ShardedTensorTypeFromONNXEnum(int typ
       ORT_NOT_IMPLEMENTED("sparse tensor type ", type, " is not supported");
   }
 }
+#endif
 
 MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
   const auto& registry = data_types_internal::DataTypeRegistry::instance();

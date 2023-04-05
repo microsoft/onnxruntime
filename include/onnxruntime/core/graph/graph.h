@@ -384,6 +384,9 @@ class Node {
 #if !defined(DISABLE_SPARSE_TENSORS)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto);
 #endif
+#if !defined(DISABLE_SPARSE_TENSORS)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::ShardedTensorProto);
+#endif
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto);
 
   ADD_ATTR_SINGLE_INTERFACE(ONNX_NAMESPACE::GraphProto);
@@ -659,7 +662,7 @@ class Node {
   std::vector<std::unique_ptr<Graph>> subgraphs_;
 
   // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
-  bool can_be_saved_;  
+  bool can_be_saved_;
 };
 
 /**

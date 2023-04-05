@@ -23,6 +23,9 @@ using onnxruntime::MLFloat16;
 #if !defined(DISABLE_SPARSE_TENSORS)
 using onnxruntime::SparseTensor;
 #endif
+#if !defined(DISABLE_SHARDED_TENSORS)
+using onnxruntime::ShardedTensor;
+#endif
 using onnxruntime::Tensor;
 using onnxruntime::TensorShape;
 
@@ -60,7 +63,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeI
 
 ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input,
                     _Outptr_result_maybenull_ const struct OrtTensorTypeAndShapeInfo** out) {
-  *out = (input->type == ONNX_TYPE_TENSOR || input->type == ONNX_TYPE_SPARSETENSOR) ? input->data : nullptr;
+  *out = (input->type == ONNX_TYPE_TENSOR || input->type == ONNX_TYPE_SPARSETENSOR || input->type == ONNX_TYPE_SHARDEDTENSOR) ? input->data : nullptr;
   return nullptr;
 }
 
@@ -138,6 +141,22 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
 #endif
   }
 
+  if (type->IsShardedTensorType()) {
+#if !defined(DISABLE_SHARDED_TENSORS)
+    OrtTensorTypeAndShapeInfo* info = nullptr;
+    const ShardedTensor& tensor = value.Get<onnxruntime::ShardedTensor>();
+    const auto* tensor_data_type = tensor.DataType();
+    if (tensor_data_type != nullptr) {
+      OrtStatus* st = GetTensorShapeAndType(tensor.Shape(), *tensor_data_type, &info);
+      if (st != nullptr) return st;
+    }
+    *out = new OrtTypeInfo(ONNX_TYPE_SHARDEDTENSOR, info);
+    return nullptr;
+#else
+    return OrtApis::CreateStatus(ORT_FAIL, "ShardedTensor is not supported in this build.");
+#endif
+  }
+
   if (type->IsTensorSequenceType()) {
     OrtTensorTypeAndShapeInfo* info = nullptr;
     const auto* tensor_data_type = value.Get<onnxruntime::TensorSeq>().DataType();
@@ -177,6 +196,11 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
       case on::TypeProto::kTensorType:
 #if !defined(DISABLE_SPARSE_TENSORS)
       case on::TypeProto::kSparseTensorType: {
+        return OrtApis::CreateStatus(ORT_FAIL, "Tensor types should have been handled already");
+      }
+#endif
+#if !defined(DISABLE_SHARDED_TENSORS)
+      case on::TypeProto::kShardedTensorType: {
         return OrtApis::CreateStatus(ORT_FAIL, "Tensor types should have been handled already");
       }
 #endif
@@ -229,11 +253,15 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
   auto value_case = input->value_case();
   switch (value_case) {
     case on::TypeProto::kTensorType:
+    case on::TypeProto::kShardedTensorType:
     case on::TypeProto::kSparseTensorType: {
       ONNXType ten_type = ONNX_TYPE_UNKNOWN;
       const on::TypeProto_Tensor* tensor_type = nullptr;
 #if !defined(DISABLE_SPARSE_TENSORS)
       const on::TypeProto_SparseTensor* sparse_type = nullptr;
+#endif
+#if !defined(DISABLE_SHARDED_TENSORS)
+      const on::TypeProto_ShardedTensor* sharded_type = nullptr;
 #endif
       const on::TensorShapeProto* sp = nullptr;
       if (value_case == on::TypeProto::kTensorType) {
@@ -250,8 +278,15 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
           sp = &sparse_type->shape();
         }
 #endif
+      } else if (value_case == on::TypeProto::kShardedTensorType) {
+#if !defined(DISABLE_SHARDED_TENSORS)
+        sharded_type = &input->sharded_tensor_type();
+        ten_type = ONNX_TYPE_SHARDEDTENSOR;
+        if (onnxruntime::utils::HasShape(*sharded_type)) {
+          sp = &sharded_type->shape();
+        }
+#endif
       }
-
       OrtStatus* st = nullptr;
       OrtTensorTypeAndShapeInfo* info = nullptr;
       if (sp != nullptr) {
@@ -339,6 +374,9 @@ OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
 #else
       return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
+    }
+    case ONNX_TYPE_SHARDEDTENSOR: {
+      return OrtApis::CreateStatus(ORT_FAIL, "ShardedTensor is not supported in OrtTypeInfo::Clone.");
     }
     case ONNX_TYPE_SEQUENCE: {
       OrtSequenceTypeInfo* clone;

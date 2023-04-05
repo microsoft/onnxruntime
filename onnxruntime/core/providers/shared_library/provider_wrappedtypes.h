@@ -243,6 +243,17 @@ struct TypeProto_SparseTensor final {
 };
 #endif
 
+#if !defined(DISABLE_SHARDED_TENSORS)
+struct TypeProto_ShardedTensor final {
+  bool has_shape() const { return g_host->TypeProto_ShardedTensor__has_shape(this); }
+  const TensorShapeProto& shape() const { return g_host->TypeProto_ShardedTensor__shape(this); }
+  TensorShapeProto* mutable_shape() { return g_host->TypeProto_ShardedTensor__mutable_shape(this); }
+  int32_t elem_type() const { return g_host->TypeProto_ShardedTensor__elem_type(this); }
+
+  PROVIDER_DISALLOW_ALL(TypeProto_ShardedTensor)
+};
+#endif
+
 #if !defined(DISABLE_OPTIONAL_TYPE)
 struct TypeProto_Optional final {
   const TypeProto& elem_type() const { return g_host->TypeProto_Optional__elem_type(this); }
@@ -268,6 +279,11 @@ struct TypeProto final {
   TypeProto_SparseTensor* mutable_sparse_tensor_type() { return g_host->TypeProto__mutable_sparse_tensor_type(this); }
 #endif
 
+#if !defined(DISABLE_SHARDED_TENSORS)
+  const TypeProto_SparseTensor& sharded_tensor_type() const { return g_host->TypeProto__sharded_tensor_type(this); }
+  TypeProto_SparseTensor* mutable_sharded_tensor_type() { return g_host->TypeProto__mutable_sharded_tensor_type(this); }
+#endif
+
 #if !defined(DISABLE_OPTIONAL_TYPE)
   const TypeProto_Optional& optional_type() const { return g_host->TypeProto__optional_type(this); }
   TypeProto_Optional* mutable_optional_type() { return g_host->TypeProto__mutable_optional_type(this); }
@@ -283,6 +299,7 @@ struct TypeProto final {
     kOptionalType = 9,
     kSparseTensorType = 8,
     kOpaqueType = 7,
+    kShardedTensorType = 10,
     VALUE_NOT_SET = 0,
   };
 

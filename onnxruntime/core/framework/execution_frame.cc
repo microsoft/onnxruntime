@@ -177,6 +177,13 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
                     "OrtValue shape verification failed. Current shape:", sp_tensor.DenseShape(),
                     " Requested shape:", shape ? shape->ToString() : "null");
 #endif
+      } else if (p_ort_value->IsShardedTensor()) {
+#if !defined(DISABLE_SHARDED_TENSORS)
+        const ShardedTensor& stensor = p_ort_value->Get<ShardedTensor>();
+        ORT_ENFORCE(shape && stensor.Shape() == *shape,
+                    "OrtValue shape verification failed. Current shape:", stensor.DenseShape(),
+                    " Requested shape:", shape ? shape->ToString() : "null");
+#endif
       }
     } else {
       // shape is nullptr for traditional ML output values
@@ -262,15 +269,21 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
     //     that produces a graph output even though it conforms to the ONNX spec
     //   - update optimizers to not convert something to an initializer that is a graph output
     //     (e.g. constant folding)
-    if (IsOutput(ort_value_index)) {
+    if (IsOutput(ort_value_index))
+    {
       std::string name;
       ORT_THROW_IF_ERROR(ort_value_idx_map_.GetName(ort_value_index, name));
-      const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
       OrtValue& dest = all_values_[ort_value_index];
-
-#if !defined(DISABLE_SPARSE_TENSORS)
       const bool is_sparse_initializer = is_initializer_sparse_func(name);
+
       if (is_sparse_initializer) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+
+        if (!entry.second.IsSparseTensor()) {
+          // kyule error?
+        }
+        const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
+
         if (!dest.IsAllocated()) {
           auto p_tensor = std::make_unique<SparseTensor>();
           auto ml_tensor = DataTypeImpl::GetType<SparseTensor>();
@@ -283,10 +296,18 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
         ORT_THROW_IF_ERROR(sparse_utils::DenseTensorToSparseCoo(GetDataTransferManager(), src,
                                                                 cpu_allocator, allocator, has_linear_coo_index,
                                                                 *dest.GetMutable<SparseTensor>()));
-      } else {
 #else
-      ORT_UNUSED_PARAMETER(is_initializer_sparse_func);
-#endif  //  !defined(DISABLE_SPARSE_TENSORS)
+        // kyule error?
+#endif
+
+      } else if (entry.second.IsShardedTensor()) {
+
+      } else {
+        if (!entry.second.IsTensor()) {
+          // kyule error?
+        }
+        const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
+
         if (!dest.IsAllocated()) {
           // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
           // for a subgraph with an output of unknown shape that needs to be accumulated by the control flow node.
@@ -295,13 +316,11 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
           Tensor::InitOrtValue(src.DataType(), src.Shape(), std::move(allocator), dest);
         }
         ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
-#if !defined(DISABLE_SPARSE_TENSORS)
       }
-#endif
     } else {
       all_values_[ort_value_index] = entry.second;
     }
-  }
+
 
   // 4. handle feed in values. these can override initializer values so must be last
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {

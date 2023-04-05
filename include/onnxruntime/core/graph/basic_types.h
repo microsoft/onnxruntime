@@ -17,6 +17,7 @@ namespace ONNX_NAMESPACE {
 class ValueInfoProto;
 class TensorProto;
 class SparseTensorProto;
+class ShardedTensorProto;
 class TypeProto;
 class AttributeProto;
 // define types that would come from the ONNX library if we were building against it.

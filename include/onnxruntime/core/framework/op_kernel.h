@@ -365,6 +365,15 @@ struct BuildKernelDefSparseConstraintsImpl {
 };
 #endif
 
+#if !defined(DISABLE_SHARDED_TENSORS)
+template <typename... Types>
+struct BuildKernelDefShardedConstraintsImpl {
+  std::vector<MLDataType> operator()() const {
+    return {DataTypeImpl::GetShardedTensorType<Types>()...};
+  }
+};
+#endif
+
 // Use within macro definitions to create a custom vector of constraints.
 // Example: #define REG_KERNEL(OP, VERSION, KERNEL_CLASS, Type, ...)
 //  .TypeConstraint("T", BuildKernelDefConstraints<Type, __VA_ARGS_>())
@@ -380,6 +389,13 @@ inline std::vector<MLDataType> BuildKernelDefSparseConstraints() {
 }
 #endif
 
+#if !defined(DISABLE_SHARDED_TENSORS)
+template <typename... Types>
+inline std::vector<MLDataType> BuildKernelDefShardedConstraints() {
+  return BuildKernelDefShardedConstraintsImpl<Types...>{}();
+}
+#endif
+
 // version of BuildKernelDefConstraints() which takes a type list
 template <typename L>
 inline std::vector<MLDataType> BuildKernelDefConstraintsFromTypeList() {
@@ -390,6 +406,13 @@ inline std::vector<MLDataType> BuildKernelDefConstraintsFromTypeList() {
 template <typename L>
 inline std::vector<MLDataType> BuildKernelDefSparseConstraintsFromTypeList() {
   return boost::mp11::mp_apply<BuildKernelDefSparseConstraintsImpl, L>{}();
+}
+#endif
+
+#if !defined(DISABLE_SHARDED_TENSORS)
+template <typename L>
+inline std::vector<MLDataType> BuildKernelDefShardedConstraintsFromTypeList() {
+  return boost::mp11::mp_apply<BuildKernelDefShardedConstraintsImpl, L>{}();
 }
 #endif
 

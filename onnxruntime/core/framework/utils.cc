@@ -116,6 +116,11 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
     const SparseTensor& source_tensor = source_mlvalue.Get<SparseTensor>();
     SparseTensor::InitOrtValue(source_tensor.DataType(), source_tensor.DenseShape(), allocator, target_mlvalue);
 #endif
+  } else if (source_mlvalue.IsShardedTensor()) {
+#if !defined(DISABLE_SHARDED_TENSORS)
+    const ShardedTensor& source_tensor = source_mlvalue.Get<ShardedTensor>();
+    ShardedTensor::InitOrtValue(source_tensor.DataType(), {allocator},  source_tensor.Shape(), target_mlvalue);
+#endif
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
     TensorSeq::InitOrtValue(source_tensor_seq, allocator, target_mlvalue);
@@ -189,6 +194,14 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensor(source_tensor, *p_output_tensor));
     }
 #endif
+  } else if (source_mlvalue.IsShardedTensor()) {
+#if !defined(DISABLE_SHARDED_TENSORS)
+    // const auto& source_tensor = source_mlvalue.Get<ShardedTensor>();
+    // ShardedTensor* p_output_tensor = target_mlvalue.GetMutable<ShardedTensor>();
+    // iterate data transfer over shards
+    // TODO kyule
+#endif
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sharded tensor transfer.");
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
     TensorSeq& target_tensor_seq = const_cast<TensorSeq&>(target_mlvalue.Get<TensorSeq>());
@@ -428,6 +441,10 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
 #if !defined(DISABLE_SPARSE_TENSORS)
       feed_locations[i] = feed.Get<SparseTensor>().Location().device;
 #endif
+    } else if (feed.IsShardedTensor()) {
+#if !defined(DISABLE_SHARDED_TENSORS)
+      feed_locations[i] = feed.Get<ShardedTensor>().Location().device;
+#endif
     }
   }
 
@@ -447,6 +464,10 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
       } else if (fetch.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
         fetch_alloc_info[i] = &fetch.Get<SparseTensor>().Location();
+#endif
+      } else if (fetch.IsShardedTensor()) {
+#if !defined(DISABLE_SHARDED_TENSORS)
+        fetch_alloc_info[i] = &fetch.Get<ShardedTensor>().Location();
 #endif
       }
     }
@@ -548,7 +569,7 @@ static void UpdateWithParentStream(DeviceStreamCollection& device_stream_collect
 // public method to do a single copy. used by external partners
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue) {
-  if (!orig_mlvalue.IsTensor() && !orig_mlvalue.IsSparseTensor()) {
+  if (!orig_mlvalue.IsTensor() && !orig_mlvalue.IsSparseTensor() && !orig_mlvalue.IsShardedTensor()) {
     new_mlvalue = orig_mlvalue;
     return Status::OK();
   }

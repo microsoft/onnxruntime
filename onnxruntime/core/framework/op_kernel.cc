@@ -60,7 +60,12 @@ SparseTensor* OpKernelContext::OutputSparse(int index, const TensorShape& shape)
   return p_ml_value ? p_ml_value->GetMutable<SparseTensor>() : nullptr;
 }
 #endif
-
+#if !defined(DISABLE_SHARDED_TENSORS)
+ShardedTensor* OpKernelContext::OutputSparse(int index, const TensorShape& shape) {
+  auto p_ml_value = OutputMLValue(index, shape);
+  return p_ml_value ? p_ml_value->GetMutable<ShardedTensor>() : nullptr;
+}
+#endif
 bool OpKernelContext::TryGetInferredInputShape(int index, TensorShape& shape) const {
   return execution_frame_->TryGetInferredShape(GetInputArgIndex(index), shape);
 }

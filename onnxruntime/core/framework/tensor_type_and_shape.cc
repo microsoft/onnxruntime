@@ -24,6 +24,9 @@ using onnxruntime::MLFloat16;
 #if !defined(DISABLE_SPARSE_TENSORS)
 using onnxruntime::SparseTensor;
 #endif
+#if !defined(DISABLE_SHARDED_TENSORS)
+using onnxruntime::ShardedTensor;
+#endif
 using onnxruntime::Tensor;
 using onnxruntime::narrow;
 #if defined(_MSC_VER) && !defined(__clang__)
