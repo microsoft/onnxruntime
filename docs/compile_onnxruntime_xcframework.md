@@ -46,3 +46,21 @@ python tools/ci_build/github/apple/build_macabi_framework.py --config Release --
 ```
 
 Both of these scripts will invoke `tools/ci_build/build.py`. [This section](https://github.com/GoodNotes/onnxruntime/blob/eeca6fea2b4d02ddc729c7a7cdc39b123d23fbf8/tools/ci_build/build.py#L1221) contains the target platform-specific parameters when executing CMake.
+
+# Step 3: Use it in a Swift package in GoodNotes
+Since we compile the framework for different target separately, we need to merge the iOS xcframework and MacCatlyst xcframework manually at the moment.
+Please refer to this [PR#12971](https://github.com/GoodNotes/GoodNotes-5/pull/12971) for the directory structure.
+You would also need to combine the `Info.plist` manually.
+
+At last, you can import `onnxruntime` as a binary target.
+```
+targets: [
+        .binaryTarget(
+            name: "onnxruntime",
+            path: "onnxruntime/onnxruntime.xcframework"),
+ ]
+ ```
+
+
+
+
