@@ -97,20 +97,20 @@ JSEP_KERNEL_IMPL(Clip, Clip)
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Clip, kOnnxDomain, 11, 11, kJsExecutionProvider,
     KernelDefBuilder()
       .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-      .InputMemoryType(OrtMemTypeCPUInput, 1)
-      .InputMemoryType(OrtMemTypeCPUInput, 2),
+      .InputMemoryType(OrtMemTypeCPU, 1)
+      .InputMemoryType(OrtMemTypeCPU, 2),
     Clip);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Clip, kOnnxDomain, 12, 12, kJsExecutionProvider,
     KernelDefBuilder()
       .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-      .InputMemoryType(OrtMemTypeCPUInput, 1)
-      .InputMemoryType(OrtMemTypeCPUInput, 2),
+      .InputMemoryType(OrtMemTypeCPU, 1)
+      .InputMemoryType(OrtMemTypeCPU, 2),
     Clip);
 ONNX_OPERATOR_KERNEL_EX(Clip, kOnnxDomain, 13, kJsExecutionProvider,
     KernelDefBuilder()
       .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-      .InputMemoryType(OrtMemTypeCPUInput, 1)
-      .InputMemoryType(OrtMemTypeCPUInput, 2),
+      .InputMemoryType(OrtMemTypeCPU, 1)
+      .InputMemoryType(OrtMemTypeCPU, 2),
     Clip);
 
 JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_DEFAULT(Elu, Elu, alpha, 1.0)

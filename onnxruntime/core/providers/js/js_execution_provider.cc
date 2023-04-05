@@ -45,7 +45,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .InputMemoryType(OrtMemTypeCPU, 0)
         .ExecQueueId(0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
@@ -56,7 +56,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .OutputMemoryType(OrtMemTypeCPUOutput, 0)
+        .OutputMemoryType(OrtMemTypeCPU, 0)
         .ExecQueueId(1)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
@@ -290,30 +290,17 @@ JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
 void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  auto cpu_input_alloc = GetAllocator(OrtMemTypeCPUInput);
-  if (!cpu_input_alloc) {
-    cpu_input_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
-    if (!cpu_input_alloc) {
-      AllocatorCreationInfo cpuInputAllocatorCreationInfo([&](int) {
-        return std::make_unique<js::JsCPUInputAllocator>();
+  auto cpu_alloc = GetAllocator(OrtMemTypeCPU);
+  if (!cpu_alloc) {
+    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPU, cpu_device);
+    if (!cpu_alloc) {
+      AllocatorCreationInfo cpuAllocatorCreationInfo([&](int) {
+        return std::make_unique<js::JsCPUAllocator>();
       });
-      cpu_input_alloc = CreateAllocator(cpuInputAllocatorCreationInfo);
-      allocator_manager.InsertAllocator(cpu_input_alloc);
+      cpu_alloc = CreateAllocator(cpuAllocatorCreationInfo);
+      allocator_manager.InsertAllocator(cpu_alloc);
     }
-    InsertAllocator(cpu_input_alloc);
-  }
-
-  auto cpu_output_alloc = GetAllocator(OrtMemTypeCPUOutput);
-  if (!cpu_output_alloc) {
-    cpu_output_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, cpu_device);
-    if (!cpu_output_alloc) {
-      AllocatorCreationInfo cpuOutputAllocatorCreationInfo([&](int) {
-        return std::make_unique<js::JsCPUOutputAllocator>();
-      });
-      cpu_output_alloc = CreateAllocator(cpuOutputAllocatorCreationInfo);
-      allocator_manager.InsertAllocator(cpu_output_alloc);
-    }
-    InsertAllocator(cpu_output_alloc);
+    InsertAllocator(cpu_alloc);
   }
 
   OrtDevice custom_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0};

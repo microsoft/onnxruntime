@@ -14,7 +14,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         // properly force CPU/GPU synch inside the kernel
-        .OutputMemoryType(OrtMemTypeCPUInput, 0)
+        .OutputMemoryType(OrtMemTypeCPU, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
@@ -26,7 +26,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         // properly force CPU/GPU synch inside the kernel
-        .OutputMemoryType(OrtMemTypeCPUInput, 0)
+        .OutputMemoryType(OrtMemTypeCPU, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
@@ -38,7 +38,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         // properly force CPU/GPU synch inside the kernel
-        .OutputMemoryType(OrtMemTypeCPUInput, 0)
+        .OutputMemoryType(OrtMemTypeCPU, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
