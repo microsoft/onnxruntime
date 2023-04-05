@@ -191,7 +191,7 @@ export class WebGpuBackend {
         (typeof (program as ProgramInfoLoader).get === 'function' ? (program as ProgramInfoLoader).get() :
                                                                     (program as ProgramInfo));
 
-    // check ouput indices
+    // check output indices
     const validatedOutputIndices = outputIndices.length === 0 ? programInfo.outputs.map((_, i) => i) : outputIndices;
     if (validatedOutputIndices.length !== programInfo.outputs.length) {
       throw new Error(`Output size ${validatedOutputIndices.length} must be equal to ${programInfo.outputs.length}.`);
