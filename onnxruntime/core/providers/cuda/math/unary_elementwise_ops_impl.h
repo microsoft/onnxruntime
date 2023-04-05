@@ -48,7 +48,7 @@ UNARY_OPS()
 // Cast
 
 #define DECL_IMPL_CAST(InT, OutT) \
-  void _Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count);
+  void _Explicit_Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count);
 
 #define DECL_IMPL_CAST_FROM(T)  \
   DECL_IMPL_CAST(T, half)     \
@@ -90,7 +90,7 @@ DECL_IMPL_CAST_FROM(Float8E5M2FNUZ)
 
 template <typename InT, typename OutT>
 void Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count) {
-  _Impl_Cast(stream, input_data, output_data, count);
+  _Explicit_Impl_Cast(stream, input_data, output_data, count);
 }
 
 template <typename InT, typename OutT>

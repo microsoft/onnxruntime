@@ -115,55 +115,13 @@ struct OP_Cast {
   }
 };
 
-#define SPECIALIZED_CAST_IMPL(InT, OutT) \
-  template void Impl_Cast<InT, OutT>(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count);
-
-#define SPECIALIZED_CAST_FROM(T)      \
-  SPECIALIZED_CAST_IMPL(T, half)     \
-  SPECIALIZED_CAST_IMPL(T, float)    \
-  SPECIALIZED_CAST_IMPL(T, double)   \
-  SPECIALIZED_CAST_IMPL(T, int8_t)   \
-  SPECIALIZED_CAST_IMPL(T, int16_t)  \
-  SPECIALIZED_CAST_IMPL(T, int32_t)  \
-  SPECIALIZED_CAST_IMPL(T, int64_t)  \
-  SPECIALIZED_CAST_IMPL(T, uint8_t)  \
-  SPECIALIZED_CAST_IMPL(T, uint16_t) \
-  SPECIALIZED_CAST_IMPL(T, uint32_t) \
-  SPECIALIZED_CAST_IMPL(T, uint64_t) \
-  SPECIALIZED_CAST_IMPL(T, bool)     \
-  SPECIALIZED_CAST_IMPL(T, BFloat16)        \
-  SPECIALIZED_CAST_IMPL(T, Float8E4M3FN)    \
-  SPECIALIZED_CAST_IMPL(T, Float8E4M3FNUZ)  \
-  SPECIALIZED_CAST_IMPL(T, Float8E5M2)      \
-  SPECIALIZED_CAST_IMPL(T, Float8E5M2FNUZ)
-
-SPECIALIZED_CAST_FROM(half)
-SPECIALIZED_CAST_FROM(float)
-SPECIALIZED_CAST_FROM(double)
-SPECIALIZED_CAST_FROM(int8_t)
-SPECIALIZED_CAST_FROM(int16_t)
-SPECIALIZED_CAST_FROM(int32_t)
-SPECIALIZED_CAST_FROM(int64_t)
-SPECIALIZED_CAST_FROM(uint8_t)
-SPECIALIZED_CAST_FROM(uint16_t)
-SPECIALIZED_CAST_FROM(uint32_t)
-SPECIALIZED_CAST_FROM(uint64_t)
-SPECIALIZED_CAST_FROM(bool)
-SPECIALIZED_CAST_FROM(BFloat16)
-SPECIALIZED_CAST_FROM(Float8E4M3FN)
-SPECIALIZED_CAST_FROM(Float8E4M3FNUZ)
-SPECIALIZED_CAST_FROM(Float8E5M2)
-SPECIALIZED_CAST_FROM(Float8E5M2FNUZ)
-
-
-
 #define IMPL_CAST_IMPL(InT, OutT) \
-  void _Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count) { \
+  void _Explicit_Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count) { \
     UnaryElementWiseImpl(stream, input_data, output_data, OP_Cast<InT, OutT>(), count); \
   }
 
 #define IMPL_CAST_IMPL_THROW(InT, OutT) \
-  void _Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count) { \
+  void _Explicit_Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count) { \
     ORT_THROW("Cast from " #InT " to " #OutT " must define saturate."); \
   }
 
