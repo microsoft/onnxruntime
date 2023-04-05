@@ -20,46 +20,45 @@ UpStreamGatherGraphTransformer::UpStreamGatherGraphTransformer(
     : UpStreamGraphTransformerBase("UpStreamGatherGraphTransformer", compatible_execution_providers) {
   allowed_passthrough_ops_.insert({
       // Things to consider when more operators are added here:
-      // 1. Whether the operator is safe to pass through in term of compute equivalence.
+      // 1. Whether the operator is safe to pass through in terms of computing equivalence.
       //    If optype is not enough to guarantee the equivalence, we need to add a customized pre-check function
       //    (as LayerNormalization did).
-      // 2. Whether the outputs have the same dim changes if Gather node moves before that operator.
-      // 3. Should all inputs be allowed when track back further (bottom-up);
+      // 2. Whether the outputs have the same dim changes if the Gather node moves before that operator.
+      // 3. Should all inputs be allowed when tracking back further (bottom-up);
       //    if not, add the input index restriction as MatMul did.
       {GetFullQualifiedOpName("Add", kOnnxDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({}, std::make_shared<SimplePassThroughActor>(),
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_14_13_7_6_1)},
       {GetFullQualifiedOpName("BiasGelu", kMSDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({}, std::make_shared<SimplePassThroughActor>(), opset_1)},
-      {GetFullQualifiedOpName("BitmaskBiasDropout", kMSDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({}, std::make_shared<SimplePassThroughActor>(), opset_1)},
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(), opset_1)},
+
       {GetFullQualifiedOpName("Cast", kOnnxDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({}, std::make_shared<SimplePassThroughActor>(),
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_13_9_6_1)},
       {GetFullQualifiedOpName("Div", kOnnxDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({}, std::make_shared<SimplePassThroughActor>(),
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_14_13_7_6_1)},
       {GetFullQualifiedOpName("Dropout", kOnnxDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({}, std::make_shared<SimplePassThroughActor>(),
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_13_12_10_7_6_1)},
       {GetFullQualifiedOpName("Gelu", kMSDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({}, std::make_shared<SimplePassThroughActor>(),
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_1)},
       {// Be noted, this is our own implementation of ONNX domain op.
        GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({0}, std::make_shared<ReductionOpPassThroughActor>(),
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<LayerNormalizationGatherActor>(),
                                                             opset_1)},
       {GetFullQualifiedOpName("MatMul", kOnnxDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({}, std::make_shared<MatMulPassThroughActor>(),
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<MatMulGatherActor>(),
                                                             opset_13_9_1)},
       {GetFullQualifiedOpName("Reshape", kOnnxDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({0}, std::make_shared<ReshapePassThroughActor>(),
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<ReshapeGatherActor>(),
                                                             opset_14_13_5_1)},
       {GetFullQualifiedOpName("Softmax", kOnnxDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({0}, std::make_shared<ReductionOpPassThroughActor>(),
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SoftmaxGatherActor>(),
                                                             opset_13_11_1)},
       {GetFullQualifiedOpName("Transpose", kOnnxDomain),
-       OpPassThroughConfig<UpStreamGatherOperatorActorBase>({}, std::make_shared<TransposePassThroughActor>(),
+       OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<TransposeGatherActor>(),
                                                             opset_13_1)},
   });
 }
@@ -68,21 +67,29 @@ bool UpStreamGatherGraphTransformer::UpStreamInternal(
     Graph& graph, std::deque<SliceInfo>& queue,
     Node& current_node, SliceInfo& info,
     const OpPassThroughConfig<UpStreamGatherOperatorActorBase>& pass_through_config,
-    const logging::Logger& logger, const std::string& entry_node_name) const {
+    const logging::Logger& logger) const {
   Node& slice_node = *info.node_ptr;
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
 
-  std::unordered_map<int, int> candidate_input_indices;
-  bool input_has_dim_1_for_axis = false;
-  if (!pass_through_config.actor->PreCheck(graph, current_node, info, pass_through_config.input_indices, logger,
-                                           candidate_input_indices, input_has_dim_1_for_axis)) {
+  std::unordered_map<int, int> propagate_input_indices;
+  std::unordered_map<int, std::vector<DimCompare>> all_input_cmp_rets;
+  std::function<void(Node & node)> shape_update_func;
+
+  if (!pass_through_config.actor->PreCheck(graph, current_node, info, logger,
+                                           propagate_input_indices, all_input_cmp_rets, shape_update_func)) {
     LOG_DEBUG_INFO(logger, "Pre-check failed for " + current_node.Name() + "(" + op_type + ")");
     return false;
   }
 
-  if (candidate_input_indices.empty()) {
+  if (propagate_input_indices.empty()) {
     LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type +
                                ") because the requirement is not met.");
+    return false;
+  }
+
+  if (!shape_update_func) {
+    LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type +
+                               ") because the shape update function is not set.");
     return false;
   }
 
@@ -91,9 +98,9 @@ bool UpStreamGatherGraphTransformer::UpStreamInternal(
 
   // Slicing infos that are populated into current_node's inputs.
   std::vector<SliceInfo> populated_slicing_infos;
-  populated_slicing_infos.reserve(candidate_input_indices.size());
+  populated_slicing_infos.reserve(propagate_input_indices.size());
   std::unordered_map<int, SliceInfo> new_gather_infos;
-  for (auto pair : candidate_input_indices) {
+  for (auto pair : propagate_input_indices) {
     auto input_index = pair.first;  // input index of current_node
     int new_axis = pair.second;     // new axis of current_node's input to be sliced
     SliceInfo gather_info = PropagateSlicingForInput(graph, slice_node, current_node, input_index, info, new_axis,
@@ -104,14 +111,13 @@ bool UpStreamGatherGraphTransformer::UpStreamInternal(
     new_gather_infos.insert({{input_index, gather_info}});
   }
 
-  int index_of_output =
-      optimizer_utils::IndexOfNodeOutput(current_node, *slice_node.InputDefs()[info.GetDataInputIndex()]);
   ORT_ENFORCE(RemoveOriginSlicingOp(graph, slice_node, current_node, logger, info).IsOK());
-  if (!pass_through_config.actor->PostProcess(graph, current_node, index_of_output, info.non_negative_axis,
-                                              info.is_scalar_slice, input_has_dim_1_for_axis,
-                                              info.output_dim_on_axis,
-                                              entry_node_name, new_gather_infos,
-                                              logger)) {
+
+  // Update shapes
+  shape_update_func(current_node);
+
+  if (!pass_through_config.actor->PostProcess(graph, current_node, info, logger, propagate_input_indices,
+                                              all_input_cmp_rets, new_gather_infos)) {
     ORT_THROW("Post-process failed for " + current_node.Name() + "(" + op_type + ")");
   }
 
@@ -140,7 +146,7 @@ SliceInfo UpStreamGatherGraphTransformer::PropagateSlicingForInput(
     input_args.push_back(slice_node.MutableInputDefs()[i]);
   }
 
-  // Update the axis attribute if new_axis is not same with the original slicing axis (which happens when data
+  // Update the axis attribute if new_axis is not the same as the original slicing axis (which happens when data
   // layout got changed by Transpose or Reshape ops)
   onnxruntime::NodeAttributes attributes = slice_node.GetAttributes();
   if (info.non_negative_axis != new_axis) {
@@ -173,11 +179,12 @@ SliceInfo UpStreamGatherGraphTransformer::PropagateSlicingForInput(
 
   new_slice_node->SetExecutionProviderType(slice_node.GetExecutionProviderType());
 
-  // Set correct shape for new created node.
+  // Set the correct shape for the newly created node.
   auto new_slice_out_arg = new_slice_node->MutableOutputDefs()[new_slice_output_index_to_connect];
-  int reversed_axis = new_axis - new_slice_out_arg->Shape()->dim_size();
-  UpdateSliceOutputShape(*new_slice_out_arg, reversed_axis, info.output_dim_on_axis);
-  auto new_slice_info = SliceInfo(new_slice_node, info.is_scalar_slice, info.axis_attr_name, new_axis);
+  UpdateSliceOutputShape(*new_slice_out_arg, new_axis, info.output_dim_on_axis);
+
+  auto new_slice_info = SliceInfo(graph, new_slice_node, info.is_scalar_slice, info.axis_attr_name, new_axis);
+  new_slice_info.entry_node_name = info.entry_node_name;
   new_slice_info.entry_slice_arg_name = info.entry_slice_arg_name;
   return new_slice_info;
 }
@@ -190,18 +197,9 @@ Status UpStreamGatherGraphTransformer::RemoveOriginSlicingOp(
                              std::to_string(!(info.is_scalar_slice)));
 
   auto slice_input_arg = slice_node.MutableInputDefs()[info.GetDataInputIndex()];
-  int slice_input_rank = slice_input_arg->Shape()->dim_size();
   int output_index = optimizer_utils::IndexOfNodeOutput(current_node, *slice_input_arg);
   auto slice_op_output_arg = slice_node.MutableOutputDefs()[info.GetOutputIndex()];
 
-  // Loop all outputs of target node, update the shape accordingly.
-  // For elementwise ops like (LayerNorm/Dropout/Add), we should handle all outputs.
-  // If some output rank is lower than sliced axis, we should just ignore it (the correctness is guaranteed by devs
-  // who adds more operator coverage in the pass through).
-  for (size_t i = 0; i < current_node.MutableOutputDefs().size(); ++i) {
-    UpdateSliceOutputShape(*current_node.MutableOutputDefs()[i], info.non_negative_axis - slice_input_rank,
-                           info.output_dim_on_axis);
-  }
   LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Replace all usage of output " + slice_op_output_arg->Name() + ":0" +
                              " with " + current_node.MutableOutputDefs()[output_index]->Name() + ":" +
                              std::to_string(output_index));
@@ -217,7 +215,6 @@ Status UpStreamGatherGraphTransformer::RemoveOriginSlicingOp(
                                consumer_node->OpType() + ")");
   }
   graph.UpdateConsumerNodes(current_node.OutputDefs()[output_index]->Name(), slice_op_consumers);
-
   graph.UpdateConsumerNodes(slice_op_output_arg->Name(), {});
   graph.RemoveNode(slice_node.Index());
 
@@ -226,7 +223,7 @@ Status UpStreamGatherGraphTransformer::RemoveOriginSlicingOp(
 
 namespace {
 
-std::optional<SliceInfo> IsSupportedGatherND(Node& node,
+std::optional<SliceInfo> IsSupportedGatherND(Graph& graph, Node& node,
                                              const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                              const logging::Logger& logger) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "GatherND", {1, 12, 13}, kOnnxDomain) ||
@@ -253,7 +250,7 @@ std::optional<SliceInfo> IsSupportedGatherND(Node& node,
               "batch_dims must be in the range [0, min(indices_rank, data_rank)):" + std::to_string(batch_dims) +
                   " indices_rank:" + std::to_string(indices_rank) + " data_rank:" + std::to_string(data_rank));
 
-  // Since GatherND is assumed to have batch_dims=1, if the input data's shape is [batch, sequence, ..., ... ],
+  // Since GatherND is assumed to have `batch_dims=1` , if the input data's shape is [batch, sequence, ..., ... ],
   // limiting indices_rank=3 will make sure produced output is in shape [batch, sliced_sequence, ..., ...]
   // and the rank did not change.
   // TODO: release the constraint here.
@@ -266,10 +263,10 @@ std::optional<SliceInfo> IsSupportedGatherND(Node& node,
     return std::nullopt;
   }
 
-  return SliceInfo(&node, false, "batch_dims", static_cast<int>(batch_dims), true);
+  return SliceInfo(graph, &node, false, "batch_dims", static_cast<int>(batch_dims), true);
 }
 
-std::optional<SliceInfo> IsSupportedGather(Node& node,
+std::optional<SliceInfo> IsSupportedGather(Graph& graph, Node& node,
                                            const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                            const logging::Logger& logger) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gather", {1, 11, 13}, kOnnxDomain) ||
@@ -307,18 +304,18 @@ std::optional<SliceInfo> IsSupportedGather(Node& node,
     }
   }
 
-  return SliceInfo(&node, dim_size == 0, "axis", axis, true);
+  return SliceInfo(graph, &node, dim_size == 0, "axis", axis, true);
 }
 
 }  // namespace
 
 std::optional<SliceInfo> UpStreamGatherGraphTransformer::IsSupportedForUpstream(
-    Graph& /*graph*/, Node& node, const logging::Logger& logger) const {
+    Graph& graph, Node& node, const logging::Logger& logger) const {
   std::optional<SliceInfo> gather_info;
-  // Same ideas might apply for GatherElements, Slice, Split, etc..
-  gather_info = IsSupportedGatherND(node, GetCompatibleExecutionProviders(), logger);
+  // Same ideas might apply to GatherElements, Slice, Split, etc.
+  gather_info = IsSupportedGatherND(graph, node, GetCompatibleExecutionProviders(), logger);
   if (!gather_info.has_value()) {
-    gather_info = IsSupportedGather(node, GetCompatibleExecutionProviders(), logger);
+    gather_info = IsSupportedGather(graph, node, GetCompatibleExecutionProviders(), logger);
   }
 
   return gather_info;
