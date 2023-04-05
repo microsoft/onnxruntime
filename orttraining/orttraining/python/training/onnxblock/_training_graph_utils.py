@@ -9,6 +9,29 @@ import onnx
 from onnxruntime.capi._pybind_state import GradientGraphBuilder, get_optimized_model
 
 
+def _disable_training_mode(model: onnx.ModelProto) -> None:
+    """Disables the training mode of the model by removing the training configuration."""
+
+    def disable_training_mode_dropout(node):
+        # Training mode is the third input of Dropout
+        if len(node.input) > 2:
+            node.input[2] = ""
+
+    def disable_training_mode_batchnorm(node):
+        # Training mode is an attribute of BatchNormalization
+        for attr in node.attribute:
+            if attr.name == "training_mode":
+                attr.i = 0
+
+    ops_to_disable_training_mode_func_map = {
+        "Dropout": disable_training_mode_dropout,
+        "BatchNormalization": disable_training_mode_batchnorm,
+    }
+    for node in model.graph.node:
+        if node.op_type in ops_to_disable_training_mode_func_map:
+            ops_to_disable_training_mode_func_map[node.op_type](node)
+
+
 def _reorder_outputs(model: onnx.ModelProto, user_output_names: List[str], requires_grad: Set[str]) -> None:
     """Reorders the outputs of the model to match the order of [user_outputs, gradients]"""
 
@@ -81,6 +104,7 @@ def build_gradient_graph(
 
     # At this point, eval model and training model diverge.
     eval_model = copy.deepcopy(model)
+    _disable_training_mode(eval_model)
 
     optimized_model = onnx.load_from_string(get_optimized_model(model.SerializeToString(), requires_grad))
 
