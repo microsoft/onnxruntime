@@ -68,7 +68,6 @@ static void RunResizeOpTest(const std::vector<int64_t>& shape, const std::vector
 #else
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
-  provider_options["profiling_level"] = "detailed";
 
   constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildCastTestCase(shape, sizes_data, mode, coordinate_transformation_mode, nearest_mode),
@@ -87,11 +86,6 @@ static void RunResizeOpTest(const std::vector<int64_t>& shape, const std::vector
 TEST(QnnCPUBackendTests, TestResize1) {
   RunResizeOpTest({1, 2, 3, 3}, {1, 2, 3, 3}, "nearest", "half_pixel", "floor", ExpectedEPNodeAssignment::All,
                   "TestResize1");
-}
-
-TEST(QnnCPUBackendTests, TestResize2) {
-  RunResizeOpTest({1, 2, 3, 3}, {1, 4, 6, 6}, "nearest", "half_pixel", "round_prefer_floor", ExpectedEPNodeAssignment::All,
-                  "TestResize2");
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

@@ -113,11 +113,15 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
                                       bool is_quantized_model) const {
+  if (node_unit.Domain() == kMSInternalNHWCDomain) {
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+  }
+
   NodeAttrHelper node_helper(node_unit);
   const bool antialias = GetOnnxAttr(node_helper, onnx_antialias_attr) != 0;
   ORT_RETURN_IF(antialias, "QNN EP: Resize doesn't support anti-aliasing.");
 
-  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+  return Status::OK();
 }
 
 Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -130,6 +134,7 @@ Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   // Only cares about the 1st input
   const auto& inputs = node_unit.Inputs();
+
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
 
   return Status::OK();
@@ -141,54 +146,60 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     const logging::Logger& logger,
                                                     bool is_quantized_model,
                                                     bool do_op_validation) const {
-  NodeAttrHelper node_helper(node_unit);
   std::vector<std::string> param_tensor_names;
+  NodeAttrHelper node_helper(node_unit);
 
   // Parameter 'exclude_outside'
-  Qnn_Scalar_t qnn_exclude_outside = QNN_SCALAR_INIT;
-  qnn_exclude_outside.dataType = QNN_DATATYPE_BOOL_8;
-  qnn_exclude_outside.bool8Value = static_cast<uint8_t>(GetOnnxAttr(node_helper, onnx_exclude_outside_attr) != 0);
+  {
+    Qnn_Scalar_t qnn_exclude_outside = QNN_SCALAR_INIT;
+    qnn_exclude_outside.dataType = QNN_DATATYPE_BOOL_8;
+    qnn_exclude_outside.bool8Value = static_cast<uint8_t>(GetOnnxAttr(node_helper, onnx_exclude_outside_attr) != 0);
 
-  QnnParamWrapper qnn_exclude_outside_param(node_unit.Index(), node_unit.Name(), qnn_def::exclude_outside,
-                                            qnn_exclude_outside);
-  param_tensor_names.push_back(qnn_exclude_outside_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(qnn_exclude_outside_param));
+    QnnParamWrapper qnn_exclude_outside_param(node_unit.Index(), node_unit.Name(), qnn_def::exclude_outside,
+                                              qnn_exclude_outside);
+    param_tensor_names.push_back(qnn_exclude_outside_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_exclude_outside_param));
+  }
 
   // Parameter 'transformation_mode'
-  const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
-  Qnn_Scalar_t qnn_transformation_mode = QNN_SCALAR_INIT;
-  qnn_transformation_mode.dataType = QNN_DATATYPE_UINT_32;
-  ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_coord_transf_modes, transformation_mode,
-                                           "coordinate_transformation_mode" , qnn_transformation_mode.uint32Value));
+  {
+    const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
+    Qnn_Scalar_t qnn_transformation_mode = QNN_SCALAR_INIT;
+    qnn_transformation_mode.dataType = QNN_DATATYPE_UINT_32;
+    ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_coord_transf_modes, transformation_mode,
+                                             "coordinate_transformation_mode", qnn_transformation_mode.uint32Value));
 
-  QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::transformation_mode,
-                                                qnn_transformation_mode);
-  param_tensor_names.push_back(qnn_transformation_mode_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(qnn_transformation_mode_param));
+    QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::transformation_mode,
+                                                  qnn_transformation_mode);
+    param_tensor_names.push_back(qnn_transformation_mode_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_transformation_mode_param));
+  }
 
   // Parameter 'interpolation_mode'
-  const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
-  Qnn_Scalar_t qnn_interp_mode = QNN_SCALAR_INIT;
-  qnn_interp_mode.dataType = QNN_DATATYPE_UINT_32;
-  ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_modes, interp_mode, "mode", qnn_interp_mode.uint32Value));
+  {
+    const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
+    Qnn_Scalar_t qnn_interp_mode = QNN_SCALAR_INIT;
+    qnn_interp_mode.dataType = QNN_DATATYPE_UINT_32;
+    ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_modes, interp_mode, "mode", qnn_interp_mode.uint32Value));
 
-  QnnParamWrapper qnn_interp_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::interpolation_mode,
-                                        qnn_interp_mode);
-  param_tensor_names.push_back(qnn_interp_mode_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(qnn_interp_mode_param));
+    QnnParamWrapper qnn_interp_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::interpolation_mode,
+                                          qnn_interp_mode);
+    param_tensor_names.push_back(qnn_interp_mode_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_interp_mode_param));
 
-  // Parameter 'nearest_mode'. Processed only when 'interpolation_mode' is NEAREST(0).
-  if (qnn_interp_mode.uint32Value == 0) {
-    const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
-    Qnn_Scalar_t qnn_nearest_mode = QNN_SCALAR_INIT;
-    qnn_nearest_mode.dataType = QNN_DATATYPE_UINT_32;
-    ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_nearest_modes, nearest_mode, "nearest_mode",
-                                             qnn_nearest_mode.uint32Value));
+    // Parameter 'nearest_mode'. Processed only when 'interpolation_mode' is NEAREST(0).
+    if (qnn_interp_mode.uint32Value == 0) {
+      const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
+      Qnn_Scalar_t qnn_nearest_mode = QNN_SCALAR_INIT;
+      qnn_nearest_mode.dataType = QNN_DATATYPE_UINT_32;
+      ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_nearest_modes, nearest_mode, "nearest_mode",
+                                               qnn_nearest_mode.uint32Value));
 
-    QnnParamWrapper qnn_nearest_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::nearest_mode,
-                                           qnn_nearest_mode);
-    param_tensor_names.push_back(qnn_nearest_mode_param.GetParamTensorName());
-    qnn_model_wrapper.AddParamWrapper(std::move(qnn_nearest_mode_param));
+      QnnParamWrapper qnn_nearest_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::nearest_mode,
+                                             qnn_nearest_mode);
+      param_tensor_names.push_back(qnn_nearest_mode_param.GetParamTensorName());
+      qnn_model_wrapper.AddParamWrapper(std::move(qnn_nearest_mode_param));
+    }
   }
 
   return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
