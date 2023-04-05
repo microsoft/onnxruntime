@@ -16,7 +16,7 @@ from benchmark_helper import OptimizerInfo, Precision, create_onnxruntime_sessio
 from huggingface_models import MODEL_CLASSES
 from quantize_helper import QuantizeHelper
 from torch_onnx_export_helper import torch_onnx_export
-from transformers import AutoConfig, AutoTokenizer, LxmertConfig, TransfoXLConfig
+from transformers import AutoConfig, AutoFeatureExtractor, AutoTokenizer, LxmertConfig, TransfoXLConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
 from gpt2_helper import PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState, TFGPT2ModelNoPastState  # noqa: E402
@@ -439,7 +439,7 @@ def validate_and_optimize_onnx(
                 model_fusion_statistics,
             )
 
-    return onnx_model_path, is_valid_onnx_model, config.vocab_size
+    return onnx_model_path, is_valid_onnx_model, None if model_type == "vit" else config.vocab_size
 
 
 def export_onnx_model_from_pt(
@@ -465,12 +465,21 @@ def export_onnx_model_from_pt(
     # config, model = load_pt_model_from_tf(model_name)
     model.cpu()
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    max_input_size = (
-        tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-    )
+    example_inputs = None
+    max_input_size = None
 
-    example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
+    if model_type == "vit":
+        image_processor = AutoFeatureExtractor.from_pretrained(model_name, cache_dir=cache_dir)
+        data = numpy.random.randint(low=0, high=256, size=224 * 224 * 3, dtype=numpy.uint8).reshape(224, 224, 3)
+
+        example_inputs = image_processor(data, return_tensors="pt")
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+        max_input_size = (
+            tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+        )
+
+        example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
     example_inputs = filter_inputs(example_inputs, input_names)
 
@@ -497,7 +506,13 @@ def export_onnx_model_from_pt(
         logger.info(f"Exporting ONNX model to {onnx_model_path}")
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
+        dynamic_axes = None
+        output_names = None
+
+        if model_type == "vit":
+            dynamic_axes, output_names = {key: {0: "pixel_values"} for key in example_inputs}, ["logits"]
+        else:
+            dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
         replace_torch_functions()
         torch_onnx_export(

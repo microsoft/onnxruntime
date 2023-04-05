@@ -307,6 +307,21 @@ Status UpdateDecoderFeeds(
     const transformers::IConsoleDumper* dumper);
 
 // ---------------------------------------------------------------
+// Functions for encoder-decoder model with float input like Whisper
+// ---------------------------------------------------------------
+
+Status CreateWhisperEncoderInputs(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* attn_mask_value,
+    int pad_token_id,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_ids,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids);
+
+
+// ---------------------------------------------------------------
 // Utility Functions
 // ---------------------------------------------------------------
 template <typename T>
