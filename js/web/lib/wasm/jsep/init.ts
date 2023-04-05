@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
-
 import {OrtWasmModule} from '../binding/ort-wasm';
-import {getTensorElementSize} from '../wasm-core-impl';
+import {getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
+import {LOG_DEBUG} from './log';
 import {TensorView} from './tensor';
 import {ShapeUtil} from './util';
 import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
@@ -111,17 +110,10 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         // jsepCopy(src, dst, size, isSourceGpu)
         (src: number, dst: number, size: number, isSourceGpu = false) => {
           if (isSourceGpu) {
-            if (env.debug) {
-              // eslint-disable-next-line no-console
-              console.log(`[js][${performance.now()}] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
-            }
+            LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
             backend.memcpy(src, dst);
           } else {
-            if (env.debug) {
-              // eslint-disable-next-line no-console
-              console.log(
-                  `[js][${performance.now()}] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
-            }
+            LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
             const data = module.HEAPU8.subarray(src, src + size);
             backend.upload(dst, data);
           }
@@ -132,11 +124,9 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
             Promise<void> => {
               const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
 
-              if (env.debug) {
-                // eslint-disable-next-line no-console
-                console.log(`[js][${performance.now()}] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${
-                    dataOffset}, size=${size}`);
-              }
+              LOG_DEBUG(
+                  'verbose',
+                  () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
               await backend.download(gpuDataId, data);
             },
@@ -149,10 +139,7 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
 
         // jsepRun
         (kernel: number, contextDataOffset: number) => {
-          if (env.debug) {
-            // eslint-disable-next-line no-console
-            console.log(`[js][${performance.now()}] jsepRun on ${contextDataOffset}`);
-          }
+          LOG_DEBUG('verbose', () => `[WebGPU] jsepRun: kernel=${kernel}, contextDataOffset=${contextDataOffset}`);
           const context = new OpKernelContext(module, backend, contextDataOffset);
           return backend.computeKernel(kernel, context);
         });

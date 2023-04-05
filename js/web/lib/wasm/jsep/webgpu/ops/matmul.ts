@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-core-impl';
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';

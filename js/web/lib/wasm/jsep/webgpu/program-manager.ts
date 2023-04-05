@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
-
 import {WebGpuBackend} from '../backend-webgpu';
+import {LOG_DEBUG} from '../log';
 
 import {createShaderHelper} from './ops/common';
 import {Artifact, GpuData, ProgramInfo} from './types';
@@ -113,10 +112,7 @@ export class ProgramManager {
 
     const code = programInfo.getShaderSource(createShaderHelper(normalizedDispatchGroupSize));
     const shaderModule = device.createShaderModule({code});
-    if (env.debug) {
-      // eslint-disable-next-line no-console
-      console.log(`WebGpuProgram: ${code}`);
-    }
+    LOG_DEBUG('verbose', () => `[WebGPU] shader code: ${code}`);
 
     const computePipeline =
         device.createComputePipeline({compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto'});

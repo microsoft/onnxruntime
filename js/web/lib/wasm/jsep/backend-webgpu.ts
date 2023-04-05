@@ -3,6 +3,7 @@
 
 import {env} from 'onnxruntime-common';
 
+import {LOG_DEBUG} from './log';
 import {TensorView} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
@@ -238,6 +239,10 @@ export class WebGpuBackend {
       this.programManager.setArtifact(key, artifact);
     }
 
+    LOG_DEBUG(
+        'info',
+        () => `[ProgramManager] run "${programInfo.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
+            normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
     this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup);
 
     return outputTensorViews;
@@ -301,10 +306,7 @@ export class WebGpuBackend {
       attributes[0] = undefined;
     }
 
-    if (env.debug) {
-      // eslint-disable-next-line no-console
-      console.log(`[js] Start to run kernel "${name}"...`);
-    }
+    LOG_DEBUG('info', () => `[WebGPU] Start to run kernel "${name}"...`);
 
     this.temporaryData = [];
     try {

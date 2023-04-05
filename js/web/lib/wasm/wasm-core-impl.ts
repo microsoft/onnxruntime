@@ -7,6 +7,7 @@ import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} 
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
 import {allocWasmString} from './string-utils';
+import {tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
 import {getInstance} from './wasm-factory';
 
 /**
@@ -114,128 +115,6 @@ export const releaseSession = (sessionId: number): void => {
   wasm._OrtReleaseSession(sessionHandle);
   activeSessions.delete(sessionId);
 };
-
-/**
- * Copied from ONNX definition. Use this to drop dependency 'onnx_proto' to decrease compiled .js file size.
- */
-export const enum DataType {
-  undefined = 0,
-  float = 1,
-  uint8 = 2,
-  int8 = 3,
-  uint16 = 4,
-  int16 = 5,
-  int32 = 6,
-  int64 = 7,
-  string = 8,
-  bool = 9,
-  float16 = 10,
-  double = 11,
-  uint32 = 12,
-  uint64 = 13,
-  complex64 = 14,
-  complex128 = 15,
-  bfloat16 = 16
-}
-
-export const getTensorElementSize = (dateType: number): number|
-    undefined => [undefined, 4, 1, 1, 2, 2, 4, 8, undefined, 1, 2, 8, 4, 8, undefined, undefined, undefined][dateType];
-
-
-const tensorDataTypeStringToEnum = (type: string): DataType => {
-  switch (type) {
-    case 'int8':
-      return DataType.int8;
-    case 'uint8':
-      return DataType.uint8;
-    case 'bool':
-      return DataType.bool;
-    case 'int16':
-      return DataType.int16;
-    case 'uint16':
-      return DataType.uint16;
-    case 'int32':
-      return DataType.int32;
-    case 'uint32':
-      return DataType.uint32;
-    case 'float32':
-      return DataType.float;
-    case 'float64':
-      return DataType.double;
-    case 'string':
-      return DataType.string;
-    case 'int64':
-      return DataType.int64;
-    case 'uint64':
-      return DataType.uint64;
-
-    default:
-      throw new Error(`unsupported data type: ${type}`);
-  }
-};
-
-const tensorDataTypeEnumToString = (typeProto: DataType): Tensor.Type => {
-  switch (typeProto) {
-    case DataType.int8:
-      return 'int8';
-    case DataType.uint8:
-      return 'uint8';
-    case DataType.bool:
-      return 'bool';
-    case DataType.int16:
-      return 'int16';
-    case DataType.uint16:
-      return 'uint16';
-    case DataType.int32:
-      return 'int32';
-    case DataType.uint32:
-      return 'uint32';
-    case DataType.float:
-      return 'float32';
-    case DataType.double:
-      return 'float64';
-    case DataType.string:
-      return 'string';
-    case DataType.int64:
-      return 'int64';
-    case DataType.uint64:
-      return 'uint64';
-
-    default:
-      throw new Error(`unsupported data type: ${typeProto}`);
-  }
-};
-
-const numericTensorTypeToTypedArray = (type: Tensor.Type): Float32ArrayConstructor|Uint8ArrayConstructor|
-    Int8ArrayConstructor|Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|
-    Uint8ArrayConstructor|Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor => {
-      switch (type) {
-        case 'float32':
-          return Float32Array;
-        case 'uint8':
-          return Uint8Array;
-        case 'int8':
-          return Int8Array;
-        case 'uint16':
-          return Uint16Array;
-        case 'int16':
-          return Int16Array;
-        case 'int32':
-          return Int32Array;
-        case 'bool':
-          return Uint8Array;
-        case 'float64':
-          return Float64Array;
-        case 'uint32':
-          return Uint32Array;
-        case 'int64':
-          return BigInt64Array;
-        case 'uint64':
-          return BigUint64Array;
-        default:
-          throw new Error(`unsupported type: ${type}`);
-      }
-    };
 
 /**
  * perform inference run
@@ -379,7 +258,7 @@ export const run = async(
               }
               output.push([type, dims, stringData]);
             } else {
-              const typedArrayConstructor = numericTensorTypeToTypedArray(type);
+              const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
               const data = new typedArrayConstructor(size);
               new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
                   .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));

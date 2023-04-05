@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
-
 import {WebGpuBackend} from '../backend-webgpu';
+import {LOG_DEBUG} from '../log';
 
 import {GpuData, GpuDataId, GpuDataType} from './types';
 
@@ -115,10 +114,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.backend.endComputePass();
     commandEncoder.copyBufferToBuffer(gpuBufferForUploading, 0, gpuDataCache.gpuData.buffer, 0, size);
 
-    if (env.debug) {
-      // eslint-disable-next-line no-console
-      console.log(`[js] GpuDataManager.upload(id=${id})`);
-    }
+    LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.upload(id=${id})`);
 
     this.buffersForUploadingPending.push(gpuBufferForUploading);
   }
@@ -158,10 +154,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     const gpuData = {id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer};
     this.storageCache.set(gpuData.id, {gpuData, originalSize: size});
 
-    if (env.debug) {
-      // eslint-disable-next-line no-console
-      console.log(`[js] GpuDataManager.create(size=${size}) => id=${gpuData.id}`);
-    }
+    LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.create(size=${size}) => id=${gpuData.id}`);
     return gpuData;
   }
 
@@ -175,10 +168,7 @@ class GpuDataManagerImpl implements GpuDataManager {
       throw new Error('releasing data does not exist');
     }
 
-    if (env.debug) {
-      // eslint-disable-next-line no-console
-      console.log(`[js] GpuDataManager.release(id=${id}), gpuDataId=${cachedData.gpuData.id}`);
-    }
+    LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.release(id=${id}), gpuDataId=${cachedData.gpuData.id}`);
 
     this.storageCache.delete(id);
     this.buffersPending.push(cachedData.gpuData.buffer);

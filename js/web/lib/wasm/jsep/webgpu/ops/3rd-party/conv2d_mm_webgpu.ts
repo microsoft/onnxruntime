@@ -19,8 +19,7 @@
 //
 // modified to fit the needs of the project
 
-import {env} from 'onnxruntime-common';
-
+import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
@@ -178,10 +177,7 @@ export const createConv2DMatMulProgramInfo =
         Math.ceil(batchSize / workGroupSize[2] / elementsPerThread[1])
       ];
 
-      if (env.debug) {
-        // eslint-disable-next-line no-console
-        console.log(`dispatch = ${dispatch}`);
-      }
+      LOG_DEBUG('verbose', () => `[conv2d_mm_webgpu] dispatch = ${dispatch}`);
 
       const innerElementSize = isVec4 ? (isChannelsLast && inChannels % 4 !== 0 ? 3 : 4) : elementsPerThread[0];
 
