@@ -455,9 +455,9 @@ jobs:
         $merged_nuget_package_name = $merged_nuget_package.Name
         $matched_name = ($merged_nuget_package_name -match "Microsoft.AI.MachineLearning.(?<version>.*).nupkg")
         $package_version = $matches['version']
-        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests.DotNet7_0')
-        $input_csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.DotNet7_0.csproj.pp')
-        $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.DotNet7_0.csproj')
+        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests.DotNet5_0')
+        $input_csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj.pp')
+        $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj')
         $input_csproj_content = Get-Content -Path $input_csproj
         $csproj_content = $input_csproj_content -replace '\[PackageVersion\]', $package_version
         Set-Content -Path $csproj -Value $csproj_content
@@ -473,11 +473,11 @@ jobs:
     inputs:
       targetType: 'inline'
       script: |
-        msbuild Microsoft.AI.MachineLearning.Tests.DotNet7_0.csproj /p:Platform=x64 /t:Restore
-        msbuild Microsoft.AI.MachineLearning.Tests.DotNet7_0.csproj /p:Platform=x64
-        msbuild Microsoft.AI.MachineLearning.Tests.DotNet7_0.csproj /p:Platform=AnyCpu /t:Restore
-        msbuild Microsoft.AI.MachineLearning.Tests.DotNet7_0.csproj /p:Platform=AnyCpu
-      workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet7_0
+        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=x64 /t:Restore
+        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=x64
+        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=AnyCpu /t:Restore
+        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=AnyCpu
+      workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0
 
 
   - task: PowerShell@2
@@ -537,14 +537,14 @@ jobs:
         .\Microsoft.AI.MachineLearning.Tests.exe
         popd
 
-        Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (DotNet7_0)"
-        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet7_0\bin\Debug\net5.0-windows10.0.17763.0
-        .\Microsoft.AI.MachineLearning.Tests.DotNet7_0.exe
+        Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (DotNet5_0)"
+        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\Debug\net5.0-windows10.0.17763.0
+        .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
         popd
 
         Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (AnyCpu)"
-        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet7_0\bin\x64\Debug\net5.0-windows10.0.17763.0
-        .\Microsoft.AI.MachineLearning.Tests.DotNet7_0.exe
+        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Debug\net5.0-windows10.0.17763.0
+        .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
         popd
 
         Write-Host "Done!"
