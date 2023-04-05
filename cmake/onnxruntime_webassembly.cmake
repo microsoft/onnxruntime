@@ -220,6 +220,10 @@ else()
   )
 
   if (onnxruntime_USE_JS)
+    # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
+    #       This flag allows async functions to be called from sync functions, in the cost of binary size and
+    #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
+
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JS=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
