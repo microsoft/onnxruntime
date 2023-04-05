@@ -40,9 +40,6 @@ export interface ProgramMetadata {
    */
   name: string;
 
-  // inputLayouts: GPUBindGroupLayoutEntry[];
-  // outputLayouts: GPUBindGroupLayoutEntry[];
-
   /**
    * gpu data types for each input
    */
@@ -94,7 +91,6 @@ export interface ProgramInfo extends ProgramMetadata {
 export interface Artifact {
   programInfo: ProgramInfo;
   computePipeline: GPUComputePipeline;
-  // attribLocations: {position: number; textureCoord: number};
 }
 
 export interface ComputeContextInputsOutputsMapping {

@@ -93,7 +93,6 @@ class OpKernelContext implements ComputeContext {
 }
 
 export const init = async(module: OrtWasmModule): Promise<void> => {
-  // init JSEP if available
   const init = module.jsepInit;
   if (init && navigator.gpu) {
     const backend = new WebGpuBackend();
