@@ -2469,8 +2469,12 @@ def main():
                         "ARM(64) builds. Will skip test running after build."
                     )
                     args.test = False
+            # There is no ARM32 python prebuilt exe. So we assume 32bit means x86.
             elif cpu_arch == "32bit" or args.x86:
                 cmake_extra_args = ["-A", "Win32", "-T", "host=x64", "-G", args.cmake_generator]
+            elif platform.machine() == "ARM64":
+                # TODO: add ARM64EC support
+                cmake_extra_args = ["-A", "ARM64", "-G", args.cmake_generator]
             else:
                 if args.msvc_toolset:
                     toolset = "host=x64,version=" + args.msvc_toolset
