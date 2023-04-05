@@ -49,7 +49,7 @@ namespace GenerationCudaDeviceHelper {
 
 // This function assumes the Attention type is same as graph's past state type.
 // e.g In the case of past(fp32) -> cast to fp16 -> Attention(fp16), the reorder
-// function will use the fp32 chunk size and cause the model silently generate
+// function will use the fp32 chunk size and cause the model silently generates
 // the incorrect results.
 // TODO: Fix this issue. Either retrive the Attention op type from the graph or
 // check the type of past state as graph input should be same as Attention op type.
