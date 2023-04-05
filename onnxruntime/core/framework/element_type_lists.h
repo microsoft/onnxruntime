@@ -48,6 +48,11 @@ using AllFixedSize =
         BFloat16,
         bool>;
 
+using All =
+    boost::mp11::mp_push_back<
+        AllFixedSize,
+        std::string>;
+
 using All_float8 =
     TypeList<
         Float8E4M3FN,
@@ -57,7 +62,7 @@ using All_float8 =
 
 using All_with_float8 =
     boost::mp11::mp_push_back<
-        AllFixedSize,
+        All,
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
