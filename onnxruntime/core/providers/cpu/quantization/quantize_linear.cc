@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <core/common/safeint.h>
+#include "core/framework/element_type_lists.h"
 #include "core/providers/cpu/quantization/quantize_linear.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
@@ -79,6 +80,18 @@ REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t)
 
+template <typename OutputType>
+typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::All_float8, OutputType>::value, bool>::type
+IsNull(const OutputType& value) {
+  return value == 0;
+}
+
+template <typename OutputType>
+typename std::enable_if<boost::mp11::mp_contains<element_type_lists::All_float8, OutputType>::value, bool>::type
+IsNull(const OutputType& value) {
+  return value == OutputType(static_cast<float>(0), true);
+}
+
 // formula is Y = (X - ZeroPoint) * Scale
 template <typename T>
 Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
@@ -100,11 +113,11 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   float* output = y.MutableData<float>();
 
   const T* zero_point = x_zero_point ? x_zero_point->Data<T>() : nullptr;
-  if (std::is_same<T, int32_t>::value) {
+  if (boost::mp11::mp_contains<TypeList<int32_t, Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ>, T>::value) {
     ORT_ENFORCE(zero_point == nullptr ||
                     std::all_of(zero_point,
                                 zero_point + x_zero_point->Shape().Size(),
-                                [](int32_t zp) { return zp == 0; }),
+                                [](T zp) { return IsNull(zp); }),
                 "DequantizeLinear with type int32 should have no zero point or all zero points should be 0");
   }
 
@@ -121,26 +134,6 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   return Status::OK();
 }
-
-template<typename T>
-void LocalParQuantizeLinear(const float* Input, T* Output, size_t N, float Scale, T ZeroPoint, bool /* saturate */, concurrency::ThreadPool* thread_pool) {
-  ParQuantizeLinearStd(Input, Output, N, Scale, ZeroPoint, thread_pool);
-}
-
-template<typename T>
-T LocalDefaultZero() {
-  return static_cast<T>(0);
-}
-
-#define REGISTER_QUANTIZELINEAR(T)                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
-      QuantizeLinear,                                                 \
-      19,                                                             \
-      T,                                                              \
-      KernelDefBuilder()                                              \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
-      QuantizeLinear<T>);
 
 #define REGISTER_QUANTIZELINEAR_VERSIONED(T)                          \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
@@ -163,28 +156,52 @@ T LocalDefaultZero() {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T>);
 
-#define REGISTER_QUANTIZELINEAR_FLOAT8(T)                             \
-  REGISTER_QUANTIZELINEAR(T)                                          \
-  template<>                                                          \
-  T LocalDefaultZero() {                                              \
-    return T(static_cast<unsigned char>(0), T::FromBits);\
-  }                                                                   \
-  template<>                                                          \
-  void LocalParQuantizeLinear(const float* Input, T* Output, size_t N, float Scale, T ZeroPoint, bool saturate, concurrency::ThreadPool* thread_pool) { \
-    ParQuantizeLinearSat(Input, Output, N, Scale, ZeroPoint, saturate, thread_pool); \
-  }
+#define REGISTER_QUANTIZELINEAR(T)                                    \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
+      QuantizeLinear,                                                 \
+      19,                                                             \
+      T,                                                              \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
+      QuantizeLinear<T>);
 
 REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
 
-REGISTER_QUANTIZELINEAR_FLOAT8(Float8E4M3FN)
-REGISTER_QUANTIZELINEAR_FLOAT8(Float8E4M3FNUZ)
-REGISTER_QUANTIZELINEAR_FLOAT8(Float8E5M2)
-REGISTER_QUANTIZELINEAR_FLOAT8(Float8E5M2FNUZ)
+REGISTER_QUANTIZELINEAR(Float8E4M3FN)
+REGISTER_QUANTIZELINEAR(Float8E4M3FNUZ)
+REGISTER_QUANTIZELINEAR(Float8E5M2)
+REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
 
 REGISTER_QUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t)
 
+template <typename OutputType>
+typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::All_float8, OutputType>::value, void>::type
+ParQuantizeLinear(const float* Input,
+                  OutputType* Output,
+                  size_t N,
+                  float Scale,
+                  size_t bd,
+                  const OutputType* ZeroPoint,
+                  bool /* saturate */,
+                  concurrency::ThreadPool* thread_pool) {
+  ParQuantizeLinearStd(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : (OutputType)0, thread_pool);
+}
+
+template <typename OutputType>
+typename std::enable_if<boost::mp11::mp_contains<element_type_lists::All_float8, OutputType>::value, void>::type
+ParQuantizeLinear(const float* Input,
+                  OutputType* Output,
+                  size_t N,
+                  float Scale,
+                  size_t bd,
+                  const OutputType* ZeroPoint,
+                  bool saturate,
+                  concurrency::ThreadPool* thread_pool) {
+  ParQuantizeLinearSat(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : OutputType(static_cast<float>(0), true), saturate, thread_pool);
+}
 
 // formula is Y = X / Scale + ZeroPoint
 template <typename T>
@@ -207,8 +224,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   for (size_t n = 0; n < static_cast<size_t>(N); n++) {
     for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
-      T zp = zero_point != nullptr ? zero_point[bd] : LocalDefaultZero<T>();
-      LocalParQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], zp, saturate_, ctx->GetOperatorThreadPool());
+      ParQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], bd, zero_point, saturate_, ctx->GetOperatorThreadPool());
       input += block_size;
       output += block_size;
     }

@@ -6,6 +6,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/common/narrow.h"
+#include "core/framework/element_type_lists.h"
 #include "core/framework/float8.h"
 #include <cmath>
 
@@ -110,12 +111,13 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
  */
 
 template <typename OutputType>
-void ParQuantizeLinearStd(const float* Input,
-                          OutputType* Output,
-                          size_t N,
-                          float Scale,
-                          OutputType ZeroPoint,
-                          concurrency::ThreadPool* thread_pool) {
+typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::All_float8, OutputType>::value, void>::type
+ParQuantizeLinearStd(const float* Input,
+                     OutputType* Output,
+                     size_t N,
+                     float Scale,
+                     OutputType ZeroPoint,
+                     concurrency::ThreadPool* thread_pool) {
   constexpr std::ptrdiff_t block_size = 128;
   const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;
   const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), static_cast<double>(block_size * sizeof(uint8_t)), static_cast<double>(block_size) * 2.0};
@@ -126,61 +128,22 @@ void ParQuantizeLinearStd(const float* Input,
   });
 }
 
-template<>
-void ParQuantizeLinearStd(const float*,
-                          Float8E4M3FN*,
-                          size_t,
-                          float,
-                          Float8E4M3FN,
-                          concurrency::ThreadPool*) {
-  ORT_THROW("Parameter saturate is required for float 8 types.");
-}
-
-template<>
-void ParQuantizeLinearStd(const float*,
-                          Float8E4M3FNUZ*,
-                          size_t,
-                          float,
-                          Float8E4M3FNUZ,
-                          concurrency::ThreadPool*) {
-  ORT_THROW("Parameter saturate is required for float 8 types.");
-}
-
-template<>
-void ParQuantizeLinearStd(const float*,
-                          Float8E5M2*,
-                          size_t,
-                          float,
-                          Float8E5M2,
-                          concurrency::ThreadPool*) {
-  ORT_THROW("Parameter saturate is required for float 8 types.");
-}
-
-template<>
-void ParQuantizeLinearStd(const float*,
-                          Float8E5M2FNUZ*,
-                          size_t,
-                          float,
-                          Float8E5M2FNUZ,
-                          concurrency::ThreadPool*) {
-  ORT_THROW("Parameter saturate is required for float 8 types.");
-}
-
 template <typename OutputFloat8Type>
-void ParQuantizeLinearSat(const float* Input,
-                          OutputFloat8Type* Output,
-                          size_t N,
-                          float Scale,
-                          OutputFloat8Type ZeroPoint,
-                          bool saturate,
-                          concurrency::ThreadPool* thread_pool) {
+typename std::enable_if<boost::mp11::mp_contains<element_type_lists::All_float8, OutputFloat8Type>::value, void>::type
+ParQuantizeLinearSat(const float* Input,
+                     OutputFloat8Type* Output,
+                     size_t N,
+                     float Scale,
+                     const OutputFloat8Type& /* ZeroPoint */,
+                     bool saturate,
+                     concurrency::ThreadPool* thread_pool) {
   constexpr std::ptrdiff_t block_size = 128;
   const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;
   const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), static_cast<double>(block_size * sizeof(uint8_t)), static_cast<double>(block_size) * 2.0};
   concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     auto begin_idx = begin * block_size;
     auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);
-    for(;begin_idx<end_idx;++begin_idx) {
+    for (; begin_idx < end_idx; ++begin_idx) {
       Output[begin_idx] = OutputFloat8Type(Input[begin_idx] / Scale, saturate);
     }
   });

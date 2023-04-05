@@ -53,15 +53,15 @@ struct Float8E4M3FN {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
       if (e != 0) {
-        if (e < 117) { // 0b1110101
-        } else if (e < 118) { // 0b1110110
+        if (e < 117) {         // 0b1110101
+        } else if (e < 118) {  // 0b1110110
           val |= 1;
           if ((m >> 23) & 1) {
             // rounding
             val += 1;
           }
         } else if (e < 121) {  // 127 - 7 + 1 // 0b1111001
-          auto d = 120 - e;  // 0b1111000
+          auto d = 120 - e;    // 0b1111000
           val |= 1 << (2 - d);
           val |= m >> (21 + d);
           if ((m >> (20 + d)) & 1) {
@@ -152,7 +152,6 @@ struct Float8E4M3FN {
 inline ORT_HOST_DEVICE bool operator==(const Float8E4M3FN& left, const Float8E4M3FN& right) { return left.val == right.val; }
 inline ORT_HOST_DEVICE bool operator!=(const Float8E4M3FN& left, const Float8E4M3FN& right) { return left.val != right.val; }
 inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FN& left, const Float8E4M3FN& right) { return left.val < right.val; }
-
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat8E4M3FN and Float8E4M3FN from unsigned char
@@ -254,7 +253,7 @@ struct Float8E4M3FNUZ {
         } else {
           val = 0x80;
         }
-      } else if (m ==0) {
+      } else if (m == 0) {
         // -0
         val = 0;
       }
@@ -306,7 +305,6 @@ inline ORT_HOST_DEVICE bool operator==(const Float8E4M3FNUZ& left, const Float8E
 inline ORT_HOST_DEVICE bool operator!=(const Float8E4M3FNUZ& left, const Float8E4M3FNUZ& right) { return left.val != right.val; }
 inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FNUZ& left, const Float8E4M3FNUZ& right) { return left.val < right.val; }
 
-
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat8E4M3FN and Float8E4M3FN from unsigned char
 // E.g 10_f16 or 10_b16
@@ -355,17 +353,17 @@ struct Float8E5M2 {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     val = __nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E5M2);
 #else
-    #if defined(CUDA_VERSION)
-    #error "CUDA should be used."
-    #endif
+#if defined(CUDA_VERSION)
+#error "CUDA should be used."
+#endif
 
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
 
-    val = (b & 0x80000000) >> 24;           // sign
+    val = (b & 0x80000000) >> 24;  // sign
     if ((b & 0x7fc00000) == 0x7fc00000) {
       val |= 0x7f;
-    } else if ((b & 0x7FFFFFFF) == 0x7F800000) { // inf
+    } else if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
       if (saturate) {
         val |= 0x7B;
       } else {
@@ -419,9 +417,9 @@ struct Float8E5M2 {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     return __half2float(__nv_cvt_fp8_to_halfraw(val, __NV_E5M2));
 #else
-    #if defined(CUDA_VERSION)
-    #error "CUDA should be used."
-    #endif
+#if defined(CUDA_VERSION)
+#error "CUDA should be used."
+#endif
 
     uint32_t res;
     if (val >= 253) {
@@ -523,10 +521,10 @@ struct Float8E5M2FNUZ {
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
 
-    val = (b & 0x80000000) >> 24;           // sign
+    val = (b & 0x80000000) >> 24;  // sign
     if ((b & 0x7fc00000) == 0x7fc00000) {
       val = 0x80;
-    } else if ((b & 0x7FFFFFFF) == 0x7F800000) { // inf
+    } else if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
       if (saturate) {
         val |= 0x7F;
       } else {
@@ -571,7 +569,7 @@ struct Float8E5M2FNUZ {
         } else {
           val = 0x80;
         }
-      } else if (m ==0) {
+      } else if (m == 0) {
         // -0
         val = 0;
       }
