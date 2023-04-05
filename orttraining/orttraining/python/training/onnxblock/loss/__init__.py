@@ -2,4 +2,4 @@
 # Licensed under the MIT License.
 # __init__.py
 
-from .loss import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
+from .loss import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss  # noqa: F401

@@ -11,7 +11,7 @@ from collections import abc
 
 import torch
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception
+from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception  # noqa: F401
 from ._utils import warn_of_constant_inputs
 
 
@@ -66,7 +66,7 @@ class _OutputIdentityOp(torch.autograd.Function):
         return g.op("Identity", self)
 
 
-class _PrimitiveType(object):
+class _PrimitiveType:
     _primitive_types = {int, bool, float}
 
     @staticmethod
@@ -110,7 +110,7 @@ def flatten_kwargs(kwargs, device):
     return flattened_kwargs
 
 
-class _InputInfo(object):
+class _InputInfo:
     def __init__(
         self,
         names,
@@ -216,7 +216,7 @@ def _combine_input_buffers_initializers(
                 if name != input_info.names[input_idx]:
                     # When ONNX drops unused inputs, get correct index from user input
                     # if name is not in input_info.names, ValueError will be thrown
-                    input_idx = input_info.names.index(name)
+                    input_idx = input_info.names.index(name)  # noqa: PLW2901
                 inp = non_none_inputs[input_idx]
             except (IndexError, ValueError):
                 # ONNX input name is not present in input_info.names.
@@ -224,7 +224,7 @@ def _combine_input_buffers_initializers(
 
         if inp is None:
             # Registered buffers are translated to user_input+initializer in ONNX
-            try:
+            try:  # noqa: SIM105
                 inp = buffer_names_dict[name]
             except KeyError:
                 # ONNX input name is not present in the registered buffer dict.
@@ -268,7 +268,7 @@ def deepcopy_model_input(*inputs, **kwargs):
     return sample_inputs_copy, sample_kwargs_copy
 
 
-class _TensorStub(object):
+class _TensorStub:
     """Tensor stub class used to represent model's input or output"""
 
     __slots__ = ["name", "dtype", "shape", "shape_dims"]
@@ -302,7 +302,7 @@ class _TensorStub(object):
         if not other:
             return False
         elif not isinstance(other, _TensorStub):
-            raise NotImplemented("_TensorStub must only be compared to another _TensorStub instance!")
+            raise NotImplementedError("_TensorStub must only be compared to another _TensorStub instance!")
         elif self.name != other.name:
             return False
         elif self.dtype != other.dtype:
@@ -466,7 +466,7 @@ def _transform_output_to_flat_tuple(data):
 
 class _FlattenedModule(torch.nn.Module):
     def __init__(self, original_module):
-        super(_FlattenedModule, self).__init__()
+        super().__init__()
         self._original_module = original_module
 
         # Before `forward` is called, _ort_module must be assigned
@@ -552,7 +552,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
             # All positional non-*args and non-**kwargs are processed here
             name = input_parameter.name
             inp = None
-            input_idx += var_positional_idx
+            input_idx += var_positional_idx  # noqa: PLW2901
             if input_idx < len(inputs) and inputs[input_idx] is not None:
                 inp = inputs[input_idx]
             elif name in kwargs and kwargs[name] is not None:

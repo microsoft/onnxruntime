@@ -7,13 +7,16 @@ namespace onnxruntime {
 namespace contrib {
 
 enum AttentionMaskType {
-  MASK_NONE,            // No mask
-  MASK_1D_KEY_SEQ_LEN,  // [batch_size], key sequence length
-  MASK_1D_END_START,    // [2 * batch_size] with end positions and start positions
-  MASK_2D_DUMMY,        // dummy mask with shape [1, 1] or [batch_size, 1]. It has same effect as no mask.
-  MASK_2D_KEY_PADDING,  // [batch_size, total_sequence_length]
-  MASK_3D_ATTENTION,    // [batch_size, sequence_length, total_sequence_length]
-  MASK_4D_MEGATRON,     // Megatron causal mask with shape [batch_size, 1, max_sequence_length, max_sequence_length]
+  MASK_NONE,                  // No mask
+  MASK_1D_KEY_SEQ_LEN,        // [batch_size], key sequence length
+  MASK_1D_END_START,          // [2 * batch_size] with end positions and start positions
+  MASK_1D_KEY_SEQ_LEN_START,  // [3 * batch_size + 2] with [key_len[0], ..., key_len[batch_size - 1], query_start[0],
+                              // ..., query_start[batch_size - 1], query_end[batch_size - 1], key_start[0], ...,
+                              // key_start[batch_size - 1], key_end[batch_size - 1]]
+  MASK_2D_DUMMY,              // dummy mask with shape [1, 1] or [batch_size, 1]. It has same effect as no mask.
+  MASK_2D_KEY_PADDING,        // [batch_size, total_sequence_length]
+  MASK_3D_ATTENTION,          // [batch_size, sequence_length, total_sequence_length]
+  MASK_4D_MEGATRON,           // Megatron causal mask with shape [batch_size, 1, max_sequence_length, max_sequence_length]
   MASK_UNKNOWN
 };
 
