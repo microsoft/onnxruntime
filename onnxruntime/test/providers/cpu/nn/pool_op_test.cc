@@ -1393,7 +1393,7 @@ TEST(PoolTest, LpPool2d) {
 
       test.AddOutput<float>("Y", y_sizes[y_count], ys[y_count]);
       test.Run();
-      y_count++;    
+      y_count++;
     }
 }
 
