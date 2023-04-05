@@ -9,13 +9,8 @@ import {ComputeContext} from '../types';
 
 import {createGroupedConvProgramInfoLoader} from './conv-grouped';
 import {createConv2DMatMulProgramInfoLoader} from './conv2d-mm';
-// import {createDotProductProgramInfoLoader} from './dot-product';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
 import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
-
-// import {createIm2ColProgramInfoLoader} from './im2col';
-// import {createMatmulProgramInfoLoader} from './matmul';
-
 
 export const calculateOutputShape =
     (inputShape: readonly number[], kernelShape: readonly number[], dilations: readonly number[],
@@ -173,7 +168,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
        attributes.strides[0] === 1 && attributes.strides[1] === 1 &&
        (attributes.autoPad === 'SAME_UPPER' || attributes.autoPad === 'SAME_LOWER' ||
         attributes.autoPad === 'VALID'))) {
-    // return conv2dByMatMul({x, filter, convInfo, backend, bias, activation, preluActivationWeights, leakyreluAlpha});
+    // TODO: implement conv2dByMatMul()
     context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
     return 0;
   }
@@ -183,28 +178,13 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
     return 0;
   }
 
-  // const thresholdToIncreaseWorkgroups = 8;
-  // const workgroupsBy32x32 = batchSize * Math.ceil((outHeight * outWidth) / 32) * Math.ceil(outChannels / 32);
-  // if (workgroupsBy32x32 <= thresholdToIncreaseWorkgroups) {
-  //   // return conv2dWithIm2Col({x, filter, convInfo, backend, bias, preluActivationWeights, leakyreluAlpha,
-  //   // activation});
-  //   context.compute(createGroupedConvProgramInfoLoader(context.inputs, adjustedAttributes));
-  //   return 0;
-  // }
+  // TODO: implement conv2dWithIm2Col()
 
   const dimAOuter = isChannelsLast ? outHeight * outWidth : outChannels;
   const dimBOuter = isChannelsLast ? outChannels : outHeight * outWidth;
   const dimInner = weightHeight * weightWidth * inputChannels;
 
   const sequentialAccessByThreads = /* backend.adapterInfo.isIntel() */ true;
-  // const inputs = [context.inputs[0], context.inputs[1]];
-  // if (hasBias) {
-  //   if (!isChannelsLast && context.inputs[2].dims.length === 1) {
-  //     inputs.push(context.inputs[2].reshape([context.inputs[2].dims[0], 1, 1]));
-  //   } else {
-  //     inputs.push(context.inputs[2]);
-  //   }
-  // }
 
   // STEP.1: transpose weight
   const transposedWeight = (context.customData.wT as TensorView | undefined) ??
@@ -219,6 +199,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
     context.customData.wT = transposedWeight;
   }
 
+  // STEP.2: prepare reshaped inputs
   const convInputs = [inputs[0], transposedWeight];
   if (hasBias) {
     if (!isChannelsLast && inputs[2].dims.length === 1) {
@@ -227,6 +208,8 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
       convInputs.push(inputs[2]);
     }
   }
+
+  // STEP.3: compute matmul
   context.compute(
       createConv2DMatMulProgramInfoLoader(
           convInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,

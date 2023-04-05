@@ -96,6 +96,9 @@ export const createIndicesHelper = (name: string, shape: readonly number[]): Ind
   return {o2iImpl, o2iCall, i2oImpl, i2oExpression, indicesVariableDeclaration, iType};
 };
 
+/**
+ * A ShaderHelper is a helper class for generating WGSL code.
+ */
 export interface ShaderHelper {
   mainStart(workgroupSize?: number|[number, number, number]): string;
   guardAgainstOutOfBoundsWorkgroupSizes(size: unknown): string;

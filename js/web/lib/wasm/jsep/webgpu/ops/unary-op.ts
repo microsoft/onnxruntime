@@ -174,55 +174,20 @@ export const erf = (context: ComputeContext): number => {
   return 0;
 };
 
-// export const exp = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-//     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Exp', 'exp'), inputs);
-
 export const floor = (context: ComputeContext): number => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Floor', 'floor'));
   return 0;
 };
-
-// export interface LeakyReluAttributes extends AttributeWithCacheKey {
-//   readonly alpha: number;
-// }
-
-// export const leakyRelu = async(handler: WebGpuInferenceHandler, inputs: Tensor[], attributes: EluAttributes):
-//                              Promise<Tensor[] >=>handler.run(
-//                                  createElementwiseProgramInfoLoader(
-//                                      inputs[0], 'LeakyRelu', a => `leaky_relu_vf32(${a})`, `
-//     let leaky_relu_alpha_: f32 = f32(${attributes.alpha});
-
-//     fn leaky_relu_f32(a: f32) -> f32 {
-//       return select(a, a * leaky_relu_alpha_, a < 0.0);
-//     }
-
-//     fn leaky_relu_vf32(v: vec4<f32>) -> vec4<f32> {
-//       return vec4(leaky_relu_f32(v.x), leaky_relu_f32(v.y), leaky_relu_f32(v.z), leaky_relu_f32(v.w));
-//     }`,
-//                                      attributes.cacheKey),
-//                                  inputs);
-
-// export const parseLeakyReluAttributes = (node: Graph.Node): LeakyReluAttributes =>
-//     createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 0.01)});
-
-// export const log = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-//     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Log', 'log'), inputs);
 
 export const neg = (context: ComputeContext): number => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Neg', a => `-${a}`));
   return 0;
 };
 
-// // export const not = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-// //     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslNot()), inputs)];
-
 export const reciprocal = (context: ComputeContext): number => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Reciprocal', a => `1.0/${a}`));
   return 0;
 };
-
-// export const relu = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[] >=>handler.run(
-//     createElementwiseProgramInfoLoader(inputs[0], 'Relu', a => `max(${a}, vec4(0.0))`), inputs);
 
 export const sigmoid = (context: ComputeContext): number => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sigmoid', a => `(1.0 / (1.0 + exp(-${a})))`));

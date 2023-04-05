@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-core-impl';
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -20,11 +19,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 
   const inputType = inputs[0].dataType;
   const inputDimensionality = inputs[0].dims.length;
-
-  // TODO: Support string concat
-  if (inputType === DataType.string) {
-    throw new Error('string tensor is not supported yet');
-  }
 
   for (const input of inputs) {
     // make sure types of all inputs match

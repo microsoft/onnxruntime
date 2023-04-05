@@ -78,7 +78,7 @@ const conv2dCommonSnippet =
       col % outWidth);
     `;
 
-      const xHight = isChannelsLast ? 'xShape[1]' : 'xShape[2]';
+      const xHeight = isChannelsLast ? 'xShape[1]' : 'xShape[2]';
       const xWidth = isChannelsLast ? 'xShape[2]' : 'xShape[3]';
       const row = isChannelsLast ? 'row' : 'col';
       const col = isChannelsLast ? 'col' : 'row';
@@ -96,7 +96,7 @@ const conv2dCommonSnippet =
     var resData = ${typeSnippet(innerElementSizeX)}(0.0);
     // The bounds checking is always needed since we use it to pad zero for
     // the 'same' padding type.
-    if (xRow >= 0 && xRow < ${xHight} && xCol >= 0 && xCol < ${xWidth}) {
+    if (xRow >= 0 && xRow < ${xHeight} && xCol >= 0 && xCol < ${xWidth}) {
       ${coordASnippet}
       let xIndex = getIndexFromCoords4D(coord, xShape);
       ${getXSnippet(innerElementSizeX)}
