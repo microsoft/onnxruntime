@@ -20,8 +20,7 @@ class NhwcTransformer : public GraphTransformer {
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit NhwcTransformer(AllocatorPtr cpu_allocator) noexcept
-      : GraphTransformer("NhwcTransformer"), cpu_allocator_(std::move(cpu_allocator)){};
+  explicit NhwcTransformer(AllocatorPtr cpu_allocator) noexcept;
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
