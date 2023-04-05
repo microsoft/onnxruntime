@@ -32,8 +32,15 @@ com.microsoft;1;QLinearLeakyRelu
 ```
 These operators are discovered when the library is deployed in iOS. It was found that ONNXRuntime will optimize the graph so you should add these custom operators back to `hws_mobile_package.required_operators.config`.
 
+# Step 2: Compile ONNXRuntime XCFramework
+For iOS simulator and iOS devices, we could follow the official tutorial to build the XCFramework. 
+In particular, you could use `build_ios_framework.py` compiles the library with the following command:
+```
+python tools/ci_build/github/apple/build_ios_framework.py --config Release --build_dir /home/username/onnxlibrary/ios_release_v20230327_2320 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc-3.21.12.0 tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+```
 
-
-$ python tools/ci_build/github/apple/build_ios_framework.py --config Release --build_dir /Users/goodnotesci/goodnotes/handwriting_synthesis_rust/paco_macabi_arm64_release_v20230327_2320 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc-3.21.12.0 tools/ci_build/gitn:qhub/apple/default_full_ios_framework_build_settings.json
-$ python tools/ci_build/github/apple/build_macabi_framework.py --config Release --build_dir /Users/goodnotesci/goodnotes/handwriting_synthesis_rust/paco_ios_release --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc-3.21.12.0 tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
-$ python tools/ci_build/github/apple/build_macabi_framework.py --config Release --build_dir /Users/goodnotesci/goodnotes/handwriting_synthesis_rust/paco_macabi_arm64_release_v20230327_2320 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc-3.21.12.0 tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
+MacCatalyst is not supported officially. `build_macabi_framework.py` has been created for our use.
+To compile, use the follow command
+```
+python tools/ci_build/github/apple/build_macabi_framework.py --config Release --build_dir /home/username/onnxlibrary/macabi_release_v20230327_2320 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc-3.21.12.0 tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
+```
