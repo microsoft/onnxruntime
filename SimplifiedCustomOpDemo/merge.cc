@@ -12,11 +12,14 @@ struct Merge {
     auto status = ort_api->KernelInfoGetAttribute_int64(info, "reverse", &reverse);
     reverse_ = reverse != 0;
   }
-  void Compute(const Ort::Custom2::TensorT<std::string>& strings_in,
-               const std::string& string_in,
+  void Compute(const Ort::Custom2::TensorT<std::string_view>& strings_in,
+               std::string_view string_in,
                Ort::Custom2::TensorT<std::string>& strings_out) {
-    std::vector<std::string> string_pool = strings_in.Data();
-    string_pool.push_back(string_in);
+    std::vector<std::string> string_pool;
+    for (const auto& s : strings_in.Data()) {
+      string_pool.emplace_back(s.data(), s.size());
+    }
+    string_pool.emplace_back(string_in.data(), string_in.size());
     if (reverse_) {
       for (auto& str : string_pool) {
         std::reverse(str.begin(), str.end());

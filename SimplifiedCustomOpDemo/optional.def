@@ -1,0 +1,4 @@
+LIBRARY "optional.dll"
+EXPORTS
+ RegisterCustomOps @1
+ RegisterCustomOpsAltName @2

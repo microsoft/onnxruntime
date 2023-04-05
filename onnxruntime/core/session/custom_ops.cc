@@ -341,8 +341,8 @@ struct CustomOpKernel : OpKernel {
   void* raw_fn_{};
 };
 
-common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domains,
-                                     std::shared_ptr<CustomRegistry>& output) {
+common::Status CreateCustomRegistryII(gsl::span<OrtCustomOpDomain* const> op_domains,
+                                      std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
   using OnnxTypeVec = std::vector<ONNXTensorElementDataType>;
@@ -369,7 +369,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
 
     for (const auto* op : domain->custom_ops_) {
-      //std::vector<std::string> type_constraint_ids;
+      // std::vector<std::string> type_constraint_ids;
       const size_t input_count = op->GetInputTypeCount(op);
       const size_t output_count = op->GetOutputTypeCount(op);
 
@@ -403,7 +403,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
           schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option, is_homogeneous, min_arity);
           schema.TypeConstraint("T" + std::to_string(type_id_counter++), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
-          //type_constraint_ids.push_back("T" + std::to_string(type_id_counter++));
+          // type_constraint_ids.push_back("T" + std::to_string(type_id_counter++));
         }
 
         for (size_t i = 0; i < output_count; i++) {
@@ -430,7 +430,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
           schema.Output(i, "Output" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option, is_homogeneous, min_arity);
           schema.TypeConstraint("T" + std::to_string(type_id_counter++), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
-          //type_constraint_ids.push_back("T" + std::to_string(type_id_counter++));
+          // type_constraint_ids.push_back("T" + std::to_string(type_id_counter++));
         }
 
         schema.SetDomain(domain->domain_);
@@ -450,7 +450,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
       // to work with newer versions (> 12) of the ORT binary.
       if (op->version > 12) {
-        //auto input_count = op->GetInputTypeCount(op);
+        // auto input_count = op->GetInputTypeCount(op);
         for (size_t i = 0; i < input_count; i++) {
           def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
         }
@@ -535,12 +535,12 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     }
 #endif
   }
- 
+
   return Status::OK();
 }
 
-common::Status CreateCustomRegistryB(gsl::span<OrtCustomOpDomain* const> op_domains,
-                                     std::shared_ptr<CustomRegistry>& output) {
+common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domains,
+                                    std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
   for (const auto& domain : op_domains) {

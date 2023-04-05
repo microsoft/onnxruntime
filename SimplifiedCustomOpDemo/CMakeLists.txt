@@ -1,11 +1,17 @@
 cmake_minimum_required(VERSION 3.17)
 set(CMAKE_CXX_STANDARD 17)
 project(simple_custom_op CXX)
+
 add_library (fuse_select_filter SHARED fuse_select_filter.cc fuse_select_filter.def)
 add_library (merge SHARED merge.cc merge.def)
+add_library (optional SHARED optional.cc optional.def)
+
 target_include_directories(fuse_select_filter PRIVATE ../include/onnxruntime/core/session)
 target_include_directories(merge PRIVATE ../include/onnxruntime/core/session)
+target_include_directories(optional PRIVATE ../include/onnxruntime/core/session)
+
 add_executable(main main.cc)
+
 target_include_directories(main PRIVATE ../include/onnxruntime/core/session)
 target_link_directories(main PRIVATE ../build/Windows/Debug/Debug/ ../build/Linux/RelWithDebInfo/)
 target_link_libraries(main PRIVATE onnxruntime)
