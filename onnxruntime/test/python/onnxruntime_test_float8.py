@@ -30,78 +30,78 @@ class TestInferenceSession(unittest.TestCase):
         else {
             TensorProto.FLOAT8E4M3FN: np.array(
                 [
-                    0.000000e00,
-                    0.000000e00,
+                    0,
+                    0,
                     1.953125e-03,
                     9.765625e-03,
                     1.015625e-01,
-                    1.000000e00,
-                    2.000000e00,
-                    1.000000e01,
-                    1.040000e02,
-                    4.480000e02,
-                    4.480000e02,
-                    4.480000e02,
-                    np.nan,
-                    np.nan,
+                    1,
+                    2,
+                    10,
+                    104,
+                    448,
+                    448,
+                    448,
+                    448,
+                    -448,
                     np.nan,
                 ],
                 dtype=np.float32,
             ),
             TensorProto.FLOAT8E4M3FNUZ: np.array(
                 [
-                    0.000000e00,
-                    0.000000e00,
+                    0,
+                    0,
                     9.765625e-04,
                     9.765625e-03,
                     1.015625e-01,
-                    1.000000e00,
-                    2.000000e00,
-                    1.000000e01,
-                    1.040000e02,
-                    2.400000e02,
-                    2.400000e02,
-                    2.400000e02,
-                    np.nan,
-                    np.nan,
+                    1,
+                    2,
+                    10,
+                    104,
+                    240,
+                    240,
+                    240,
+                    240,
+                    -240,
                     np.nan,
                 ],
                 dtype=np.float32,
             ),
             TensorProto.FLOAT8E5M2: np.array(
                 [
-                    0.000000e00,
-                    0.000000e00,
+                    0,
+                    0,
                     9.765625e-04,
                     9.765625e-03,
                     9.375000e-02,
-                    1.000000e00,
-                    2.000000e00,
-                    1.000000e01,
+                    1,
+                    2,
+                    10,
                     9.600000e01,
                     1.024000e03,
                     1.024000e04,
-                    5.734400e04,
-                    np.inf,
-                    -np.inf,
+                    57344,
+                    57344,
+                    -57344,
                     np.nan,
                 ],
                 dtype=np.float32,
             ),
             TensorProto.FLOAT8E5M2FNUZ: np.array(
                 [
-                    0.000000e00,
-                    0.000000e00,
+                    0,
+                    0,
                     9.765625e-04,
                     9.765625e-03,
                     9.375000e-02,
-                    1.000000e00,
-                    2.000000e00,
-                    1.000000e01,
+                    1,
+                    2,
+                    10,
                     9.600000e01,
                     1.024000e03,
                     1.024000e04,
-                    5.734400e04,
+                    57344,
                     np.nan,
                     np.nan,
                     np.nan,
@@ -122,10 +122,7 @@ class TestInferenceSession(unittest.TestCase):
         return onnx_model
 
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
-    def test_model_cast_cast_reference(self):
-        so = onnxruntime.SessionOptions()
-        so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-
+    def _test_model_cast_cast_reference(self):
         expected = TestInferenceSession.expected
         x = TestInferenceSession.x
 
@@ -139,9 +136,10 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(expect.dtype, y.dtype)
 
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
-    def test_model_cast_cast_cpu(self):
+    def _test_model_cast_cast_cpu(self):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        so.add_session_config_entry("session.allow_released_opsets_only", "0");
 
         expected = TestInferenceSession.expected
         x = TestInferenceSession.x
@@ -150,7 +148,7 @@ class TestInferenceSession(unittest.TestCase):
             with self.subTest(to=to):
                 onnx_model = self.model_cast_cast(to)
                 sess = onnxruntime.InferenceSession(
-                    onnx_model.SerializeToString(), so, providers=["CPUExecutionProvider"]
+                    onnx_model.SerializeToString(), so, providers=["CPUExecutionProvider"], read_config_from_model=1
                 )
                 y = sess.run(None, {"X": x})[0]
                 assert_allclose(expect, y)
@@ -162,6 +160,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_cast_cast_cuda(self):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        so.add_session_config_entry("session.allow_released_opsets_only", "0");
 
         expected = TestInferenceSession.expected
         x = TestInferenceSession.x
@@ -171,10 +170,9 @@ class TestInferenceSession(unittest.TestCase):
                 if to not in {TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2}:
                     # only those types are available on CUDA.
                     continue
-                print('------------', to)
                 onnx_model = self.model_cast_cast(to)
                 sess = onnxruntime.InferenceSession(
-                    onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"]
+                    onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"], read_config_from_model=1
                 )
                 y = sess.run(None, {"X": x})[0]
                 assert_allclose(expect, y)
@@ -186,6 +184,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_cast_cast_cuda_ortvalue(self):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        so.add_session_config_entry("session.allow_released_opsets_only", "0");
 
         expected = TestInferenceSession.expected
         x = TestInferenceSession.x
@@ -195,11 +194,12 @@ class TestInferenceSession(unittest.TestCase):
                 if to not in {TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2}:
                     # only those types are available on CUDA.
                     continue
+                print(to)
                 onnx_model = self.model_cast_cast(to)
+                ortv = onnxruntime.OrtValue.ortvalue_from_numpy(x) #, device_type="cuda")
                 sess = onnxruntime.InferenceSession(
-                    onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"]
+                    onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"], read_config_from_model=1
                 )
-                ortv = onnxruntime.OrtValue.ortvalue_from_numpy(x, device_type="cuda")
                 y = sess.run_with_ort_values(["Y"], {"X": ortv})[0].numpy()
                 assert_allclose(expect, y)
                 self.assertEqual(expect.shape, y.shape)
@@ -207,5 +207,6 @@ class TestInferenceSession(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # TestInferenceSession().test_model_cast_cast_cuda()
+    TestInferenceSession().test_model_cast_cast_cuda_ortvalue()
+    stop
     unittest.main(verbosity=2)

@@ -91,6 +91,19 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
     }                                                                                       \
     break;
 
+#define CASE_SAT(TP_TYPE, DstT)                                                             \
+  case TP_TYPE:                                                                             \
+    std::cout << "Previous cast to_=" << to_ << "\n";                                       \
+    if (count > 0) {                                                                        \
+      Impl_CastSat<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                        \
+          Stream(context),                                                                  \
+          x_data,                                                                           \
+          reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->MutableData<DstT>()), \
+          count,                                                                            \
+          saturate_);                                                                       \
+    }                                                                                       \
+    break;
+
 template <typename SrcT>
 Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<SrcT>::MappedType CudaSrcT;
@@ -155,25 +168,14 @@ Status Cast<float>::ComputeInternal(OpKernelContext* context) const {
     CASE(TensorProto_DataType_UINT32, uint32_t)
     CASE(TensorProto_DataType_UINT64, uint64_t)
     CASE(TensorProto_DataType_BOOL, bool)
-    // CASE(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
-    CASE(TensorProto_DataType_FLOAT8E4M3FNUZ, Float8E4M3FNUZ)
-    CASE(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
-    CASE(TensorProto_DataType_FLOAT8E5M2FNUZ, Float8E5M2FNUZ)
+    CASE_SAT(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
+    CASE_SAT(TensorProto_DataType_FLOAT8E4M3FNUZ, Float8E4M3FNUZ)
+    CASE_SAT(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
+    CASE_SAT(TensorProto_DataType_FLOAT8E5M2FNUZ, Float8E5M2FNUZ)
     case TensorProto_DataType_STRING:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
     case TensorProto_DataType_UNDEFINED:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cast op must have 'to' argument of type DataType");
-    case TensorProto_DataType_FLOAT8E4M3FN:
-      std::cout << "CudaCast to=" << to_ << "\n";
-      if (count > 0) {
-        return CudaCastF8<Float8E4M3FN, float>(
-            Stream(context),
-            x_data,
-            reinterpret_cast<Float8E4M3FN*>(Y->MutableData<Float8E4M3FN>()),
-            count,
-            saturate_);
-      }
-      break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected 'to' argument value: ", to_);
   }
