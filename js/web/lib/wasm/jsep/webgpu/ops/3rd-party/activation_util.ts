@@ -42,41 +42,8 @@ export const activationFnSnippet =
         return '';
       }
 
+      // TODO: add implementations
       return '';
-      // let activationOpSnippet = '';
-      // if (activation === 'linear') {
-      //   activationOpSnippet = getUnaryOpString(UnaryOpType.LINEAR);
-      // } else if (activation === 'relu') {
-      //   activationOpSnippet = getUnaryOpString(UnaryOpType.RELU, packed);
-      // } else if (activation === 'elu') {
-      //   activationOpSnippet = getUnaryOpString(UnaryOpType.ELU, packed);
-      // } else if (activation === 'relu6') {
-      //   activationOpSnippet = getUnaryOpString(UnaryOpType.RELU6, packed);
-      // } else if (activation === 'prelu') {
-      //   activationOpSnippet = getBinaryOpString(BinaryOpType.PRELU, packed);
-      // } else if (activation === 'sigmoid') {
-      //   activationOpSnippet = getUnaryOpString(UnaryOpType.SIGMOID, packed);
-      // } else if (activation === 'leakyrelu') {
-      //   activationOpSnippet = getUnaryOpString(UnaryOpType.LEAKYRELU, packed);
-      // } else {
-      //   throw new Error(`Activation ${activation} has not been implemented for the WebGPU backend.`);
-      // }
-      // const elementSize = packed ? 4 : 1;
-      // const dataType = typeSnippet(elementSize);
-      // let activationFnSnippet = '';
-      // if (hasPreluActivationWeights) {
-      //   activationFnSnippet = `
-      // fn activation(a : ${dataType}, coords : vec${coordsLength}<i32>) -> ${dataType} {
-      //   let b = getPreluActivationWeightsByOutputCoords(coords);
-      //   ${activationOpSnippet}
-      // }`;
-      // } else {
-      //   activationFnSnippet = `
-      // fn activation(a : ${dataType}, coords : vec${coordsLength}<i32>) -> ${dataType} {
-      //   ${activationOpSnippet}
-      // }`;
-      // }
-      // return activationFnSnippet;
     };
 
 export const biasActivationSnippet = (hasBias: boolean, activation?: Activation): string => `

@@ -97,7 +97,7 @@ export interface ClipAttributes extends AttributeWithCacheKey {
   readonly max: number;
 }
 
-export const clip = (context: ComputeContext, attributes: ClipAttributes): number => {
+export const clipV10 = (context: ComputeContext, attributes: ClipAttributes): number => {
   context.compute(
       createElementwiseProgramInfoLoader(
           context.inputs[0], 'Clip', a => `clamp(${a}, clip_min_, clip_max_)`, `
@@ -114,9 +114,9 @@ const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAt
   return createAttributeWithCacheKey({min, max});
 };
 
-export const clipV11 = (context: ComputeContext): number => {
+export const clip = (context: ComputeContext): number => {
   const attributes = generateClipAttributesFromInputs(context.inputs);
-  return clip(context, attributes);
+  return clipV10(context, attributes);
 };
 
 export const ceil = (context: ComputeContext): number => {
