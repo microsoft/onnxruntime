@@ -304,6 +304,10 @@ class TestModelOptimization(unittest.TestCase):
     def test_huggingface_bart_fusion(self):
         self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
 
+    @pytest.mark.slow
+    def test_huggingface_vit_fusion(self):
+        self._test_optimizer_on_huggingface_model("google/vit-base-patch16-224", [0, 11, 0, 0, 12, 1, 24])
+
 
 @unittest.skipUnless(is_tf_available(), "skip TestBertOptimizationTF since tensorflow is not available")
 class TestTensorflowModelOptimization(unittest.TestCase):
