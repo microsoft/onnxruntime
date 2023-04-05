@@ -53,7 +53,7 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
     const Node& current_node, const ReshapeInfo& info,
     const logging::Logger& logger,
     std::vector<int>& propagate_input_indices,
-    std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+    std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
     std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name());
 
@@ -98,12 +98,12 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
 
     all_input_cmp_rets[input_idx] = ret;
 
-    if (ret[0] == DimCompareRet::NotExist && ret[1] == DimCompareRet::NotExist) {
-      // Don't need to propagate Reshape since the two leading dims to flatten do not ext.
+    if (ret[0] == DimCompare::NotExist && ret[1] == DimCompare::NotExist) {
+      // Don't need to propagate Reshape since the two leading dims to flatten do not exist.
       LOG_DEBUG_INFO(logger, "In SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
                                  ": skip propagating for the input because the merged dims does not exist.");
       continue;
-    } else if (ret[0] == DimCompareRet::Equal && ret[1] == DimCompareRet::Equal) {
+    } else if (ret[0] == DimCompare::Equal && ret[1] == DimCompare::Equal) {
       propagate_input_indices.push_back(input_idx);
     } else {
       LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
@@ -113,7 +113,7 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
 
     // All other dims should be equal
     for (int dim_index = 2; dim_index < static_cast<int>(ret.size()); ++dim_index) {
-      if (ret[dim_index] != DimCompareRet::Equal) {
+      if (ret[dim_index] != DimCompare::Equal) {
         LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
                                    ": unflatten dims should all be equal to full broadcast shape.");
         return false;
@@ -140,7 +140,7 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
 
       // All dims should be equal
       for (int dim_index = 0; dim_index < static_cast<int>(out_cmp_ret.size()); ++dim_index) {
-        if (out_cmp_ret[dim_index] != DimCompareRet::Equal) {
+        if (out_cmp_ret[dim_index] != DimCompare::Equal) {
           LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
                                      ": output shapes not equal.");
           return false;
@@ -167,7 +167,7 @@ bool MatMulReshapeActor::PreCheck(
     const Node& current_node, const ReshapeInfo& info,
     const logging::Logger& logger,
     std::vector<int>& propagate_input_indices,
-    std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+    std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
     std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter MatMulReshapeActor::PreCheck for node " + current_node.Name());
 
@@ -220,7 +220,7 @@ bool LayerNormalizationReshapeActor::PreCheck(
     const Node& current_node, const ReshapeInfo& info,
     const logging::Logger& logger,
     std::vector<int>& propagate_input_indices,
-    std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+    std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
     std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name());
 
@@ -228,6 +228,11 @@ bool LayerNormalizationReshapeActor::PreCheck(
   axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
 
   // Make sure the layer norm's reduction happens after the axis we want to slice.
+  // 1. If axis is either the first or second dim, we can't merge the first two dims.
+  //    Example: [2, 16, 1024], axis = 0 or 1, we can't merge the first two dims.
+  // 2. If axis is the third dim, we can merge the first two dims.
+  //    Example: [2, 16, 1024], axis = 2, we can merge the first two dims, because reduction is still done for each
+  //    set of 1024 elements.
   if (axis < 2) {
     LOG_DEBUG_INFO(logger, "Fail LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name() +
                                ": axis is " + std::to_string(axis) + ", which blocks merging leading two dims.");

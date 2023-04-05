@@ -72,7 +72,7 @@ bool UpStreamGatherGraphTransformer::UpStreamInternal(
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
 
   std::unordered_map<int, int> propagate_input_indices;
-  std::unordered_map<int, std::vector<DimCompareRet>> all_input_cmp_rets;
+  std::unordered_map<int, std::vector<DimCompare>> all_input_cmp_rets;
   std::function<void(Node & node)> shape_update_func;
 
   if (!pass_through_config.actor->PreCheck(graph, current_node, info, logger,

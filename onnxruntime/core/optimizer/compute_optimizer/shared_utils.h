@@ -134,7 +134,7 @@ Node* InsertIntermediateNodeOnDestInput(Graph& graph,
                                         const std::string& domain,
                                         const logging::Logger& logger);
 
-enum class DimCompareRet {
+enum class DimCompare {
   Equal = 0,
   BroadCast = 1,  // e.g. dim value is 1.
   NotExist = 2,
@@ -148,11 +148,11 @@ enum class DimCompareRet {
  * @param full_broadcasted_shape Full broadcasted shape as a baseline to compare.
  * @param target_shape Shape to compare, can have a dim value be 1 for broad-cast-able dimension.
  * @return A bool indicate whether check successfully or not.
- *         A vector of type DimCompareRet. The size of the vector is the same as full_broadcasted_shape.
+ *         A vector of type DimCompare. The size of the vector is the same as full_broadcasted_shape.
  *
  * Be noted: full_broadcasted_shape's length should be >= target_shape's length, otherwise return false.
  */
-std::pair<bool, std::vector<DimCompareRet>> CompareInputShapeWithOutputShape(
+std::pair<bool, std::vector<DimCompare>> CompareInputShapeWithOutputShape(
     const ONNX_NAMESPACE::TensorShapeProto* full_broadcasted_shape,
     const ONNX_NAMESPACE::TensorShapeProto* target_shape);
 

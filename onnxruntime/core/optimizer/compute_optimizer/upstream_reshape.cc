@@ -50,7 +50,7 @@ bool UpStreamReshapeGraphTransformer::UpStreamInternal(
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
 
   std::vector<int> propagate_input_indices;
-  std::unordered_map<int, std::vector<DimCompareRet>> all_input_cmp_rets;
+  std::unordered_map<int, std::vector<DimCompare>> all_input_cmp_rets;
   std::function<void(Node & node)> shape_update_func;
   if (!pass_through_config.actor->PreCheck(current_node, info, logger, propagate_input_indices,
                                            all_input_cmp_rets, shape_update_func)) {
@@ -123,13 +123,13 @@ bool UpStreamReshapeGraphTransformer::UpStreamInternal(
 
 ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
     Graph& graph, Node& reshape_node, Node& current_node, int current_node_input_index,
-    ReshapeInfo& info, std::vector<DimCompareRet>& dim_compare_rets, const logging::Logger& logger) const {
+    ReshapeInfo& info, std::vector<DimCompare>& dim_compare_rets, const logging::Logger& logger) const {
   LOG_DEBUG_INFO(logger, "PropagateReshapeForInput for Node " + current_node.Name() + "(" + current_node.OpType() +
                              ") with input index " + std::to_string(current_node_input_index));
 
   ORT_ENFORCE(dim_compare_rets.size() >= 2, "dim_compare_rets should have at least 2 elements.");
 
-  if (!(dim_compare_rets[0] == DimCompareRet::Equal && dim_compare_rets[1] == DimCompareRet::Equal)) {
+  if (!(dim_compare_rets[0] == DimCompare::Equal && dim_compare_rets[1] == DimCompare::Equal)) {
     // TODO(pengwa): implement input adaptation logic to cover more cases.
     ORT_THROW("Input adaptation is not implemented yet.");
   }

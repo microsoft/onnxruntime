@@ -99,21 +99,24 @@ Node* InsertIntermediateNodeOnDestInput(Graph& graph,
   return &new_node;
 }
 
-std::pair<bool, std::vector<DimCompareRet>> CompareInputShapeWithOutputShape(
+std::pair<bool, std::vector<DimCompare>> CompareInputShapeWithOutputShape(
     const ONNX_NAMESPACE::TensorShapeProto* full_broadcasted_shape,
     const ONNX_NAMESPACE::TensorShapeProto* target_shape) {
   int full_rank = full_broadcasted_shape->dim_size();
   int target_rank = target_shape->dim_size();
 
   if (target_rank > full_rank) {
-    return std::make_pair<bool, std::vector<DimCompareRet>>(false, {});
+    return std::make_pair<bool, std::vector<DimCompare>>(false, {});
   }
 
-  std::vector<DimCompareRet> rets(full_rank);
+  std::vector<DimCompare> rets(full_rank);
+  // For broadcasted shape, we need to compare from the right to left.
+  // Be noted: if the dim of target_shape does not exist, we still continue the loop unless we handle
+  // all the dims of full_broadcasted_shape.
   for (int i = -1; i >= -full_rank; --i) {
     int idx = full_rank + i;
     if (i < -target_rank) {
-      rets[idx] = DimCompareRet::NotExist;
+      rets[idx] = DimCompare::NotExist;
       continue;
     }
 
@@ -122,29 +125,29 @@ std::pair<bool, std::vector<DimCompareRet>> CompareInputShapeWithOutputShape(
     if (dim.has_dim_value() && target_dim.has_dim_value()) {
       if (dim.dim_value() != target_dim.dim_value()) {
         if (target_dim.dim_value() == 1) {
-          rets[idx] = DimCompareRet::BroadCast;
+          rets[idx] = DimCompare::BroadCast;
         } else {
-          rets[idx] = DimCompareRet::NotEqual;
+          rets[idx] = DimCompare::NotEqual;
         }
       } else {
-        rets[idx] = DimCompareRet::Equal;
+        rets[idx] = DimCompare::Equal;
       }
     } else if (dim.has_dim_param() && target_dim.has_dim_param()) {
       if (dim.dim_param() != target_dim.dim_param()) {
-        rets[idx] = DimCompareRet::NotEqual;
+        rets[idx] = DimCompare::NotEqual;
       } else {
-        rets[idx] = DimCompareRet::Equal;
+        rets[idx] = DimCompare::Equal;
       }
     } else {
       if (target_dim.has_dim_value() && target_dim.dim_value() == 1) {
-        rets[idx] = DimCompareRet::BroadCast;
+        rets[idx] = DimCompare::BroadCast;
       } else {
-        rets[idx] = DimCompareRet::NotEqual;
+        rets[idx] = DimCompare::NotEqual;
       }
     }
   }
 
-  return std::make_pair<bool, std::vector<DimCompareRet>>(true, std::move(rets));
+  return std::make_pair<bool, std::vector<DimCompare>>(true, std::move(rets));
 }
 
 }  // namespace onnxruntime::optimizer::compute_optimizer

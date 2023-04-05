@@ -88,7 +88,7 @@ class UpStreamReshapeGraphTransformer
                                                                      Node& current_node,
                                                                      int current_node_input_index,
                                                                      optimizer::compute_optimizer::ReshapeInfo& info,
-                                                                     std::vector<optimizer::compute_optimizer::DimCompareRet>&,
+                                                                     std::vector<optimizer::compute_optimizer::DimCompare>&,
                                                                      const logging::Logger& logger) const;
 
   /**

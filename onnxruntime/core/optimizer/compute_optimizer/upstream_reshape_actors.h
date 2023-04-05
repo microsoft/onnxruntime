@@ -88,13 +88,13 @@ class UpStreamReshapeOperatorActorBase : public UpStreamOperatorActorBase {
    * that are allowed to pass through.
    * @param all_input_cmp_rets: Used as a return value - a map of input index to the input's dim compare result.
    *  The key is an integer, which is the index of the input of the current_node.
-   *  The value is a vector of DimCompareRet.
+   *  The value is a vector of DimCompare.
    * @param shape_update_func: Used as a return value - a function to update the shape of the current_node.
    */
   virtual bool PreCheck(const Node& current_node, const ReshapeInfo& info,
                         const logging::Logger& logger,
                         std::vector<int>& propagate_input_indices,
-                        std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                        std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                         std::function<void(Node& node)>& shape_update_func) = 0;
 
   /**
@@ -114,7 +114,7 @@ class UpStreamReshapeOperatorActorBase : public UpStreamOperatorActorBase {
   bool PostProcess(Graph& /* graph */, Node& /* current_node */, const ReshapeInfo& /* info_without_node */,
                    const logging::Logger& /* logger */,
                    std::vector<int>& /* propagate_input_indices */,
-                   const std::unordered_map<int, std::vector<DimCompareRet>>& /* all_input_cmp_rets */,
+                   const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
                    const std::unordered_map<int, ReshapeInfo>& /* new_reshape_infos */) {
     return true;
   }
@@ -131,7 +131,7 @@ class SimplePointwiseReshapeActor : public UpStreamReshapeOperatorActorBase {
   bool PreCheck(const Node& current_node, const ReshapeInfo& info,
                 const logging::Logger& logger,
                 std::vector<int>& propagate_input_indices,
-                std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
 };
 
@@ -143,7 +143,7 @@ class MatMulReshapeActor : public UpStreamReshapeOperatorActorBase {
   bool PreCheck(const Node& current_node, const ReshapeInfo& info,
                 const logging::Logger& logger,
                 std::vector<int>& propagate_input_indices,
-                std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
 };
 
@@ -155,7 +155,7 @@ class LayerNormalizationReshapeActor : public UpStreamReshapeOperatorActorBase {
   bool PreCheck(const Node& current_node, const ReshapeInfo& info,
                 const logging::Logger& logger,
                 std::vector<int>& propagate_input_indices,
-                std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
 };
 

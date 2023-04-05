@@ -238,7 +238,7 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
                                                                    const Node& current_node, const SliceInfo& info,
                                                                    const logging::Logger& logger,
                                                                    std::unordered_map<int, int>& propagate_input_indices,
-                                                                   std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                                                                   std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                                                                    std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter SimplePointwiseGatherActor::PreCheck for node " + current_node.Name());
 
@@ -343,12 +343,12 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
     // Check the leading dimensions
     for (size_t dim_idx = 0; dim_idx <= static_cast<size_t>(info.non_negative_axis); ++dim_idx) {
       const auto& lhs_dim_ret = ret[dim_idx];
-      if (lhs_dim_ret != DimCompareRet::Equal) {
+      if (lhs_dim_ret != DimCompare::Equal) {
         ld_dims_exactly_same = false;
       }
 
-      if (lhs_dim_ret != DimCompareRet::Equal && lhs_dim_ret != DimCompareRet::BroadCast &&
-          lhs_dim_ret != DimCompareRet::NotExist) {
+      if (lhs_dim_ret != DimCompare::Equal && lhs_dim_ret != DimCompare::BroadCast &&
+          lhs_dim_ret != DimCompare::NotExist) {
         ld_dims_broadcasted_equal = false;
       }
     }
@@ -359,13 +359,13 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
       return false;
     }
 
-    if (ret[info.non_negative_axis] == DimCompareRet::BroadCast ||
-        ret[info.non_negative_axis] == DimCompareRet::NotExist) {
+    if (ret[info.non_negative_axis] == DimCompare::BroadCast ||
+        ret[info.non_negative_axis] == DimCompare::NotExist) {
       // Don't need to propagate.
       continue;
     }
 
-    ORT_ENFORCE(ret[info.non_negative_axis] == DimCompareRet::Equal);
+    ORT_ENFORCE(ret[info.non_negative_axis] == DimCompare::Equal);
     propagate_input_indices[static_cast<int>(input_idx)] = info.non_negative_axis;
   }
 
@@ -388,7 +388,7 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
       // Check all dimension match.
       for (size_t dim_idx = 0; dim_idx < ret.size(); ++dim_idx) {
         const auto& lhs_dim_ret = ret[dim_idx];
-        if (lhs_dim_ret != DimCompareRet::Equal) {
+        if (lhs_dim_ret != DimCompare::Equal) {
           return false;
         }
       }
@@ -415,7 +415,7 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PostProcess(
     Graph& graph, Node& current_node, const SliceInfo& info_without_node,
     const logging::Logger& logger,
     const std::unordered_map<int, int>& /* propagate_input_indices */,
-    const std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+    const std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
     const std::unordered_map<int, SliceInfo>& new_gather_infos) {
   LOG_DEBUG_INFO(logger, "Enter SimplePointwiseGatherActor::PostProcess for Node " + current_node.Name() +
                              "(" + current_node.OpType() + ")");
@@ -426,7 +426,7 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PostProcess(
   // handling all inputs/outputs for all new Gather inserted.
   bool found_dim_value_1_in_inputs = false;
   for (const auto& pair : all_input_cmp_rets) {
-    if (pair.second[slice_axis] == DimCompareRet::BroadCast) {
+    if (pair.second[slice_axis] == DimCompare::BroadCast) {
       found_dim_value_1_in_inputs = true;
       break;
     }
@@ -445,7 +445,7 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
                                              const SliceInfo& info,
                                              const logging::Logger& logger,
                                              std::unordered_map<int, int>& propagate_input_indices,
-                                             std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                                             std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                                              std::function<void(Node& node)>& shape_update_func) {
   auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
   axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
@@ -496,7 +496,7 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
 bool SoftmaxGatherActor::PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                                   const logging::Logger& logger,
                                   std::unordered_map<int, int>& propagate_input_indices,
-                                  std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                                  std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                                   std::function<void(Node& node)>& shape_update_func) {
   auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
   axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
@@ -513,7 +513,7 @@ bool SoftmaxGatherActor::PreCheck(const Graph& graph, const Node& current_node, 
 bool ReshapeGatherActor::PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                                   const logging::Logger& logger,
                                   std::unordered_map<int, int>& propagate_input_indices,
-                                  std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                                  std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                                   std::function<void(Node& node)>& shape_update_func) {
   auto data_input_shape = current_node.InputDefs()[0]->Shape();
   auto shape_input_shape = current_node.InputDefs()[1]->Shape();
@@ -604,7 +604,7 @@ bool ReshapeGatherActor::PostProcess(
     Graph& graph, Node& current_node, const SliceInfo& info_without_node,
     const logging::Logger& logger,
     const std::unordered_map<int, int>& /* propagate_input_indices */,
-    const std::unordered_map<int, std::vector<DimCompareRet>>& /* all_input_cmp_rets */,
+    const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
     const std::unordered_map<int, SliceInfo>& /* new_gather_infos */
 ) {
   LOG_DEBUG_INFO(logger, "ReshapeGatherActor::PostProcess for Node " + current_node.Name() +
@@ -668,7 +668,7 @@ bool ReshapeGatherActor::PostProcess(
 bool TransposeGatherActor::PreCheck(const Graph& /* graph */, const Node& current_node, const SliceInfo& info,
                                     const logging::Logger& logger,
                                     std::unordered_map<int, int>& propagate_input_indices,
-                                    std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                                    std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                                     std::function<void(Node& node)>& shape_update_func) {
   InlinedVector<int64_t> perm;
   if (!graph_utils::GetRepeatedNodeAttributeValues(current_node, "perm", perm)) {
@@ -695,7 +695,7 @@ bool TransposeGatherActor::PostProcess(
     Graph& graph, Node& current_node, const SliceInfo& info_without_node,
     const logging::Logger& logger,
     const std::unordered_map<int, int>& /* propagate_input_indices */,
-    const std::unordered_map<int, std::vector<DimCompareRet>>& /* all_input_cmp_rets */,
+    const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
     const std::unordered_map<int, SliceInfo>& new_gather_infos) {
   LOG_DEBUG_INFO(logger, "Enter TransposeGatherActor::PostProcess for Node " + current_node.Name() + "(" +
                              current_node.OpType() + ")");
@@ -712,7 +712,7 @@ bool TransposeGatherActor::PostProcess(
 bool MatMulGatherActor::PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                                  const logging::Logger& logger,
                                  std::unordered_map<int, int>& propagate_input_indices,
-                                 std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                                 std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                                  std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter MatMulGatherActor::PreCheck for node " + current_node.Name());
   auto lhs_rank = current_node.InputDefs()[0]->Shape()->dim_size();
@@ -753,7 +753,7 @@ bool MatMulGatherActor::PostProcess(
     Graph& graph, Node& current_node, const SliceInfo& info_without_node,
     const logging::Logger& logger,
     const std::unordered_map<int, int>& /* propagate_input_indices */,
-    const std::unordered_map<int, std::vector<DimCompareRet>>& /* all_input_cmp_rets */,
+    const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
     const std::unordered_map<int, SliceInfo>& new_gather_infos) {
   LOG_DEBUG_INFO(logger, "Enter MatMulGatherActor::PostProcess for Node " + current_node.Name() + "(" +
                              current_node.OpType() + ")");

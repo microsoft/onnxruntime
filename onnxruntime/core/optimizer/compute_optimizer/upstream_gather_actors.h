@@ -115,7 +115,7 @@ class UpStreamGatherOperatorActorBase : public UpStreamOperatorActorBase {
   virtual bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                         const logging::Logger& logger,
                         std::unordered_map<int, int>& propagate_input_indices,
-                        std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                        std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                         std::function<void(Node& node)>& shape_update_func) = 0;
 
   /**
@@ -133,7 +133,7 @@ class UpStreamGatherOperatorActorBase : public UpStreamOperatorActorBase {
   virtual bool PostProcess(Graph& graph, Node& current_node, const SliceInfo& info_without_node,
                            const logging::Logger& logger,
                            const std::unordered_map<int, int>& propagate_input_indices,
-                           const std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                           const std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                            const std::unordered_map<int, SliceInfo>& new_gather_infos) = 0;
 };
 
@@ -146,13 +146,13 @@ class SimplePointwiseGatherActor : public UpStreamGatherOperatorActorBase {
   bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                 const logging::Logger& logger,
                 std::unordered_map<int, int>& propagate_input_indices,
-                std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
 
   bool PostProcess(Graph& graph, Node& current_node, const SliceInfo& info_without_node,
                    const logging::Logger& logger,
                    const std::unordered_map<int, int>& propagate_input_indices,
-                   const std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                   const std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                    const std::unordered_map<int, SliceInfo>& new_gather_infos) override;
 };
 
@@ -164,13 +164,13 @@ class LayerNormalizationGatherActor : public UpStreamGatherOperatorActorBase {
   bool PreCheck(const Graph& /* graph */, const Node& current_node, const SliceInfo& info,
                 const logging::Logger& logger,
                 std::unordered_map<int, int>& propagate_input_indices,
-                std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
 
   bool PostProcess(Graph& /* graph */, Node& /* current_node */, const SliceInfo& /* info_without_node */,
                    const logging::Logger& /* logger */,
                    const std::unordered_map<int, int>& /* propagate_input_indices */,
-                   const std::unordered_map<int, std::vector<DimCompareRet>>& /* all_input_cmp_rets */,
+                   const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
                    const std::unordered_map<int, SliceInfo>& /* new_gather_infos */) override { return true; }
 };
 
@@ -182,7 +182,7 @@ class SoftmaxGatherActor : public SimplePointwiseGatherActor<true> {
   bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                 const logging::Logger& logger,
                 std::unordered_map<int, int>& propagate_input_indices,
-                std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
 };
 
@@ -194,14 +194,14 @@ class ReshapeGatherActor : public UpStreamGatherOperatorActorBase {
   bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                 const logging::Logger& logger,
                 std::unordered_map<int, int>& propagate_input_indices,
-                std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
 
   // Once slice node is passed through, we need to update the `shape` constant accordingly.
   bool PostProcess(Graph& graph, Node& current_node, const SliceInfo& info_without_node,
                    const logging::Logger& logger,
                    const std::unordered_map<int, int>& propagate_input_indices,
-                   const std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                   const std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                    const std::unordered_map<int, SliceInfo>& new_gather_infos) override;
 };
 
@@ -213,14 +213,14 @@ class TransposeGatherActor : public UpStreamGatherOperatorActorBase {
   bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                 const logging::Logger& logger,
                 std::unordered_map<int, int>& propagate_input_indices,
-                std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
 
   // If scalar slice happens, we need adapt the input, otherwise the perm cannot be matched.
   bool PostProcess(Graph& graph, Node& current_node, const SliceInfo& info_without_node,
                    const logging::Logger& logger,
                    const std::unordered_map<int, int>& propagate_input_indices,
-                   const std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                   const std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                    const std::unordered_map<int, SliceInfo>& new_gather_infos) override;
 };
 
@@ -236,14 +236,14 @@ class MatMulGatherActor : public SimplePointwiseGatherActor<false> {
   bool PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                 const logging::Logger& logger,
                 std::unordered_map<int, int>& propagate_input_indices,
-                std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
 
   // If scalar slice happens in the second last dimension, we need to adapt the input.
   bool PostProcess(Graph& graph, Node& current_node, const SliceInfo& info_without_node,
                    const logging::Logger& logger,
                    const std::unordered_map<int, int>& propagate_input_indices,
-                   const std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
+                   const std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                    const std::unordered_map<int, SliceInfo>& new_gather_infos) override;
 };
 
