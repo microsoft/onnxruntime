@@ -24,6 +24,7 @@ static void RunTest(const std::vector<int64_t>& dims, const std::vector<TInput>&
   test.Run();
 }
 
+
 TEST(LabelEncoder, StringToInt) {
   std::vector<int64_t> dims{2, 2, 2};
 
@@ -185,6 +186,27 @@ TEST(LabelEncoder, Int64ToInt64Opset2) {
 
   test.AddInput<std::int64_t>("X", dims, input);
   test.AddOutput<std::int64_t>("Y", dims, output);
+
+  test.Run();
+}
+
+TEST(LabelEncoder, StringToStringOpset2) {
+  std::vector<std::int64_t> dims{1, 5};
+
+  std::vector<std::string> input{"A", "A", "C", "D", "E"};
+  std::vector<std::string> output{"X", "X", "Z", "!", "!"};
+
+  OpTester test("LabelEncoder", 2, onnxruntime::kMLDomain);
+
+  const std::vector<std::string> keys{"A", "B", "C"};
+  const std::vector<std::string> values{"X", "Y", "Z"};
+
+  test.AddAttribute("keys_strings", keys);
+  test.AddAttribute("values_strings", values);
+  test.AddAttribute("default_string", "!");
+
+  test.AddInput<std::string>("X", dims, input);
+  test.AddOutput<std::string>("Y", dims, output);
 
   test.Run();
 }
