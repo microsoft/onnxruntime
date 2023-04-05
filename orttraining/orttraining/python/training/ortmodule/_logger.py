@@ -22,9 +22,9 @@ class LogLevel(IntEnum):
 
 @contextmanager
 def suppress_os_stream_output(suppress_stdout=True, suppress_stderr=True, log_level=LogLevel.WARNING):
-    """Supress output from being printed to stdout and stderr if log_level is WARNING or higher.
+    """Suppress output from being printed to stdout and stderr if log_level is WARNING or higher.
 
-    If there is any output detected, a single warning is issued at of the context
+    If there is any output detected, a single warning is issued in the context
     """
 
     # stdout and stderr is written to a tempfile instead

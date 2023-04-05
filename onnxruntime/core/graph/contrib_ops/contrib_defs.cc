@@ -17,6 +17,7 @@
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 #include "onnx/defs/function.h"
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
@@ -421,8 +422,19 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
   auto& input_ids_shape = getInputShape(ctx, 0);
   auto& input_ids_dims = input_ids_shape.dim();
-  if (input_ids_dims.size() != 2) {
-    fail_shape_inference("Inputs 0 shall be 2 dimensions");
+  auto model_type_attr = ctx.getAttribute("model_type");
+  int64_t model_type = model_type_attr ? static_cast<int64_t>(model_type_attr->i()) : -1;
+  if (model_type ==  onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper) {
+     if (input_ids_dims.size() != 3)
+     {
+      fail_shape_inference("Inputs 0 shall be 3 dimensions in whisper graph");
+     }
+    if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value() && input_ids_dims[2].has_dim_value())) {
+      return;
+    }
+  }
+  else if (input_ids_dims.size() != 2) {
+    fail_shape_inference("Inputs 0 shall be 2 dimensions", model_type);
   }
   if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
     return;
@@ -1071,7 +1083,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                       "Size of the vocabulary. "
                                       "If not provided, it will be inferred from the decoder subgraph's output shape",
                                       AttributeProto::INT, static_cast<int64_t>(-1))
-                                .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+                                .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "F")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
                                 .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
@@ -1092,7 +1104,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                         "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
                                         "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
                                         "T", OpSchema::Optional)
-                                .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+                                .TypeConstraint("T", {"tensor(float)"}, "Constrain to float tensors.")
+                                .TypeConstraint("F", {"tensor(float)", "tensor(int32)"}, "Constrain input type to float or int tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {

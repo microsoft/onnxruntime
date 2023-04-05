@@ -100,8 +100,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
 
-        # indicators of some logic have been executed previously thus could be skipped for faster training
-        # default is enabled, if not define in os env
+        # indicators of some logic have been executed previously and thus could be skipped for faster training
+        # default is enabled, if not defined in os env
         self._skip_check = _SkipCheck(
             _SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT
         )
@@ -116,19 +116,19 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._rt_inspector = _runtime_inspector.RuntimeInspector()
 
         # Graph transformer config
-        # Specify cast propagation strategy. Currently three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
+        # Specify cast propagation strategy. Currently, three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
         # The default is FLOOD_FILL, expand FP16 computation regions in the graph using allowed opcodes for the given level.
         self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.FLOOD_FILL
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
         # - If the _propagate_cast_ops_level is set to zero, then the transformation considers only the opcodes specified by _propagate_cast_ops_allow
-        #   as "FP16 safe", in order to insert/(re)move cast operations before/after to perform such operations in reduced (16-bit) precision.
-        # - If propagate_cast_ops_level is positive, 1 or 2, then in addition to opcode codes specified by propagate_cast_ops_allow use onnxruntime
-        #   predetermined list of opcodes considered safe to move before/after cast operation.
-        # - Onnxruntime Level 1 predetermind "FP16 safe" opcodes include only opcode that do not perform any computation such as Transpose, Split, Reshape, etc.,
-        #   or the computation is actual in Float such as GeLU, etc.
-        #   whereas Level 2 perdetermined "FP16 safe" opcodes include opcodes that perform computation using contrib ops, Dropout, LayerNormalization, etc.
+        #   as "FP16 safe", to insert/(re)move cast operations before/after to perform such operations in reduced (16-bit) precision.
+        # - If propagate_cast_ops_level is positive, 1 or 2, then in addition to opcode codes specified by propagate_cast_ops_allow, use onnxruntime
+        #   predetermined list of opcodes considered safe to move before/after the cast operation.
+        # - Onnxruntime Level 1 predetermined "FP16 safe" opcodes include only opcodes that do not perform any computation such as Transpose, Split, Reshape, etc.,
+        #   or the computation is actually in Float such as GeLU, etc.
+        #   whereas Level 2 predetermined "FP16 safe" opcodes include opcodes that perform computation using contrib ops, Dropout, LayerNormalization, etc.
         self._propagate_cast_ops_level = 1
-        # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
+        # List of opcodes to be considered safe to move before/after the cast operation if propagate_cast_ops_level is zero.
         self._propagate_cast_ops_allow = []
 
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
@@ -142,7 +142,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Related to training graph shape inference
         self._current_input_shape = None
         # default execution order is priority-based for both dynamic/static shape input for now
-        # if we observe benefit of static shape, we can expose this flag to user
+        # if we observe the benefit of static shape, we can expose this flag to the user
         self._use_static_shape = False
 
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
@@ -177,16 +177,16 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._enable_grad_acc_optimization = False
         self._gradient_accumulation_manager = GradientAccumulationManager()
 
-        # Memory aware gradient builder.
+        # Memory-aware gradient builder.
         self._use_memory_efficient_gradient = False
 
-        # Enable compute optimizer by default. Allowed to be disabled  via environment variable for
+        # Enable compute optimizer by default. Allowed to be disabled via an environment variable for
         # convergence parity investigation.
         self._enable_compute_optimizer = (
             ortmodule._defined_from_envvar("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER", 1, warn=True) == 1
         )
 
-        # Flag to re-export the model due to attribute change on original module.
+        # Flag to re-export the model due to attribute change on the original module.
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
 
@@ -275,7 +275,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             providers.append("CPUExecutionProvider")
             provider_option_map = {"device_id": str(self._device.index)}
             if not self.is_rocm_pytorch:
-                # Set Conv algo search mode to HEURISTIC by default, which is same as PyTorch's default setting.
+                # Set Conv algo search mode to HEURISTIC by default, which is the same as PyTorch's default setting.
                 conv_algo_search = ortmodule._defined_from_envvar("ORTMODULE_CONV_ALGO_SEARCH", "HEURISTIC", warn=True)
                 if conv_algo_search not in ["HEURISTIC", "EXHAUSTIVE"]:
                     warnings.warn("Invalid value of env CONV_ALGO_SEARCH. Must be HEURISTIC or EXHAUSTIVE.")
@@ -325,14 +325,14 @@ class GraphExecutionManager(GraphExecutionInterface):
 
     def _export_model(self, *inputs, **kwargs):
         # 1. Set the self._device from the user module
-        # 2. Verify input schema matches schema used on previous model export
+        # 2. Verify input schema matches the schema used on the previous model export
         # 3. Export the user model under self._export_training_flag mode
-        # Return True if the model needed to be exported, False if no export was required.
+        # Return True if the model needs to be exported, False if no export is required.
 
         # Note: Model is only exported when:
         #       1. Model has never been exported before.
         #       2. Model input schema has changed (changes in inputs requiring gradient, shape, boolean inputs values change, etc)
-        #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
+        #       Model is not re-exported when the model parameters change. This can happen when the model is stateful,
         #       or the user explicitly changed model parameters after the onnx export.
 
         # Record random states here and restore later in case any of them gets changed during the export,
@@ -379,7 +379,9 @@ class GraphExecutionManager(GraphExecutionInterface):
             output_names,
             output_dynamic_axes,
             self._module_output_schema,
-        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs)
+        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
+            self._original_module, inputs, kwargs, self._debug_options.logging.log_level
+        )
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
@@ -394,7 +396,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
         # NOTE: Flattening the input will change the 'input schema', resulting in a re-export
         sample_inputs_as_tuple = tuple(self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy, self._device))
-        # Ops behaving differently under train/eval mode need to exported with the
+        # Ops behaving differently under train/eval mode need to be exported with the
         # correct training flag to reflect the expected behavior.
         # For example, the Dropout node in a model is dropped under eval mode.
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"

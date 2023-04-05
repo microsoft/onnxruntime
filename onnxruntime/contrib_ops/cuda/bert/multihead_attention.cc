@@ -88,10 +88,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       relative_position_bias,
                                                                       past_key,
                                                                       past_value,
+                                                                      nullptr, // past_seq_len
                                                                       &parameters,
                                                                       num_heads_,
                                                                       mask_filter_value_,
                                                                       scale_,
+                                                                      false, // past_present_share_buffer
                                                                       device_prop.maxThreadsPerBlock));
 
   int sequence_length = parameters.sequence_length;
@@ -218,12 +220,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past = nullptr;
-  data.past_key = (parameters.pass_past_in_kv) ? reinterpret_cast<const CudaT*>(key->Data<T>())
-                  : (nullptr == past_key)      ? nullptr
-                                               : reinterpret_cast<const CudaT*>(past_key->Data<T>());
-  data.past_value = (parameters.pass_past_in_kv) ? reinterpret_cast<const CudaT*>(value->Data<T>())
-                    : (nullptr == past_value)    ? nullptr
-                                                 : reinterpret_cast<const CudaT*>(past_value->Data<T>());
+  const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
+  data.past_key = pass_key_value_as_past  ? reinterpret_cast<const CudaT*>(key->Data<T>())
+                  : (nullptr == past_key) ? nullptr
+                                          : reinterpret_cast<const CudaT*>(past_key->Data<T>());
+  data.past_value = pass_key_value_as_past    ? reinterpret_cast<const CudaT*>(value->Data<T>())
+                    : (nullptr == past_value) ? nullptr
+                                              : reinterpret_cast<const CudaT*>(past_value->Data<T>());
   data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.has_qkv_workspace = !no_qkv_workspace;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
