@@ -696,7 +696,9 @@ if (onnxruntime_USE_TENSORRT)
   endif()
 
   include_directories(${TENSORRT_INCLUDE_DIR})
-
+  # ${TENSORRT_LIBRARY} is empty if we link nvonnxparser_static.
+  # nvonnxparser_static is linked against tensorrt libraries in onnx-tensorrt
+  # See https://github.com/onnx/onnx-tensorrt/blob/8af13d1b106f58df1e98945a5e7c851ddb5f0791/CMakeLists.txt#L121
   set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS

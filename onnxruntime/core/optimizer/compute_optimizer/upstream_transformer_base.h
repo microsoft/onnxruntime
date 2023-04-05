@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// The optimization here ideally is applicable to both training and inferencing,
-// while so far we mainly validate on training during cooking the optimization.
+// The optimization here ideally applies to both training and inferencing,
+// while so far we mainly validate training during cooking the optimization.
 #ifdef ENABLE_TRAINING_CORE
 #pragma once
 
@@ -19,7 +19,7 @@
 namespace onnxruntime::optimizer::compute_optimizer {
 
 /**
- * @brief Graph transformer base that helps reduce compute FLOP while maintaining mathematically equivalent result.
+ * @brief Graph transformer base that helps reduce compute FLOP while maintaining mathematically equivalent results.
  *
  * The series of graph transformations (inheriting from this base class) tries to identify opportunities to reduce
  * unnecessary computations on the graph level.
@@ -28,7 +28,7 @@ namespace onnxruntime::optimizer::compute_optimizer {
  * operate on sliced input data. Gather and GatherND are the entry operators that trigger the optimization search.
  *
  * T1 defines the operator info type that is used to store the information of the operator to propagate.
- * T2 defines the base operator actor type that is used to support the pass through.
+ * T2 defines the base operator actor type that is used to support the pass-through.
  */
 template <typename T1, typename T2>
 class UpStreamGraphTransformerBase : public GraphTransformer {
@@ -52,26 +52,25 @@ class UpStreamGraphTransformerBase : public GraphTransformer {
  protected:
   /**
    * @brief Check if the node is supported for upstream.
-   * @param graph  The graph to be checked.
+   * @param graph  The graph that is to be checked.
    * @param node The node to be checked.
    * @param logger The logger.
-   * @return Return null if not supported, otherwise return the operator info.
+   * @return Return nullopt if not supported, otherwise return the operator info.
    */
   virtual std::optional<T1> IsSupportedForUpstream(Graph& graph, Node& node, const logging::Logger& logger) const = 0;
 
   /**
-   * @brief The key function for child class to implement the upstream logic for the given node.
+   * @brief The key function for the child class is to implement the upstream logic for the given node.
    *
-   * @param graph The graph to be checked.
-   * @param queue The upstream operator info queue. When handling current_node's pass through, for those inputs that
+   * @param graph The graph that is to be checked.
+   * @param queue The upstream operator info queue. When handling current_node's pass-through, for those inputs that
    *     passed through the Gather/Reshape node, it can also be a candidate for further upstream.
-   * @param current_node The current node to be checked.
+   * @param current_node The node that is to be checked.
    */
   virtual bool UpStreamInternal(Graph& graph, std::deque<T1>& queue,
                                 Node& current_node, T1& info,
                                 const OpPassThroughConfig<T2>& pass_through_config,
-                                const logging::Logger& logger,
-                                const std::string& entry_node_name) const = 0;
+                                const logging::Logger& logger) const = 0;
 
   /**
    * @brief A consistent way to construct the full qualified op name.
@@ -84,10 +83,9 @@ class UpStreamGraphTransformerBase : public GraphTransformer {
 
  private:
   /**
-   * @brief Handle one given node's upstream, will call UpStreamInternal for implementation details.
+   * @brief Handle one given node's upstream and will call UpStreamInternal for implementation details.
    */
-  bool Upstream(Graph& graph, std::deque<T1>& queue, Node& current_node, T1& info, const logging::Logger& logger,
-                std::string& entry_node_name) const;
+  bool Upstream(Graph& graph, std::deque<T1>& queue, Node& current_node, T1& info, const logging::Logger& logger) const;
 };
 
 }  // namespace onnxruntime::optimizer::compute_optimizer
