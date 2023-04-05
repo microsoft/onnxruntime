@@ -1,4 +1,5 @@
-# Prepare ONNXRuntime XCFramework for GoodNotes
+# Prepare ONNXRuntime XCFramework for iOS or MacCatalyst
+The instructions should be executed on a Mac machine.
 
 ## Step 1: Extract required operators for your network
 You have to find out what operators to be included in the ONNXLibrary.
