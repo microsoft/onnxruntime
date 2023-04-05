@@ -207,9 +207,9 @@ void TestOptional3() {
 }
 
 int main() {
-  //TestFuseSelectFilter();
+  TestFuseSelectFilter();
   TestMerge();
-  //TestOptional2();
-  //TestOptional3();
+  TestOptional2();
+  TestOptional3();
   std::cout << "done" << std::endl;
 }
