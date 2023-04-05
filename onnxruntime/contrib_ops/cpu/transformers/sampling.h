@@ -66,8 +66,8 @@ class Sampling : public IControlFlowKernel {
     update_gpt_feeds_fp16_func_ = update_gpt_feeds_fp16_func;
   }
 
-  const void* cuda_device_prop_ = nullptr;
-  int cuda_device_arch_ = 0;
+  const void* gpu_device_prop_ = nullptr;
+  int gpu_device_arch_ = 0;
 
  private:
   // Device specific functions

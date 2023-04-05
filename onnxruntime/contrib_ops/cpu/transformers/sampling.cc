@@ -140,8 +140,8 @@ Status Sampling::Compute(OpKernelContext* ctx) const {
           init_greedy_state_func_ ? init_greedy_state_func_ : GenerationCpuDeviceHelper::InitGreedyState<float>,
           device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
           update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>,
-          cuda_device_prop_,
-          cuda_device_arch_};
+          gpu_device_prop_,
+          gpu_device_arch_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -164,8 +164,8 @@ Status Sampling::Compute(OpKernelContext* ctx) const {
           init_greedy_state_fp16_func_,
           device_copy_func_,
           update_gpt_feeds_fp16_func_,
-          cuda_device_prop_,
-          cuda_device_arch_};
+          gpu_device_prop_,
+          gpu_device_arch_};
 
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
