@@ -407,10 +407,12 @@ struct ProviderHostImpl : ProviderHost {
 
 #if !defined(DISABLE_SHARDED_TENSORS)
   const ONNX_NAMESPACE::TypeProto_ShardedTensor& TypeProto__sharded_tensor_type(const ONNX_NAMESPACE::TypeProto* p) override {
-    return p->sharded_tensor_type();
+    // TODO kyule sharded_tensor support in proto
+    return p->tensor_type();
   }
   ONNX_NAMESPACE::TypeProto_ShardedTensor* TypeProto__mutable_sharded_tensor_type(ONNX_NAMESPACE::TypeProto* p) override {
-    return p->mutable_sharded_tensor_type();
+    // TODO kyule sharded_tensor support in proto
+    return p->mutable_tensor_type();
   }
 #endif
 

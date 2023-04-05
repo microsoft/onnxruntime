@@ -344,7 +344,8 @@ struct SparseTensorTypeHelper {
 struct ShardedTensorTypeHelper {
   static void Set(ONNX_NAMESPACE::TensorProto_DataType element_type,
                   ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_sparse_tensor_type()->set_elem_type(element_type);
+    // TODO kyule sharded_tensor support in proto
+    proto.mutable_tensor_type()->set_elem_type(element_type);
   }
 };
 #endif
@@ -618,7 +619,7 @@ template <typename elemT>
 class ShardedTensorType : public ShardedTensorTypeBase {
  public:
   static_assert(data_types_internal::IsShardedTensorContainedType<elemT>::value,
-                "Requires one of the sparse-tensor fundamental types");
+                "Requires one of the sharded-tensor fundamental types");
 
   static MLDataType Type();
 

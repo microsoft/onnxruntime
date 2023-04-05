@@ -14,6 +14,7 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/sharded_tensor.h"
 #include "core/framework/TensorSeq.h"
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
@@ -237,9 +238,11 @@ void addOrtValueMethods(pybind11::module& m) {
         } else if (ort_value->IsTensorSequence()) {
           auto elem_type = ort_value->Get<TensorSeq>().DataType()->AsPrimitiveDataType()->GetDataType();
           type_proto = DataTypeImpl::SequenceTensorTypeFromONNXEnum(elem_type)->GetTypeProto();
+#if !defined(DISABLE_SHARDED_TENSORS)
         } else if (ort_value->IsShardedTensor()) {
           auto elem_type = ort_value->Get<ShardedTensor>().DataType()->AsPrimitiveDataType()->GetDataType();
           type_proto = DataTypeImpl::ShardedTensorTypeFromONNXEnum(elem_type)->GetTypeProto();
+#endif
         } else {
           // Plane sequences and maps probably have their specific type
           type_proto = ort_value->Type()->GetTypeProto();

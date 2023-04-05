@@ -281,7 +281,8 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
 #endif
       } else if (value_case == on::TypeProto::kShardedTensorType) {
 #if !defined(DISABLE_SHARDED_TENSORS)
-        sharded_type = &input->sharded_tensor_type();
+        // TODO kyule sharded_tensor support in proto
+        sharded_type = &input->tensor_type();
         ten_type = ONNX_TYPE_SHARDEDTENSOR;
         if (onnxruntime::utils::HasShape(*sharded_type)) {
           sp = &sharded_type->shape();

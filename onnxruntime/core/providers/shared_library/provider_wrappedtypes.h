@@ -280,8 +280,8 @@ struct TypeProto final {
 #endif
 
 #if !defined(DISABLE_SHARDED_TENSORS)
-  const TypeProto_SparseTensor& sharded_tensor_type() const { return g_host->TypeProto__sharded_tensor_type(this); }
-  TypeProto_SparseTensor* mutable_sharded_tensor_type() { return g_host->TypeProto__mutable_sharded_tensor_type(this); }
+  const TypeProto_ShardedTensor& sharded_tensor_type() const { return g_host->TypeProto__sharded_tensor_type(this); }
+  TypeProto_ShardedTensor* mutable_sharded_tensor_type() { return g_host->TypeProto__mutable_sharded_tensor_type(this); }
 #endif
 
 #if !defined(DISABLE_OPTIONAL_TYPE)

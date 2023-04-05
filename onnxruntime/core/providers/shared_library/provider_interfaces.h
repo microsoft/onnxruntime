@@ -21,7 +21,10 @@ enum OperatorStatus : int;
 
 // String pointer as unique TypeProto identifier.
 using DataType = const std::string*;
-
+#if !defined(DISABLE_SHARDED_TENSORS)
+struct TypeProto_ShardedTensor;
+struct TensorShapeProto;
+#endif
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -125,6 +128,7 @@ struct Node__EdgeIterator {
 #pragma warning(push)
 #pragma warning(disable : 26436)
 #endif
+
 struct ProviderHost {
   virtual const OrtApiBase* OrtGetApiBase() = 0;
 
@@ -316,7 +320,7 @@ struct ProviderHost {
 
 #if !defined(DISABLE_SHARDED_TENSORS)
   virtual const ONNX_NAMESPACE::TypeProto_ShardedTensor& TypeProto__sharded_tensor_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
-  virtual ONNX_NAMESPACE::TypeProto_SparseTensor* TypeProto__mutable_sharded_tensor_type(ONNX_NAMESPACE::TypeProto* p) = 0;
+  virtual ONNX_NAMESPACE::TypeProto_ShardedTensor* TypeProto__mutable_sharded_tensor_type(ONNX_NAMESPACE::TypeProto* p) = 0;
 #endif
 
 #if !defined(DISABLE_OPTIONAL_TYPE)

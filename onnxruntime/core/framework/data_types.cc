@@ -208,7 +208,8 @@ static bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto_1,
 #endif
 #if !defined(DISABLE_SHARDED_TENSORS)
       case TypeProto::ValueCase::kShardedTensorType:
-        result = IsCompatible(type_proto_1.sharded_tensor_type(), type_proto_2.sharded_tensor_type());
+        // TODO kyule sharded_tensor support in proto
+        result = IsCompatible(type_proto_1.tensor_type(), type_proto_2.tensor_type());
         break;
 #endif
 #if !defined(DISABLE_OPTIONAL_TYPE)
@@ -459,9 +460,10 @@ bool ShardedTensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_p
   }
 
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kShardedTensorType);
-  ORT_ENFORCE(utils::HasElemType(thisProto->sharded_tensor_type()));
+  // TODO kyule sharded_tensor support in proto
+  ORT_ENFORCE(utils::HasElemType(thisProto->tensor_type()));
 
-  return data_types_internal::IsCompatible(thisProto->sharded_tensor_type(), type_proto.sharded_tensor_type());
+  return data_types_internal::IsCompatible(thisProto->tensor_type(), type_proto.tensor_type());
 }
 
 DeleteFunc ShardedTensorTypeBase::GetDeleteFunc() const {

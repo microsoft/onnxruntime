@@ -215,6 +215,37 @@ template <>
 MLDataType DataTypeImpl::GetSparseTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_MLFloat16(); }
 #endif
 
+#if !defined(DISABLE_SHARDED_TENSORS)
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<bool>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_bool(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<int8_t>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_int8(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<uint8_t>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_uint8(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<int16_t>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_int16(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<uint16_t>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_uint16(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<int32_t>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_int32(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<uint32_t>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_uint32(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<int64_t>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_int64(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<uint64_t>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_uint64(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<float>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_float(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<double>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_double(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<std::string>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_string(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_BFloat16(); }
+template <>
+MLDataType DataTypeImpl::GetShardedTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetShardedTensorType_MLFloat16(); }
+#endif
+
 Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
   return g_host->IDataTransfer__CopyTensor(this, src, dst);
 }

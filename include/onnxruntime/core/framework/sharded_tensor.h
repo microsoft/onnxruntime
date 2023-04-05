@@ -37,11 +37,11 @@ namespace onnxruntime {
 
 class ShardedTensor final {
  public:
-  // NB! Removing Create() methods returning unique_ptr<Tensor>. Still available in other EPs that are dynamically linked.
-  // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
+  // NB! Removing Create() methods returning unique_ptr<ShardedTensor>. Still available in other EPs that are dynamically linked.
+  // Strive not to allocate ShardedTensor with new/delete as it is a shallow class and using it by value is just fine.
   // Use InitOrtValue() methods to allocate for OrtValue.
 
-  ShardedTensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
+  ShardedTensor() = default;  // to allow creating vector<ShardedTensor> to support seq(ShardedTensor)
 
 
 
@@ -60,11 +60,11 @@ class ShardedTensor final {
   ~ShardedTensor();
 
   // Move is allowed
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShardedTensor);
 
-  ShardedTensor(Tensor&& other) noexcept;
+  ShardedTensor(ShardedTensor&& other) noexcept;
 
-  ShardedTensor& operator=(Tensor&& other) noexcept;
+  ShardedTensor& operator=(ShardedTensor&& other) noexcept;
 
   /**
      Returns the data type.
