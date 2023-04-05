@@ -136,7 +136,7 @@ void LabelEncoder_2<float, std::int64_t>::InitializeSomeFields(const OpKernelInf
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder,
-    1,
+    2,
     string_string,
     KernelDefBuilder().TypeConstraint("T1",
                                       std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>()})
