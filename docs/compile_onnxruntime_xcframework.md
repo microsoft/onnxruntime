@@ -44,3 +44,5 @@ To compile, use the follow command
 ```
 python tools/ci_build/github/apple/build_macabi_framework.py --config Release --build_dir /home/username/onnxlibrary/macabi_release_v20230327_2320 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc-3.21.12.0 tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
 ```
+
+Both of these scripts will invoke `tools/ci_build/build.py`. [This section](https://github.com/GoodNotes/onnxruntime/blob/eeca6fea2b4d02ddc729c7a7cdc39b123d23fbf8/tools/ci_build/build.py#L1221) contains the target platform-specific parameters when executing CMake.
