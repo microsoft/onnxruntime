@@ -182,15 +182,10 @@ template <>
 struct EigenCastType<BFloat16> {
   using type = Eigen::bfloat16;
 };
-
-// AllFixedSizeExceptHalf --> AllFixedSizeExceptHalf
-template <typename SrcType,
-          typename DstType,
-          typename std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFixedSizeExceptHalf, SrcType>{} &&
-                                      boost::mp11::mp_contains<element_type_lists::AllFixedSizeExceptHalf, DstType>{},
-                                  bool>::type = true>
-struct TensorCaster {
-  void CastStd(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+// generic tensor X -> Y
+template <typename SrcType, typename DstType, typename Enable = void>
+struct TensorCasterStd {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     using SrcEigenCastType = typename EigenCastType<SrcType>::type;
     using DstEigenCastType = typename EigenCastType<DstType>::type;
 
@@ -202,34 +197,37 @@ struct TensorCaster {
     out_vector = in_vector.template cast<DstEigenCastType>();
   }
 };
-/*
-// Float 8, Float16 -> AllFixedSizeExceptHalf
-template <typename SrcType, typename DstType>
-struct TensorCaster : std::enable_if<boost::mp11::mp_contains<TypeList<Float8E4M3FN,
-                                                                       Float8E4M3FNUZ,
-                                                                       Float8E5M2,
-                                                                       Float8E5M2FNUZ,
-                                                                       MLFloat16,
-                                                                       BFloat16>,
-                                                              SrcType>::value &&
-                                         boost::mp11::mp_contains<element_type_lists::AllFixedSizeExceptHalf, DstType>::value,
-                                     void> {
-  void CastStd(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+
+// tensor X -> string
+template <typename SrcType>
+struct TensorCasterStd<SrcType, std::string> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
-    auto* out_data = out.MutableData<DstType>();
+    auto* out_data = out.MutableData<std::string>();
     for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
-      out_data[i] = static_cast<DstType>(in_data[i].ToFloat());
+      CastToString(in_data[i], out_data[i]);
     }
   }
 };
 
-// AllFixedSizeExceptHalf -> Float 8
-template <typename SrcType, typename DstType>
-struct TensorCaster : std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFixedSizeExceptHalf, SrcType>::value &&
-                                         boost::mp11::mp_contains<element_type_lists::All_float8, DstType>::value,
-                                     void> {
-  void CastSat(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const {
+// tensor string -> X
+template <typename DstType>
+struct TensorCasterStd<std::string, DstType> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<std::string>();
+    auto* out_data = out.MutableData<DstType>();
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      CastFromString(in_data[i], out_data[i]);
+    }
+  }
+};
+
+// tensor X -> float 8
+template <typename SrcType, typename DstType, typename Enable = void>
+struct TensorCasterSat {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const {
     const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
     auto* out_data = out.MutableData<DstType>();
@@ -239,102 +237,69 @@ struct TensorCaster : std::enable_if<boost::mp11::mp_contains<element_type_lists
   }
 };
 
-// Half -> Float 8
-template <typename SrcType, typename DstType>
-struct TensorCaster : std::enable_if<boost::mp11::mp_contains<TypeList<MLFloat16, BFloat16>, SrcType>::value &&
-                                         boost::mp11::mp_contains<element_type_lists::All_float8, DstType>::value,
-                                     void> {
-  void CastSat(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const {
+// tensor string -> float 8
+template <typename DstType>
+struct TensorCasterSat<std::string, DstType> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out, bool saturate) const {
     const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<SrcType>();
+    const auto* in_data = in.Data<std::string>();
     auto* out_data = out.MutableData<DstType>();
+    float float_value;
     for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
-      out_data[i] = DstType(in_data[i].ToFloat(), saturate);
+      CastFromString(in_data[i], float_value);
+      out_data[i] = DstType(float_value, saturate);
     }
   }
 };
-*/
 
-// AllFixedSizeExceptHalf -> string
-template <typename SrcType,
-          typename DstType,
-          typename std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFixedSizeExceptHalf, SrcType>{} &&
-                                      std::is_same<std::string, DstType>{},
-                                  bool>::type = true>
-struct TensorCaster {
-  void CastStd(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<SrcType>();
-    auto* out_data = out.MutableData<DstType>();
-    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
-      CastToString(in_data[i], out_data[i]);
-    }
-  }
-};
-/*
-// string -> AllFixedSizeExceptHalf
-template <typename SrcType,
-          typename DstType,
-          typename std::enable_if<std::is_same<std::string, SrcType>{} &&
-                                      boost::mp11::mp_contains<element_type_lists::AllFixedSizeExceptHalf, DstType>{},
-                                  bool>::type = true>
-struct TensorCaster {
-  void CastStd(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<SrcType>();
-    auto* out_data = out.MutableData<DstType>();
-    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
-      CastFromString(in_data[i], out_data[i], saturate);
-    }
-  }
-};
-*/
-/*
 #if defined(_M_AMD64) && !defined(_M_ARM64EC)
 // specializations to use optimized and Windows x64-specific
 // MlasConvertHalfToFloatBuffer() routine for MLFloat16 -> float conversion
 
 // tensor MLFloat16 -> float
-void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-  auto out_data = out.MutableData<float>();
-  auto in_data = in.Data<MLFloat16>();
-  const size_t shape_size = narrow<size_t>(shape.Size());
-  MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
-}
+template <>
+struct TensorCasterStd<MLFloat16, float> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    auto out_data = out.MutableData<float>();
+    auto in_data = in.Data<MLFloat16>();
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
+  }
+};
 
 Tensor GetIntermediateMLFloat16ToFloatTensor(
     const OpKernelContext& context, const TensorShape& shape, const Tensor& in) {
   AllocatorPtr allocator;
   ORT_THROW_IF_ERROR(context.GetTempSpaceAllocator(&allocator));
   Tensor out{DataTypeImpl::GetType<float>(), shape, allocator};
-  Cast<MLFloat16, float>{}.Cast(context, shape, in, out);
+  TensorCasterStd<MLFloat16, float>{}.Cast(context, shape, in, out);
   return out;
 }
 
 template <typename DstType>
-void CastMLFloat16ThroughFloatTensorStd(
-    const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+void CastMLFloat16ThroughFloatTensor(
+    const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) {
   // use optimized MLFloat16 -> float, then float -> DstType
   Tensor intermediate_tensor = GetIntermediateMLFloat16ToFloatTensor(context, shape, in);
-  Cast<float, DstType>(context, shape, intermediate_tensor, out);
+  TensorCasterStd<float, DstType>{}.Cast(context, shape, intermediate_tensor, out);
 }
 
 // tensor MLFloat16 -> X
 template <typename DstType>
-void Cast<std::string>(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    CastMLFloat16ThroughFloatTensorStd<DstType>(context, shape, in, out);
-}
-
-// tensor MLFloat16 -> string
-template <>
-struct TensorCaster<MLFloat16, std::string> {
+struct TensorCasterStd<MLFloat16, DstType> {
   void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    CastMLFloat16ThroughFloatTensorStd<std::string>(context, shape, in, out);
+    CastMLFloat16ThroughFloatTensor<DstType>(context, shape, in, out);
   }
 };
 
+// tensor MLFloat16 -> string
+template <>
+struct TensorCasterStd<MLFloat16, std::string> {
+  void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    CastMLFloat16ThroughFloatTensor<std::string>(context, shape, in, out);
+  }
+};
 #endif
-*/
 
 class Cast final : public OpKernel {
  public:
@@ -367,14 +332,14 @@ class Cast final : public OpKernel {
 template <typename TSrc, typename TDst>
 struct DispatcherStd {
   void operator()(const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
-    TensorCaster<TSrc, TDst>{}.CastStd(context, shape, src, dst);
+    TensorCasterStd<TSrc, TDst>{}.Cast(context, shape, src, dst);
   }
 };
 
 template <typename TSrc, typename TDst>
 struct DispatcherSat {
   void operator()(const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst, bool saturate) {
-    TensorCaster<TSrc, TDst>{}.CastSat(context, shape, src, dst, saturate);
+    TensorCasterSat<TSrc, TDst>{}.Cast(context, shape, src, dst, saturate);
   }
 };
 
