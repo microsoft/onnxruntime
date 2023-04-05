@@ -201,9 +201,7 @@ struct OrtSpinLock {
     bool occupied = false;
     while (!occupied_.compare_exchange_weak(
         occupied,
-        true,
-        std::memory_order_relaxed,
-        std::memory_order_relaxed)) {
+        true)) {
       occupied = false;
       concurrency::SpinPause();  // pause and retry
     }
@@ -212,12 +210,10 @@ struct OrtSpinLock {
     bool occupied = false;
     return occupied_.compare_exchange_weak(
         occupied,
-        true,
-        std::memory_order_relaxed,
-        std::memory_order_relaxed);
+        true);
   }
   void unlock() noexcept {
-    occupied_.store(false, std::memory_order_relaxed);
+    occupied_.store(false);
   }
 
  private:
