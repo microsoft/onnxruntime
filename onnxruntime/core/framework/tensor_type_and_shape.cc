@@ -13,6 +13,7 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/sharded_tensor.h"
 #include "core/framework/tensor_shape.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_c_api.h"

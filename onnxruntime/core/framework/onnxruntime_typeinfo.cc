@@ -8,6 +8,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/sharded_tensor.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
