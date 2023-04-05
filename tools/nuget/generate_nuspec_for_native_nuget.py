@@ -838,9 +838,9 @@ def generate_files(line_list, args):
             interop_src = "Microsoft.AI.MachineLearning.Interop"
             interop_props = "Microsoft.AI.MachineLearning.props"
             interop_targets = "Microsoft.AI.MachineLearning.targets"
-            windowsai_net5.0_props = os.path.join(args.sources_path, "csharp", "src", interop_src, interop_props)
+            windowsai_net50_props = os.path.join(args.sources_path, "csharp", "src", interop_src, interop_props)
             windowsai_net5.0_targets = os.path.join(args.sources_path, "csharp", "src", interop_src, interop_targets)
-            files_list.append("<file src=" + '"' + windowsai_net5.0_props + '" target="build\\net5.0" />')
+            files_list.append("<file src=" + '"' + windowsai_net50_props + '" target="build\\net5.0" />')
             files_list.append("<file src=" + '"' + windowsai_net5.0_targets + '" target="build\\net5.0" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package or is_snpe_package:
