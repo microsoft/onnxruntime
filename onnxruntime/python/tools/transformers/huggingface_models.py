@@ -156,6 +156,7 @@ MODELS = {
         False,
         "bert",
     ),
+    "google/vit-base-patch16-224": (["pixel_values"], 12, False, "vit"),
     # "google/pegasus-xsum": (["input_ids"], 11, False, "bert"),
     # "google/pegasus-large": (["input_ids"], 11, False, "bert"),
 }

@@ -84,6 +84,8 @@ set(contrib_ops_excluded_files
   "transformers/beam_search.h"
   "transformers/greedy_search.cc"
   "transformers/greedy_search.h"
+  "transformers/sampling.cc"
+  "transformers/sampling.h"
   "conv_transpose_with_dynamic_pads.cc"
   "conv_transpose_with_dynamic_pads.h"
   "cuda_contrib_kernels.cc"
