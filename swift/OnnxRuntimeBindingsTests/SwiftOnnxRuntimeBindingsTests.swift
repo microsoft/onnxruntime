@@ -3,12 +3,12 @@
 
 import XCTest
 import Foundation
-@testable import OnnxWrapper
+@testable import OnnxRuntimeBindings
 
-final class SwiftOnnxWrapperTests: XCTestCase {
+final class SwiftOnnxRuntimeBindingsTests: XCTestCase {
     let modelPath: String = Bundle.module.url(forResource: "single_add.basic", withExtension: "ort")!.path
-    
-    func testExample() throws {
+
+    func testCreateSession() throws {
         do {
             let env = try ORTEnv(loggingLevel: ORTLoggingLevel.verbose)
             let options = try ORTSessionOptions()
@@ -20,7 +20,7 @@ final class SwiftOnnxWrapperTests: XCTestCase {
             XCTFail(error.localizedDescription)
         }
     }
-    
+
     func testAppendCoreMLEP() throws {
         do {
             let env = try ORTEnv(loggingLevel: ORTLoggingLevel.verbose)
@@ -28,14 +28,14 @@ final class SwiftOnnxWrapperTests: XCTestCase {
             let coreMLOptions: ORTCoreMLExecutionProviderOptions = ORTCoreMLExecutionProviderOptions()
             coreMLOptions.enableOnSubgraphs = true
             try sessionOptions.appendCoreMLExecutionProvider(with: coreMLOptions)
-            
+
             XCTAssertTrue(ORTIsCoreMLExecutionProviderAvailable())
             _ = try ORTSession(env: env, modelPath: modelPath, sessionOptions: sessionOptions)
         } catch let error {
             XCTFail(error.localizedDescription)
         }
     }
-    
+
     func testAppendXnnpackEP() throws {
         do {
             let env = try ORTEnv(loggingLevel: ORTLoggingLevel.verbose)
@@ -43,7 +43,7 @@ final class SwiftOnnxWrapperTests: XCTestCase {
             let XnnpackOptions: ORTXnnpackExecutionProviderOptions = ORTXnnpackExecutionProviderOptions()
             XnnpackOptions.intra_op_num_threads = 2
             try sessionOptions.appendXnnpackExecutionProvider(with: XnnpackOptions)
-            
+
             XCTAssertTrue(ORTIsCoreMLExecutionProviderAvailable())
             _ = try ORTSession(env: env, modelPath: modelPath, sessionOptions: sessionOptions)
         } catch let error {

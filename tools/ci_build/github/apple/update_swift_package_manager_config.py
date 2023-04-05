@@ -21,7 +21,6 @@ def calc_checksum(filename: pathlib.Path):
 
 def checksum_remote_package(package_url: str):
     import tempfile
-    from urllib.parse import urlparse
     from urllib.request import urlretrieve
 
     # tempfile.NamedTemporaryFile returns an open file, but we need a filename
@@ -32,29 +31,24 @@ def checksum_remote_package(package_url: str):
         temp_file = os.path.join(tmp, filename)
         print(f"Downloading file from {package_url} to {temp_file}")
         urlretrieve(package_url, filename=temp_file)
-        return calc_checksum(temp_file)
+        return calc_checksum(pathlib.Path(temp_file))
 
 
 # find the below section in Package.swift and replace the values for url: and checksum:.
 # If replacing with a local file, 'url:' -> 'file:' and we don't have a checksum
 #
-#   .binaryTarget(name: "onnxruntime",
+#   .binaryTarget(name: "OnnxRuntimeNativePod",
 #      url: "https://onnxruntimepackages.z14.web.core.windows.net/pod-archive-onnxruntime-c-1.14.0.zip",
 #      checksum: "c89cd106ff02eb3892243acd7c4f2bd8e68c2c94f2751b5e35f98722e10c042b"),
 #
 def update_swift_package(spm_config_path: pathlib.Path, ort_package_path: Union[pathlib.Path, str]):
     # ort_package_path must be a str for a url or Path for local file
     is_url = type(ort_package_path) is str
-    if is_url:
-        checksum = checksum_remote_package(ort_package_path)
-    else:
-        checksum = calc_checksum(ort_package_path)
-
     updated = False
     new_config = []
-    with open(spm_config_path, "r") as config:
+    with open(spm_config_path) as config:
         while line := config.readline():
-            if '.binaryTarget(name: "onnxruntime"' in line:
+            if '.binaryTarget(name: "OnnxRuntimeNativePod"' in line:
                 # find and update the following 2 lines
                 url_line = config.readline()
                 checksum_line = config.readline()
@@ -71,7 +65,9 @@ def update_swift_package(spm_config_path: pathlib.Path, ort_package_path: Union[
                 new_config.append(line)
                 new_config.append(new_url_line)
 
+                # checksum is only valid with 'url:' so skip if we're using a local file
                 if is_url:
+                    checksum = checksum_remote_package(ort_package_path)
                     start_checksum_value = checksum_line.find('"')
                     new_checksum_line = checksum_line[: start_checksum_value + 1] + checksum + '"),\n'
                     new_config.append(new_checksum_line)

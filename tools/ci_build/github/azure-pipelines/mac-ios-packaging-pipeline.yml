@@ -202,6 +202,7 @@ jobs:
 
   # Package.swift needs to point to a file relative to it. Do a copy to simplify things
   - script: |
+      set -e -x
       cp "$(Build.ArtifactStagingDirectory)/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip" swift/
       python tools/ci_build/github/apple/update_swift_package_manager_config.py \
         --spm_config Package.swift \
