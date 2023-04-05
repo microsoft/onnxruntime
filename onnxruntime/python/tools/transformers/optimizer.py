@@ -56,6 +56,7 @@ MODEL_TYPES = {
     "unet": (UnetOnnxModel, "pytorch", 1),
     "vae": (VaeOnnxModel, "pytorch", 1),
     "clip": (ClipOnnxModel, "pytorch", 1),
+    "vit": (BertOnnxModel, "pytorch", 1),
 }
 
 
@@ -410,6 +411,22 @@ def _parse_arguments():
     )
     parser.set_defaults(use_external_data_format=False)
 
+    parser.add_argument(
+        "--disable_symbolic_shape_infer",
+        required=False,
+        action="store_true",
+        help="diable symoblic shape inference",
+    )
+    parser.set_defaults(disable_symbolic_shape_infer=False)
+
+    parser.add_argument(
+        "--convert_to_packing_mode",
+        required=False,
+        action="store_true",
+        help="convert the model to packing mode. Only available for BERT like model",
+    )
+    parser.set_defaults(convert_to_packing_mode=False)
+
     args = parser.parse_args()
 
     return args
@@ -454,13 +471,19 @@ def main():
     if args.input_int32:
         optimizer.change_graph_inputs_to_int32()
 
-    optimizer.save_model_to_file(args.output, args.use_external_data_format)
-
     if args.model_type in ["bert", "gpt2"]:
         if optimizer.is_fully_optimized():
             logger.info("The model has been fully optimized.")
         else:
             logger.info("The model has been optimized.")
+
+    if args.convert_to_packing_mode:
+        if args.model_type == "bert":
+            optimizer.convert_to_packing_mode(not args.disable_symbolic_shape_infer)
+        else:
+            logger.warning("Packing mode only supports BERT like models")
+
+    optimizer.save_model_to_file(args.output, args.use_external_data_format)
 
 
 if __name__ == "__main__":

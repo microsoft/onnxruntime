@@ -46,9 +46,11 @@ class FusionOptions:
 
         # Set default to sequence length for BERT model to use fused attention to speed up.
         # Note that embed layer normalization will convert 2D mask to 1D when mask type is MaskIndexEnd.
-        self.attention_mask_format = (
-            AttentionMaskFormat.MaskIndexEnd if model_type == "bert" else AttentionMaskFormat.AttentionMask
-        )
+        self.attention_mask_format = AttentionMaskFormat.AttentionMask
+        if model_type == "bert":
+            self.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
+        elif model_type == "vit":
+            self.attention_mask_format = AttentionMaskFormat.NoMask
 
         # options for stable diffusion
         if model_type in ["unet", "vae", "clip"]:

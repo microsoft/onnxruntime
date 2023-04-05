@@ -5,6 +5,7 @@
 import collections
 import collections.abc
 import os
+import pathlib
 import warnings
 
 from onnxruntime.capi import _pybind_state as C
@@ -347,6 +348,9 @@ class InferenceSession(Session):
         if isinstance(path_or_bytes, str):
             self._model_path = path_or_bytes
             self._model_bytes = None
+        elif isinstance(path_or_bytes, pathlib.Path):
+            self._model_path = str(path_or_bytes)
+            self._model_bytes = None
         elif isinstance(path_or_bytes, bytes):
             self._model_path = None
             self._model_bytes = path_or_bytes  # TODO: This is bad as we're holding the memory indefinitely
@@ -363,9 +367,9 @@ class InferenceSession(Session):
 
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)
-        except ValueError:
+        except ValueError as e:
             if self._enable_fallback:
-                print(f"EP Error using {providers}")
+                print(f"EP Error {e} when using {providers}")
                 print(f"Falling back to {self._fallback_providers} and retrying.")
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
