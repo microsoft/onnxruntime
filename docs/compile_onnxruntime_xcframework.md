@@ -1,4 +1,6 @@
-# Step 1: Extract required operators for your network
+# Prepare ONNXRuntime XCFramework for GoodNotes
+
+## Step 1: Extract required operators for your network
 You have to find out what operators to be included in the ONNXLibrary.
 Operators could be extracted via `tools/python/create_reduced_build_config.py`
 Let say we have a network (ONNX file) which is stored in `/home/username/models/generator_network.onnx`
@@ -32,7 +34,7 @@ com.microsoft;1;QLinearLeakyRelu
 ```
 These operators are discovered when the library is deployed in iOS. It was found that ONNXRuntime will optimize the graph so you should add these custom operators back to `hws_mobile_package.required_operators.config`.
 
-# Step 2: Compile ONNXRuntime XCFramework
+## Step 2: Compile ONNXRuntime XCFramework
 For iOS simulator and iOS devices, we could follow the official tutorial to build the XCFramework. 
 In particular, you could use `build_ios_framework.py` compiles the library with the following command:
 ```
@@ -47,7 +49,7 @@ python tools/ci_build/github/apple/build_macabi_framework.py --config Release --
 
 Both of these scripts will invoke `tools/ci_build/build.py`. [This section](https://github.com/GoodNotes/onnxruntime/blob/eeca6fea2b4d02ddc729c7a7cdc39b123d23fbf8/tools/ci_build/build.py#L1221) contains the target platform-specific parameters when executing CMake.
 
-# Step 3: Use it in a Swift package in GoodNotes
+## Step 3: Use it in a Swift package in GoodNotes
 Since we compile the framework for different target separately, we need to merge the iOS xcframework and MacCatlyst xcframework manually at the moment.
 Please refer to this [PR#12971](https://github.com/GoodNotes/GoodNotes-5/pull/12971) for the directory structure.
 You would also need to combine the `Info.plist` manually.
