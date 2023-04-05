@@ -197,9 +197,11 @@ MlasGemmQuantThreadInit<MLAS_GEMM_U8S8_KERNEL_AMX>()
 
     MlasThreadedBufAlloc(bufsize);
 
-    static thread_local bool tile_configured = false;
     static thread_local struct tileconfig_t tc = {0};
-    if (!tile_configured) {
+    struct tileconfig_t current_tc = {0};
+    _tile_storeconfig(&current_tc);
+
+    if (tc.palette_id == 0 || std::memcmp(&current_tc, &tc, sizeof(struct tileconfig_t)) != 0) {
         // Filling tile configure structure.
         tc.palette_id = 1;
         for (int t = 0; t < 8; t++) {
@@ -207,7 +209,6 @@ MlasGemmQuantThreadInit<MLAS_GEMM_U8S8_KERNEL_AMX>()
             tc.colb[t] = 64;
         }
         _tile_loadconfig(&tc);
-        tile_configured = true;
     }
 }
 
