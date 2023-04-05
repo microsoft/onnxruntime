@@ -1171,6 +1171,17 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
     if len(old_nodes) < num_layers:
         return False
 
+    # Redirect the RelativePositionBias node's input from past_key_self_0.shape[2] to past_sequence_length.
+    # There is only one RelativePositionBias node in T5 decoder subgraph.
+    rel_pos_bias_node = None
+    for node in subg.node:
+        if node.op_type == "RelativePositionBias":
+            rel_pos_bias_node = node
+            break
+
+    if rel_pos_bias_node is None:
+        return False
+
     decoder_masked_attention_supported_attr = [
         "past_present_share_buffer",
         "num_heads",
@@ -1180,6 +1191,17 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
     ]
 
     for node in subg.node:
+        if len(node.output) > 0 and node.output[0] == rel_pos_bias_node.input[1]:
+            cast_node = onnx.helper.make_node(
+                "Cast",
+                ["past_sequence_length"],
+                ["past_sequence_length_int64"],
+                name="past_sequence_length_cast",
+                to=TensorProto.INT64,
+            )
+            node.input[1] = cast_node.output[0]
+            new_nodes.extend([cast_node])
+
         if node.op_type == "MultiHeadAttention":
             kwargs = kwargs_of(node)
             for k in kwargs.copy():

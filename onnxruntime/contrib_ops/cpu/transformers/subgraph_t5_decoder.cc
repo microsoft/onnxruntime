@@ -114,7 +114,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF(float_type != float32_type && float_type != float16_type,
                 "decoder subgraph input 2 (encoder_hidden_states) shall have float or float16 type");
 
-  for (int i = first_past_input_index_; i < num_subgraph_inputs; i++) {
+  for (int i = first_past_input_index_; i < first_past_input_index_ + 4 * num_layers; i++) {
     ORT_RETURN_IF(subgraph_inputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
                   "decoder subgraph past inputs shall have same data type as that of encoder_hidden_states");
   }
@@ -139,6 +139,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 //                encoder_hidden_states,
 //                present_key_self_0, present_value_self_0, ..., present_key_cross_0, present_value_cross_0, ...
 Status T5DecoderSubgraph::CreateInitialFeeds(
+    AllocatorPtr cpu_allocator,
     gsl::span<const int32_t> beam_next_tokens,
     const std::vector<const OrtValue*>& implicit_inputs,
     const std::vector<OrtValue>& encoder_feeds,
@@ -258,18 +259,13 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
 
   // TODO: This part shares the similar logic with CreateInitialFeeds() in subgraph_gpt.cc. We should refactor it.
   if (past_present_share_buffer_) {
-    const IExecutionProvider* provider = GetProvider();
-    AllocatorPtr cpu_allocator = provider->GetAllocator(OrtMemTypeDefault);
-    ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
-
     // Past sequence length feed
     int64_t past_seq_len_dims[] = {1};
     TensorShape past_seq_len_shape(&past_seq_len_dims[0], 1);
     OrtValue past_seq_len_tensor_value;
     Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), past_seq_len_shape, cpu_allocator, past_seq_len_tensor_value);
     decoder_feeds.push_back(past_seq_len_tensor_value);
-    *past_seq_len_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = cur_len;
-
+    *past_seq_len_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = 1;
     // Add beam search specific inputs
     if (add_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
       // Beam width feed

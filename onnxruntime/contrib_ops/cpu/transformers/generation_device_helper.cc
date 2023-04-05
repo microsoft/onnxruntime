@@ -80,12 +80,14 @@ Status ExpandBuffer(Stream* stream,
 
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
   const int64_t& batch_size = input_shape[0];
-  const int64_t& sequence_length = input_shape[2];
+  int64_t sequence_length = 0;
 
   int64_t dims[4] = {0};
   input_shape.CopyDims(dims, input_shape.NumDimensions());
   dims[0] = batch_size * num_beams;
-  if (max_sequence_length > 0) {
+  bool is_kv_cache = input_shape.NumDimensions() == 4;
+  if (max_sequence_length > 0 && is_kv_cache) {
+    sequence_length = input_shape[2];
     dims[2] = max_sequence_length;
   }
   TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
@@ -113,6 +115,8 @@ Status ExpandBuffer(Stream* stream,
     }
     return Status::OK();
   }
+
+  ORT_ENFORCE(is_kv_cache);
 
   // Expand from [B, N, S, H] to [B*beam, N, S_max, H]
   const int64_t& num_heads = input_shape[1];
@@ -796,15 +800,22 @@ Status UpdateDecoderFeeds(
     int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
     bool use_sequence_as_input_ids,
     int current_length,
+    int input_sequence_len,
+    bool past_present_share_buffer,
+    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(stream);
-
+  ORT_UNUSED_PARAMETER(beam_indices_gpu);
+  ORT_UNUSED_PARAMETER(input_sequence_len);
+  ORT_UNUSED_PARAMETER(past_present_share_buffer);
+  ORT_UNUSED_PARAMETER(has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
   // next_inputs: input_ids,
   //              encoder_attention_mask, encoder_hidden_states(optional),
@@ -942,11 +953,15 @@ template Status UpdateDecoderFeeds<float>(
     int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
     bool use_sequence_as_input_ids,
     int current_length,
+    int input_sequence_len,
+    bool past_present_share_buffer,
+    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 

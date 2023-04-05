@@ -85,9 +85,9 @@ Status ReorderPastState(
   // "Fake" the shapes of the input and output tensors of the Transpose operation to suit our need
   size_t offset = packed_past ? 1 : 0;
   TensorShape transpose_input_shape_override = {past_state_shape[offset],
-                                                past_state_shape[1 + offset],
-                                                past_state_shape[2 + offset],
-                                                past_state_shape[3 + offset] / chunk_size,
+                                                past_state_shape[offset + 1],
+                                                past_state_shape[offset + 2],
+                                                past_state_shape[offset + 3] / chunk_size,
                                                 chunk_size};
 
   TensorShape transpose_output_shape_override = {past_state_shape[offset], past_state_shape[offset + 1],
@@ -774,8 +774,8 @@ Status GreedySearchProcessLogits(
       cuda_stream);
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size);
-  dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size);
+  dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size, 1);
+  dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size, 1);
 #endif
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens.data(),
@@ -1025,11 +1025,15 @@ Status UpdateDecoderFeeds(
     int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
     bool use_sequence_as_input_ids,
     int current_length,
+    int input_sequence_len,
+    bool past_present_share_buffer,
+    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
     transformers::Sequences&,
     const transformers::IConsoleDumper* dumper) {
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
@@ -1043,7 +1047,6 @@ Status UpdateDecoderFeeds(
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "BeamSearch CUDA Op does not support using sequence as input_ids in decoder input");
   }
-  ORT_UNUSED_PARAMETER(current_length);
 
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.size());
@@ -1066,18 +1069,63 @@ Status UpdateDecoderFeeds(
 
   // Update past state
   ORT_ENFORCE(last_outputs.size() >= static_cast<size_t>(1 + num_present_tensors));
-  // TODO(tianleiwu): remove num_beams==1 once GreedySearch operator is available.
-  if (num_beams == 1) {
-    // feed present_* output to past_* inputs one by one
-    for (int i = 0; i < num_present_tensors; ++i) {
-      next_inputs[t5_decoder_first_past_input_idx + i] =
-          last_outputs[t5_decoder_first_present_output_idx + i];
+
+  if (past_present_share_buffer) {
+    // Update past sequence length input
+    const int past_sequence_length_idx = 2 * (static_cast<int>(last_outputs.size()) - t5_decoder_first_present_output_idx) + t5_decoder_first_past_input_idx;
+    *(next_inputs[past_sequence_length_idx].GetMutable<Tensor>()->MutableData<int32_t>()) = current_length - 1;
+
+    // Update beam search specific input for DecoderMaskedSelfAttention (cache indirection) if present
+
+    // If the last input is not `past_sequence_length`, then the beam search specific inputs
+    // for `DecoderMaskedSelfAttention` is present
+    if (has_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
+      ORT_ENFORCE(!beam_indices_gpu.empty(), "Beam indices must be present on CUDA while using DecoderMaskedMultiHeadAttention with BeamSearch");
+
+      // The cache indirection feed comes 2 feeds after the `past_sequence_length` feed
+      const OrtValue& old_cache_indirection = next_inputs[past_sequence_length_idx + 2];
+
+      // New cache indirection updated for next decoding run
+      OrtValue cache_indirection;
+
+      Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), old_cache_indirection.Get<Tensor>().Shape(), allocator, cache_indirection);
+
+      // The third index of the past/present tensor is the max_sequence_length
+      int max_sequence_length = static_cast<int>(last_outputs[t5_decoder_first_present_output_idx].Get<Tensor>().Shape()[2]);
+
+      // Launch kernel to update the cache indirection buffer
+      cuda::UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>(),
+                                                                  old_cache_indirection.Get<Tensor>().Data<int32_t>(),
+                                                                  reinterpret_cast<const int32_t*>(beam_indices_gpu.data()),
+                                                                  batch_beam_size / num_beams,
+                                                                  num_beams,
+                                                                  input_sequence_len,
+                                                                  max_sequence_length,
+                                                                  current_length,
+                                                                  cuda_stream);
+
+      // Update cache indirection for next decoding run
+      next_inputs[past_sequence_length_idx + 2] = cache_indirection;
     }
-    return Status::OK();
+  } else {
+    // TODO(tianleiwu): remove num_beams==1 once GreedySearch operator is available.
+    if (num_beams == 1) {
+      // feed present_* output to past_* inputs one by one
+      for (int i = 0; i < num_present_tensors; ++i) {
+        next_inputs[t5_decoder_first_past_input_idx + i] =
+            last_outputs[t5_decoder_first_present_output_idx + i];
+      }
+      return Status::OK();
+    }
+
+    return PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices, allocator,
+                              t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, ort_stream);
   }
 
-  return PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices, allocator,
-                            t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, ort_stream);
+  // Make sure data is ready before next subgraph execution.
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+
+  return Status::OK();
 }
 
 template <typename T>
@@ -1092,12 +1140,14 @@ Status ExpandBuffer(Stream* ort_stream,
   // Output shape (batch_size * num_beams, xxx)
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
   const int64_t& batch_size = input_shape[0];
-  const int64_t& sequence_length = input_shape[2];
+  int64_t sequence_length = 0;
 
   int64_t dims[4] = {0};
   input_shape.CopyDims(dims, input_shape.NumDimensions());
   dims[0] = batch_size * num_beams;
-  if (max_sequence_length > 0) {
+  bool is_kv_cache = input_shape.NumDimensions() == 4;
+  if (max_sequence_length > 0 && is_kv_cache) {
+    sequence_length = input_shape[2];
     dims[2] = max_sequence_length;
   }
   TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
@@ -1133,6 +1183,8 @@ Status ExpandBuffer(Stream* ort_stream,
     }
     return Status::OK();
   }
+
+  ORT_ENFORCE(is_kv_cache);
 
   // Expand from [B, N, S, H] to [B*beam, N, S_max, H]
   const int64_t& num_heads = input_shape[1];
@@ -1299,11 +1351,15 @@ template Status UpdateDecoderFeeds<float>(
     int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
     bool use_sequence_as_input_ids,
     int current_length,
+    int input_sequence_len,
+    bool past_present_share_buffer,
+    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
@@ -1315,11 +1371,15 @@ template Status UpdateDecoderFeeds<MLFloat16>(
     int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
     bool use_sequence_as_input_ids,
     int current_length,
+    int input_sequence_len,
+    bool past_present_share_buffer,
+    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 

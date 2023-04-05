@@ -243,7 +243,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                 cpu_state,
                                                 iteration_counter));
     ++current_length;  // Increase sequence length after a new token is generated.
-    ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(ReinterpretAsSpan<const int32_t>(beam_next_tokens),
+
+    ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(this->cpu_allocator_,
+                                                             ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                                              this->implicit_inputs_,
                                                              encoder_feeds,
                                                              encoder_fetches,
@@ -275,11 +277,11 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     }
 
     if (decoder_subgraph_.has_decoder_masked_attention_) {
-      size_t offset = static_cast<size_t>(decoder_subgraph_.GetFirstPresentOutputIndex());
-      // Here we only need to reorder the past key.
-      for (size_t i = 0; i < static_cast<size_t>(decoder_subgraph_.num_layers); ++i) {
+      size_t offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex());
+      // Here we only need to reorder the past key for self-attention and cross-attention.
+      for (size_t i = 0; i < 2 * static_cast<size_t>(decoder_subgraph_.num_layers); ++i) {
         ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
-                                                     *decoder_fetches[offset + 2 * i].GetMutable<Tensor>(),
+                                                     *decoder_feeds[offset + 2 * i].GetMutable<Tensor>(),
                                                      beam_state.staging_for_past_state_reorder,
                                                      this->ort_stream_));
       }
@@ -296,6 +298,13 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       dumper->Print("decoder_feeds", i, true);
       dumper->Print("", decoder_feeds[i]);
     }
+    auto offset = decoder_subgraph_.GetFirstPastInputIndex() + 4 * decoder_subgraph_.num_layers;
+    dumper->Print("past_sequence_length", offset, true);
+    dumper->Print("", decoder_feeds[offset]);
+    dumper->Print("beam_width", offset+1, true);
+    dumper->Print("", decoder_feeds[offset+1]);
+    dumper->Print("past_sequence_length", offset+2, true);
+    dumper->Print("", decoder_feeds[offset+2]);
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
@@ -338,6 +347,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {
+      gsl::span<const int32_t> place_holder;
       const int num_present_outputs = 2 * parameters->num_layers;  // number of outputs with name like present_*
       ORT_RETURN_IF_ERROR(this->update_decoder_feeds_func_(
           this->temp_space_allocator_,
@@ -347,15 +357,29 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
           num_present_outputs,
           ReinterpretAsSpan<const int32_t>(beam_next_tokens),
           ReinterpretAsSpan<const int32_t>(beam_indices),
+          decoder_subgraph_.has_decoder_masked_attention_
+              ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
+              : place_holder,
           parameters->num_beams,
           decoder_subgraph_.GetFirstPastInputIndex(),
           decoder_subgraph_.GetFirstPresentOutputIndex(),
           decoder_subgraph_.UseSequenceAsInputIds(),
           current_length,
+          parameters->sequence_length,
+          decoder_subgraph_.past_present_share_buffer_,
+          decoder_subgraph_.has_decoder_masked_attention_,
           cpu_state.sequences,
           this->GetConsoleDumper()));
     }
-    decoder_fetches.clear();
+
+    if (decoder_subgraph_.past_present_share_buffer_) {
+      // clear fetched values before presents[]
+      for (int idx = 0; idx < decoder_subgraph_.GetFirstPresentOutputIndex(); idx++) {
+        decoder_fetches[idx] = OrtValue();
+      }
+    } else {
+      decoder_fetches.clear();
+    }
   }
 
   gsl::span<const float> final_beam_scores(beam_state.beam_scores.data(), beam_state.beam_scores.size());
