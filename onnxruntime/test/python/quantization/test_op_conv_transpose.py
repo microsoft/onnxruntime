@@ -53,7 +53,12 @@ class TestOpConvTranspose(unittest.TestCase):
         input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 1, 7, 7])
         output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 1, 8, 8])
         ini_w = helper.make_tensor("weight", TensorProto.FLOAT, [1, 1, 2, 2], [1.0, 1.0, 1.0, 1.0])
-        ini_b = helper.make_tensor("bias", TensorProto.FLOAT, [1,], [0.17])
+        ini_b = helper.make_tensor(
+            "bias",
+            TensorProto.FLOAT,
+            [1,],
+            [0.17]
+        )
         conv_tranpose_node = onnx.helper.make_node(
             "ConvTranspose",
             ["input", "weight", "bias"],
