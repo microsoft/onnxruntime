@@ -10,7 +10,6 @@
 #include "contrib_ops/rocm/diffusion/group_norm_common.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl_kernel.cuh"
-#include "contrib_ops/rocm/transformers/dump_rocm_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -125,19 +124,13 @@ template <typename T, int ThreadsPerBlock, int VecSize>
 class GroupNormNHWCOp {
  public:
   Status operator()(const GroupNormNHWCParams<T>* params) {
-    DUMP_TENSOR_INIT();
-    DUMP_TENSOR("input", params->src, params->n, params->c, params->h * params->w);
-    DUMP_TENSOR("gamma", params->gamma, 1, params->c);
-    DUMP_TENSOR("beta", params->beta, 1, params->c);
     HIP_RETURN_IF_ERROR(hipMemsetAsync(params->redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), params->stream));
     auto status = GroupNormNHWCSumOp<T, ThreadsPerBlock, VecSize>(params);
     ORT_RETURN_IF_ERROR(status);
-    DUMP_TENSOR("workspace", params->redBuffer, params->n, params->groups, 2);
     HIP_RETURN_IF_ERROR(hipGetLastError());
     status = GroupNormNHWCScaleOp<T, ThreadsPerBlock, VecSize>(params);
     ORT_RETURN_IF_ERROR(status);
     HIP_RETURN_IF_ERROR(hipGetLastError());
-    DUMP_TENSOR("output", params->dst, params->n, params->c, params->h * params->w);
     return Status::OK();
   }
 
@@ -156,17 +149,11 @@ class GroupNormNHWCOp {
 
 template <typename T>
 Status GroupNormNHWCStaticSelection(const GroupNormNHWCParams<T>* params) {
-  DUMP_TENSOR_INIT();
-  DUMP_TENSOR("input", params->src, params->n, params->c, params->h * params->w);
-  DUMP_TENSOR("gamma", params->gamma, 1, params->c);
-  DUMP_TENSOR("beta", params->beta, 1, params->c);
   HIP_RETURN_IF_ERROR(hipMemsetAsync(params->redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), params->stream));
   groupNormNHWCSum<T>(params);
-  DUMP_TENSOR("workspace", params->redBuffer, params->n, params->groups, 2);
   HIP_RETURN_IF_ERROR(hipGetLastError());
   groupNormNHWCScale<T>(params);
   HIP_RETURN_IF_ERROR(hipGetLastError());
-  DUMP_TENSOR("output", params->dst, params->n, params->c, params->h * params->w);
   return Status::OK();
 }
 
