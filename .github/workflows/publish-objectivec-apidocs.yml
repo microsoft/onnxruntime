@@ -1,0 +1,53 @@
+name: Update Objective-C API Docs
+
+# Run when the Objective-C API changes or every month so that the artifact does not expire
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - objectivec
+  schedule:
+  - cron: '0 0 1 * *'
+  workflow_dispatch:
+
+concurrency:
+  group: "apidocs-objectivec"
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Generate Objective-C API docs
+    runs-on: macos-12
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install Jazzy
+      run: |
+        sudo gem install jazzy
+
+    - name: Log source commit
+      run: git rev-parse --short HEAD > ./source-version.txt
+
+    - name: Run Jazzy
+      run: |
+        jazzy --version
+        jazzy --help config
+
+        jazzy --config ./objectivec/docs/jazzy_config.yaml \
+          --output "./build/objectivec_api_docs"
+
+    - name: Move Objective-C docs into site
+      run: |
+        mkdir -p ./_site/docs/api
+        mv ./build/objectivec_api_docs ./_site/docs/api/objectivec
+
+    - name: Upload new site
+      uses: actions/upload-artifact@v3
+      with:
+        name: onnxruntime-objectivec-apidocs
+        path: ./_site
+        retention-days: 60
