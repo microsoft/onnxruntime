@@ -28,10 +28,11 @@ using GetTestModelFn = std::function<void(ModelTestBuilder& builder)>;
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
  * \param num_modes_in_ep The expected number of nodes assigned to QNN EP's partition.
  * \param test_description Description of the test for error reporting.
+ * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
  */
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
-                     const char* test_description);
+                     const char* test_description, float fp32_abs_err = 1e-5f);
 
 enum HTPSupport {
   HTP_SUPPORT_UNKNOWN = 0,

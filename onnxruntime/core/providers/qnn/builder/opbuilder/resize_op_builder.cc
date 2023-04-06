@@ -59,6 +59,62 @@ class ResizeOpBuilder : public BaseOpBuilder {
   Status GetQnnModeFromString(const std::array<std::string_view, N>& onnx_modes, std::string_view onnx_mode,
                               const char* onnx_mode_label, QnnValType& qnn_mode) const ORT_MUST_USE_RESULT;
 
+  /**
+   * Called by IsOpSupported to validate the op for non-quantized models.
+   *
+   * /param qnn_model_wrapper The QNN model wrapper instance.
+   * /param node_unit The node unit containing metadata for the ONNX Resize operator.
+   *
+   * /returns A status indicating failure or success.
+   */
+  Status ValidateOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const ORT_MUST_USE_RESULT;
+
+  /**
+   * Called by IsOpSupported to validate the op for quantized models.
+   *
+   * /param qnn_model_wrapper The QNN model wrapper instance.
+   * /param node_unit The node unit containing metadata for the ONNX Resize operator and its Q/DQ nodes.
+   *
+   * /returns A status indicating failure or success.
+   */
+  Status ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const ORT_MUST_USE_RESULT;
+
+  /**
+   * Called by ProcessAttributesAndOutputs to process the op's attributes and outputs
+   * for non-quantized models.
+   *
+   * /param qnn_model_wrapper The QNN model wrapper instance.
+   * /param node_unit The node unit containing metadata for the ONNX Resize operator.
+   * /param input_names The operator's input names.
+   * /param logger A logger.
+   * /param do_op_validation Set to true if the op should be validated using QNN's validation API.
+   *
+   * /returns A status indicating failure or success.
+   */
+  Status ProcessOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& node_unit,
+                                  std::vector<std::string>&& input_names,
+                                  const logging::Logger& logger,
+                                  bool do_op_validation) const ORT_MUST_USE_RESULT;
+
+  /**
+   * Called by ProcessAttributesAndOutputs to process the op's attributes and outputs
+   * for quantized models.
+   *
+   * /param qnn_model_wrapper The QNN model wrapper instance.
+   * /param node_unit The node unit containing metadata for the ONNX Resize operator and its Q/DQ nodes.
+   * /param input_names The operator's input names.
+   * /param logger A logger.
+   * /param do_op_validation Set to true if the op should be validated using QNN's validation API.
+   *
+   * /returns A status indicating failure or success.
+   */
+  Status ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                     const NodeUnit& node_unit,
+                                     std::vector<std::string>&& input_names,
+                                     const logging::Logger& logger,
+                                     bool do_op_validation) const ORT_MUST_USE_RESULT;
+
   // Info for each ONNX attribute of interest (attribute name + default value)
   static const OnnxAttrInfo<std::string> onnx_mode_attr;
   static const OnnxAttrInfo<std::string> onnx_coord_transf_mode_attr;
@@ -66,7 +122,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
   static const OnnxAttrInfo<int64_t> onnx_antialias_attr;
   static const OnnxAttrInfo<int64_t> onnx_exclude_outside_attr;
 
-  // Arrays of supported QNN modes. The index of each mode is used as the corresponding
+  // Arrays of supported QNN modes for QNN's Resize op. The index of each mode is used as the corresponding
   // QNN parameter value. Ex: The "nearest" mode is represented as the value 0 in QNN. Note, that
   // not all modes are supported by every QNN backend.
 
@@ -105,6 +161,19 @@ Status ResizeOpBuilder::GetQnnModeFromString(const std::array<std::string_view, 
                          " ", std::string(onnx_mode));
 }
 
+// Utility function that checks if an array of strings contains a specific string.
+// Used to validate ONNX operator attributes.
+template <size_t N>
+static bool ArrayHasString(const std::array<std::string_view, N>& strings, std::string_view str) {
+  for (auto s : strings) {
+    if (s == str) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // Resize ops are sensitive with data layout, no special validation so far
 // The nodes from 1st call of GetCapability do not get layout transformer applied, it's still NCHW
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
@@ -117,9 +186,79 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
   }
 
+  // QNN doesn't support anti-aliasing (added in opset 18)
+  if (node_unit.SinceVersion() >= 18) {
+    NodeAttrHelper node_helper(node_unit);
+    const bool antialias = GetOnnxAttr(node_helper, onnx_antialias_attr) != 0;
+    ORT_RETURN_IF(antialias, "QNN EP: Resize doesn't support anti-aliasing.");
+  }
+
+  // The QNN Resize op does not currently work with the QNN cpu backend, but works with the HTP backend. Therefore, we
+  // currently use QNN's Resize op for quantized models and either ResizeBilinear or ResizeNearestNeighbor for
+  // non-quantized models. This requires separate validation for quantized models.
+  // TODO: Use only Resize once QNN's Resize op works in the QNN cpu backend.
+  return is_quantized_model ? ValidateQDQOp(qnn_model_wrapper, node_unit) : ValidateOp(qnn_model_wrapper, node_unit);
+}
+
+Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   NodeAttrHelper node_helper(node_unit);
-  const bool antialias = GetOnnxAttr(node_helper, onnx_antialias_attr) != 0;
-  ORT_RETURN_IF(antialias, "QNN EP: Resize doesn't support anti-aliasing.");
+  const std::string resize_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
+  ORT_RETURN_IF("cubic" == resize_mode, "Resize doesn't support cubic mode!");
+
+  const std::string coordinate_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
+  if ((coordinate_mode != "half_pixel") && (coordinate_mode != "align_corners")) {
+    std::string msg = coordinate_mode + " mode not supported, QNN Resize only supports align_corners and half_pixel";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, msg);
+  }
+
+  if (resize_mode == "nearest") {
+    const std::string& nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
+    ORT_RETURN_IF_NOT("round_prefer_floor" == nearest_mode, "QNN Resize only supports nearest_mode: round_prefer_floor!");
+  }
+
+  auto& input_0 = node_unit.Inputs()[0];
+  std::vector<uint32_t> input_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape), "Cannot get shape");
+  if (input_shape.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Resize only support 4D!");
+  }
+
+  ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
+  if (input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float")) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type " + *input_data_type + " is not supported in CPU backend.");
+  }
+
+  return Status::OK();
+}
+
+Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
+  NodeAttrHelper node_helper(node_unit);
+
+  // Check mode
+  const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
+  ORT_RETURN_IF_NOT(ArrayHasString(supported_modes, interp_mode), "QNN EP: Resize does not support mode ",
+                    interp_mode.c_str());
+
+  // Check coordinate transformation mode
+  const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
+  ORT_RETURN_IF_NOT(ArrayHasString(supported_coord_transf_modes, transformation_mode),
+                    "QNN EP: Resize does not support coordinate_transformation_mode ", transformation_mode.c_str());
+
+  // Check nearest mode
+  if (interp_mode == "nearest") {
+    const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
+    ORT_RETURN_IF_NOT(ArrayHasString(supported_nearest_modes, nearest_mode),
+                      "QNN EP: Resize does not support nearest_mode ", nearest_mode.c_str());
+  }
+
+  // Check that input shape has at least a rank of 3.
+  const auto& input_0 = node_unit.Inputs()[0];
+  std::vector<uint32_t> input_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
+                    "QNN EP: Cannot get shape for Resize input");
+  if (input_shape.size() < 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Resize input must have a rank >= 3.");
+  }
 
   return Status::OK();
 }
@@ -145,6 +284,96 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger,
                                                     bool is_quantized_model,
+                                                    bool do_op_validation) const {
+
+  // The QNN Resize op does not currently work with the QNN cpu backend, but works with the HTP backend. Therefore, we
+  // currently use QNN's Resize op for quantized models and either ResizeBilinear or ResizeNearestNeighbor for
+  // non-quantized models. This requires separate handling for quantized models.
+  // TODO: Use only Resize once QNN's Resize op works in the QNN cpu backend.
+  return is_quantized_model ?
+      ProcessQDQOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation) :
+      ProcessOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation);
+}
+
+Status ResizeOpBuilder::ProcessOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                 const NodeUnit& node_unit,
+                                                 std::vector<std::string>&& input_names,
+                                                 const logging::Logger& logger,
+                                                 bool do_op_validation) const {
+  ORT_UNUSED_PARAMETER(logger);
+  NodeAttrHelper node_helper(node_unit);
+  const std::string resize_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
+  std::string qnn_node_type = "ResizeNearestNeighbor";
+  if ("linear" == resize_mode) {
+    qnn_node_type = "ResizeBilinear";
+  }
+
+  const std::string coordinate_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
+
+  Qnn_Scalar_t qnn_align_corners = QNN_SCALAR_INIT;
+  qnn_align_corners.dataType = QNN_DATATYPE_BOOL_8;
+  qnn_align_corners.bool8Value = static_cast<uint8_t>(0);
+
+  Qnn_Scalar_t qnn_half_pixel = QNN_SCALAR_INIT;
+  qnn_half_pixel.dataType = QNN_DATATYPE_BOOL_8;
+  qnn_half_pixel.bool8Value = static_cast<uint8_t>(0);
+
+  if ("align_corners" == coordinate_mode) {
+    qnn_align_corners.bool8Value = static_cast<uint8_t>(1);
+  } else if ("half_pixel" == coordinate_mode) {
+    qnn_half_pixel.bool8Value = static_cast<uint8_t>(1);
+  }
+  QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
+                                          qnn_def::align_corners, qnn_align_corners);
+  QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
+                                       qnn_def::half_pixel_centers, qnn_half_pixel);
+
+  std::vector<std::string> param_tensor_names;
+  param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(qnn_align_corners_param));
+  param_tensor_names.push_back(qnn_half_pixel_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(qnn_half_pixel_param));
+
+  const auto& resize_output = node_unit.Outputs()[0];
+
+  const auto& output_name = resize_output.node_arg.Name();
+
+  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+  InitializeQuantizeParam(quantize_param, false);
+
+  const auto* type_proto = resize_output.node_arg.TypeAsProto();
+  Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
+  ORT_RETURN_IF_ERROR(GetQnnDataType(false, type_proto, qnn_data_type));
+
+  std::vector<uint32_t> output_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(resize_output.node_arg, output_shape),
+                    "Cannot get shape");
+
+  bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
+  Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  QnnTensorWrapper output_tensorwrapper(output_name,
+                                        tensor_type,
+                                        qnn_data_type,
+                                        quantize_param,
+                                        std::move(output_shape));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
+
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
+                                                    qnn_def::package_name,
+                                                    qnn_node_type,
+                                                    std::move(input_names),
+                                                    {output_name},
+                                                    std::move(param_tensor_names),
+                                                    do_op_validation),
+                    "Failed to add node.");
+
+  return Status::OK();
+}
+
+Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                    const NodeUnit& node_unit,
+                                                    std::vector<std::string>&& input_names,
+                                                    const logging::Logger& logger,
                                                     bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
   NodeAttrHelper node_helper(node_unit);
@@ -203,7 +432,7 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   }
 
   return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                        logger, is_quantized_model, do_op_validation);
+                        logger, true, do_op_validation);
 }
 
 void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

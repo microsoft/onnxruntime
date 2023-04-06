@@ -17,21 +17,22 @@ namespace onnxruntime {
 namespace test {
 
 /**
- * Creates a graph with a single Cast operator.
+ * Creates a graph with a single Resize operator.
  *
  * \param shape The shape of the input and output. Input data is randomly generated with this shape.
- * \param dst_type The destination type as an instance of the DataType enum in TensorProto.
+ * \param sizes_data The sizes input which determines the output shape.
+ * \param mode The resize mode (e.g., nearest, linear).
+ * \param coordinate_transformation_mode The coordinate transformation mode (e.g., half_pixel, pytorch_half_pixel).
+ * \param nearest_mode The rounding for "nearest" mode (e.g., round_prefer_floor, floor).
  *
  * \return A function that builds the graph with the provided builder.
  */
-static GetTestModelFn BuildCastTestCase(const std::vector<int64_t>& shape,
-                                        const std::vector<int64_t>& sizes_data,
-                                        const std::string& mode = "nearest",
-                                        const std::string& coordinate_transformation_mode = "half_pixel",
-                                        const std::string& nearest_mode = "floor") {
+static GetTestModelFn BuildResizeTestCase(const std::vector<int64_t>& shape,
+                                          const std::vector<int64_t>& sizes_data,
+                                          const std::string& mode = "nearest",
+                                          const std::string& coordinate_transformation_mode = "half_pixel",
+                                          const std::string& nearest_mode = "round_prefer_floor") {
   return [shape, sizes_data, mode, coordinate_transformation_mode, nearest_mode](ModelTestBuilder& builder) {
-
-    // Random input data
     auto* input = builder.MakeInput<float>(shape, 0.0f, 20.0f);
     auto* roi = builder.MakeInitializer<float>({0}, {});
     auto* scales = builder.MakeInitializer<float>({0}, {});
@@ -49,16 +50,18 @@ static GetTestModelFn BuildCastTestCase(const std::vector<int64_t>& shape,
 }
 
 /**
- * Runs a Cast model on the QNN CPU or HTP backend. Checks the graph node assignment, and that inference
+ * Runs a Resize model on the QNN CPU backend. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
  *
  * \param shape The shape of the input and output. Input data is randomly generated with this shape.
- * \param dst_type The destination type as an instance of the DataType enum in TensorProto.
- * \param test_description Description of the test for error reporting.
+ * \param sizes_data The sizes input which determines the output shape.
+ * \param mode The resize mode (e.g., nearest, linear).
+ * \param coordinate_transformation_mode The coordinate transformation mode (e.g., half_pixel, pytorch_half_pixel).
+ * \param nearest_mode The rounding for "nearest" mode (e.g., round_prefer_floor, floor).
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
- * \param use_htp True to run on HTP backend. Otherwise, runs on CPU.
+ * \param test_description Description of the test for error reporting.
  */
-static void RunResizeOpTest(const std::vector<int64_t>& shape, const std::vector<int64_t>& sizes_data,
+static void RunCPUResizeOpTest(const std::vector<int64_t>& shape, const std::vector<int64_t>& sizes_data,
                             const std::string& mode, const std::string& coordinate_transformation_mode,
                             const std::string& nearest_mode,
                             ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description) {
@@ -70,7 +73,7 @@ static void RunResizeOpTest(const std::vector<int64_t>& shape, const std::vector
 #endif
 
   constexpr int expected_nodes_in_partition = 1;
-  RunQnnModelTest(BuildCastTestCase(shape, sizes_data, mode, coordinate_transformation_mode, nearest_mode),
+  RunQnnModelTest(BuildResizeTestCase(shape, sizes_data, mode, coordinate_transformation_mode, nearest_mode),
                   provider_options,
                   18,  // opset
                   expected_ep_assignment,
@@ -78,21 +81,69 @@ static void RunResizeOpTest(const std::vector<int64_t>& shape, const std::vector
                   test_description);
 }
 
+template <typename QuantType>
+static void RunQDQResizeOpTest(const std::vector<int64_t>& shape, const std::vector<int64_t>& sizes_data,
+                               const std::string& mode, const std::string& coordinate_transformation_mode,
+                               const std::string& nearest_mode,
+                               ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err,
+                               const char* test_description) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  constexpr int expected_nodes_in_partition = 1;
+  RunQnnModelTest(BuildQDQResizeTestCase<QuantType>(shape, sizes_data, mode, coordinate_transformation_mode,
+                                                    nearest_mode, true),
+                  provider_options,
+                  18,  // opset
+                  expected_ep_assignment,
+                  expected_nodes_in_partition,
+                  test_description,
+                  fp32_abs_err);
+}
+
 //
 // CPU tests:
 //
 
-// Cast int32_t to float on CPU
-TEST(QnnCPUBackendTests, TestResize1) {
-  RunResizeOpTest({1, 2, 3, 3}, {1, 2, 3, 3}, "nearest", "half_pixel", "floor", ExpectedEPNodeAssignment::All,
-                  "TestResize1");
+TEST(QnnCPUBackendTests, TestResize2xNearestHalfPixel) {
+  RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "nearest", "half_pixel", "round_prefer_floor",
+                     ExpectedEPNodeAssignment::All, "TestResize2xNearestHalfPixel");
+}
+
+TEST(QnnCPUBackendTests, TestResize2xNearestHalfAlignCorners) {
+  RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "nearest", "align_corners", "round_prefer_floor",
+                     ExpectedEPNodeAssignment::All, "TestResize2xNearestHalfAlignCorners");
+}
+
+TEST(QnnCPUBackendTests, TestResize2xLinearHalfPixel) {
+  RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "linear", "half_pixel", "",
+                     ExpectedEPNodeAssignment::All, "TestResize2xLinearHalfPixel");
+}
+
+TEST(QnnCPUBackendTests, TestResize2xLinearAlignCorners) {
+  RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "linear", "align_corners", "",
+                     ExpectedEPNodeAssignment::All, "TestResize2xLinearAlignCorners");
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
+TEST_F(QnnHTPBackendTests, TestQDQU8Resize2xLinearPytorchHalfPixel) {
+  RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 8, 8}, "linear", "pytorch_half_pixel", "",
+                              ExpectedEPNodeAssignment::All, 0.0031f,
+                              "TestQDQU8Resize2xLinearPytorchHalfPixel");
+}
 
+TEST_F(QnnHTPBackendTests, TestQDQU8Resize2xNearestHalfPixelRoundPreferFloor) {
+  RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 8, 8}, "nearest", "half_pixel", "round_prefer_floor",
+                              ExpectedEPNodeAssignment::All, 1e-5f,
+                              "TestQDQU8Resize2xNearestHalfPixelRoundPreferFloor");
+}
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
