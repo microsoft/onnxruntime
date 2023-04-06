@@ -427,6 +427,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
 #endif
               // the memory pattern buffer will leave in the whole execution.
+#ifdef ORT_ENABLE_STREAM
               StreamAwareArena* stream_aware_alloc = AsStreamBasedAllocator(alloc);
               if (stream_aware_alloc) {
                 mem_pattern_stream_ = std::make_unique<Stream>(nullptr, OrtDevice(), true);
@@ -437,6 +438,9 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
               } else {
                 buffer = alloc->Alloc(peak_size);
               }
+#else
+              buffer = alloc->Alloc(peak_size);
+#endif
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
                 // INFO level as this may fire on every run and there may not be much a user can do

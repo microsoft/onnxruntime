@@ -31,7 +31,7 @@ class Stream {
   Stream(StreamHandle h, const OrtDevice& d, bool set_id_with_thread_info = false) : handle_(h), device_(d) {
     if (set_id_with_thread_info) {
       std::random_device rd;
-      std::mt19937 gen(rd() + std::hash<std::thread::id>{}(std::this_thread::get_id()));
+      std::mt19937 gen(static_cast<uint32_t>(rd() + std::hash<std::thread::id>{}(std::this_thread::get_id())));
       std::uniform_int_distribution<> distrib(0, INT_MAX);
       id_ = distrib(gen);
     } else {
