@@ -164,8 +164,6 @@ session = ort.InferenceSession(model_path)
 
 # Run inference
 outputs = session.run(None, {"input": inputTenor})
-
-# Print the output
 print(outputs)</code>
 <a href="docs/get-started/with-python" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
@@ -185,8 +183,6 @@ OrtSession session = env.createSession(modelPath);
 
 // Run inference
 OrtSession.Result results = session.run(inputTensor);
-
-// Print the output
 System.out.println(results.get(0).getTensor().getFloatBuffer().get(0));</code>
 <a href="docs/get-started/with-java" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
@@ -195,6 +191,7 @@ System.out.println(results.get(0).getTensor().getFloatBuffer().get(0));</code>
 												aria-labelledby="v-pills-javascript-tab">
 												<pre style="overflow: hidden">
 <code>import * as ort from "onnxruntime-web";
+
 // Load the model and create InferenceSession
 const modelPath = "path/to/your/onnx/model";
 const session = await ort.InferenceSession.create(modelPath);
@@ -204,8 +201,6 @@ const session = await ort.InferenceSession.create(modelPath);
 
 // Run inference
 const outputMap = await session.run({ input: inputTensor });
-
-// Print the output
 console.log(outputMap);</code>
 <a href="docs/get-started/with-javascript" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
@@ -233,7 +228,6 @@ std::vector<Ort::Value> outputTensors =
 			outputNames.data(), 
 			outputNames.size());
 
-// Print the output
 const float* outputDataPtr = outputTensors[0].GetTensorMutableData<float>();
 std::cout << outputDataPtr[0] << std::endl;</code>
 <a href="docs/get-started/with-cpp" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
