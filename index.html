@@ -159,11 +159,11 @@
 model_path = "path/to/your/onnx/model"
 session = ort.InferenceSession(model_path)
 
-# Load and preprocess the input image inputTenor
+# Load and preprocess the input image inputTensor
 ...
 
 # Run inference
-outputs = session.run(None, {"input": inputTenor})
+outputs = session.run(None, {"input": inputTensor})
 print(outputs)</code>
 <a href="docs/get-started/with-python" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
@@ -182,8 +182,8 @@ OrtSession session = env.createSession(modelPath);
 ...
 
 // Run inference
-OrtSession.Result results = session.run(inputTensor);
-System.out.println(results.get(0).getTensor().getFloatBuffer().get(0));</code>
+OrtSession.Result outputs = session.run(inputTensor);
+System.out.println(outputs.get(0).getTensor().getFloatBuffer().get(0));</code>
 <a href="docs/get-started/with-java" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
@@ -200,8 +200,8 @@ const session = await ort.InferenceSession.create(modelPath);
 ...
 
 // Run inference
-const outputMap = await session.run({ input: inputTensor });
-console.log(outputMap);</code>
+const outputs = await session.run({ input: inputTensor });
+console.log(outputs);</code>
 <a href="docs/get-started/with-javascript" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
@@ -246,8 +246,8 @@ var session = new InferenceSession(model_path);
 ...
 
 // Run inference
-var results = session.Run(inputTensor).ToList();
-Console.WriteLine(results[0].AsTensor<float>()[0]);</code>
+var outputs = session.Run(inputTensor).ToList();
+Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 <a href="docs/get-started/with-csharp" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
