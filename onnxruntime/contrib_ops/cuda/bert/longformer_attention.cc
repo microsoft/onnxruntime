@@ -207,25 +207,26 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
             input_data, k,
             &zero, global_q, n, device_prop));
       } else {
-        CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(cublas,
-                                                              CUBLAS_OP_N,
-                                                              CUBLAS_OP_N,
-                                                              hidden_size,                    // m
-                                                              max_num_global,                 // n
-                                                              hidden_size,                    // k
-                                                              &one,                           // alpha
-                                                              global_q_weight,                // A
-                                                              hidden_size,                    // lda
-                                                              0,                              // strideA
-                                                              input_data,                     // B
-                                                              hidden_size,                    // ldb
-                                                              sequence_length * hidden_size,  // strideB
-                                                              &zero,                          // beta
-                                                              global_q,                       // C
-                                                              hidden_size,                    // ldc
-                                                              max_num_global * hidden_size,   // strideC
-                                                              batch_size,                     // batch count
-                                                              device_prop));
+        CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
+            cublas,
+            CUBLAS_OP_N,
+            CUBLAS_OP_N,
+            hidden_size,                                          // m
+            max_num_global,                                       // n
+            hidden_size,                                          // k
+            &one,                                                 // alpha
+            global_q_weight,                                      // A
+            hidden_size,                                          // lda
+            0,                                                    // strideA
+            input_data,                                           // B
+            hidden_size,                                          // ldb
+            static_cast<int64_t>(sequence_length) * hidden_size,  // strideB
+            &zero,                                                // beta
+            global_q,                                             // C
+            hidden_size,                                          // ldc
+            static_cast<int64_t>(max_num_global) * hidden_size,   // strideC
+            batch_size,                                           // batch count
+            device_prop));
       }
       // global k
       const CudaT* global_k_weight = global_weights_data + static_cast<int64_t>(hidden_size) * hidden_size;

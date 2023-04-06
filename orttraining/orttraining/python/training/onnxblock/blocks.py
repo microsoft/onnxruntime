@@ -5,7 +5,7 @@ import contextlib
 import copy
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any, List, Optional
 
 import onnx
 
@@ -361,3 +361,69 @@ class InputLike(Block):
         self.base.graph.input.append(cloned_input)
 
         return cloned_input.name
+
+
+class LabelEncoder(Block):
+    def __init__(
+        self,
+        default_float: float = 0.0,
+        default_int64: int = -1,
+        default_string: str = "_Unused",
+        keys_floats: Optional[List[float]] = None,
+        keys_int64s: Optional[List[int]] = None,
+        keys_strings: Optional[List[str]] = None,
+        values_floats: Optional[List[float]] = None,
+        values_int64s: Optional[List[int]] = None,
+        values_strings: Optional[List[str]] = None,
+    ):
+        super().__init__()
+
+        self._attributes = {
+            "default_float": default_float,
+            "default_int64": default_int64,
+            "default_string": default_string,
+        }
+
+        def _add_attributes(names: List[str], values: List[Any]):
+            for name, value in zip(names, values):
+                if value is not None:
+                    self._attributes[name] = value
+
+        _add_attributes(
+            ["keys_floats", "keys_int64s", "keys_strings", "values_floats", "values_int64s", "values_strings"],
+            [keys_floats, keys_int64s, keys_strings, values_floats, values_int64s, values_strings],
+        )
+
+    def build(self, label_encoder_input_name: str):
+        label_encoder_output_name = _graph_utils.generate_graph_name("label_encoder.output")
+        label_encoder_node = onnx.helper.make_node(
+            "LabelEncoder",
+            [label_encoder_input_name],
+            [label_encoder_output_name],
+            _graph_utils.generate_graph_name("LabelEncoder"),
+            domain="ai.onnx.ml",
+            **self._attributes,
+        )
+        self.base.graph.node.append(label_encoder_node)
+
+        return label_encoder_output_name
+
+
+class Cast(Block):
+    def __init__(self, to: onnx.TensorProto.DataType):
+        super().__init__()
+
+        self._to = to
+
+    def build(self, cast_input_name: str):
+        cast_output_name = _graph_utils.generate_graph_name("cast.output")
+        cast_node = onnx.helper.make_node(
+            "Cast",
+            [cast_input_name],
+            [cast_output_name],
+            _graph_utils.generate_graph_name("Cast"),
+            to=self._to,
+        )
+        self.base.graph.node.append(cast_node)
+
+        return cast_output_name
