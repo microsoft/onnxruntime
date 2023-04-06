@@ -6,7 +6,6 @@
 // 2). this is needed by inference for other purpose.
 
 #include "contrib_ops/cpu/tensor/shrunken_gather.h"
-// #include "core/common/common.h"
 
 namespace onnxruntime {
 namespace contrib {

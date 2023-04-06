@@ -6,10 +6,8 @@
 // 2). this is needed by inference for other purpose.
 
 #include "core/providers/shared_library/provider_api.h"
-// #include "core/providers/cuda/cuda_kernel.h"
-// #include "core/providers/cpu/tensor/gatherbase.h"
-#include "contrib_ops/cpu/tensor/shrunken_gather.h"
 #include "core/providers/cuda/tensor/gather.h"
+#include "contrib_ops/cpu/tensor/shrunken_gather.h"
 
 namespace onnxruntime {
 namespace contrib {
