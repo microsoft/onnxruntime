@@ -2568,8 +2568,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.NhwcFusedConv"></a><a name="com.microsoft.nhwcfusedconv">**com.microsoft.NhwcFusedConv**</a>
 
-  NhwcFusedConv is a float16 Conv operator with optional activation and add operators fused in.
-  It also processes both NHWC and NCHW format.
+  NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
+  Only has fp16 implementation as of 2023/04/15.
 
 #### Version
 
@@ -2584,8 +2584,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd></dd>
 <dt><tt>auto_pad</tt> : string</dt>
 <dd></dd>
-<dt><tt>channels_last</tt> : int</dt>
-<dd>0(default) when input tensor is NCHW, else the input is NHWC</dd>
 <dt><tt>dilations</tt> : list of ints</dt>
 <dd></dd>
 <dt><tt>group</tt> : int</dt>
