@@ -197,7 +197,9 @@ struct ProviderHostCPU {
 
   // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
   // 2). this is needed by inference for other purpose.
-  virtual void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p, const Tensor* input_tensor, const Tensor* indices_tensor, int axis_in) const = 0;
+  virtual void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p,
+                                                         const Tensor* input_tensor, const Tensor* indices_tensor,
+                                                         int64_t axis_in) const = 0;
 #endif
 
 #ifdef ENABLE_TRAINING

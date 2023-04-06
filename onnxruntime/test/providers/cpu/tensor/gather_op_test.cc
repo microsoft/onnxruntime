@@ -443,8 +443,8 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_PositiveAxis) {
                        {0.0f, 1.0f, 2.0f, 3.0f,
                         4.0f, 5.0f, 6.0f, 7.0f,
                         8.0f, 9.0f, 10.0f, 11.0f});
-  test.AddInput<int32_t>("indices", {1}, {1LL, 0LL});
-  test.AddOutput<float>("output", {1, 4}, {4.0f, 5.0f, 6.0f, 7.0f, 0.0f, 1.0f, 2.0f, 3.0f});
+  test.AddInput<int32_t>("indices", {2}, {1LL, 0LL});
+  test.AddOutput<float>("output", {2, 4}, {4.0f, 5.0f, 6.0f, 7.0f, 0.0f, 1.0f, 2.0f, 3.0f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {},
            nullptr,
@@ -468,7 +468,7 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_NegativeAxis) {
                         4.0f, 5.0f, 6.0f, 7.0f,
                         8.0f, 9.0f, 10.0f, 11.0f});
   test.AddInput<int32_t>("indices", {2}, {0LL, 3LL});
-  test.AddOutput<float>("output", {3, 2}, {0.0f, 4.0f, 8.0f, 3.0f, 7.0f, 11.0f});
+  test.AddOutput<float>("output", {3, 2}, {0.0f, 3.0f, 4.0f, 7.0f, 8.0f, 11.0f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {},
            nullptr,

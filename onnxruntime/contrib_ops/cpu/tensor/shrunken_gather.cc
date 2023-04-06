@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
                             DataTypeImpl::GetTensorType<int64_t>()}),
     ShrunkenGather);
 
-void ShrunkenGatherCommon::CheckInput(const Tensor* input_tensor, const Tensor* indices_tensor, int axis_in) const {
+void ShrunkenGatherCommon::CheckInput(const Tensor* input_tensor, const Tensor* indices_tensor, int64_t axis_in) const {
   const auto& input_shape = input_tensor->Shape();
   const auto& indices_shape = indices_tensor->Shape();
 

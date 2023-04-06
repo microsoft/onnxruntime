@@ -16,7 +16,7 @@ namespace contrib {
 
 class ShrunkenGatherCommon {
  public:
-  void CheckInput(const Tensor* input_tensor, const Tensor* indices_tensor, int axis_in) const;
+  void CheckInput(const Tensor* input_tensor, const Tensor* indices_tensor, int64_t axis_in) const;
 };
 
 class ShrunkenGather final : public onnxruntime::Gather, public ShrunkenGatherCommon {

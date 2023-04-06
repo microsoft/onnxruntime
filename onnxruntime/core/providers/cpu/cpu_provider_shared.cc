@@ -280,7 +280,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                     reinterpret_cast<contrib::SGDOptimizerV2Base::Prepare&>(prepare));
   }
   void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p, const Tensor* input_tensor,
-                                                 const Tensor* indices_tensor, int axis_in) const override {
+                                                 const Tensor* indices_tensor, int64_t axis_in) const override {
     return p->ShrunkenGatherCommon::CheckInput(input_tensor, indices_tensor, axis_in);
   }
 
