@@ -43,6 +43,15 @@ namespace Microsoft.ML.OnnxRuntime
         ORT_PROJECTION_WINML = 5,
     }
 
+    /// <summary>
+    /// Delegate for logging function callback.
+    /// </summary>
+    /// <param name="param">Pointer to data passed into Constructor `log_param` parameter.</param>
+    /// <param name="severity">Log severity level.</param>
+    /// <param name="category">Log category</param>
+    /// <param name="logid">Log Id.</param>
+    /// <param name="code_location">Code location detail.</param>
+    /// <param name="message">Log message.</param>
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     public delegate void OrtLoggingFunction(IntPtr param, OrtLoggingLevel severity, string category, string logid, string code_location, string message);
 
@@ -100,6 +109,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
         public static OrtEnv Instance() { return _instance.Value; }
 
+        /// <summary>
+        /// Constructor to create a non-default OrtEnv instance (for reuse between InferenceSessions) and receive internal logging callbacks.
+        /// </summary>
+        /// <param name="logging_function">The logging callback function.</param>
+        /// <param name="log_level">The log severity level.</param>
+        /// <param name="log_param">Pointer to arbitrary data passed as the OrtLoggingFunction `param` parameter to <paramref name="logging_function"/>.</param>
         public OrtEnv(OrtLoggingFunction logging_function, LogLevel log_level, IntPtr log_param)
             : base (IntPtr.Zero, true)
         {
