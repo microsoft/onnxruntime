@@ -32,6 +32,7 @@ int32_t findMaxDivisor(int32_t n, int32_t maxAllowedDivisor) {
   }
   return maxDivisor;
 }
+
 template <typename T>
 struct GroupNormNHWCParams : OpParams {
   GroupNormNHWCParams(RocmTuningContext* tuning_ctx, hipStream_t stream, T* dst, float* redBuffer, const T* src, const float* gamma,
