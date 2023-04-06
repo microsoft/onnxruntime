@@ -28,7 +28,7 @@ namespace onnxruntime::optimizer::compute_optimizer {
  *
  * Only insert ShrunkGather if all following conditions are met:
  * 1. `SoftmaxCrossEntropyLossInternal`'s reduction MUST not be 'none', to make sure loss is a scalar.
- *   Otherwise, the loss is in shape [token_count], changing on `token_count` will affect subsquent computations.
+ *   Otherwise, the loss is in shape [token_count], changing on `token_count` will affect subsequent computations.
  * 2. `SoftmaxCrossEntropyLossInternal`'s 2nd output MUST not be graph output and not consumed by other other nodes.
  *
  *
