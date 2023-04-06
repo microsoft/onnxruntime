@@ -177,13 +177,13 @@ namespace Dml
             ));
 
         D3D12_FEATURE_DATA_D3D12_OPTIONS4 featureOptions = {};
-        ORT_THROW_IF_FAILED(d3d12Device->CheckFeatureSupport(
+        if (SUCCEEDED(d3d12Device->CheckFeatureSupport(
             D3D12_FEATURE_D3D12_OPTIONS4,
             &featureOptions,
-            sizeof(featureOptions))
-        );
-
-        m_native16BitShaderOpsSupported = featureOptions.Native16BitShaderOpsSupported;
+            sizeof(featureOptions))))
+        {
+            m_native16BitShaderOpsSupported = featureOptions.Native16BitShaderOpsSupported;
+        }
 
         m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE);
 
