@@ -522,11 +522,6 @@ class Gpt2Helper:
 
         optimization_options = FusionOptions("gpt2")
 
-        # TODO(hasesh): Investigate parity issue for GPT-2 fp16 when SkipLayerNormalization
-        # is enabled
-        if is_float16:
-            optimization_options.enable_skip_layer_norm = False
-
         m = optimize_model(
             onnx_model_path,
             model_type="gpt2",

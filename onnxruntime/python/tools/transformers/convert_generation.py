@@ -429,7 +429,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--disable_perf_test",
         required=False,
         action="store_true",
-        help="do not run parity test",
+        help="do not run perf test",
     )
     test_group.set_defaults(disable_perf_test=False)
 
