@@ -239,6 +239,8 @@ class ExecutionFrame final : public IExecutionFrame {
 
   gsl::span<Stream*> device_streams_;
 
+  std::unique_ptr<Stream> mem_pattern_stream_;
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Size of virtual memory allocated before any kernel execution.
   // This field is not physical memory size.

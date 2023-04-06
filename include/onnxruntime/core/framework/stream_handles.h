@@ -7,6 +7,9 @@
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
 #include "core/common/status.h"
+#include <random>
+#include <thread>
+#include <limits>
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -25,11 +28,20 @@ class Notification;
 // i.e. different cuda stream on different GPU.
 class Stream {
  public:
-  Stream(StreamHandle h, const OrtDevice& d) : handle_(h), device_(d) {}
+  Stream(StreamHandle h, const OrtDevice& d, bool set_id_with_thread_info = false) : handle_(h), device_(d) {
+    if (set_id_with_thread_info) {
+      std::random_device rd;
+      std::mt19937 gen(rd() + std::hash<std::thread::id>{}(std::this_thread::get_id()));
+      std::uniform_int_distribution<> distrib(0, INT_MAX);
+      id_ = distrib(gen);
+    } else {
+      id_ = reinterpret_cast<size_t>(this);
+    }
+  }
 
   virtual ~Stream() = default;
   virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) {
-    return {};
+    return std::make_unique<synchronize::Notification>(*this);
   };
   // block the host thread until all the tasks in the stream finished.
   virtual void Flush(){};
@@ -41,6 +53,8 @@ class Stream {
   StreamHandle GetHandle() const { return handle_; }
 
   const OrtDevice& GetDevice() const { return device_; }
+
+  size_t GetId() const { return id_; }
 
   // We use the timestamp based vector clocks to optimize the resource sharing
   // between different streams.
@@ -67,13 +81,13 @@ class Stream {
   uint64_t GetLastSyncTimestampWithTargetStream(Stream* target_stream) const {
     if (!target_stream)
       return 0;
-    auto it = other_stream_clock_.find(target_stream);
+    auto it = other_stream_clock_.find(target_stream->GetId());
     return it == other_stream_clock_.end() ? 0 : it->second;
   }
 
   // make a copy of the current stream lookup table.
   // this is used to create a snapshot of the stream lookup table in notification.
-  void CloneCurrentStreamSyncTable(std::unordered_map<Stream*, uint64_t>& output) const {
+  void CloneCurrentStreamSyncTable(std::unordered_map<size_t, uint64_t>& output) const {
     output.reserve(other_stream_clock_.size());
     output.insert(other_stream_clock_.begin(), other_stream_clock_.end());
   }
@@ -87,7 +101,7 @@ class Stream {
   }
 
   // update the stream lookup table with the snapshot saved in notification.
-  void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
+  void UpdateStreamClock(const std::unordered_map<size_t, uint64_t>& clock) {
     for (const auto& kv : clock) {
       auto ret = other_stream_clock_.insert(kv);
       if (!ret.second) {
@@ -103,8 +117,8 @@ class Stream {
   // TODO: use inline container.
   // currently this class is header only, but abseil doesn't compile with nvcc
   // we need to add new symbol to provider_bridge and hide abseil from the header.
-  std::unordered_map<Stream*, uint64_t> other_stream_clock_{};
-
+  std::unordered_map<size_t, uint64_t> other_stream_clock_{};
+  size_t id_;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Stream);
 };
 
@@ -122,22 +136,22 @@ class Notification {
   void ActivateAndUpdate() {
     Activate();
     stream_.CloneCurrentStreamSyncTable(stream_clock_);
-    stream_clock_[&stream_] = stream_.BumpTimeStampAndReturn();
+    stream_clock_[stream_.GetId()] = stream_.BumpTimeStampAndReturn();
   }
 
   // return the timestamp lookup table saved in the notification.
-  const std::unordered_map<Stream*, uint64_t>& GetStreamSyncTable() {
+  const std::unordered_map<size_t, uint64_t>& GetStreamSyncTable() {
     return stream_clock_;
   }
 
  protected:
-  virtual void Activate() = 0;
+  virtual void Activate() {};
   // which stream create this notification.
   Stream& stream_;
   // TODO: use inline container.
   // currently this class is header only, but abseil doesn't compile with nvcc
   // we need to add new symbol to provider_bridge and hide abseil from the header.
-  std::unordered_map<Stream*, uint64_t> stream_clock_{};
+  std::unordered_map<size_t, uint64_t> stream_clock_{};
 };
 }  // namespace synchronize
 
