@@ -159,11 +159,11 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
         }
       }
 
-        // if this is a variadic input there are no more inputs in the schema
-        if (node_op_schema && variadic_arg_idx == -1 &&
-            node_op_schema->inputs().at(i).GetOption() == OpSchema::FormalParameterOption::Variadic) {
-          variadic_arg_idx = i;
-        }
+      // if this is a variadic input there are no more inputs in the schema
+      if (node_op_schema && variadic_arg_idx == -1 &&
+          node_op_schema->inputs().at(i).GetOption() == OpSchema::FormalParameterOption::Variadic) {
+        variadic_arg_idx = i;
+      }
     }
 
     variadic_arg_idx = -1;
