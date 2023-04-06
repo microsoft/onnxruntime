@@ -1399,6 +1399,7 @@ endif()
 
 if (onnxruntime_USE_ROCM)
   add_definitions(-DUSE_ROCM=1)
+  add_definitions(-DENABLE_TRITON_LIB=1)
   include(onnxruntime_rocm_hipify.cmake)
 
   list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME}/rccl ${onnxruntime_ROCM_HOME}/roctracer)
