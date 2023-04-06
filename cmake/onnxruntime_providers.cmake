@@ -1536,7 +1536,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   if (onnxruntime_USE_HIPBLASLT)
-    find_package(hipblaslt)
+    find_package(hipblaslt REQUIRED)
     target_link_libraries(onnxruntime_providers_rocm PRIVATE roc::hipblaslt)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_HIPBLASLT)
   endif()

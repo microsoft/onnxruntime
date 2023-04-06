@@ -52,7 +52,7 @@ class HipBlasLtGemmOp {
   Status operator()(const ParamsT* params) {
 
     hipblasLtHandle_t handle;
-    HIPBLASLT_CALL_THROW(hipblasLtCreate(&handle));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtCreate(&handle));
 
     // Note: properties of original matrices A and B are swapped.
     int64_t lda = (params->opb == BlasOp::N) ? params->n : params->k;
@@ -74,81 +74,82 @@ class HipBlasLtGemmOp {
     hipblasDatatype_t in_out_datatype = HipBlasDataTypeFor(params->a);
     hipblasLtMatrixLayout_t mat_a, mat_b, mat_c;
     hipblasLtMatmulDesc_t matmul;
-    HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutCreate(&mat_a, in_out_datatype, row_a, col_a, lda));
-    HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutCreate(&mat_b, in_out_datatype, row_b, col_b, ldb));
-    HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutCreate(&mat_c, in_out_datatype, row_c, col_c, ldc));
-    HIPBLASLT_CALL_THROW(hipblasLtMatmulDescCreate(&matmul, HIPBLASLT_COMPUTE_F32, HIPBLAS_R_32F));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutCreate(&mat_a, in_out_datatype, row_a, col_a, lda));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutCreate(&mat_b, in_out_datatype, row_b, col_b, ldb));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutCreate(&mat_c, in_out_datatype, row_c, col_c, ldc));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescCreate(&matmul, HIPBLASLT_COMPUTE_F32, HIPBLAS_R_32F));
 
     if (params->batch > 1) {
       int batch_count = params->batch;
-      HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutSetAttribute(
+      HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutSetAttribute(
           mat_a, HIPBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch_count, sizeof(batch_count)));
-      HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutSetAttribute(
+      HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutSetAttribute(
           mat_a, HIPBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &stride_a, sizeof(stride_a)));
-      HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutSetAttribute(
+      HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutSetAttribute(
           mat_b, HIPBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch_count, sizeof(batch_count)));
-      HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutSetAttribute(
+      HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutSetAttribute(
           mat_b, HIPBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &stride_b, sizeof(stride_b)));
-      HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutSetAttribute(
+      HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutSetAttribute(
           mat_c, HIPBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch_count, sizeof(batch_count)));
-      HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutSetAttribute(
+      HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutSetAttribute(
           mat_c, HIPBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &stride_c, sizeof(stride_c)));
     }
 
     hipblasOperation_t trans_a = (params->opb == BlasOp::N) ? HIPBLAS_OP_N : HIPBLAS_OP_T;
     hipblasOperation_t trans_b = (params->opa == BlasOp::N) ? HIPBLAS_OP_N : HIPBLAS_OP_T;
 
-    HIPBLASLT_CALL_THROW(hipblasLtMatmulDescSetAttribute(
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescSetAttribute(
       matmul, HIPBLASLT_MATMUL_DESC_TRANSA, &trans_a, sizeof(int32_t)));
-    HIPBLASLT_CALL_THROW(hipblasLtMatmulDescSetAttribute(
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescSetAttribute(
       matmul, HIPBLASLT_MATMUL_DESC_TRANSB, &trans_b, sizeof(int32_t)));
 
     hipblasLtEpilogue_t epilogue;
-    HIPBLASLT_CALL_THROW(hipblasLtMatmulDescSetAttribute(
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescSetAttribute(
       matmul, HIPBLASLT_MATMUL_DESC_EPILOGUE, &epilogue, sizeof(epilogue)));
     hipblasLtMatmulPreference_t pref;
     void* workspace;
-    HIP_CALL_THROW(hipMalloc(&workspace, workspace_size_));
-    HIPBLASLT_CALL_THROW(hipblasLtMatmulPreferenceCreate(&pref));
-    HIPBLASLT_CALL_THROW(hipblasLtMatmulPreferenceSetAttribute(
+    HIP_RETURN_IF_ERROR(hipMalloc(&workspace, workspace_size_));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulPreferenceCreate(&pref));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulPreferenceSetAttribute(
       pref, HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspace_size_, sizeof(workspace_size_)));
 
     const int heuristic_result_count = 3;
     hipblasLtMatmulHeuristicResult_t heuristic_result[heuristic_result_count] = {0};
     int ret_algo_count = 0;
-    HIPBLASLT_CALL_THROW(hipblasLtMatmulAlgoGetHeuristic(handle,
-                                                         matmul,
-                                                         mat_a,
-                                                         mat_b,
-                                                         mat_c,
-                                                         mat_c,
-                                                         pref,
-                                                         heuristic_result_count,
-                                                         heuristic_result,
-                                                         &ret_algo_count));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulAlgoGetHeuristic(handle,
+                                                              matmul,
+                                                              mat_a,
+                                                              mat_b,
+                                                              mat_c,
+                                                              mat_c,
+                                                              pref,
+                                                              heuristic_result_count,
+                                                              heuristic_result,
+                                                              &ret_algo_count));
 
-    HIPBLASLT_CALL_THROW(hipblasLtMatmul(handle,
-                                         matmul,
-                                         &alpha,
-                                         params->b,
-                                         mat_a,
-                                         params->a,
-                                         mat_b,
-                                         &beta,
-                                         params->c,
-                                         mat_c,
-                                         params->c,
-                                         mat_c,
-                                         &heuristic_result[0].algo,
-                                         workspace,
-                                         workspace_size_,
-                                         params->stream));
-    HIPBLASLT_CALL_THROW(hipblasLtMatmulPreferenceDestroy(pref));
-    HIPBLASLT_CALL_THROW(hipblasLtMatmulDescDestroy(matmul));
-    HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutDestroy(mat_a));
-    HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutDestroy(mat_b));
-    HIPBLASLT_CALL_THROW(hipblasLtMatrixLayoutDestroy(mat_c));
-    HIPBLASLT_CALL_THROW(hipblasLtDestroy(handle));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmul(handle,
+                                              matmul,
+                                              &alpha,
+                                              params->b,
+                                              mat_a,
+                                              params->a,
+                                              mat_b,
+                                              &beta,
+                                              params->c,
+                                              mat_c,
+                                              params->c,
+                                              mat_c,
+                                              &heuristic_result[0].algo,
+                                              workspace,
+                                              workspace_size_,
+                                              params->stream));
+    HIP_RETURN_IF_ERROR(hipFree(workspace));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulPreferenceDestroy(pref));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescDestroy(matmul));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutDestroy(mat_a));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutDestroy(mat_b));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutDestroy(mat_c));
+    HIPBLASLT_RETURN_IF_ERROR(hipblasLtDestroy(handle));
     return Status::OK();
   }
 

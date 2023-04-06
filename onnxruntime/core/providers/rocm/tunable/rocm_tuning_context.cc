@@ -74,6 +74,12 @@ std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
 #else
   oss << "USE_ROCBLAS_EXTENSION_API=" << 0 << "|";
 #endif
+
+#ifdef USE_HIPBLASLT
+  oss << "USE_HIPBLASLT=" << 1 << "|";
+#else
+  oss << "USE_HIPBLASLT=" << 0 << "|";
+#endif
   return oss.str();
 }
 
