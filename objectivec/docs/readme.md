@@ -14,4 +14,4 @@ jazzy --config objectivec/docs/jazzy_config.yaml --output <output directory>
 
 The generated documentation website files will be in `<output directory>`.
 
-[docs.readme.md](./docs.readme.md) contains content for the main page of the generated documentation website.
+[main_page.md](./main_page.md) contains content for the main page of the generated documentation website.
