@@ -24,7 +24,7 @@ jobs:
     name: Generate Objective-C API docs
     runs-on: macos-12
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Install Jazzy
       run: |
@@ -33,12 +33,15 @@ jobs:
     - name: Generate Objective-C docs
       run: |
         set -e
-        OUTPUT_DIR="./_site/docs/api/objectivec"
-        ORT_VERSION_NUMBER="$(cat ./VERSION_NUMBER)"
+
+        # add commit info to main page of generated docs
         ORT_COMMIT_SHORT="$(git rev-parse --short HEAD)"
+        printf "\n%s\n" \
+               "This documentation was generated from the ONNX Runtime source at commit ${ORT_COMMIT_SHORT}." \
+               >> ./objectivec/docs/main_page.md
+
         jazzy --config ./objectivec/docs/jazzy_config.yaml \
-              --module-version "${ORT_VERSION_NUMBER} (commit ${ORT_COMMIT_SHORT})" \
-              --clean --output ${OUTPUT_DIR}
+              --clean --output ./_site/docs/api/objectivec
       shell: bash
 
     - name: Upload new site
