@@ -14,6 +14,7 @@
 #include "core/providers/rocm/shared_inc/accumulation_type.h"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
+#include "core/providers/rocm/math/softmax_triton.cuh"
 
 namespace py = pybind11;
 
@@ -171,6 +172,33 @@ class CKSoftmax : public IKernelExplorer {
 };
 #endif  // USE_COMPOSABLE_KERNEL
 
+#ifdef ENABLE_TRITON_LIB
+template <typename T>
+class SoftmaxTriton : public IKernelExplorer {
+ public:
+  SoftmaxTriton(DeviceArray& output, DeviceArray& input, int softmax_elements,
+                                  int input_stride, int output_stride, int batch_count, bool is_log_softmax)
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+                softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {}
+
+  void Run() override {
+    ORT_THROW_IF_ERROR((rocm::SoftmaxTritonOp<T, T, rocm::AccumulationType_t<T>>(&params_)));
+  }
+
+  std::vector<std::string> ListOps() const {
+    return {"SoftmaxTriton"};
+  }
+
+  bool SelectOp(const std::string& name) {
+    return name == "SoftmaxTriton";
+  }
+
+ private:
+  using ParamsT = rocm::SoftmaxParams<T, T>;
+  ParamsT params_{};
+};
+#endif  // ENABLE_TRITON_LIB
+
 #define REGISTER_OP(name, type, vec_size)                                    \
   py::class_<name<type, vec_size>>(m, #name "_" #type "_" #vec_size)         \
       .def(py::init<DeviceArray&, DeviceArray&, int, int, int, int, bool>()) \
@@ -216,5 +244,12 @@ KE_REGISTER(m) {
   REGISTER_OP_TYPED(CKSoftmax, float);
 }
 #endif  // USE_COMPOSABLE_KERNEL
+
+#ifdef ENABLE_TRITON_LIB
+KE_REGISTER(m) {
+  REGISTER_OP_TYPED(SoftmaxTriton, half);
+  REGISTER_OP_TYPED(SoftmaxTriton, float);
+}
+#endif  // ENABLE_TRITON_LIB
 
 }  // namespace onnxruntime
