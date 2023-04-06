@@ -63,10 +63,10 @@ static GetTestModelFn BuildResizeTestCase(const std::vector<int64_t>& shape,
  * \param opset The opset version to use.
  */
 static void RunCPUResizeOpTest(const std::vector<int64_t>& shape, const std::vector<int64_t>& sizes_data,
-                            const std::string& mode, const std::string& coordinate_transformation_mode,
-                            const std::string& nearest_mode,
-                            ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
-                            int opset = 18) {
+                               const std::string& mode, const std::string& coordinate_transformation_mode,
+                               const std::string& nearest_mode,
+                               ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                               int opset = 18) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnCpu.dll";
@@ -111,32 +111,80 @@ static void RunQDQResizeOpTest(const std::vector<int64_t>& shape, const std::vec
 // CPU tests:
 //
 
-TEST(QnnCPUBackendTests, DISABLED_TestResize2xNearestHalfPixel) {
-  RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "nearest", "half_pixel", "round_prefer_floor",
-                     ExpectedEPNodeAssignment::All, "TestResize2xNearestHalfPixel");
+// TODO: Enable QnnCPU tests that use "nearest" mode.
+//
+// Our non-quantized implementation of Resize uses QNN's ResizeNearestNeighbor operator,
+// which is __not__ equivalent to ONNX's Resize operator with a single specific "nearest_mode".
+// The following disabled unit tests would pass if we removed the check in QNN EP that expects the
+// "nearest_mode" to be "floor". Sometimes, ResizeNearestNeighbor is equivalent to ONNX Resize with
+// "round_prefer_floor", and other times it is equivalent to ONNX Resize with "round_prefer_ceil".
+
+// Upsample that uses "round_prefer_floor" as the "nearest_mode".
+// coordinate_transformation_mode: "half_pixel"
+TEST(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestHalfPixel_rpf) {
+  RunCPUResizeOpTest({1, 2, 7, 5}, {1, 2, 21, 10}, "nearest", "half_pixel", "round_prefer_floor",
+                     ExpectedEPNodeAssignment::All, "TestResizeUpsampleNearestHalfPixel_rpf");
 }
 
-// TODO: Investigate difference in results, and then enable this test.
-// onnxruntime\onnxruntime\test\util\test_utils.cc(51): error: Value of: ltensor.DataAsSpan<float>()
-// Expected : contains 3 values, where the value pair(13.2128859, 13.362051) at index #0 don't match,
-// which is 0.149165 from 13.2129 Google Test trace : onnxruntime\onnxruntime\test\common\tensor_op_test_utils.cc(14) :
-// ORT test random seed : 2345
-TEST(QnnCPUBackendTests, DISABLED_TestResizeDownSampleNearestHalfPixel) {
-  RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 1, 3}, "nearest", "half_pixel", "round_prefer_floor",
-                     ExpectedEPNodeAssignment::All, "TestResizeDownSampleNearestHalfPixel");
+// Upsample that uses "round_prefer_ceil" as the "nearest_mode".
+// coordinate_transformation_mode: "half_pixel"
+TEST(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestHalfPixel_rpc) {
+  RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 7, 5}, "nearest", "half_pixel", "round_prefer_ceil",
+                     ExpectedEPNodeAssignment::All, "TestResizeUpsampleNearestHalfPixel_rpc");
 }
 
-TEST(QnnCPUBackendTests, DISABLED_TestResize2xNearestHalfAlignCorners) {
-  RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "nearest", "align_corners", "round_prefer_floor",
-                     ExpectedEPNodeAssignment::All, "TestResize2xNearestHalfAlignCorners");
+// Downsample that uses "round_prefer_ceil" as the "nearest_mode".
+// coordinate_transformation_mode: "half_pixel"
+TEST(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestHalfPixel_rpc) {
+  RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 1, 3}, "nearest", "half_pixel", "round_prefer_ceil",
+                     ExpectedEPNodeAssignment::All, "TestResizeDownsampleNearestHalfPixel_rpc");
 }
 
-TEST(QnnCPUBackendTests, DISABLED_TestResize2xLinearHalfPixel) {
+// Downsample that uses "round_prefer_floor" as the "nearest_mode".
+// coordinate_transformation_mode: "half_pixel"
+TEST(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestHalfPixel_rpf) {
+  RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 1, 2}, "nearest", "half_pixel", "round_prefer_ceil",
+                     ExpectedEPNodeAssignment::All, "TestResizeDownsampleNearestHalfPixel_rpf");
+}
+
+// Upsample that uses "round_prefer_floor" as the "nearest_mode".
+// coordinate_transformation_mode: "align_corners"
+TEST(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestAlignCorners_rpf) {
+  RunCPUResizeOpTest({1, 2, 7, 5}, {1, 2, 21, 10}, "nearest", "align_corners", "round_prefer_floor",
+                     ExpectedEPNodeAssignment::All, "TestResizeUpsampleNearestAlignCorners_rpf");
+}
+
+// Upsample that uses "round_prefer_ceil" as the "nearest_mode".
+// coordinate_transformation_mode: "align_corners"
+TEST(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestAlignCorners_rpc) {
+  RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 7, 5}, "nearest", "align_corners", "round_prefer_ceil",
+                     ExpectedEPNodeAssignment::All, "TestResizeUpsampleNearestAlignCorners_rpc");
+}
+
+// Downsample that uses "round_prefer_ceil" as the "nearest_mode".
+// coordinate_transformation_mode: "align_corners"
+TEST(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestAlignCorners_rpc) {
+  RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 1, 3}, "nearest", "align_corners", "round_prefer_ceil",
+                     ExpectedEPNodeAssignment::All, "TestResizeDownsampleNearestAlignCorners_rpc");
+}
+
+// Downsample that uses "round_prefer_floor" as the "nearest_mode".
+// coordinate_transformation_mode: "align_corners"
+TEST(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestAlignCorners_rpf) {
+  RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 1, 2}, "nearest", "align_corners", "round_prefer_floor",
+                     ExpectedEPNodeAssignment::All, "TestResizeDownsampleNearestAlignCorners_rpf");
+}
+
+//
+// Cpu tests that use the "linear" mode.
+//
+
+TEST(QnnCPUBackendTests, TestResize2xLinearHalfPixel) {
   RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "linear", "half_pixel", "",
                      ExpectedEPNodeAssignment::All, "TestResize2xLinearHalfPixel");
 }
 
-TEST(QnnCPUBackendTests, DISABLED_TestResize2xLinearAlignCorners) {
+TEST(QnnCPUBackendTests, TestResize2xLinearAlignCorners) {
   RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "linear", "align_corners", "",
                      ExpectedEPNodeAssignment::All, "TestResize2xLinearAlignCorners");
 }

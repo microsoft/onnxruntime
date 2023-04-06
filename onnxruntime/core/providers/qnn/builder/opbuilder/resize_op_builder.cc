@@ -211,16 +211,41 @@ Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const Nod
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, msg);
   }
 
+  // Check for a valid "nearest_mode" if the mode is "nearest".
   if (resize_mode == "nearest") {
+    // NOTE: QNN's ResizeNearestNeighbor operator does not have a way to specify rounding (i.e., "nearest_mode").
+    // The output of the QNN ResizeNearestNeighbor operator is not always equivalent to ONNX's Resize
+    // operator with any single specific "nearest_mode".
+    //
+    // For some input/output shapes, QNN's ResizeNearestNeighbor is equivalent to ONNX's Resize with "round_prefer_floor".
+    // For other shapes, QNN's ResizeNearestNeighbor is equivalent to ONNX Resize with "round_prefer_ceil".
+    //
+    // From unit tests, I've found a relationship between input/output shapes and the equivalent ONNX "nearest_mode".
+    // If the new and old spatial dimensions are evenly divisible, the "nearest_mode" is "round_prefer_floor".
+    // Otherwise, the "nearest_mode" is "round_prefer_ceil".
+    //
+    // This relationship is probably incomplete/wrong.
+    //
+    // TODO: Ask Qualcomm what the correct "nearest_mode" should be,
+    // OR use QNN's own Resize operator once it works on QnnCpu.
     const std::string& nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
-    ORT_RETURN_IF_NOT("floor" == nearest_mode, "QNN Resize only supports nearest_mode: floor!");
+    ORT_RETURN_IF_NOT("floor" == nearest_mode, "QNN Resize only supports nearest_mode: floor!");  // This is wrong!
   }
 
   auto& input_0 = node_unit.Inputs()[0];
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
+                    "QNN EP: Cannot get input shape for Resize op");
   if (input_shape.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Resize only support 4D!");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Resize only supports 4D!");
+  }
+
+  const auto& output_0 = node_unit.Outputs()[0];
+  std::vector<uint32_t> output_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output_0.node_arg, output_shape),
+                    "QNN EP: Cannot get output shape for Resize op");
+  if (output_shape.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Resize only supports 4D!");
   }
 
   ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
