@@ -1517,7 +1517,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC );
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
     }
-
+#if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
     // switch optimizaion level
     if (builder_optimization_level_ != 2) {
       trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
@@ -1529,7 +1529,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       trt_config->setMaxAuxStreams(auxiliary_streams_);
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << auxiliary_streams_;
     }
-
+#else
+    if (builder_optimization_level_ != 2) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
+    }
+    if (auxiliary_streams_ >= 0) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
+    }
+#endif
     // limit used tactic sources
     if (!tactic_sources_.empty()) {
       nvinfer1::TacticSources tactics = trt_config->getTacticSources();
@@ -2017,7 +2024,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC );
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
         }
-
+#if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
         // switch optimizaion level
         if (trt_state->builder_optimization_level != 2) {
           trt_config->setBuilderOptimizationLevel(trt_state->builder_optimization_level);
@@ -2029,7 +2036,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           trt_config->setMaxAuxStreams(trt_state->auxiliary_streams);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << trt_state->auxiliary_streams;
         }
-
+#else
+        if (trt_state->builder_optimization_level != 2) {
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
+        }
+        if (trt_state->auxiliary_streams >= 0) {
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
+        }
+#endif
         // limit used tactic sources
         if (trt_state->filter_tactic_sources) {
           nvinfer1::TacticSources tactics = trt_config->getTacticSources();
