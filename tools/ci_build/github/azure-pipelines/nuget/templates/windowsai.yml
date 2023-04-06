@@ -22,7 +22,7 @@ jobs:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
       BuildArch: 'x86'
-      
+
 - job: WindowsAI_DirectML_ARM64
   timeoutInMinutes: 120
   workspace:
@@ -125,7 +125,7 @@ jobs:
     inputs:
       artifactName: 'Microsoft.AI.MachineLearning.x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
-      
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet DirectML arm64'
     inputs:
@@ -297,7 +297,7 @@ jobs:
 
         Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
         Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
-        
+
         Copy-Item -Path $merged_nuget -Destination $merged_nuget_as_zip
       workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
@@ -349,7 +349,7 @@ jobs:
 
         Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.pdb'))                  $arm64_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.pdb')) $arm64_runtime_path_new
-        
+
         Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.pdb'))                    $arm_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))   $arm_runtime_path_new
 
@@ -365,7 +365,7 @@ jobs:
         if (!(Test-Path $zip_tool_directory)) {
              New-Item -Path $zip_tool_directory -ItemType Directory
         }
-        
+
         $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
 
         Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
@@ -441,31 +441,31 @@ jobs:
         msbuild /p:Platform=x64 Microsoft.AI.MachineLearning.Tests.vcxproj
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests
 
-  - task: PowerShell@2  
-    displayName: 'NuGet Tests: Fix Nuget Package references (.NET 5.0)' 
-    inputs: 
-      targetType: 'inline'  
-      script: | 
-        Add-Type -AssemblyName "System.IO.Compression.FileSystem"   
-        $src_root_dir = $Env:BUILD_SOURCESDIRECTORY;    
-        $artifacts_staging_dir = $Env:BUILD_ARTIFACTSTAGINGDIRECTORY;   
-        $merged_nuget_path = [System.IO.Path]::Combine($artifacts_staging_dir, 'merged')    
-        $nupkgs = (Get-ChildItem -Filter Microsoft.AI.MachineLearning*) 
-        $merged_nuget_package = $nupkgs[0]  
-        $merged_nuget_package_name = $merged_nuget_package.Name 
-        $matched_name = ($merged_nuget_package_name -match "Microsoft.AI.MachineLearning.(?<version>.*).nupkg") 
-        $package_version = $matches['version']  
-        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests.DotNet5_0')   
-        $input_csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj.pp')   
-        $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj')    
-        $input_csproj_content = Get-Content -Path $input_csproj 
-        $csproj_content = $input_csproj_content -replace '\[PackageVersion\]', $package_version 
-        Set-Content -Path $csproj -Value $csproj_content    
-        $input_nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config.pp')    
-        $nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config') 
-        $input_nuget_config_content = Get-Content -Path $input_nuget_config 
-        $nuget_config_content = $input_nuget_config_content -replace '\[BuildPackageSource\]', $merged_nuget_path   
-        Set-Content -Path $nuget_config -Value $nuget_config_content    
+  - task: PowerShell@2
+    displayName: 'NuGet Tests: Fix Nuget Package references (.NET 5.0)'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Add-Type -AssemblyName "System.IO.Compression.FileSystem"
+        $src_root_dir = $Env:BUILD_SOURCESDIRECTORY;
+        $artifacts_staging_dir = $Env:BUILD_ARTIFACTSTAGINGDIRECTORY;
+        $merged_nuget_path = [System.IO.Path]::Combine($artifacts_staging_dir, 'merged')
+        $nupkgs = (Get-ChildItem -Filter Microsoft.AI.MachineLearning*)
+        $merged_nuget_package = $nupkgs[0]
+        $merged_nuget_package_name = $merged_nuget_package.Name
+        $matched_name = ($merged_nuget_package_name -match "Microsoft.AI.MachineLearning.(?<version>.*).nupkg")
+        $package_version = $matches['version']
+        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests.DotNet5_0')
+        $input_csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj.pp')
+        $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj')
+        $input_csproj_content = Get-Content -Path $input_csproj
+        $csproj_content = $input_csproj_content -replace '\[PackageVersion\]', $package_version
+        Set-Content -Path $csproj -Value $csproj_content
+        $input_nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config.pp')
+        $nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config')
+        $input_nuget_config_content = Get-Content -Path $input_nuget_config
+        $nuget_config_content = $input_nuget_config_content -replace '\[BuildPackageSource\]', $merged_nuget_path
+        Set-Content -Path $nuget_config -Value $nuget_config_content
       workingDirectory: $(Build.ArtifactStagingDirectory)\merged
 
   - task: PowerShell@2
@@ -480,31 +480,31 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0
 
 
-  - task: PowerShell@2  
-    displayName: 'NuGet Tests: Fix Nuget Package references (C# UWP)' 
-    inputs: 
-      targetType: 'inline'  
-      script: | 
-        Add-Type -AssemblyName "System.IO.Compression.FileSystem"   
-        $src_root_dir = $Env:BUILD_SOURCESDIRECTORY;    
-        $artifacts_staging_dir = $Env:BUILD_ARTIFACTSTAGINGDIRECTORY;   
-        $merged_nuget_path = [System.IO.Path]::Combine($artifacts_staging_dir, 'merged')    
-        $nupkgs = (Get-ChildItem -Filter Microsoft.AI.MachineLearning*) 
-        $merged_nuget_package = $nupkgs[0]  
-        $merged_nuget_package_name = $merged_nuget_package.Name 
-        $matched_name = ($merged_nuget_package_name -match "Microsoft.AI.MachineLearning.(?<version>.*).nupkg") 
-        $package_version = $matches['version']  
-        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests.Uwp')   
-        $input_csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.Uwp.csproj.pp')   
-        $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.Uwp.csproj')    
-        $input_csproj_content = Get-Content -Path $input_csproj 
-        $csproj_content = $input_csproj_content -replace '\[PackageVersion\]', $package_version 
-        Set-Content -Path $csproj -Value $csproj_content    
-        $input_nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config.pp')    
-        $nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config') 
-        $input_nuget_config_content = Get-Content -Path $input_nuget_config 
-        $nuget_config_content = $input_nuget_config_content -replace '\[BuildPackageSource\]', $merged_nuget_path   
-        Set-Content -Path $nuget_config -Value $nuget_config_content    
+  - task: PowerShell@2
+    displayName: 'NuGet Tests: Fix Nuget Package references (C# UWP)'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Add-Type -AssemblyName "System.IO.Compression.FileSystem"
+        $src_root_dir = $Env:BUILD_SOURCESDIRECTORY;
+        $artifacts_staging_dir = $Env:BUILD_ARTIFACTSTAGINGDIRECTORY;
+        $merged_nuget_path = [System.IO.Path]::Combine($artifacts_staging_dir, 'merged')
+        $nupkgs = (Get-ChildItem -Filter Microsoft.AI.MachineLearning*)
+        $merged_nuget_package = $nupkgs[0]
+        $merged_nuget_package_name = $merged_nuget_package.Name
+        $matched_name = ($merged_nuget_package_name -match "Microsoft.AI.MachineLearning.(?<version>.*).nupkg")
+        $package_version = $matches['version']
+        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests.Uwp')
+        $input_csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.Uwp.csproj.pp')
+        $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.Uwp.csproj')
+        $input_csproj_content = Get-Content -Path $input_csproj
+        $csproj_content = $input_csproj_content -replace '\[PackageVersion\]', $package_version
+        Set-Content -Path $csproj -Value $csproj_content
+        $input_nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config.pp')
+        $nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config')
+        $input_nuget_config_content = Get-Content -Path $input_nuget_config
+        $nuget_config_content = $input_nuget_config_content -replace '\[BuildPackageSource\]', $merged_nuget_path
+        Set-Content -Path $nuget_config -Value $nuget_config_content
       workingDirectory: $(Build.ArtifactStagingDirectory)\merged
 
   - task: PowerShell@2
@@ -536,17 +536,17 @@ jobs:
         pushd .\Microsoft.AI.MachineLearning.Tests\x64\Debug
         .\Microsoft.AI.MachineLearning.Tests.exe
         popd
-        
+
         Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (DotNet5_0)"
         pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\Debug\net5.0-windows10.0.17763.0
         .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
         popd
-        
+
         Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (AnyCpu)"
         pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Debug\net5.0-windows10.0.17763.0
         .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
         popd
-        
+
         Write-Host "Done!"
       workingDirectory: $(Build.SourcesDirectory)\csharp\test
 
