@@ -5,9 +5,9 @@ on:
   push:
     branches:
     - main
-    - edgchen1/objc_doc_gen_workflow
-    #paths:
-    #- objectivec
+    - edgchen1/objc_doc_gen_workflow  # TODO remove
+    # paths:
+    # - objectivec
   schedule:
   - cron: '0 0 1 * *'
   workflow_dispatch:
@@ -28,23 +28,17 @@ jobs:
 
     - name: Install Jazzy
       run: |
-        sudo gem install jazzy
+        sudo gem install jazzy --version 0.14.3
 
-    - name: Log source commit
-      run: git rev-parse --short HEAD > ./source-version.txt
-
-    - name: Run Jazzy
+    - name: Generate Objective-C docs
       run: |
-        jazzy --version
-        jazzy --help config
-
+        set -e
+        OUTPUT_DIR="./_site/docs/api/objectivec"
+        ORT_VERSION_STRING="$(cat ./VERSION_NUMBER) \(commit $(git rev-parse --short HEAD)\)"
         jazzy --config ./objectivec/docs/jazzy_config.yaml \
-          --output "./build/objectivec_api_docs"
-
-    - name: Move Objective-C docs into site
-      run: |
-        mkdir -p ./_site/docs/api
-        mv ./build/objectivec_api_docs ./_site/docs/api/objectivec
+              --module-version "${ORT_VERSION_STRING}" \
+              --clean --output ${OUTPUT_DIR}
+      shell: bash
 
     - name: Upload new site
       uses: actions/upload-artifact@v3
