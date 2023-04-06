@@ -238,7 +238,7 @@ class QDQConv(QDQOperatorBase):
 
     def quantize(self):
         node = self.node
-        assert node.op_type == "Conv"
+        assert node.op_type == "Conv" or node.op_type == "ConvTranspose"
 
         self.quantizer.quantize_activation_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:
