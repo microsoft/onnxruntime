@@ -18,8 +18,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {  // Add/Sub/Mul/Div/Pow
     CreateBinaryOpBuilder("Add", op_registrations);
     CreateBinaryOpBuilder("Sub", op_registrations);
+    CreateBinaryOpBuilder("Sub", op_registrations);
     CreateBinaryOpBuilder("Mul", op_registrations);
-    CreateBinaryOpBuilder("Div", op_registrations);
+    // CreateBinaryOpBuilder("Div", op_registrations);
     CreateBinaryOpBuilder("Pow", op_registrations);
   }
 
