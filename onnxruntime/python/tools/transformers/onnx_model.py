@@ -1124,3 +1124,6 @@ class OnnxModel:
         for value_info in self.model.graph.value_info:
             if value_info.name not in excluded:
                 value_info.name = prefix + value_info.name
+
+    def clean_shape_infer(self):
+        self.model.graph.ClearField("value_info")

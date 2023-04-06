@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -120,6 +121,27 @@ public class TensorCreationTest {
     long[] shape = new long[] {2};
     try (OnnxTensor t = OnnxTensor.createTensor(env, data, shape, OnnxJavaType.UINT8)) {
       Assertions.assertArrayEquals(buf, (byte[]) t.getValue());
+    }
+  }
+
+  @Test
+  public void testEmptyTensor() throws OrtException {
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    FloatBuffer buf = FloatBuffer.allocate(0);
+    long[] shape = new long[] {4, 0};
+    try (OnnxTensor t = OnnxTensor.createTensor(env, buf, shape)) {
+      Assertions.assertArrayEquals(shape, t.getInfo().getShape());
+      float[][] output = (float[][]) t.getValue();
+      Assertions.assertEquals(4, output.length);
+      Assertions.assertEquals(0, output[0].length);
+      FloatBuffer fb = t.getFloatBuffer();
+      Assertions.assertEquals(0, fb.remaining());
+    }
+    shape = new long[] {0, 4};
+    try (OnnxTensor t = OnnxTensor.createTensor(env, buf, shape)) {
+      Assertions.assertArrayEquals(shape, t.getInfo().getShape());
+      float[][] output = (float[][]) t.getValue();
+      Assertions.assertEquals(0, output.length);
     }
   }
 }

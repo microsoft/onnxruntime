@@ -190,6 +190,9 @@ class SymbolicShapeInference:
             "Neg": self._infer_symbolic_compute_ops,
             # contrib ops:
             "Attention": self._infer_Attention,
+            "PackedAttention": self._infer_PackedAttention,
+            "RemovePadding": self._infer_RemovePadding,
+            "RestorePadding": self._infer_RestorePadding,
             "BiasGelu": self._infer_BiasGelu,
             "MultiHeadAttention": self._infer_MultiHeadAttention,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
@@ -445,9 +448,12 @@ class SymbolicShapeInference:
             "LayerNormalization",
             "LongformerAttention",
             "RelativePositionBias",
+            "RemovePadding",
+            "RestorePadding",
             "SimplifiedLayerNormalization",
             "SkipLayerNormalization",
             "SkipSimplifiedLayerNormalization",
+            "PackedAttention",
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
@@ -2096,6 +2102,54 @@ class SymbolicShapeInference:
                             past_shape[3] = f"{past_shape[3]}+{input_shape[1]}"
                     vi = self.known_vi_[node.output[1]]
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+
+    def _infer_PackedAttention(self, node):  # noqa: N802
+        shape = self._get_shape(node, 0)
+        shape_weights = self._get_shape(node, 1)
+        shape_bias = self._try_get_shape(node, 2)
+        if shape_bias is not None:
+            assert len(shape_bias) == 1
+        tripled_hidden_size = shape_bias[0] if shape_bias is not None else shape_weights[1]
+        if shape and len(shape) == 2:
+            qkv_hidden_sizes_attr = get_attribute(node, "qkv_hidden_sizes")
+            if qkv_hidden_sizes_attr is not None:
+                assert len(qkv_hidden_sizes_attr) == 3
+                shape[1] = int(qkv_hidden_sizes_attr[2])
+            elif isinstance(tripled_hidden_size, int):
+                shape[1] = int(tripled_hidden_size / 3)
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
+
+    def _infer_RemovePadding(self, node):  # noqa: N802
+        shape = self._get_shape(node, 0)
+        if shape and len(shape) == 3:
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, ["token_count", shape[2]]))
+
+            vi_token_offset = self.known_vi_[node.output[1]]
+            vi_token_offset.CopyFrom(
+                helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT32, [shape[0], shape[1]])
+            )
+
+            vi_cumulated_seq_len = self.known_vi_[node.output[2]]
+            vi_cumulated_seq_len.CopyFrom(
+                helper.make_tensor_value_info(node.output[2], onnx.TensorProto.INT32, ["batch_size + 1"])
+            )
+
+            vi_max_seq_len = self.known_vi_[node.output[3]]
+            vi_max_seq_len.CopyFrom(helper.make_tensor_value_info(node.output[3], onnx.TensorProto.INT32, [1]))
+
+    def _infer_RestorePadding(self, node):  # noqa: N802
+        shape_input = self._get_shape(node, 0)
+        shape_token_offset = self._get_shape(node, 1)
+        if shape_input and len(shape_input) == 2 and shape_token_offset and len(shape_token_offset) == 2:
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+
+            output_shape = [shape_token_offset[0], shape_token_offset[1], shape_input[1]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_BiasGelu(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
