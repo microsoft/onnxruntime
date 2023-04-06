@@ -34,9 +34,10 @@ jobs:
       run: |
         set -e
         OUTPUT_DIR="./_site/docs/api/objectivec"
-        ORT_VERSION_STRING="$(cat ./VERSION_NUMBER) \(commit $(git rev-parse --short HEAD)\)"
+        ORT_VERSION_NUMBER="$(cat ./VERSION_NUMBER)"
+        ORT_COMMIT_SHORT="$(git rev-parse --short HEAD)"
         jazzy --config ./objectivec/docs/jazzy_config.yaml \
-              --module-version "${ORT_VERSION_STRING}" \
+              --module-version "${ORT_VERSION_NUMBER} (commit ${ORT_COMMIT_SHORT})" \
               --clean --output ${OUTPUT_DIR}
       shell: bash
 
