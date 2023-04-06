@@ -32,17 +32,32 @@ int GetMinRequiredCudaComputeCapability<BFloat16>() {
   return 800;
 }
 
+template <>
+int GetMinRequiredCudaComputeCapability<Float8E4M3FN>() {
+  return 800;
+}
+
+template <>
+int GetMinRequiredCudaComputeCapability<Float8E5M2>() {
+  return 800;
+}
+
 template <typename SrcType,
           typename DstType>
 void TestCastOp(gsl::span<const SrcType> input,
                 gsl::span<const DstType> output,
-                const std::vector<int64_t> &dimensions,
+                const std::vector<int64_t>& dimensions,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                const std::string& expected_failure_string = "") {
-  OpTester test("Cast", 13);
+                const std::string& expected_failure_string = "",
+                int opset = 13,
+                bool saturate = true) {
+  OpTester test("Cast", opset);
   test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<DstType>());
   test.AddInput<SrcType>("input", dimensions, input.data(), input.size());
   test.AddOutput<DstType>("output", dimensions, output.data(), output.size());
+  if (saturate) {
+    test.AddAttribute<int64_t>("saturate", saturate ? 1 : 0);
+  }
 
   std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
   const auto min_required_cuda_compute_capability =
@@ -187,6 +202,47 @@ TEST(CastOpTest, ToString) {
   const std::vector<std::string> int_string_data = {"0", "1", "2", "3", "4", "5", "6", "7"};
   const std::vector<int16_t> int_16_input = {0, 1, 2, 3, 4, 5, 6, 7};
   TestCastOp(gsl::make_span(int_16_input), gsl::make_span(int_string_data), shape);
+}
+
+template <typename F8>
+void CastOpTestFloat8(bool saturate) {
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<float> float_input = {NAN, -1.f, 0.0391877927f, 0.296140194f, -0.120196559f, 5.0f,
+                                          -std::numeric_limits<float>::infinity(),
+                                          std::numeric_limits<float>::infinity()};
+
+  // float output precision is 8, so the expected output differs slightly from the input due to that
+  std::vector<Float8E4M3FN> output;
+  output.reserve(float_input.size());
+  for (int i = 0; i < float_input.size(); ++i) {
+    output.emplace_back(Float8E4M3FN(float_input[i], saturate));
+  }
+  TestCastOp<float, Float8E4M3FN>(gsl::make_span(float_input), gsl::make_span(output), shape, OpTester::ExpectResult::kExpectSuccess, "", 19, saturate);
+
+  const std::vector<MLFloat16> float16_input =
+      CastedValues<float, MLFloat16>(gsl::make_span(float_input));
+
+  TestCastOp<MLFloat16, Float8E4M3FN>(gsl::make_span(float16_input), gsl::make_span(output), shape, OpTester::ExpectResult::kExpectSuccess, "", 19, saturate);
+}
+
+TEST(CastOpTest, ToFloat8E4M3FN) {
+  CastOpTestFloat8<Float8E4M3FN>(true);
+  CastOpTestFloat8<Float8E4M3FN>(false);
+}
+
+TEST(CastOpTest, ToFloat8E4M3FNUZ) {
+  CastOpTestFloat8<Float8E4M3FNUZ>(true);
+  CastOpTestFloat8<Float8E4M3FNUZ>(false);
+}
+
+TEST(CastOpTest, ToFloat8E5M2) {
+  CastOpTestFloat8<Float8E5M2>(true);
+  CastOpTestFloat8<Float8E5M2>(false);
+}
+
+TEST(CastOpTest, ToFloat8E5M2FNUZ) {
+  CastOpTestFloat8<Float8E5M2FNUZ>(true);
+  CastOpTestFloat8<Float8E5M2FNUZ>(false);
 }
 
 }  // namespace test
