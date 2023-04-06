@@ -48,7 +48,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--arm64 --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --cmake_generator "Visual Studio 16 2019" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel
+      arguments: '--arm64 --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --cmake_generator "Visual Studio 16 2019" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
