@@ -123,7 +123,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
-    : IExecutionProvider{kXnnpackExecutionProvider, true}, enable_cpu_mem_arena_(info.session_options ? info.session_options->enable_cpu_mem_arena : true) {
+    : IExecutionProvider{kXnnpackExecutionProvider, true},
+      enable_cpu_mem_arena_(info.session_options ? info.session_options->enable_cpu_mem_arena : true) {
   int xnn_thread_pool_size = info.xnn_thread_pool_size;
   int ort_thread_pool_size = info.session_options ? info.session_options->intra_op_param.thread_pool_size : 1;
   bool allow_intra_op_spinning = (info.session_options == nullptr) ||
