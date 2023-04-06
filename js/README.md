@@ -411,20 +411,22 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
       brew tap wix/brew
       brew install applesimutils
       ```
-    - Add [Jest](https://jestjs.io/) dependency and install Detox itself for e2e Detox project from project directory `<ORT_ROOT>/js/react_native/e2e`.
+    - Optional: If running into Jest/detox dependency issue, check the following steps:
+      Add [Jest](https://jestjs.io/) dependency and install Detox itself for e2e Detox project from project directory `<ORT_ROOT>/js/react_native/e2e`.
       ```
       yarn add "jest@^29" --dev
       ```
-      At the end of this step, should be able to see jest written to `package.json` file under the project root folder.
-
       Then install detox itself.
       ```
       yarn add detox --dev
       ```
+      By default, you should be able to see jest and detox written to `package.json` file under `<ORT_ROOT>/js/react_native/e2e` already.
+
       Main Detox project files:
-        - `.detoxrc.js` -Detox config file;
-        - `e2e/jest.config.js` -Jest configuration;
-        - `e2e/OnnxruntimeModuleExample.test.js` - initial react native onnxruntimemodule e2e detox test.
+      - `.detoxrc.js` -Detox config file;
+      - `e2e/jest.config.js` -Jest configuration;
+      - `e2e/OnnxruntimeModuleExample.test.js` - initial react native onnxruntimemodule e2e detox test.
+
     - Build the detox e2e testing app.
 
       From `<ORT_ROOT>/js/react_native/e2e`, run the command to build the e2e testing app. Before that ensure you have android emulator/ios simulator started locally.
