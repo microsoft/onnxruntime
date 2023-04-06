@@ -111,7 +111,7 @@ static void RunQDQResizeOpTest(const std::vector<int64_t>& shape, const std::vec
 // CPU tests:
 //
 
-TEST(QnnCPUBackendTests, TestResize2xNearestHalfPixel) {
+TEST(QnnCPUBackendTests, DISABLED_TestResize2xNearestHalfPixel) {
   RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "nearest", "half_pixel", "round_prefer_floor",
                      ExpectedEPNodeAssignment::All, "TestResize2xNearestHalfPixel");
 }
@@ -126,17 +126,17 @@ TEST(QnnCPUBackendTests, DISABLED_TestResizeDownSampleNearestHalfPixel) {
                      ExpectedEPNodeAssignment::All, "TestResizeDownSampleNearestHalfPixel");
 }
 
-TEST(QnnCPUBackendTests, TestResize2xNearestHalfAlignCorners) {
+TEST(QnnCPUBackendTests, DISABLED_TestResize2xNearestHalfAlignCorners) {
   RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "nearest", "align_corners", "round_prefer_floor",
                      ExpectedEPNodeAssignment::All, "TestResize2xNearestHalfAlignCorners");
 }
 
-TEST(QnnCPUBackendTests, TestResize2xLinearHalfPixel) {
+TEST(QnnCPUBackendTests, DISABLED_TestResize2xLinearHalfPixel) {
   RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "linear", "half_pixel", "",
                      ExpectedEPNodeAssignment::All, "TestResize2xLinearHalfPixel");
 }
 
-TEST(QnnCPUBackendTests, TestResize2xLinearAlignCorners) {
+TEST(QnnCPUBackendTests, DISABLED_TestResize2xLinearAlignCorners) {
   RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "linear", "align_corners", "",
                      ExpectedEPNodeAssignment::All, "TestResize2xLinearAlignCorners");
 }

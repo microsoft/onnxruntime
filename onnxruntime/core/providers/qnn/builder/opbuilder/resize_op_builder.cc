@@ -213,7 +213,7 @@ Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const Nod
 
   if (resize_mode == "nearest") {
     const std::string& nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
-    ORT_RETURN_IF_NOT("round_prefer_floor" == nearest_mode, "QNN Resize only supports nearest_mode: round_prefer_floor!");
+    ORT_RETURN_IF_NOT("floor" == nearest_mode, "QNN Resize only supports nearest_mode: floor!");
   }
 
   auto& input_0 = node_unit.Inputs()[0];
