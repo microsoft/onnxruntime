@@ -458,13 +458,13 @@ class FusionAttention(Fusion):
             if input not in output_name_to_node:
                 continue
 
-                if input == qkv_nodes[0].output[0]:
-                    continue
-                other_inputs.append(input)
-            if len(other_inputs) != 1:
-                return
+            if input == qkv_nodes[0].output[0]:
+                continue
+            other_inputs.append(input)
+        if len(other_inputs) != 1:
+            return
 
-            root_input = other_inputs[0]
+        root_input = other_inputs[0]
 
 
         """

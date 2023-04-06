@@ -156,10 +156,11 @@ MODELS = {
         False,
         "bert",
     ),
-    "google/vit-base-patch16-224": (["pixel_values"], 12, False, "vit"),
     # "google/pegasus-xsum": (["input_ids"], 11, False, "bert"),
     # "google/pegasus-large": (["input_ids"], 11, False, "bert"),
 
     # ViT
-    "google/vit-base-patch16-224": (["input_ids"], 12, False, "vit"),
+    "google/vit-base-patch16-224": (["pixel_values"], 12, False, "vit"),
+    # Swin
+    "microsoft/swin-base-patch4-window7-224": (["pixel_values"], 12, False, "swin"),
 }

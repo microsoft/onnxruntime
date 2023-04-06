@@ -16,7 +16,7 @@ from benchmark_helper import OptimizerInfo, Precision, create_onnxruntime_sessio
 from huggingface_models import MODEL_CLASSES
 from quantize_helper import QuantizeHelper
 from torch_onnx_export_helper import torch_onnx_export
-from transformers import AutoConfig, AutoFeatureExtractor, AutoTokenizer, LxmertConfig, TransfoXLConfig
+from transformers import AutoConfig, AutoModelForImageClassification, AutoFeatureExtractor, AutoTokenizer, LxmertConfig, TransfoXLConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
 from gpt2_helper import PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState, TFGPT2ModelNoPastState  # noqa: E402
@@ -108,11 +108,6 @@ def build_dynamic_axes(example_inputs, outputs_flatten):
         for j, dim in enumerate(dims):
             if dim == sequence_length:
                 dynamic_axes[output_name].update({j: "seq_len"})
-    return dynamic_axes, output_names
-
-def build_dynamic_axes_vit(example_inputs, outputs_flatten):
-    dynamic_axes = {key: {0: "pixel_values"} for key in example_inputs.keys()}
-    output_names = ["logits"]
     return dynamic_axes, output_names
 
 def validate_onnx_model(
@@ -255,8 +250,8 @@ def optimize_onnx_model(
         opt_model = optimize_model(
             onnx_model_path,
             model_type,
-            num_heads=num_attention_heads,
-            hidden_size=hidden_size,
+            num_heads=num_attention_heads if model_type != "swin" else 0,
+            hidden_size=hidden_size if model_type != "swin" else 0,
             opt_level=0,
             optimization_options=optimization_options,
             use_gpu=use_gpu,
@@ -298,9 +293,6 @@ def modelclass_dispatcher(model_name, custom_model_class):
 
 
 def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_tf_model=False):
-    if config.model_type=="vit":
-        return AutoModelForImageClassification.from_pretrained(model_name, config=config, cache_dir=cache_dir)
-
     model_class_name = modelclass_dispatcher(model_name, custom_model_class)
 
     if model_class_name == "GPT2ModelNoPastState":
@@ -479,8 +471,11 @@ def export_onnx_model_from_pt(
     example_inputs = None
     max_input_size = None
 
-    if model_type == "vit":
-        example_inputs = inputs = { 'pixel_values' : torch.rand(2,3,224,224) }
+    if model_type == "vit" or model_type == "swin":
+        image_processor = AutoFeatureExtractor.from_pretrained(model_name, cache_dir=cache_dir)
+        data = numpy.random.randint(low=0, high=256, size=224 * 224 * 3, dtype=numpy.uint8).reshape(224, 224, 3)
+
+        example_inputs = image_processor(data, return_tensors="pt")
     else:
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
         max_input_size = (
@@ -489,10 +484,10 @@ def export_onnx_model_from_pt(
 
         example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
-        example_inputs = filter_inputs(example_inputs, input_names)
+    example_inputs = filter_inputs(example_inputs, input_names)
 
-        example_outputs = model(**example_inputs)
-        assert isinstance(example_outputs, (list, tuple)), f"type of output is not list or tuple: {type(example_outputs)}"
+    example_outputs = model(**example_inputs)
+    assert isinstance(example_outputs, (list, tuple)), f"type of output is not list or tuple: {type(example_outputs)}"
 
     # Flatten is needed for gpt2 and distilgpt2.
     example_outputs_flatten = flatten(example_outputs)
@@ -516,7 +511,7 @@ def export_onnx_model_from_pt(
         dynamic_axes = None
         output_names = None
 
-        if model_type == "vit":
+        if model_type == "vit" or model_type == "swin":
             dynamic_axes, output_names = {key: {0: "pixel_values"} for key in example_inputs}, ["logits"]
         else:
             dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)

@@ -262,7 +262,7 @@ def run_onnxruntime(
                         "datetime": str(datetime.now()),
                     }
 
-                    if config.model_type == "vit":
+                    if config.model_type == "vit" or config.model_type == "swin":
                         logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, 3, 224, 224]}")
                     else:
                         logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}")
@@ -340,7 +340,7 @@ def run_pytorch(
             custom_model_class=model_class,
         )
 
-        if config.model_type == "vit":
+        if config.model_type == "vit" or config.model_type == "swin":
             max_input_size = 1024 # Just needs to be greater than sequence_length
         else:
             tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
@@ -369,7 +369,7 @@ def run_pytorch(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                if config.model_type == "vit":
+                if config.model_type == "vit" or config.model_type == "swin":
                     logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, 3, 224, 224]}")
                     input_ids = torch.randn(size=(batch_size, 3, 224, 224),dtype=torch.float16 if precision == Precision.FLOAT16 else torch.float32, device=device)
                 else:
