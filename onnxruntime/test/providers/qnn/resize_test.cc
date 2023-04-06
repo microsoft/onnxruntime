@@ -60,11 +60,13 @@ static GetTestModelFn BuildResizeTestCase(const std::vector<int64_t>& shape,
  * \param nearest_mode The rounding for "nearest" mode (e.g., round_prefer_floor, floor).
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
  * \param test_description Description of the test for error reporting.
+ * \param opset The opset version to use.
  */
 static void RunCPUResizeOpTest(const std::vector<int64_t>& shape, const std::vector<int64_t>& sizes_data,
                             const std::string& mode, const std::string& coordinate_transformation_mode,
                             const std::string& nearest_mode,
-                            ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description) {
+                            ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                            int opset = 18) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnCpu.dll";
@@ -75,7 +77,7 @@ static void RunCPUResizeOpTest(const std::vector<int64_t>& shape, const std::vec
   constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildResizeTestCase(shape, sizes_data, mode, coordinate_transformation_mode, nearest_mode),
                   provider_options,
-                  18,  // opset
+                  opset,
                   expected_ep_assignment,
                   expected_nodes_in_partition,
                   test_description);
@@ -112,6 +114,16 @@ static void RunQDQResizeOpTest(const std::vector<int64_t>& shape, const std::vec
 TEST(QnnCPUBackendTests, TestResize2xNearestHalfPixel) {
   RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "nearest", "half_pixel", "round_prefer_floor",
                      ExpectedEPNodeAssignment::All, "TestResize2xNearestHalfPixel");
+}
+
+// TODO: Investigate difference in results, and then enable this test.
+// onnxruntime\onnxruntime\test\util\test_utils.cc(51): error: Value of: ltensor.DataAsSpan<float>()
+// Expected : contains 3 values, where the value pair(13.2128859, 13.362051) at index #0 don't match,
+// which is 0.149165 from 13.2129 Google Test trace : onnxruntime\onnxruntime\test\common\tensor_op_test_utils.cc(14) :
+// ORT test random seed : 2345
+TEST(QnnCPUBackendTests, DISABLED_TestResizeDownSampleNearestHalfPixel) {
+  RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 1, 3}, "nearest", "half_pixel", "round_prefer_floor",
+                     ExpectedEPNodeAssignment::All, "TestResizeDownSampleNearestHalfPixel");
 }
 
 TEST(QnnCPUBackendTests, TestResize2xNearestHalfAlignCorners) {
