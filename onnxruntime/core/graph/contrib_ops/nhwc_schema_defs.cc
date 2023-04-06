@@ -387,10 +387,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 ONNX_MS_OPERATOR_SET_SCHEMA(NhwcFusedConv, 1,
                             OpSchema()
                                 .SetDoc(R"DOC(
-NhwcFusedConv is a float16 Conv operator with optional activation and add operators fused in.
-It also processes both NHWC and NCHW format.
+NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
+Only has fp16 implementation as of 2023/04/15.
 )DOC")
-                                .Attr("channels_last", "0(default) when input tensor is NCHW, else the input is NHWC", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
                                 .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
                                 .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
@@ -405,18 +404,9 @@ It also processes both NHWC and NCHW format.
                                 .Input(3, "Z", "Tensor to be added to the output, must be the same shape and format as the output tensor.", "T", OpSchema::Optional)
                                 .Output(0, "Y", "", "T")
                                 .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output types to float tensors")
-                                //.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                //  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-                                //  ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
-                                //}));
                                 .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
                                   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-                                  if (getAttribute(ctx, "channels_last", 0) == 0) {
-                                    ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
-                                  } else {
-                                    onnxruntime::contrib::convPoolShapeInferenceNhwc(ctx, true, false, 0, 1);
-                                  }
+                                  convPoolShapeInferenceNhwc(ctx, true, false, 0, 1);
                                 }));
 
 }  // namespace contrib

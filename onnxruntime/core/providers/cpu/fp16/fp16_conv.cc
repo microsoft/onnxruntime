@@ -32,18 +32,20 @@ using ConvPadVector = ConvAttributes::ConvPadVector;
  * 2. Activation
  * It takes an operator attribute 'activation', which supplies the activation info.
  *
- * Add is performed BEFORE activation.
+ * Add is performed AFTER activation.
  *
- * The implementation runs faster with NHWC. In base class, where channel_last_ is
- * false, it converts NCHW to NHWC before processing, and convert the result back.
- * In the derived NHWC class, where channel_last_ is true, it takes NHWC tensors directly.
+ * The implementation supports both NCHW and NHWC. It runs faster with NHWC.
+ * 
+ * Currently this class implement 3 operators: onnx.Conv, ms.FusedConv and ms.NhwcFusedConv
+ * In the constructor, if we see the operator name is NhwcFusedConv, we assume the
+ * input layout to be NHWC, otherwise we assume layout is NCHW.
  *
 */
 class FusedConvFp16 final : public OpKernel {
  public:
   FusedConvFp16(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
-    channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
+    channels_last_ = (info.GetKernelDef().OpName() == "NhwcFusedConv");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -238,9 +240,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   const auto& W_shape = W ? W->Shape() : W_shape_;
   const Tensor* B = num_inputs >= 3 ? context->Input<Tensor>(2) : nullptr;
 
-  // TODO!!
-  // This tensor should be added to the result before activation is applied
-  // We need to augment the post processor to accept an addition operation.
+  // This tensor should be added to the result AFTER activation is applied
   const Tensor* Sum = num_inputs >= 4 ? context->Input<Tensor>(3) : nullptr;
 
   const int64_t N = X->Shape()[0];
@@ -474,7 +474,6 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
       const auto* worker_addsrc = add_src == nullptr ? nullptr : add_src + output_start * M;
 
       if (is_depthwise_conv) {
-        // TODO!! add Sum tensor to activation
         MLAS_HALF_GEMM_ACTIVATION_PROCESSOR act(activation_, worker_addsrc);
         MlasConvDepthwise(
             worker_indirection_buffer,
@@ -544,7 +543,6 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
             lda = static_cast<size_t>(C);
           }
 
-          // TODO!! add Sum tensor to activation
           const auto* gemm_add = add_src == nullptr ? nullptr : worker_addsrc + group_id * group_output_channels;
           MLAS_HALF_GEMM_ACTIVATION_PROCESSOR act(activation_, gemm_add);
           MLAS_HALF_GEMM_DATA_PARAMS gemm_params;
@@ -601,6 +599,9 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+//
+// Operator definitions
+//
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Conv,
@@ -613,6 +614,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 #ifndef DISABLE_CONTRIB_OPS
 
 namespace contrib {
+
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     NhwcFusedConv,
     kMSDomain,
@@ -622,6 +624,17 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     FusedConvFp16);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    FusedConv,
+    kMSDomain,
+    1,
+    MLFloat16,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    FusedConvFp16);
+
 }  // namespace contrib
 #endif
 
