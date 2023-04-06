@@ -55,11 +55,31 @@ export class WebGpuBackend {
   /**
    * a list of temporary GPU data for the current kernel. should release when the kernel done computation.
    */
-  temporaryData: GpuData[];
+  private temporaryData: GpuData[];
   /**
    * a KernelID -> a GPU data list, which stores persistent GPU data owned by the specific kernel.
    */
-  kernelPersistentData: Map<number, GpuData[]>;
+  private kernelPersistentData: Map<number, GpuData[]>;
+  /**
+   * a KernelID -> a custom data, which stores custom data owned by the specific kernel.
+   */
+  private kernelCustomData: Map<number, {[key: string]: unknown}>;
+  /**
+   * get the custom data of the current kernel
+   */
+  get currentKernelCustomData(): {[key: string]: unknown} {
+    if (this.currentKernelId === null) {
+      throw new Error('currentKernelCustomData(): currentKernelId is null. (should not happen)');
+    }
+
+    let data = this.kernelCustomData.get(this.currentKernelId);
+    if (!data) {
+      data = {};
+      this.kernelCustomData.set(this.currentKernelId, data);
+    }
+
+    return data;
+  }
 
   /**
    * a KernelID -> kernel info mapping. value is [ name, run function, [optional] preprocess_attribute_once function ]
@@ -105,6 +125,7 @@ export class WebGpuBackend {
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();
     this.kernelPersistentData = new Map();
+    this.kernelCustomData = new Map();
     // TODO: set up flags
 
     this.device.onuncapturederror = ev => {
@@ -286,6 +307,8 @@ export class WebGpuBackend {
       }
       this.kernelPersistentData.delete(kernelId);
     }
+
+    this.kernelCustomData.delete(kernelId);
     this.kernels.delete(kernelId);
   }
 

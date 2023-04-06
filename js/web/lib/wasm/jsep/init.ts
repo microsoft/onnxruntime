@@ -32,7 +32,9 @@ class TensorViewImpl implements TensorView {
 class OpKernelContext implements ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
-  readonly customData: {[key: string]: unknown} = {};
+  get customData(): {[key: string]: unknown} {
+    return this.backend.currentKernelCustomData;
+  }
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
     const heapU32 = module.HEAPU32;
 
