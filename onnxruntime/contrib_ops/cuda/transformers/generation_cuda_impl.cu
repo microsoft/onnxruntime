@@ -759,7 +759,7 @@ __global__ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirectionKernel(int3
   const int batch_id = bb_id / beam_width;
   const int beam_id = bb_id % beam_width;
 
-  if (bb_id >= beam_width * batch_size || time_step >= max_seq_length) {
+  if (bb_id >= beam_width * batch_size || time_step >= current_length) {
     return;
   }
 
@@ -767,7 +767,7 @@ __global__ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirectionKernel(int3
 
   const int tgt_offset = batch_id * beam_width * max_seq_length + beam_id * max_seq_length + time_step;
 
-  if (time_step < input_seq_length || time_step >= current_length) {
+  if (time_step < input_seq_length) {
     // For time steps that correspond to the input sequence,
     // the beam that it comes from is always 0.
     tgt_indir_cache[tgt_offset] = static_cast<int32_t>(0);

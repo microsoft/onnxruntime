@@ -231,7 +231,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   std::vector<OrtValue> decoder_feeds;
   int current_length = parameters->sequence_length;
 
-  // TODO(tianleiwu): allocate fetches. use ping-pong buffers for past state.
   std::vector<OrtValue> decoder_fetches;
 
   if (current_length + 1 < parameters->max_length) {
