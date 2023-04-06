@@ -465,8 +465,6 @@ class FusionAttention(Fusion):
             return
 
         root_input = other_inputs[0]
-
-
         """
         Match flaubert                     Mask
                                             |

@@ -442,7 +442,7 @@ def validate_and_optimize_onnx(
                 model_fusion_statistics,
             )
 
-    return onnx_model_path, is_valid_onnx_model, config.num_labels if model_type == "vit" else config.vocab_size
+    return onnx_model_path, is_valid_onnx_model, config.num_labels if model_type == "vit" or model_type == "swin" else config.vocab_size
 
 
 def export_onnx_model_from_pt(

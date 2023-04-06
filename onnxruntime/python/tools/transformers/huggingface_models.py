@@ -163,4 +163,6 @@ MODELS = {
     "google/vit-base-patch16-224": (["pixel_values"], 12, False, "vit"),
     # Swin
     "microsoft/swin-base-patch4-window7-224": (["pixel_values"], 12, False, "swin"),
+    "microsoft/swin-small-patch4-window7-224": (["pixel_values"], 12, False, "swin"),
+    "microsoft/swin-tiny-patch4-window7-224": (["pixel_values"], 12, False, "swin"),
 }
