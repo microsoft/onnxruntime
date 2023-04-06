@@ -153,39 +153,32 @@
 												id="v-pills-python" role="tabpanel"
 												aria-labelledby="v-pills-python-tab">
 												<pre class="mb-0" style="overflow: hidden;">
-<code>
-import onnxruntime as ort
-import numpy as np
-import cv2
+<code>import onnxruntime as ort
 
-# Load the model
+# Load the model and create InferenceSession
 model_path = "path/to/your/onnx/model"
 session = ort.InferenceSession(model_path)
 
-# Load and preprocess the input image
+# Load and preprocess the input image inputTenor
 ...
 
 # Run inference
-outputs = session.run(None, {"input": image})
+outputs = session.run(None, {"input": inputTenor})
 
 # Print the output
-print(outputs)
-</code><a href="docs/get-started/with-python" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
+print(outputs)</code>
+<a href="docs/get-started/with-python" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-java" role="tabpanel"
 												aria-labelledby="v-pills-java-tab">
 												<pre style="overflow: hidden">
-<code>
-import ai.onnxruntime.*;
-import ai.onnxruntime.OrtSession.Result;
+<code>import ai.onnxruntime.*;
 
-// Load the model
+# Load the model and create InferenceSession
 String modelPath = "path/to/your/onnx/model";
 OrtEnvironment env = OrtEnvironment.getEnvironment();
-OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
-opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT);
-OrtSession session = env.createSession(modelPath, opts);
+OrtSession session = env.createSession(modelPath);
 
 // Load and preprocess the input image inputTensor
 ...
@@ -198,16 +191,15 @@ OrtSession.Result outputMap =
 		new float[][] {inputTensor},
 		new long[][] {{1L, 3L, (long) height, (long) width}})[0];
 // Print the output
-System.out.println(outputMap.getInfo().toString());
-</code><a href="docs/get-started/with-java" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
+System.out.println(outputMap.getInfo().toString());</code>
+<a href="docs/get-started/with-java" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-javascript" role="tabpanel"
 												aria-labelledby="v-pills-javascript-tab">
 												<pre style="overflow: hidden">
-<code>
-import * as ort from "onnxruntime-web";
-// Load the model
+<code>import * as ort from "onnxruntime-web";
+# Load the model and create InferenceSession
 const modelPath = "path/to/your/onnx/model";
 const session = await ort.InferenceSession.create(modelPath);
 
@@ -218,19 +210,19 @@ const session = await ort.InferenceSession.create(modelPath);
 const outputMap = await session.run({ input: inputTensor });
 
 // Print the output
-console.log(outputMap);
-</code><a href="docs/get-started/with-javascript" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
+console.log(outputMap);</code>
+<a href="docs/get-started/with-javascript" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-cpp" role="tabpanel"
 												aria-labelledby="v-pills-cpp-tab">
 												<pre style="overflow: hidden">
-<code>
-#include "onnxruntime_cxx_api.h"
+<code>#include "onnxruntime_cxx_api.h"
 
-// Load the model
-Ort::SessionOptions session_options;
-Ort::Session session(env, "path/to/your/onnx/model", session_options);
+# Load the model and create InferenceSession
+Ort::Env env;
+std::string model_path = "path/to/your/onnx/model";
+Ort::Session session(env, model_path, Ort::SessionOptions{ nullptr });
 
 // Load and preprocess the input image to inputTensor
 ...
@@ -246,18 +238,18 @@ std::vector<Ort::Value> outputTensors =
 
 // Print the output
 const float* outputDataPtr = outputTensors[0].GetTensorMutableData<float>();
-std::cout << outputDataPtr[0] << std::endl;
-</code><a href="docs/get-started/with-cpp" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
+std::cout << outputDataPtr[0] << std::endl;</code>
+<a href="docs/get-started/with-cpp" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
 											<div class="tab-pane fade" id="v-pills-cs" role="tabpanel"
 												aria-labelledby="v-pills-cs-tab">
 												<pre style="overflow: hidden">
-<code>
-using Microsoft.ML.OnnxRuntime;
+<code>using Microsoft.ML.OnnxRuntime;
 
-// Load the model
-var session = new InferenceSession("path/to/your/onnx/model");
+# Load the model and create InferenceSession
+string model_path = "path/to/your/onnx/model";
+var session = new InferenceSession(model_path);
 
 // Preprocess the input image
 ...
@@ -269,8 +261,8 @@ var inputs = new List<NamedOnnxValue>
 };
 
 var results = session.Run(inputs).ToList();
-Console.WriteLine(results[0].AsTensor<float>()[0]);
-</code><a href="docs/get-started/with-csharp" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
+Console.WriteLine(results[0].AsTensor<float>()[0]);</code>
+<a href="docs/get-started/with-csharp" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
 										</div>
