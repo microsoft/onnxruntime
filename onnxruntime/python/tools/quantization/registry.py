@@ -65,6 +65,7 @@ QLinearOpsRegistry.update(CommonOpsRegistry)
 
 QDQRegistry = {
     "Conv": QDQConv,
+    "ConvTranspose": QDQConv,
     "Gemm": QDQGemm,
     "Clip": QDQRemovableActivation,
     "Relu": QDQRemovableActivation,
