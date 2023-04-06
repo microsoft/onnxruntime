@@ -516,10 +516,19 @@ Return Value:
 
 --*/
 {
+    int retval;
 #if defined(MLAS_TARGET_AMD64)
-    return GetMlasPlatform().PreferredBufferAlignment;
+    retval = GetMlasPlatform().PreferredBufferAlignment;
 #else
-    return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
+    retval = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
+#endif
+#if defined(USE_XNNPACK) && defined(MLAS_TARGET_AMD64_IX86) && !defined(__ANDROID__) && \
+    !(defined(__APPLE__) && defined(TARGET_OS_IPHONE))
+    // XNNPack requires 64-bit alignment on x86 64-bit or 32-bit CPUs except Android/iOS
+    // MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT is 32 so sometimes it is not enough
+    return std::max(retval, 64);
+#else
+    return retval;
 #endif
 }
 
