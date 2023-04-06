@@ -231,7 +231,8 @@ protected:
         }
 
         if ((L"1080.jpg" == image_file_name || L"fish_720_Gray.png" == image_file_name) &&
-            (L"fns-candy_Bgr8_tensor_Batch3.onnx" == model_file_name || L"fns-candy_Bgr8.onnx")) {
+            (L"fns-candy_Bgr8_tensor_Batch3.onnx" == model_file_name || L"fns-candy_Bgr8.onnx" == model_file_name ||
+                L"fns-candy_Bgr8_freeDimInput_Batch10.onnx" == model_file_name)) {
             return true;
         }
 
