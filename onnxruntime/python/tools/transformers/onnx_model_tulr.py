@@ -7,7 +7,7 @@ from typing import Union
 
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_utils import NumpyHelper
-from onnx import NodeProto, TensorProto, helper, numpy_helper
+from onnx import NodeProto, TensorProto, GraphProto, helper, numpy_helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 from fusion_base import Fusion
@@ -15,9 +15,9 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-#python optimizer.py --input /home/wy/Turing/tulrv6/base/model.onnx --output /home/wy/Turing/tulrv6/base/opt16/model.onnx --model_type tulr --num_heads 12 --hidden_size 768 --use_external_data_format --float16
-#python optimizer.py --input /home/wy/Turing/tulrv6/large/model.onnx --output /home/wy/Turing/tulrv6/large/opt16/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --use_external_data_format --float16
-#python optimizer.py --input /home/wy/Turing/tulrv6/spacev6/model_best.onnx --output /home/wy/Turing/tulrv6/spacev6/opt16/model_best.onnx --model_type tulr --num_heads 12 --hidden_size 768 --use_external_data_format --float16
+#python optimizer.py --input /home/wy/Turing/tulrv6/base/model.onnx --output /home/wy/Turing/tulrv6/base/opt16/model.onnx --model_type tulr --num_heads 12 --hidden_size 768 --enable_gelu_approximation --use_external_data_format --float16
+#python optimizer.py --input /home/wy/Turing/tulrv6/large/model.onnx --output /home/wy/Turing/tulrv6/large/opt16/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --enable_gelu_approximation --use_external_data_format --float16
+#python optimizer.py --input /home/wy/Turing/tulrv6/spacev6/model_best.onnx --output /home/wy/Turing/tulrv6/spacev6/opt16/model_best.onnx --model_type tulr --num_heads 12 --hidden_size 768 --enable_gelu_approximation --use_external_data_format --float16
 
 class FusionTulrAttention(FusionAttention):
     """
@@ -148,7 +148,7 @@ class FusionTulrAttention(FusionAttention):
 
         attention_node_name = self.model.create_node_name("Attention")
 
-        use_multi_head_attention = False
+        use_multi_head_attention = True
         if not use_multi_head_attention:
             weight = helper.make_tensor(
                 name=attention_node_name + "_qkv_weight",
@@ -497,6 +497,65 @@ class FusionGRUGate(Fusion):
         self.node_name_to_graph_name[gate_node.name] = self.this_graph_name
 
 
+def change_attn_mask_to_1d(graph: GraphProto):
+    new_inputs = []
+    for i, vi in enumerate(graph.input):
+        if vi.name == "attention_mask":
+            vi = helper.make_tensor_value_info(
+                vi.name,
+                elem_type=vi.type.tensor_type.elem_type,
+                shape=["3 * B + 2"],
+            )
+        new_inputs.extend([vi])
+
+    graph.ClearField("input")
+    graph.input.extend(new_inputs)
+
+def attribute_to_pair(attribute):
+    """
+    Convert attribute to kwarg format for use with onnx.helper.make_node.
+        :parameter attribute: attribute in AttributeProto format.
+        :return: attribute in {key: value} format.
+    """
+    if attribute.type == 0:
+        raise ValueError(f"attribute {attribute.name} does not have type specified.")
+
+    # Based on attribute type definitions from AttributeProto
+    # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
+    if attribute.type == 1:
+        value = attribute.f
+    elif attribute.type == 2:
+        value = attribute.i
+    elif attribute.type == 3:
+        value = attribute.s
+    elif attribute.type == 4:
+        value = attribute.t
+    elif attribute.type == 5:
+        value = attribute.g
+    elif attribute.type == 6:
+        value = attribute.floats
+    elif attribute.type == 7:
+        value = attribute.ints
+    elif attribute.type == 8:
+        value = attribute.strings
+    elif attribute.type == 9:
+        value = attribute.tensors
+    elif attribute.type == 10:
+        value = attribute.graphs
+    else:
+        raise ValueError(f"attribute {attribute.name} has unsupported type {attribute.type}.")
+
+    return (attribute.name, value)
+
+def kwargs_of(node):
+    kwargs = {}
+    for attr in node.attribute:
+        (key, value) = attribute_to_pair(attr)
+        kwargs.update({key: value})
+    if node.domain:
+        kwargs.update({"domain": node.domain})
+    return kwargs
+
 
 class TulrOnnxModel(BertOnnxModel):
     def __init__(self, model, num_heads, hidden_size):
@@ -508,10 +567,14 @@ class TulrOnnxModel(BertOnnxModel):
 
     def fuse_attention(self):
         self.attention_fusion.apply()
-        print("fused attention")
 
     def postprocess(self):
         self.rpb_fusion.apply()
         self.gru_fusion.apply()
         self.clean_graph()
         self.prune_graph()
+        change_attn_mask_to_1d(self.model.graph)
+
+
+
+
