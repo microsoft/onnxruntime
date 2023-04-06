@@ -175,7 +175,7 @@ print(outputs)</code>
 												<pre style="overflow: hidden">
 <code>import ai.onnxruntime.*;
 
-# Load the model and create InferenceSession
+// Load the model and create InferenceSession
 String modelPath = "path/to/your/onnx/model";
 OrtEnvironment env = OrtEnvironment.getEnvironment();
 OrtSession session = env.createSession(modelPath);
@@ -184,14 +184,10 @@ OrtSession session = env.createSession(modelPath);
 ...
 
 // Run inference
-OrtSession.Result outputMap =
-	session.run(
-		new OrtSession.RunOptions(),
-		new String[] {"input"},
-		new float[][] {inputTensor},
-		new long[][] {{1L, 3L, (long) height, (long) width}})[0];
+OrtSession.Result results = session.run(inputTensor);
+
 // Print the output
-System.out.println(outputMap.getInfo().toString());</code>
+System.out.println(results.get(0).getTensor().getFloatBuffer().get(0));</code>
 <a href="docs/get-started/with-java" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
@@ -199,7 +195,7 @@ System.out.println(outputMap.getInfo().toString());</code>
 												aria-labelledby="v-pills-javascript-tab">
 												<pre style="overflow: hidden">
 <code>import * as ort from "onnxruntime-web";
-# Load the model and create InferenceSession
+// Load the model and create InferenceSession
 const modelPath = "path/to/your/onnx/model";
 const session = await ort.InferenceSession.create(modelPath);
 
@@ -219,12 +215,13 @@ console.log(outputMap);</code>
 												<pre style="overflow: hidden">
 <code>#include "onnxruntime_cxx_api.h"
 
-# Load the model and create InferenceSession
+// Load the model and create InferenceSession
 Ort::Env env;
 std::string model_path = "path/to/your/onnx/model";
 Ort::Session session(env, model_path, Ort::SessionOptions{ nullptr });
 
-// Load and preprocess the input image to inputTensor
+// Load and preprocess the input image to 
+// inputTensor, inputNames, and outputNames
 ...
 
 // Run inference
@@ -247,20 +244,15 @@ std::cout << outputDataPtr[0] << std::endl;</code>
 												<pre style="overflow: hidden">
 <code>using Microsoft.ML.OnnxRuntime;
 
-# Load the model and create InferenceSession
+// Load the model and create InferenceSession
 string model_path = "path/to/your/onnx/model";
 var session = new InferenceSession(model_path);
 
-// Preprocess the input image
+// Load and preprocess the input image to inputTensor
 ...
 
 // Run inference
-var inputs = new List<NamedOnnxValue>
-{
-	NamedOnnxValue.CreateFromTensor("data", input)
-};
-
-var results = session.Run(inputs).ToList();
+var results = session.Run(inputTensor).ToList();
 Console.WriteLine(results[0].AsTensor<float>()[0]);</code>
 <a href="docs/get-started/with-csharp" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
