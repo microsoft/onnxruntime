@@ -2,11 +2,12 @@
 # Licensed under the MIT License.
 # pylint: disable=C0116,W0212,R1720,C0103,C0114
 
+import os
 import platform
+import sys
 import unittest
 
 import numpy as np
-import onnx
 from numpy.testing import assert_allclose
 from onnx import TensorProto
 from onnx.checker import check_model
@@ -23,87 +24,94 @@ available_providers = [provider for provider in onnxruntime.get_available_provid
 
 
 class TestInferenceSession(unittest.TestCase):
-    x = np.array([0, 1e-7, 1e-3, 1e-2, 1e-1, 1, 2, 10, 99, 1000, 1e4, 1e5, np.inf, -np.inf, np.nan], dtype=np.float32)
+    x = np.array(
+        [0.4068359375, 352, 416, 336, 304, 272, -248, -100, 1e-4, 1e-2, 416, 432, 1e5, np.inf, -np.inf, np.nan],
+        dtype=np.float32,
+    )
     expected = (
         {}
         if not hasattr(TensorProto, "FLOAT8E4M3FN")
         else {
             TensorProto.FLOAT8E4M3FN: np.array(
                 [
-                    0,
-                    0,
-                    1.953125e-03,
-                    9.765625e-03,
-                    1.015625e-01,
-                    1,
-                    2,
-                    10,
-                    96,
-                    448,
-                    448,
-                    448,
-                    448,
-                    -448,
+                    0.40625,
+                    352.0,
+                    416.0,
+                    320.0,
+                    320.0,
+                    256.0,
+                    -256.0,
+                    -96.0,
+                    0.0,
+                    0.009765625,
+                    416.0,
+                    448.0,
+                    448.0,
+                    448.0,
+                    -448.0,
                     np.nan,
                 ],
                 dtype=np.float32,
             ),
             TensorProto.FLOAT8E4M3FNUZ: np.array(
                 [
-                    0,
-                    0,
-                    9.765625e-04,
-                    9.765625e-03,
-                    1.015625e-01,
-                    1,
-                    2,
-                    10,
-                    96,
-                    240,
-                    240,
-                    240,
-                    240,
-                    -240,
+                    0.40625,
+                    240.0,
+                    240.0,
+                    240.0,
+                    240.0,
+                    240.0,
+                    -240.0,
+                    -104.0,
+                    0.0,
+                    0.009765625,
+                    240.0,
+                    240.0,
+                    240.0,
+                    240.0,
+                    -240.0,
                     np.nan,
                 ],
                 dtype=np.float32,
             ),
             TensorProto.FLOAT8E5M2: np.array(
                 [
-                    0,
-                    0,
-                    9.765625e-04,
-                    9.765625e-03,
-                    9.375000e-02,
-                    1,
-                    2,
-                    10,
-                    9.600000e01,
-                    1.024000e03,
-                    1.024000e04,
-                    57344,
-                    57344,
-                    -57344,
+                    0.4375,
+                    384.0,
+                    384.0,
+                    320.0,
+                    320.0,
+                    256.0,
+                    -256.0,
+                    -96.0,
+                    0.0001068115234375,
+                    0.009765625,
+                    384.0,
+                    448.0,
+                    57344.0,
+                    57344.0,
+                    -57344.0,
                     np.nan,
                 ],
                 dtype=np.float32,
             ),
             TensorProto.FLOAT8E5M2FNUZ: np.array(
                 [
-                    0,
-                    0,
-                    9.765625e-04,
-                    9.765625e-03,
-                    9.375000e-02,
-                    1,
-                    2,
-                    10,
-                    9.600000e01,
-                    1.024000e03,
-                    1.024000e04,
-                    57344,
-                    np.nan,
-                    np.nan,
+                    0.4375,
+                    384.0,
+                    448.0,
+                    320.0,
+                    320.0,
+                    256.0,
+                    -256.0,
+                    -96.0,
+                    0.0001068115234375,
+                    0.009765625,
+                    448.0,
+                    448.0,
+                    57344.0,
+                    57344.0,
+                    -57344.0,
                     np.nan,
                 ],
                 dtype=np.float32,
@@ -139,7 +147,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_cast_cast_cpu(self):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        so.add_session_config_entry("session.allow_released_opsets_only", "0");
+        so.add_session_config_entry("session.allow_released_opsets_only", "0")
 
         expected = TestInferenceSession.expected
         x = TestInferenceSession.x
@@ -160,7 +168,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_cast_cast_cuda(self):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        so.add_session_config_entry("session.allow_released_opsets_only", "0");
+        so.add_session_config_entry("session.allow_released_opsets_only", "0")
 
         expected = TestInferenceSession.expected
         x = TestInferenceSession.x
@@ -184,7 +192,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_cast_cast_cuda_ortvalue(self):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        so.add_session_config_entry("session.allow_released_opsets_only", "0");
+        so.add_session_config_entry("session.allow_released_opsets_only", "0")
 
         expected = TestInferenceSession.expected
         x = TestInferenceSession.x
@@ -195,7 +203,7 @@ class TestInferenceSession(unittest.TestCase):
                     # only those types are available on CUDA.
                     continue
                 onnx_model = self.model_cast_cast(to)
-                ortv = onnxruntime.OrtValue.ortvalue_from_numpy(x) #, device_type="cuda")
+                ortv = onnxruntime.OrtValue.ortvalue_from_numpy(x)  # , device_type="cuda")
                 sess = onnxruntime.InferenceSession(
                     onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"], read_config_from_model=1
                 )
