@@ -5,9 +5,8 @@ on:
   push:
     branches:
     - main
-    - edgchen1/objc_doc_gen_workflow  # TODO remove
-    # paths:
-    # - objectivec
+    paths:
+    - objectivec
   schedule:
   - cron: '0 0 1 * *'
   workflow_dispatch:
