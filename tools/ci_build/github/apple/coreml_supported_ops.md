@@ -12,7 +12,6 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Concat||
 |ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Weights and bias should be constant.|
 |ai.onnx:DepthToSpace|Only DCR mode DepthToSpace is supported.|
-|ai.onnx:Div||
 |ai.onnx:Flatten||
 |ai.onnx:Gemm|Input B should be constant.|
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
@@ -29,6 +28,5 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Resize||
 |ai.onnx:Sigmoid||
 |ai.onnx:Squeeze||
-|ai.onnx:Sub||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
