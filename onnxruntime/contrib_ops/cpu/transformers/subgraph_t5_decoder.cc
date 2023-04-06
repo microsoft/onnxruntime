@@ -54,6 +54,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 
   ORT_RETURN_IF(first_past_input_index_ != 2 && first_past_input_index_ != 3,
                 "kFirstPastInputIndex currently only supports 2 or 3");
+
   if (!past_present_share_buffer_) {
     ORT_RETURN_IF(has_decoder_masked_attention_, "decoder_masked_attention shall use with past_present_share_buffer");
     ORT_RETURN_IF(num_subgraph_inputs < 4 + first_past_input_index_ ||
