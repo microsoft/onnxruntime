@@ -20,7 +20,7 @@ parameters:
   default: false
 
 - name: TimeoutInMinutes
-  default: 150
+  default: 180
 
 jobs:
 - job: build_WASM
@@ -56,7 +56,7 @@ jobs:
     displayName: 'Checkout submodules'
   - task: UsePythonVersion@0
     inputs:
-      versionSpec: '3.7'
+      versionSpec: '3.8'
       addToPath: true
       architecture: $(buildArch)
   - task: NodeTool@0
@@ -72,7 +72,7 @@ jobs:
      python -m pip install -q setuptools wheel numpy ninja
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
-    
+
   - task: PowerShell@2
     displayName: 'Install ONNX'
     inputs:
@@ -93,10 +93,10 @@ jobs:
       arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_threads --enable_wasm_threads'
       workingDirectory: '$(Build.BinariesDirectory)'
   - task: PythonScript@0
-    displayName: 'Build and test (browser) (simd + threads)'
+    displayName: 'Build and test (node) (simd + threads)'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --enable_wasm_simd --enable_wasm_threads --wasm_run_tests_in_browser'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --enable_wasm_simd --enable_wasm_threads'
       workingDirectory: '$(Build.BinariesDirectory)'
   - task: PythonScript@0
     displayName: 'Build and test (node) (simd)'

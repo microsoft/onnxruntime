@@ -1847,8 +1847,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProvider
   (*out)->device_id = 0;
   (*out)->npu_mem_limit = SIZE_MAX;
   (*out)->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
-  (*out)->do_copy_in_default_stream = 1;
   (*out)->enable_cann_graph = 1;
+  (*out)->dump_graphs = 0;
   (*out)->default_memory_arena_cfg = nullptr;
   return nullptr;
 #else

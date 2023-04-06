@@ -35,8 +35,8 @@ case "$(uname -s)" in
     export CFLAGS
     export CXXFLAGS
     ;;
-    *)
-      exit -1
+   *)
+    exit 1
 esac
 mkdir -p $INSTALL_PREFIX
 echo "Installing protobuf ..."
@@ -53,7 +53,7 @@ else
   cd protobuf-*
 fi
 
-cmake ./cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB_DEFAULT=OFF -Dprotobuf_BUILD_SHARED_LIBS=OFF $EXTRA_CMAKE_ARGS
+cmake . -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB_DEFAULT=OFF -Dprotobuf_BUILD_SHARED_LIBS=OFF $EXTRA_CMAKE_ARGS
 make -j$(getconf _NPROCESSORS_ONLN)
 make install
 cd ..

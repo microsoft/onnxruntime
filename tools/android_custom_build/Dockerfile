@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # install utilities and ORT dependencies
 RUN apt-get update && apt-get install --yes --no-install-recommends \
-  aria2 \
+  aria2 curl \
   build-essential \
   ca-certificates \
   git \
