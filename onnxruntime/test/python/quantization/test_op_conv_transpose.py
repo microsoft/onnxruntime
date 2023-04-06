@@ -13,7 +13,7 @@ import unittest
 
 import numpy as np
 import onnx
-from onnx import TensorProto, parser
+from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
@@ -50,19 +50,31 @@ class TestOpConvTranspose(unittest.TestCase):
         :param output_model_path: The output filepath in which to save the model.
         """
 
-        model_description = """
-        <
-          ir_version: 8,
-          opset_import: ["" : 13]
-        >
-        agraph (float[1, 1, 7, 7] X) => (float[1, 1, 7, 7] Y)
-        <float[3] W = {1.0, 1.0, 1.0, 1.0}, float[3] B = {0.17}>
-        {
-          output = ConvTranspose<epsilon : float = 0.009999999776482582>(input, scale, B)
-        }
-        """
+        input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 1, 7, 7])
+        output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 1, 8, 8])
+        ini_w = helper.make_tensor("weight", TensorProto.FLOAT, [1, 1, 2, 2], [1.0, 1.0, 1.0, 1.0])
+        ini_b = helper.make_tensor("bias", TensorProto.FLOAT, [1,], [0.17])
+        conv_tranpose_node = onnx.helper.make_node(
+            "ConvTranspose",
+            ["input", "weight", "bias"],
+            ["output"],
+            kernel_shape=[2, 2],
+            output_padding=[0, 0],
+            pads=[0, 0, 0, 0],
+            strides=[1, 1],
+            dilations=[1, 1],
+            group=1,
+        )
+        graph = helper.make_graph(
+            [conv_tranpose_node],
+            "conv_transpose_test",
+            [input_tensor],
+            [output_tensor],
+            initializer=[ini_w, ini_b],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7  # use stable onnx ir version
 
-        model = parser.parse_model(model_description)
         onnx.save(model, output_model_path)
 
     def static_quant_test_qdq(
@@ -116,7 +128,7 @@ class TestOpConvTranspose(unittest.TestCase):
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
 
-    def test_quantize_conv_transpose(self):
+    def test_quantize_conv_transpose_u8u8(self):
         """
         Unit test that quantizes (uint8) an ONNX model containing an ConvTranspose operator.
         """
