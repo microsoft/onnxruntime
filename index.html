@@ -153,31 +153,31 @@
 												id="v-pills-python" role="tabpanel"
 												aria-labelledby="v-pills-python-tab">
 												<pre class="mb-0" style="overflow: hidden;">
-												<code>
-													import onnxruntime as ort
-													import numpy as np
-													import cv2
-													
-													# Load the model
-													model_path = "path/to/your/onnx/model"
-													session = ort.InferenceSession(model_path)
-													
-													# Load the input image
-													image_path = "path/to/your/image"
-													image = cv2.imread(image_path)
-													
-													# Preprocess the input image
-													image = cv2.resize(image, (224, 224))
-													image = image.astype(np.float32)
-													image = (image / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
-													image = np.transpose(image, (2, 0, 1))
-													image = np.expand_dims(image, axis=0)
-													
-													# Run inference
-													outputs = session.run(None, {"input": image})
-													
-													# Print the output
-													print(outputs)
+<code>
+import onnxruntime as ort
+import numpy as np
+import cv2
+
+# Load the model
+model_path = "path/to/your/onnx/model"
+session = ort.InferenceSession(model_path)
+
+# Load the input image
+image_path = "path/to/your/image"
+image = cv2.imread(image_path)
+
+# Preprocess the input image
+image = cv2.resize(image, (224, 224))
+image = image.astype(np.float32)
+image = (image / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+image = np.transpose(image, (2, 0, 1))
+image = np.expand_dims(image, axis=0)
+
+# Run inference
+outputs = session.run(None, {"input": image})
+
+# Print the output
+print(outputs)
 </code><a href="docs/get-started/with-python" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
@@ -202,15 +202,31 @@ System.out.println(Arrays.toString(outputFloats));
 												aria-labelledby="v-pills-javascript-tab">
 												<pre style="overflow: hidden">
 <code>
-const ort = require('onnxruntime-web');
+	import * as ort from "onnxruntime-web";
 
-var input = new Float32Array([1, 2, 3]);
-var offsets = new Int32Array([0]);
-var session = await ort.InferenceSession.create('model.onnx');
-
-var output = await session.run({ input, offsets });
-var result = output.values().next().value.argmax(1);
-console.log(result[0]);
+	// Load the model
+	const modelPath = "path/to/your/onnx/model";
+	const session = await ort.InferenceSession.create(modelPath);
+	
+	// Load the input image
+	const image = new Image();
+	image.src = "path/to/your/image";
+	await image.decode();
+	
+	// Preprocess the input image
+	const canvas = document.createElement("canvas");
+	canvas.width = 224;
+	canvas.height = 224;
+	const ctx = canvas.getContext("2d");
+	ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+	const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+	const inputTensor = new ort.Tensor(new Float32Array(imageData.data), [1, 3, 224, 224]);
+	
+	// Run inference
+	const outputMap = await session.run({ input: inputTensor });
+	
+	// Print the output
+	console.log(outputMap);
 </code><a href="docs/get-started/with-javascript" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
