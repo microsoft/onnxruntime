@@ -455,11 +455,12 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   if (num_beams <= 32) {
     constexpr size_t max_parts_of_vocab = 128;
+    size_t candidate_count = SafeInt<size_t>(batch_beam_size) * 2 * num_beams;
     float* topk_tmp_buffer = beam_state->topk_buffer.data();
     float* topk_scores_1st_stage = topk_tmp_buffer;
-    int32_t* topk_tokens_1st_stage = reinterpret_cast<int32_t*>(topk_scores_1st_stage + batch_beam_size * max_parts_of_vocab * 2 * num_beams);
-    float* topk_scores_2nd_stage = reinterpret_cast<float*>(topk_tokens_1st_stage + batch_beam_size * max_parts_of_vocab * 2 * num_beams);
-    int32_t* topk_tokens_2nd_stage = reinterpret_cast<int32_t*>(topk_scores_2nd_stage + batch_beam_size * 2 * num_beams);
+    int32_t* topk_tokens_1st_stage = reinterpret_cast<int32_t*>(topk_scores_1st_stage + candidate_count * max_parts_of_vocab);
+    float* topk_scores_2nd_stage = reinterpret_cast<float*>(topk_tokens_1st_stage + candidate_count * max_parts_of_vocab);
+    int32_t* topk_tokens_2nd_stage = reinterpret_cast<int32_t*>(topk_scores_2nd_stage + candidate_count);
 
     cuda::BeamSearchTopK(next_token_scores.data(),
                          batch_size,
@@ -759,8 +760,8 @@ Status GreedySearchProcessLogits(
       cuda_stream);
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size);
-  dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size);
+  dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size, 1);
+  dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size, 1);
 #endif
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens.data(),

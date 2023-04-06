@@ -10,15 +10,16 @@
 #include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 #include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
+#include "core/optimizer/compute_optimizer/upstream_reshape_actors.h"
 #include "core/optimizer/compute_optimizer/shared_utils.h"
 
 namespace onnxruntime::optimizer::compute_optimizer {
 
-// Put some utils in anonymous namespace
+// Put some utils in an anonymous namespace
 namespace {
 
 /**
- * @brief Check all inputs/outputs have shapes for given node.
+ * @brief Check all inputs/outputs have shapes for the given node.
  *
  * @return true when all shapes exist, false otherwise.
  */
@@ -44,18 +45,20 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
                                                        const logging::Logger& logger)
     const {
   LOG_DEBUG_INFO(logger, "Enter UpStreamGraphTransformerBase");
-  bool reordered = false;
+
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
   const auto& graph_outputs = graph.GetOutputs();
 
   size_t reordered_node_count = 0;  // For summary
+  size_t passthrough_count = 0;
   for (auto index : order) {
     auto* node_ptr = graph.GetNode(index);
     if (!node_ptr)
       // node was removed.
       continue;
 
+    bool reordered = false;
     auto& node = *node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
@@ -74,7 +77,7 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
 
     std::string node_name = node.Name();
     std::string node_type = node.OpType();
-    std::string log_prefix = "Entry node " + node_name + " (" + node_type + ") ";
+    std::string log_prefix = "Entry node " + node_name + " (" + node_type + ")";
     LOG_DEBUG_INFO(logger, log_prefix + " starts re-ordering check");
 
     // DON'T operate on `node` once this loop starts, as it may be removed from the graph.
@@ -90,15 +93,16 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
 
       if (graph.GetConsumerNodes(input_tensor_producer_node->MutableOutputDefs()[0]->Name()).size() > 1) {
         LOG_DEBUG_INFO(logger, log_prefix + " stops at node " + input_tensor_producer_node->Name() +
-                                   " since multiple consumer found");
+                                   " since multiple consumers found");
         continue;
       }
 
-      auto ret = Upstream(graph, queue, *input_tensor_producer_node, info, logger, node_name);
+      auto ret = Upstream(graph, queue, *input_tensor_producer_node, info, logger);
       if (ret) {
         LOG_DEBUG_INFO(logger, log_prefix + " moves up across node " + input_tensor_producer_node->Name());
         modified = true;
         reordered = true;
+        passthrough_count += 1;
       } else {
         LOG_DEBUG_INFO(logger, log_prefix + " stops when handling " + input_tensor_producer_node->Name());
       }
@@ -109,16 +113,18 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
     }
   }
 
+  // For `Node A` -> 'Entry Node B', one `passthrough` means, entry node B is moved ahead of node A on
+  // its every input branch. `passthrough_count` is the total number of times we move entry node B.
   LOG_DEBUG_INFO(logger, "Exit UpStreamGraphTransformerBase, reordered " + std::to_string(reordered_node_count) +
-                             " nodes");
+                             " nodes, total passthrough count (how many times we re-order the nodes): " +
+                             std::to_string(passthrough_count));
   return Status::OK();
 }
 
 template <typename T1, typename T2>
 bool UpStreamGraphTransformerBase<T1, T2>::Upstream(Graph& graph, std::deque<T1>& queue,
                                                     Node& current_node, T1& info,
-                                                    const logging::Logger& logger,
-                                                    std::string& entry_node_name) const {
+                                                    const logging::Logger& logger) const {
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
   if (allowed_passthrough_ops_.count(op_type)) {
     auto& pass_through_config = allowed_passthrough_ops_.at(op_type);
@@ -137,7 +143,7 @@ bool UpStreamGraphTransformerBase<T1, T2>::Upstream(Graph& graph, std::deque<T1>
       return false;
     }
 
-    return UpStreamInternal(graph, queue, current_node, info, pass_through_config, logger, entry_node_name);
+    return UpStreamInternal(graph, queue, current_node, info, pass_through_config, logger);
   } else {
     LOG_DEBUG_INFO(logger, "op_type not supported for " + current_node.Name() + "(" + op_type + ")");
     return false;
@@ -145,6 +151,7 @@ bool UpStreamGraphTransformerBase<T1, T2>::Upstream(Graph& graph, std::deque<T1>
 }
 
 template class UpStreamGraphTransformerBase<SliceInfo, UpStreamGatherOperatorActorBase>;
+template class UpStreamGraphTransformerBase<ReshapeInfo, UpStreamReshapeOperatorActorBase>;
 
 }  // namespace onnxruntime::optimizer::compute_optimizer
 

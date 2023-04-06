@@ -1,9 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+# pylint: disable=C0411,C0412,C0413
 
 """
 
-.. _l-logreg-example:
+.. _l-logreg-example-speed:
 
 Train, convert and predict with ONNX Runtime
 ============================================
@@ -12,9 +13,6 @@ This example demonstrates an end to end scenario
 starting with the training of a machine learned model
 to its use in its converted from.
 
-.. contents::
-    :local:
-
 Train a logistic regression
 +++++++++++++++++++++++++++
 
@@ -22,18 +20,15 @@ The first step consists in retrieving the iris datset.
 """
 
 from sklearn.datasets import load_iris
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 
 iris = load_iris()
 X, y = iris.data, iris.target
-
-from sklearn.model_selection import train_test_split  # noqa: E402
-
 X_train, X_test, y_train, y_test = train_test_split(X, y)
 
 ####################################
 # Then we fit a model.
-
-from sklearn.linear_model import LogisticRegression  # noqa: E402
 
 clr = LogisticRegression()
 clr.fit(X_train, y_train)
@@ -114,7 +109,7 @@ pprint.pprint(prob_rt[0:3])
 from timeit import Timer  # noqa: E402
 
 
-def speed(inst, number=10, repeat=20):
+def speed(inst, number=5, repeat=10):
     timer = Timer(inst, globals=globals())
     raw = numpy.array(timer.repeat(repeat, number=number))
     ave = raw.sum() / len(raw) / number
@@ -145,7 +140,7 @@ def loop(X_test, fct, n=None):
 
 
 print("Execution time for clr.predict")
-speed("loop(X_test, clr.predict, 100)")
+speed("loop(X_test, clr.predict, 50)")
 
 
 def sess_predict(x):
@@ -153,13 +148,13 @@ def sess_predict(x):
 
 
 print("Execution time for sess_predict")
-speed("loop(X_test, sess_predict, 100)")
+speed("loop(X_test, sess_predict, 50)")
 
 #####################################
 # Let's do the same for the probabilities.
 
 print("Execution time for predict_proba")
-speed("loop(X_test, clr.predict_proba, 100)")
+speed("loop(X_test, clr.predict_proba, 50)")
 
 
 def sess_predict_proba(x):
@@ -167,7 +162,7 @@ def sess_predict_proba(x):
 
 
 print("Execution time for sess_predict_proba")
-speed("loop(X_test, sess_predict_proba, 100)")
+speed("loop(X_test, sess_predict_proba, 50)")
 
 #####################################
 # This second comparison is better as
@@ -182,7 +177,7 @@ speed("loop(X_test, sess_predict_proba, 100)")
 # We first train and save a model in ONNX format.
 from sklearn.ensemble import RandomForestClassifier  # noqa: E402
 
-rf = RandomForestClassifier()
+rf = RandomForestClassifier(n_estimators=10)
 rf.fit(X_train, y_train)
 
 initial_type = [("float_input", FloatTensorType([1, 4]))]
@@ -201,10 +196,10 @@ def sess_predict_proba_rf(x):
 
 
 print("Execution time for predict_proba")
-speed("loop(X_test, rf.predict_proba, 100)")
+speed("loop(X_test, rf.predict_proba, 50)")
 
 print("Execution time for sess_predict_proba")
-speed("loop(X_test, sess_predict_proba_rf, 100)")
+speed("loop(X_test, sess_predict_proba_rf, 50)")
 
 ##################################
 # Let's see with different number of trees.
@@ -224,8 +219,8 @@ for n_trees in range(5, 51, 5):
     def sess_predict_proba_loop(x):
         return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]  # noqa: B023
 
-    tsk = speed("loop(X_test, rf.predict_proba, 100)", number=5, repeat=5)
-    trt = speed("loop(X_test, sess_predict_proba_loop, 100)", number=5, repeat=5)
+    tsk = speed("loop(X_test, rf.predict_proba, 25)", number=5, repeat=4)
+    trt = speed("loop(X_test, sess_predict_proba_loop, 25)", number=5, repeat=4)
     measures.append({"n_trees": n_trees, "sklearn": tsk, "rt": trt})
 
 from pandas import DataFrame  # noqa: E402

@@ -41,7 +41,13 @@ function(AddTest)
   if (MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "/wd6330")
   endif()
+
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
+
+  if (MSVC)
+    # set VS debugger working directory to the test program's directory
+    set_target_properties(${_UT_TARGET} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>)
+  endif()
 
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
@@ -662,8 +668,8 @@ if(MSVC)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
 else()
   target_compile_definitions(onnxruntime_test_utils PUBLIC -DNSYNC_ATOMIC_CPP11)
-  target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
-          ${nsync_SOURCE_DIR}/public)
+  target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  onnxruntime_add_include_to_target(onnxruntime_test_utils nsync::nsync_cpp)
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -696,8 +702,8 @@ if(MSVC)
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 else()
   target_compile_definitions(onnx_test_runner_common PUBLIC -DNSYNC_ATOMIC_CPP11)
-  target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
-          ${nsync_SOURCE_DIR}/public)
+  target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  onnxruntime_add_include_to_target(onnx_test_runner_common nsync::nsync_cpp)
 endif()
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   #TODO: fix the warnings, they are dangerous
@@ -1064,7 +1070,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       # "Global initializer calls a non-constexpr function." BENCHMARK_CAPTURE macro needs this.
       target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26426)
     else()
-      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync_cpp ${CMAKE_DL_LIBS})
+      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync::nsync_cpp ${CMAKE_DL_LIBS})
     endif()
     if (CPUINFO_SUPPORTED AND NOT onnxruntime_BUILD_WEBASSEMBLY)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE cpuinfo)
@@ -1122,7 +1128,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
     list(APPEND onnxruntime_eager_mode_libs onnxruntime_training tensorboard)
   endif()
   IF(NOT WIN32)
-    list(APPEND onnxruntime_eager_mode_libs nsync_cpp)
+    list(APPEND onnxruntime_eager_mode_libs nsync::nsync_cpp)
   endif()
   target_link_libraries(onnxruntime_eager_mode_test PRIVATE ${onnxruntime_eager_mode_libs} Threads::Threads ${onnxruntime_EXTERNAL_LIBRARIES})
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
@@ -1182,7 +1188,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             ${onnxruntime_EXTERNAL_LIBRARIES}
             ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
     if(NOT WIN32)
-      list(APPEND onnxruntime_perf_test_libs nsync_cpp)
+      list(APPEND onnxruntime_perf_test_libs nsync::nsync_cpp)
       if(onnxruntime_USE_SNPE)
         list(APPEND onnxruntime_perf_test_libs onnxruntime_providers_snpe)
       endif()
@@ -1226,7 +1232,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     # test inference using shared lib
     set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
     if(NOT WIN32)
-      list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
+      list(APPEND onnxruntime_shared_lib_test_LIBS nsync::nsync_cpp)
       if(onnxruntime_USE_SNPE)
         list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_providers_snpe)
       endif()
@@ -1348,7 +1354,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(onnxruntime_mlas_test PRIVATE cpuinfo)
   endif()
   if(NOT WIN32)
-    target_link_libraries(onnxruntime_mlas_test PRIVATE nsync_cpp ${CMAKE_DL_LIBS})
+    target_link_libraries(onnxruntime_mlas_test PRIVATE nsync::nsync_cpp ${CMAKE_DL_LIBS})
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     target_link_libraries(onnxruntime_mlas_test PRIVATE ${android_shared_libs})
@@ -1540,7 +1546,7 @@ endif()
 
 if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
 
-  file(GLOB_RECURSE custom_op_get_const_input_test_library_src 
+  file(GLOB_RECURSE custom_op_get_const_input_test_library_src
         "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.cc"
         "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op.h"
         "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op.cc"
@@ -1556,7 +1562,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
     if (APPLE)
       set(ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG "-Xlinker -dead_strip")
     else()
-      string(CONCAT ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG 
+      string(CONCAT ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG
              "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.lds "
              "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
     endif()
@@ -1576,7 +1582,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY AND NOT o
   set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
 
   if(NOT WIN32)
-    list(APPEND onnxruntime_logging_apis_test_LIBS nsync_cpp ${CMAKE_DL_LIBS})
+    list(APPEND onnxruntime_logging_apis_test_LIBS nsync::nsync_cpp ${CMAKE_DL_LIBS})
   endif()
 
   AddTest(DYN

@@ -381,6 +381,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Shape);
 DML_OP_EXTERN_CREATION_FUNCTION(Size);
 DML_OP_EXTERN_CREATION_FUNCTION(Attention);
 DML_OP_EXTERN_CREATION_FUNCTION(NonZero);
+DML_OP_EXTERN_CREATION_FUNCTION(QuickGelu);
 
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
@@ -878,6 +879,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNormContrib,   supportedTypeListLayerNormalizationContrib, DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
     {REG_INFO_MS(   1,  SkipLayerNormalization,             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QuerySkipLayerNormalization)},
     {REG_INFO_MS(   1,  EmbedLayerNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  QuickGelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
 };
 
