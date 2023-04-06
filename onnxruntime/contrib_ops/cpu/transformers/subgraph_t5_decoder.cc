@@ -52,7 +52,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
                 "kFirstPastInputIndex currently only supports 2 or 3");
   ORT_RETURN_IF(num_subgraph_inputs < 4 + first_past_input_index_ ||
                     (num_subgraph_inputs - first_past_input_index_) % 4 != 0,
-                "number of outputs expected to be kFirstPastInputIndex + 4 * layers, got:", num_subgraph_inputs);
+                "number of inputs expected to be kFirstPastInputIndex + 4 * layers, got:", num_subgraph_inputs);
   ORT_RETURN_IF(num_subgraph_outputs < 3 || (num_subgraph_outputs - first_present_output_index_) % 2 != 0,
                 "number of outputs expected to be 1 + 2 * layers, got:", num_subgraph_outputs);
 

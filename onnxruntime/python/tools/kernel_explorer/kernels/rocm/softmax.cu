@@ -106,7 +106,7 @@ class SoftmaxTunable : public IKernelExplorer {
                  int input_stride, int output_stride, int batch_count, bool is_log_softmax)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {
-    params_.TuningContext()->EnableTunableOp();
+    params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   void Run() override {
