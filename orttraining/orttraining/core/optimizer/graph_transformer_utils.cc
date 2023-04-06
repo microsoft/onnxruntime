@@ -11,6 +11,7 @@
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
+#include "core/optimizer/compute_optimizer/upstream_reshape.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
@@ -51,6 +52,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#include "orttraining/core/optimizer/compute_optimizer/sceloss_flops_reduction.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
@@ -138,6 +140,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
+        transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
+        transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps));
       }
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
@@ -150,7 +154,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
             config.number_recompute_layers, compatible_eps));
       }
       if (config.propagate_cast_ops_config.level >= 0) {
-        const InlinedHashSet<std::string_view> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+        const InlinedHashSet<std::string_view> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider,
+                                                                          onnxruntime::kRocmExecutionProvider};
         transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
                                                                      static_cast<size_t>(config.propagate_cast_ops_config.level),
                                                                      config.propagate_cast_ops_config.allow,
