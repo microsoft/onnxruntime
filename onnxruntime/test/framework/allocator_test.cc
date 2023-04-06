@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace test {
 TEST(AllocatorTest, CPUAllocatorTest) {
-  auto cpu_arena = std::make_shared<CPUAllocator>();
+  auto cpu_arena = TestCPUExecutionProvider()->GetCachedAllocators()[0];
 
   ASSERT_STREQ(cpu_arena->Info().name, CPU);
   EXPECT_EQ(cpu_arena->Info().id, 0);
