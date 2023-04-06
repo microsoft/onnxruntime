@@ -153,14 +153,31 @@
 												id="v-pills-python" role="tabpanel"
 												aria-labelledby="v-pills-python-tab">
 												<pre class="mb-0" style="overflow: hidden;">
-												<code>import onnxruntime as ort 
-import numpy as np
-
-ort_sess = ort.InferenceSession('model.onnx')
-
-outputs = ort_sess.run(None, {'input': text.numpy(),'offsets':  np.array([0], dtype=np.int64)})
-result = outputs[0].argmax(axis=1)
-print(result[0])
+												<code>
+													import onnxruntime as ort
+													import numpy as np
+													import cv2
+													
+													# Load the model
+													model_path = "path/to/your/onnx/model"
+													session = ort.InferenceSession(model_path)
+													
+													# Load the input image
+													image_path = "path/to/your/image"
+													image = cv2.imread(image_path)
+													
+													# Preprocess the input image
+													image = cv2.resize(image, (224, 224))
+													image = image.astype(np.float32)
+													image = (image / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+													image = np.transpose(image, (2, 0, 1))
+													image = np.expand_dims(image, axis=0)
+													
+													# Run inference
+													outputs = session.run(None, {"input": image})
+													
+													# Print the output
+													print(outputs)
 </code><a href="docs/get-started/with-python" class="btn border-primary text-primary float-right mb-2"><i class="fa-solid fa-link"></i>&nbsp;Learn more</a>
 											</pre>
 											</div>
