@@ -49,7 +49,7 @@ def restore_torch_functions():
 
 
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, config, data_type=numpy.int64):
-    if config.model_type=="vit":
+    if config.model_type=="vit" or config.model_type=="swin":
         input_ids = numpy.random.rand(batch_size, 3, 224, 224).astype(numpy.float32)
         inputs = {"pixel_values": input_ids}
         return inputs
