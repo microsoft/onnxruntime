@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "cast_op.cuh"
-
 #include <limits>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -31,9 +29,51 @@ struct CastStd<float, Float8E4M3FN> {
 };
 
 template <>
+struct CastStd<half, Float8E4M3FN> {
+  __device__ __forceinline__ half operator()(Float8E4M3FN v) const {
+    return __nv_cvt_fp8_to_halfraw(v.val, __NV_E4M3);
+  }
+};
+
+template <>
+struct CastStd<float, Float8E5M2> {
+  __device__ __forceinline__ float operator()(Float8E5M2 v) const {
+    return __half2float(__nv_cvt_fp8_to_halfraw(v.val, __NV_E5M2));
+  }
+};
+
+template <>
+struct CastStd<half, Float8E5M2> {
+  __device__ __forceinline__ half operator()(Float8E5M2 v) const {
+    return __nv_cvt_fp8_to_halfraw(v.val, __NV_E5M2);
+  }
+};
+
+template <>
 struct CastSat<Float8E4M3FN, float> {
   __device__ __forceinline__ Float8E4M3FN operator()(float v, bool saturate) const {
     return Float8E4M3FN(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3)), Float8E4M3FN::FromBits());
+  }
+};
+
+template <>
+struct CastSat<Float8E4M3FN, half> {
+  __device__ __forceinline__ Float8E4M3FN operator()(half v, bool saturate) const {
+    return Float8E4M3FN(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3)), Float8E4M3FN::FromBits());
+  }
+};
+
+template <>
+struct CastSat<Float8E5M2, float> {
+  __device__ __forceinline__ Float8E5M2 operator()(float v, bool saturate) const {
+    return Float8E5M2(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3)), Float8E5M2::FromBits());
+  }
+};
+
+template <>
+struct CastSat<Float8E5M2, half> {
+  __device__ __forceinline__ Float8E5M2 operator()(half v, bool saturate) const {
+    return Float8E5M2(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3)), Float8E5M2::FromBits());
   }
 };
 
@@ -95,7 +135,14 @@ Status CudaCastSat(cudaStream_t stream, const InT* input, OutT* output, size_t n
 }
 
 template Status CudaCastStd<float, Float8E4M3FN>(cudaStream_t stream, const Float8E4M3FN* input, float* output, size_t num_of_element);
+template Status CudaCastStd<half, Float8E4M3FN>(cudaStream_t stream, const Float8E4M3FN* input, half* output, size_t num_of_element);
 template Status CudaCastSat<Float8E4M3FN, float>(cudaStream_t stream, const float* input, Float8E4M3FN* output, size_t num_of_element, bool saturate);
+template Status CudaCastSat<Float8E4M3FN, half>(cudaStream_t stream, const half* input, Float8E4M3FN* output, size_t num_of_element, bool saturate);
+
+template Status CudaCastStd<float, Float8E5M2>(cudaStream_t stream, const Float8E5M2* input, float* output, size_t num_of_element);
+template Status CudaCastStd<half, Float8E5M2>(cudaStream_t stream, const Float8E5M2* input, half* output, size_t num_of_element);
+template Status CudaCastSat<Float8E5M2, float>(cudaStream_t stream, const float* input, Float8E5M2* output, size_t num_of_element, bool saturate);
+template Status CudaCastSat<Float8E5M2, half>(cudaStream_t stream, const half* input, Float8E5M2* output, size_t num_of_element, bool saturate);
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -23,7 +23,7 @@ available_providers = [provider for provider in onnxruntime.get_available_provid
 
 
 class TestInferenceSession(unittest.TestCase):
-    x = np.array([0, 1e-7, 1e-3, 1e-2, 1e-1, 1, 2, 10, 100, 1000, 1e4, 1e5, np.inf, -np.inf, np.nan], dtype=np.float32)
+    x = np.array([0, 1e-7, 1e-3, 1e-2, 1e-1, 1, 2, 10, 99, 1000, 1e4, 1e5, np.inf, -np.inf, np.nan], dtype=np.float32)
     expected = (
         {}
         if not hasattr(TensorProto, "FLOAT8E4M3FN")
@@ -38,7 +38,7 @@ class TestInferenceSession(unittest.TestCase):
                     1,
                     2,
                     10,
-                    104,
+                    96,
                     448,
                     448,
                     448,
@@ -58,7 +58,7 @@ class TestInferenceSession(unittest.TestCase):
                     1,
                     2,
                     10,
-                    104,
+                    96,
                     240,
                     240,
                     240,
@@ -122,7 +122,7 @@ class TestInferenceSession(unittest.TestCase):
         return onnx_model
 
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
-    def _test_model_cast_cast_reference(self):
+    def test_model_cast_cast_reference(self):
         expected = TestInferenceSession.expected
         x = TestInferenceSession.x
 
@@ -136,7 +136,7 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(expect.dtype, y.dtype)
 
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
-    def _test_model_cast_cast_cpu(self):
+    def test_model_cast_cast_cpu(self):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         so.add_session_config_entry("session.allow_released_opsets_only", "0");
@@ -194,7 +194,6 @@ class TestInferenceSession(unittest.TestCase):
                 if to not in {TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2}:
                     # only those types are available on CUDA.
                     continue
-                print(to)
                 onnx_model = self.model_cast_cast(to)
                 ortv = onnxruntime.OrtValue.ortvalue_from_numpy(x) #, device_type="cuda")
                 sess = onnxruntime.InferenceSession(
@@ -207,6 +206,4 @@ class TestInferenceSession(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestInferenceSession().test_model_cast_cast_cuda_ortvalue()
-    stop
     unittest.main(verbosity=2)

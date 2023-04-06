@@ -65,9 +65,7 @@ UNARY_OPS()
   DECL_IMPL_CAST(T, bool)     \
   DECL_IMPL_CAST(T, BFloat16) \
   DECL_IMPL_CAST(T, Float8E4M3FN)   \
-  DECL_IMPL_CAST(T, Float8E4M3FNUZ) \
-  DECL_IMPL_CAST(T, Float8E5M2)     \
-  DECL_IMPL_CAST(T, Float8E5M2FNUZ)
+  DECL_IMPL_CAST(T, Float8E5M2)
 
 DECL_IMPL_CAST_FROM(half)
 DECL_IMPL_CAST_FROM(float)
@@ -83,10 +81,15 @@ DECL_IMPL_CAST_FROM(uint64_t)
 DECL_IMPL_CAST_FROM(bool)
 DECL_IMPL_CAST_FROM(BFloat16)
 DECL_IMPL_CAST_FROM(Float8E4M3FN)
-DECL_IMPL_CAST_FROM(Float8E4M3FNUZ)
 DECL_IMPL_CAST_FROM(Float8E5M2)
-DECL_IMPL_CAST_FROM(Float8E5M2FNUZ)
 
+#define DECL_IMPL_CASTSAT(InT, OutT) \
+  void _Explicit_Impl_CastSat(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count, bool saturate);
+
+DECL_IMPL_CASTSAT(half, Float8E4M3FN)
+DECL_IMPL_CASTSAT(float, Float8E4M3FN)
+DECL_IMPL_CASTSAT(half, Float8E5M2)
+DECL_IMPL_CASTSAT(float, Float8E5M2)
 
 template <typename InT, typename OutT>
 void Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count) {
@@ -99,7 +102,9 @@ void Impl_CastSat(
     const InT* input_data,
     OutT* output_data,
     size_t count,
-    bool saturate);
+    bool saturate) {
+  _Explicit_Impl_CastSat(stream, input_data, output_data, count, saturate);
+}
 
 }  // namespace cuda
 }  // namespace onnxruntime

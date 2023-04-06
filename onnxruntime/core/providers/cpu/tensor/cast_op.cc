@@ -381,8 +381,6 @@ Status Cast::Compute(OpKernelContext* context) const {
 
   const auto from = X->GetElementType();
 
-  std::cout << "CastCPU from=" << from << " to=" << to_ << "\n";
-
   if (from == to_) {
     // will copy if X and Y have different buffers
     CopyCpuTensor(X, Y);

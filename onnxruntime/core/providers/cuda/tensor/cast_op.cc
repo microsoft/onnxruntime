@@ -4,7 +4,6 @@
 #define COMPILED_IN_CAST
 
 #include "cast_op.h"
-#include "cast_op.cuh"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace ONNX_NAMESPACE;
@@ -31,9 +30,7 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       DataTypeImpl::GetTensorType<uint64_t>(),
       DataTypeImpl::GetTensorType<bool>(),
       DataTypeImpl::GetTensorType<Float8E4M3FN>(),
-      DataTypeImpl::GetTensorType<Float8E4M3FNUZ>(),
-      DataTypeImpl::GetTensorType<Float8E5M2>(),
-      DataTypeImpl::GetTensorType<Float8E5M2FNUZ>()};
+      DataTypeImpl::GetTensorType<Float8E5M2>()};
   return types;
 }
 
@@ -81,7 +78,6 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
 
 #define CASE(TP_TYPE, DstT)                                                                 \
   case TP_TYPE:                                                                             \
-    std::cout << "Previous cast to_=" << to_ << "\n";                                       \
     if (count > 0) {                                                                        \
       Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                           \
           Stream(context),                                                                  \
@@ -93,7 +89,6 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
 
 #define CASE_SAT(TP_TYPE, DstT)                                                             \
   case TP_TYPE:                                                                             \
-    std::cout << "Previous cast to_=" << to_ << "\n";                                       \
     if (count > 0) {                                                                        \
       Impl_CastSat<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                        \
           Stream(context),                                                                  \
@@ -113,8 +108,6 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<SrcT>());
   size_t count = shape.Size();
 
-  std::cout << "Cast0 to=" << to_ << "\n";
-
   switch (to_) {
     CASE(TensorProto_DataType_FLOAT16, MLFloat16)
     CASE(TensorProto_DataType_BFLOAT16, BFloat16)
@@ -130,9 +123,7 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
     CASE(TensorProto_DataType_UINT64, uint64_t)
     CASE(TensorProto_DataType_BOOL, bool)
     CASE(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
-    CASE(TensorProto_DataType_FLOAT8E4M3FNUZ, Float8E4M3FNUZ)
     CASE(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
-    CASE(TensorProto_DataType_FLOAT8E5M2FNUZ, Float8E5M2FNUZ)
     case TensorProto_DataType_STRING:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
     case TensorProto_DataType_UNDEFINED:
@@ -152,8 +143,6 @@ Status Cast<float>::ComputeInternal(OpKernelContext* context) const {
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<float>());
   size_t count = shape.Size();
 
-  std::cout << "CastFloat to=" << to_ << "\n";
-
   switch (to_) {
     CASE(TensorProto_DataType_FLOAT16, MLFloat16)
     CASE(TensorProto_DataType_BFLOAT16, BFloat16)
@@ -169,9 +158,7 @@ Status Cast<float>::ComputeInternal(OpKernelContext* context) const {
     CASE(TensorProto_DataType_UINT64, uint64_t)
     CASE(TensorProto_DataType_BOOL, bool)
     CASE_SAT(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
-    CASE_SAT(TensorProto_DataType_FLOAT8E4M3FNUZ, Float8E4M3FNUZ)
     CASE_SAT(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
-    CASE_SAT(TensorProto_DataType_FLOAT8E5M2FNUZ, Float8E5M2FNUZ)
     case TensorProto_DataType_STRING:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
     case TensorProto_DataType_UNDEFINED:
@@ -191,14 +178,11 @@ Status Cast<Float8E4M3FN>::ComputeInternal(OpKernelContext* context) const {
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<Float8E4M3FN>());
   size_t count = shape.Size();
 
-  std::cout << "CastFloat8E4M3FN to=" << to_ << "\n";
-
   switch (to_) {
     CASE(TensorProto_DataType_FLOAT16, MLFloat16)
     case TensorProto_DataType_FLOAT:
-      std::cout << "CudaCast2 to=" << to_ << "\n";
       if (count > 0) {
-        return CudaCast<float, Float8E4M3FN>(
+        Impl_Cast<Float8E4M3FN, float>(
             Stream(context),
             x_data,
             reinterpret_cast<float*>(Y->MutableData<float>()),
@@ -246,9 +230,7 @@ SPECIALIZE_IMPL(BFloat16)
   template Status Cast<T>::ComputeInternal(OpKernelContext* context) const;
 
 SPECIALIZE_IMPL_19(Float8E4M3FN)
-SPECIALIZE_IMPL_19(Float8E4M3FNUZ)
 SPECIALIZE_IMPL_19(Float8E5M2)
-SPECIALIZE_IMPL_19(Float8E5M2FNUZ)
 
 }  // namespace cuda
 }  // namespace onnxruntime

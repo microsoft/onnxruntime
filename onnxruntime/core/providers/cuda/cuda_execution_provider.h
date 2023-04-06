@@ -173,21 +173,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
           constant_ones_float8e4m3fn_ = cuda::CreateConstantOnes<Float8E4M3FN>();
         }
         return reinterpret_cast<const T*>(constant_ones_float8e4m3fn_->GetBuffer(stream, count));
-      } else if (std::is_same<T, Float8E4M3FNUZ>::value) {
-        if (!constant_ones_float8e4m3fnuz_) {
-          constant_ones_float8e4m3fnuz_ = cuda::CreateConstantOnes<Float8E4M3FNUZ>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_float8e4m3fnuz_->GetBuffer(stream, count));
       } else if (std::is_same<T, Float8E5M2>::value) {
         if (!constant_ones_float8e5m2_) {
           constant_ones_float8e5m2_ = cuda::CreateConstantOnes<Float8E5M2>();
         }
         return reinterpret_cast<const T*>(constant_ones_float8e5m2_->GetBuffer(stream, count));
-      } else if (std::is_same<T, Float8E5M2FNUZ>::value) {
-        if (!constant_ones_float8e5m2fnuz_) {
-          constant_ones_float8e5m2fnuz_ = cuda::CreateConstantOnes<Float8E5M2FNUZ>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_float8e5m2fnuz_->GetBuffer(stream, count));
       } else {
         return nullptr;
       }

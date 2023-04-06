@@ -12,9 +12,16 @@ namespace cuda {
 template <class T, class U = float>
 class QuantizeLinear final : public CudaKernel {
  public:
-  QuantizeLinear(const OpKernelInfo& info) : CudaKernel(info) {}
+  QuantizeLinear(const OpKernelInfo& info) : CudaKernel(info) {
+    if (!info.GetAttr<int64_t>("saturate", &saturate_).IsOK()) {
+      saturate_ = 1;
+    }    
+  }
 
   Status ComputeInternal(OpKernelContext* p_op_kernel_context) const override;
+
+ private:
+  int64_t saturate_;
 };
 
 template <class T, class U = float>

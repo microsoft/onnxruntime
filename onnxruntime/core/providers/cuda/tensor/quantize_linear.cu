@@ -7,6 +7,10 @@
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+#include "cuda_fp8.h"
+#endif
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -35,28 +39,28 @@ struct RoundStd<float, uint8_t> {
 template <>
 struct RoundSat<float, Float8E4M3FN> {
   __device__ __forceinline__ Float8E4M3FN operator()(float v, float scale, Float8E4M3FN zero_point, bool saturate) const {
-    return Float8E4M3FN(v / scale, saturate);
+    return Float8E4M3FN(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v / scale, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3)), Float8E4M3FN::FromBits());
   }
 };
 
 template <>
-struct RoundSat<float, Float8E4M3FNUZ> {
-  __device__ __forceinline__ Float8E4M3FNUZ operator()(float v, float scale, Float8E4M3FNUZ zero_point, bool saturate) const {
-    return Float8E4M3FNUZ(v / scale, saturate);
+struct RoundSat<half, Float8E4M3FN> {
+  __device__ __forceinline__ Float8E4M3FN operator()(half v, half scale, Float8E4M3FN zero_point, bool saturate) const {
+    return Float8E4M3FN(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v / scale, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3)), Float8E4M3FN::FromBits());
   }
 };
 
 template <>
 struct RoundSat<float, Float8E5M2> {
   __device__ __forceinline__ Float8E5M2 operator()(float v, float scale, Float8E5M2 zero_point, bool saturate) const {
-    return Float8E5M2(v / scale, saturate);
+    return Float8E5M2(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v / scale, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E5M2)), Float8E5M2::FromBits());
   }
 };
 
 template <>
-struct RoundSat<float, Float8E5M2FNUZ> {
-  __device__ __forceinline__ Float8E5M2FNUZ operator()(float v, float scale, Float8E5M2FNUZ zero_point, bool saturate) const {
-    return Float8E5M2FNUZ(v / scale, saturate);
+struct RoundSat<half, Float8E5M2> {
+  __device__ __forceinline__ Float8E5M2 operator()(half v, half scale, Float8E5M2 zero_point, bool saturate) const {
+    return Float8E5M2(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v / scale, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E5M2)), Float8E5M2::FromBits());
   }
 };
 
@@ -155,15 +159,47 @@ __global__ void DequantizeLinearKernelStd(const InT* input, OutT* output, const 
 }
 
 template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
-__global__ void DequantizeLinearKernelSat(const InT* input, OutT* output, const OutT* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N) {
+__global__ void DequantizeLinearKernelSat(const InT*, OutT* output, const OutT*, const InT*, CUDA_LONG N) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
 
-  OutT scale = *scale_ptr;
-  InT zero_point = zero_point_ptr != nullptr ? *zero_point_ptr : InT(0, true);
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      output[id] = static_cast<OutT>(input[id] - zero_point) * scale;
+      output[id] = (OutT)-1;  // dummy code
+      id += NumThreadsPerBlock;
+    }
+  }
+}
+
+template <class InT, int NumThreadsPerBlock, int NumElementsPerThread>
+__global__ void DequantizeLinearKernelSat<InT, float, NumThreadsPerBlock, NumElementsPerThread>(const InT* input, float* output, const float* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N) {
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+
+  float scale = *scale_ptr;
+  // zero_point is unused.
+  // InT zero_point = zero_point_ptr != nullptr ? *zero_point_ptr : InT(0, true);
+  auto format = std::is_same<Float8E4M3FN, InT>::value ? __NV_E4M3 : __NV_E5M2;
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      output[id] = __half2float(__nv_cvt_fp8_to_halfraw(input[id], format)) * scale;
+      id += NumThreadsPerBlock;
+    }
+  }
+}
+
+template <class InT, int NumThreadsPerBlock, int NumElementsPerThread>
+__global__ void DequantizeLinearKernelSat<InT, half, NumThreadsPerBlock, NumElementsPerThread>(const InT* input, half* output, const half* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N) {
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+
+  half scale = *scale_ptr;
+  // zero_point is unused.
+  // InT zero_point = zero_point_ptr != nullptr ? *zero_point_ptr : InT(0, true);
+  auto format = std::is_same<Float8E4M3FN, InT>::value ? __NV_E4M3 : __NV_E5M2;
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      output[id] = __nv_cvt_fp8_to_halfraw(input[id], format) * scale;
       id += NumThreadsPerBlock;
     }
   }
@@ -205,9 +241,9 @@ template Status CudaQuantizeLinearStd<int8_t, half>(cudaStream_t stream, const h
 template Status CudaQuantizeLinearStd<uint8_t, half>(cudaStream_t stream, const half* input, uint8_t* output, const half* scale, const uint8_t* zero_point, size_t num_of_element);
 
 template Status CudaQuantizeLinearSat<Float8E4M3FN, float>(cudaStream_t stream, const float* input, Float8E4M3FN* output, const float* scale, const Float8E4M3FN* zero_point, size_t num_of_element, bool saturate);
-template Status CudaQuantizeLinearSat<Float8E4M3FNUZ, float>(cudaStream_t stream, const float* input, Float8E4M3FNUZ* output, const float* scale, const Float8E4M3FNUZ* zero_point, size_t num_of_element, bool saturate);
 template Status CudaQuantizeLinearSat<Float8E5M2, float>(cudaStream_t stream, const float* input, Float8E5M2* output, const float* scale, const Float8E5M2* zero_point, size_t num_of_element, bool saturate);
-template Status CudaQuantizeLinearSat<Float8E5M2FNUZ, float>(cudaStream_t stream, const float* input, Float8E5M2FNUZ* output, const float* scale, const Float8E5M2FNUZ* zero_point, size_t num_of_element, bool saturate);
+template Status CudaQuantizeLinearSat<Float8E4M3FN, half>(cudaStream_t stream, const half* input, Float8E4M3FN* output, const half* scale, const Float8E4M3FN* zero_point, size_t num_of_element, bool saturate);
+template Status CudaQuantizeLinearSat<Float8E5M2, half>(cudaStream_t stream, const half* input, Float8E5M2* output, const half* scale, const Float8E5M2* zero_point, size_t num_of_element, bool saturate);
 
 template Status CudaDequantizeLinearStd<int8_t, float>(cudaStream_t stream, const int8_t* input, float* output, const float* scale, const int8_t* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinearStd<uint8_t, float>(cudaStream_t stream, const uint8_t* input, float* output, const float* scale, const uint8_t* zero_point, size_t num_of_element);
@@ -215,9 +251,9 @@ template Status CudaDequantizeLinearStd<int8_t, half>(cudaStream_t stream, const
 template Status CudaDequantizeLinearStd<uint8_t, half>(cudaStream_t stream, const uint8_t* input, half* output, const half* scale, const uint8_t* zero_point, size_t num_of_element);
 
 template Status CudaDequantizeLinearSat<Float8E4M3FN, float>(cudaStream_t stream, const Float8E4M3FN* input, float* output, const float* scale, const Float8E4M3FN* zero_point, size_t num_of_element);
-template Status CudaDequantizeLinearSat<Float8E4M3FNUZ, float>(cudaStream_t stream, const Float8E4M3FNUZ* input, float* output, const float* scale, const Float8E4M3FNUZ* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinearSat<Float8E5M2, float>(cudaStream_t stream, const Float8E5M2* input, float* output, const float* scale, const Float8E5M2* zero_point, size_t num_of_element);
-template Status CudaDequantizeLinearSat<Float8E5M2FNUZ, float>(cudaStream_t stream, const Float8E5M2FNUZ* input, float* output, const float* scale, const Float8E5M2FNUZ* zero_point, size_t num_of_element);
+template Status CudaDequantizeLinearSat<Float8E4M3FN, half>(cudaStream_t stream, const Float8E4M3FN* input, half* output, const half* scale, const Float8E4M3FN* zero_point, size_t num_of_element);
+template Status CudaDequantizeLinearSat<Float8E5M2, half>(cudaStream_t stream, const Float8E5M2* input, half* output, const half* scale, const Float8E5M2* zero_point, size_t num_of_element);
 
 }  // namespace cuda
 }  // namespace onnxruntime
