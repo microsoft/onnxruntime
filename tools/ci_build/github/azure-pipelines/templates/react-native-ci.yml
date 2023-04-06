@@ -94,7 +94,7 @@ stages:
     - script: |
         python -m pip install -q flatbuffers
       displayName: Install python modules
-   
+ 
     - template: mac-build-step-with-cache.yml
       parameters:
         TODAY: $(TODAY)
@@ -144,7 +144,7 @@ stages:
               CCACHE_DEPEND: 1
               CCACHE_SLOPPINESS: modules
               CCACHE_DIR: $(ORT_CACHE_DIR)
-  
+
     - task: DownloadPipelineArtifact@2
       inputs:
         buildType: 'current'
@@ -169,12 +169,12 @@ stages:
         npm ci
       workingDirectory: '$(Build.SourcesDirectory)/js'
       displayName: npm ci js
- 
+
     - script: |
         npm ci
       workingDirectory: '$(Build.SourcesDirectory)/js/common'
       displayName: npm ci js/common
-  
+
     - script: |
         yarn
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
@@ -263,7 +263,7 @@ stages:
     - script: |
         pod install
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
-      displayName: Pod install for onnxruntime react native ios e2e tests  
+      displayName: Pod install for onnxruntime react native ios e2e tests
 
     - script: |
         yarn add "jest@^29" --dev
