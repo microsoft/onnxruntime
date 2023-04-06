@@ -43,6 +43,10 @@ jobs:
       versionSpec: '3.x'
       addToPath: true
       architecture: $(buildArch)
+
+  - task: NuGetToolInstaller@1
+    inputs:
+      versionSpec: 6.4.x
      
   - task: PythonScript@0
     displayName: 'Generate cmake config'
