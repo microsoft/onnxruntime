@@ -49,7 +49,7 @@ def restore_torch_functions():
 
 
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, config, data_type=numpy.int64):
-    if config.model_type=="vit" or config.model_type=="swin":
+    if config.model_type == "vit" or config.model_type == "swin":
         input_ids = numpy.random.rand(batch_size, 3, config.image_size, config.image_size).astype(numpy.float32)
         inputs = {"pixel_values": input_ids}
         return inputs
@@ -244,14 +244,19 @@ def optimize_onnx_model(
         if precision == Precision.INT8:
             optimization_options.enable_embed_layer_norm = False
 
+        # For swin models, the num_attention_heads is a list, which isn't supported yet, so set to 0 for now
+        if model_type == "swin":
+            num_attention_heads = 0
+            hidden_size = 0
+
         # Use script to optimize model.
         # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16.
         # It is better to be conservative so we use opt_level=0 here, in case MemcpyFromHost is added to the graph by OnnxRuntime.
         opt_model = optimize_model(
             onnx_model_path,
             model_type,
-            num_heads=num_attention_heads if model_type != "swin" else 0, # For Swin, num_attention_heads is a list, so use 0 for now
-            hidden_size=hidden_size if model_type != "swin" else 0,
+            num_heads=num_attention_heads,
+            hidden_size=hidden_size,
             opt_level=0,
             optimization_options=optimization_options,
             use_gpu=use_gpu,
@@ -442,7 +447,11 @@ def validate_and_optimize_onnx(
                 model_fusion_statistics,
             )
 
-    return onnx_model_path, is_valid_onnx_model, config.num_labels if model_type == "vit" or model_type == "swin" else config.vocab_size
+    return (
+        onnx_model_path,
+        is_valid_onnx_model,
+        config.num_labels if model_type == "vit" or model_type == "swin" else config.vocab_size
+    )
 
 
 def export_onnx_model_from_pt(
@@ -473,7 +482,9 @@ def export_onnx_model_from_pt(
 
     if model_type == "vit" or model_type == "swin":
         image_processor = AutoFeatureExtractor.from_pretrained(model_name, cache_dir=cache_dir)
-        data = numpy.random.randint(low=0, high=256, size=config.image_size * config.image_size * 3, dtype=numpy.uint8).reshape(config.image_size, config.image_size, 3)
+        data = numpy.random.randint(
+            low=0, high=256, size=config.image_size * config.image_size * 3, dtype=numpy.uint8
+        ).reshape(config.image_size, config.image_size, 3)
 
         example_inputs = image_processor(data, return_tensors="pt")
     else:
