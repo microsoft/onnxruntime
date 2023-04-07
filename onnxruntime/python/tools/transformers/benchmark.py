@@ -263,7 +263,7 @@ def run_onnxruntime(
                     }
 
                     if config.model_type == "vit" or config.model_type == "swin":
-                        logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, 3, 224, 224]}")
+                        logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}")
                     else:
                         logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}")
 
@@ -370,8 +370,8 @@ def run_pytorch(
                     continue
 
                 if config.model_type == "vit" or config.model_type == "swin":
-                    logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, 3, 224, 224]}")
-                    input_ids = torch.randn(size=(batch_size, 3, 224, 224),dtype=torch.float16 if precision == Precision.FLOAT16 else torch.float32, device=device)
+                    logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}")
+                    input_ids = torch.randn(size=(batch_size, 3, config.image_size, config.image_size),dtype=torch.float16 if precision == Precision.FLOAT16 else torch.float32, device=device)
                 else:
                     logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
                     input_ids = torch.randint(

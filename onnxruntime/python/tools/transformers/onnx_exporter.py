@@ -50,7 +50,7 @@ def restore_torch_functions():
 
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, config, data_type=numpy.int64):
     if config.model_type=="vit" or config.model_type=="swin":
-        input_ids = numpy.random.rand(batch_size, 3, 224, 224).astype(numpy.float32)
+        input_ids = numpy.random.rand(batch_size, 3, config.image_size, config.image_size).astype(numpy.float32)
         inputs = {"pixel_values": input_ids}
         return inputs
 
@@ -473,7 +473,7 @@ def export_onnx_model_from_pt(
 
     if model_type == "vit" or model_type == "swin":
         image_processor = AutoFeatureExtractor.from_pretrained(model_name, cache_dir=cache_dir)
-        data = numpy.random.randint(low=0, high=256, size=224 * 224 * 3, dtype=numpy.uint8).reshape(224, 224, 3)
+        data = numpy.random.randint(low=0, high=256, size=config.image_size * config.image_size * 3, dtype=numpy.uint8).reshape(config.image_size, config.image_size, 3)
 
         example_inputs = image_processor(data, return_tensors="pt")
     else:
