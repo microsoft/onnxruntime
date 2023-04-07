@@ -19,11 +19,15 @@ parameters:
   displayName: 'Package name'
   type: string
   default: 'NPM_packages'
+- name: BuildAndroidAARStageDependsOn
+  displayName: 'Stage the Build Android AAR stage depends on'
+  type: string
+  default: 'Extract_commit'
 
 stages:
 - stage: Build_Android_AAR
   displayName: Build Android AAR
-  dependsOn: Extract_commit
+  dependsOn: '${{parameters.BuildAndroidAARStageDependsOn}}'
   jobs:
   - template: android-java-api-aar.yml
     parameters:

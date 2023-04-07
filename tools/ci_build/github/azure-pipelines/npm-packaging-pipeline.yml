@@ -53,7 +53,6 @@ stages:
 
 - stage: Download_Node_Package
   dependsOn:
-  - Build_Android_AAR
   - ReactNative_CI
   - Build_web_Release
   - Build_web_Debug
