@@ -5,6 +5,20 @@
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 
+bool check_equal(float actual, float expected) {
+  if (std::isnan(actual)) {
+    return std::isnan(expected);
+  } else {
+    float diff = std::abs(actual - expected);
+    float top = std::max(std::abs(actual), std::abs(expected));
+    float ratio = 0;
+    if (top > 0.0001) {
+      ratio = diff / top;
+    }
+    return ratio < 0.005;
+  }
+}
+
 class MlasFp16ActivationTest : public MlasTestBase {
  public:
   static const char* GetTestSuiteName() {
@@ -44,13 +58,24 @@ class MlasFp16ActivationTest : public MlasTestBase {
 
     constexpr size_t M = 5;
     constexpr size_t N = 23;
+    constexpr float MinimumFillValue = -11.0f;
 
     MatrixGuardBuffer<MLFp16> HalfBuffer1;
     auto* testData1 = HalfBuffer1.GetBuffer(M * N, true);
     MatrixGuardBuffer<MLFp16> HalfBuffer2;
     auto* testData2 = HalfBuffer2.GetBuffer(M * N, true);
+    MatrixGuardBuffer<MLFp16> HalfBuffer3;
+    auto* testData3 = HalfBuffer3.GetBuffer(M * N, true);
+    MatrixGuardBuffer<MLFp16> AddonBuffer;
+    auto addonData = AddonBuffer.GetBuffer(M * N, true);
     MatrixGuardBuffer<float> FloatBuffer;
     auto* fpBuffer = FloatBuffer.GetBuffer(M * N, true);
+
+    size_t o = 3;
+    for (size_t i = 0; i < M * N; i++) {
+      o = (o + 19) % 23;
+      addonData[i] = (MinimumFillValue + o) / 16.0f;
+    }
 
     MLAS_ACTIVATION_KIND acts[] = {
         MlasIdentityActivation,
@@ -62,8 +87,9 @@ class MlasFp16ActivationTest : public MlasTestBase {
         MlasHardSigmoidActivation};
 
     MLAS_ACTIVATION Activation;
-    MLAS_HALF_GEMM_ACTIVATION_PROCESSOR proc(Activation);
+    MLAS_HALF_GEMM_ACTIVATION_PROCESSOR proc(Activation, nullptr);
     MLAS_HALF_GEMM_2FLOAT_PROCESSOR converter(Activation, fpBuffer, N);
+    MLAS_HALF_GEMM_ACTIVATION_PROCESSOR addon(Activation, reinterpret_cast<const MLAS_FP16*>(addonData));
     for (auto kind : acts) {
       Activation.ActivationKind = MLAS_ACTIVATION_KIND(kind);
 
@@ -84,37 +110,32 @@ class MlasFp16ActivationTest : public MlasTestBase {
       for (size_t i = 0; i < _countof(TestData); i++) {
         testData1[i] = TestData[i].f;
         testData2[i] = TestData[i].f;
+        testData3[i] = TestData[i].f;
       }
-      constexpr float MinimumFillValue = -11.0f;
       size_t offset = 7;
       for (size_t i = _countof(TestData); i < M * N; i++) {
         offset = (offset + 19) % 23;
         testData1[i] = (MinimumFillValue + offset) / 16.0f;
         testData2[i] = testData1[i];
+        testData3[i] = testData1[i];
       }
 
       proc.Process(reinterpret_cast<MLAS_FP16*>(testData1), 0, 0, M, N, N);
       converter.Process(reinterpret_cast<MLAS_FP16*>(testData2), 0, 0, M, N, N);
+      addon.Process(reinterpret_cast<MLAS_FP16*>(testData3), 0, 0, M, N, N);
 
       for (size_t i = 0; i < M*N; i++) {
         float actual = testData1[i].ToFloat();
-        if (std::isnan(actual)) {
-          EXPECT_TRUE(std::isnan(fpBuffer[i]))
+        EXPECT_TRUE(check_equal(actual, fpBuffer[i]))
               << ", Vector Activation Kind:" << (int)kind << ", i=" << i << ", value:"
               << std::setw(8) << std::setfill('0') << std::hex << actual << ", expecting:"
               << std::setw(8) << std::setfill('0') << std::hex << fpBuffer[i];
 
-        } else {
-          float diff = std::abs(actual - fpBuffer[i]);
-          float top = std::max(std::abs(actual), std::abs(fpBuffer[i]));
-          float ratio = 0;
-          if (top > 0.0001) {
-            ratio = diff / top;
-          }
-          EXPECT_TRUE(ratio < 0.005)
-              << ", Vector Activation Kind:" << (int)kind << ", i=" << i << ", value:"
-              << actual << ", expecting:" << fpBuffer[i];
-        }
+        float addonActual = testData3[i].ToFloat() - addonData[i].ToFloat();
+        EXPECT_TRUE(check_equal(addonActual, fpBuffer[i]))
+            << ", Vector + Activation Kind:" << (int)kind << ", i=" << i << ", value:"
+            << std::setw(8) << std::setfill('0') << std::hex << actual << ", expecting:"
+            << std::setw(8) << std::setfill('0') << std::hex << fpBuffer[i];
       }
     }
   }
