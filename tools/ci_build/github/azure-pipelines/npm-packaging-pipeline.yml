@@ -44,14 +44,12 @@ stages:
     PoolName: 'Win-CPU-2021'
     PackageName: 'onnxruntime-web'
 
-- stage: Build_React_Native
-  dependsOn: Extract_commit
-  - template: templates/react-native-ci.yml
-    parameters:
-      NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-      BuildConfig: 'Release'
-      PoolName: 'Linux-CPU'
-      PackageName: 'onnxruntime-react-native'
+- template: templates/react-native-ci.yml
+  parameters:
+    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+    BuildConfig: 'Release'
+    PoolName: 'Linux-CPU'
+    PackageName: 'onnxruntime-react-native'
 
 - stage: Download_Node_Package
   dependsOn:
