@@ -203,13 +203,14 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   NodeAttrHelper node_helper(node_unit);
   const std::string resize_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
-  ORT_RETURN_IF("cubic" == resize_mode, "Resize doesn't support cubic mode!");
+  ORT_RETURN_IF((resize_mode != "nearest") && (resize_mode != "linear"),
+                "QNN EP: Resize doesn't support mode '", resize_mode.c_str(), "'.",
+                "Only 'nearest' and 'linear' are supported.");
 
   const std::string coordinate_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
-  if ((coordinate_mode != "half_pixel") && (coordinate_mode != "align_corners")) {
-    std::string msg = coordinate_mode + " mode not supported, QNN Resize only supports align_corners and half_pixel";
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, msg);
-  }
+  ORT_RETURN_IF((coordinate_mode != "half_pixel") && (coordinate_mode != "align_corners"),
+                "QNN EP: coordinate transformation mode '", coordinate_mode.c_str(), "' not supported for Resize op.",
+                "Only 'align_corners' and 'half_pixel' are supported.");
 
   // Check for a valid "nearest_mode" if the mode is "nearest".
   if (resize_mode == "nearest") {
@@ -236,22 +237,18 @@ Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const Nod
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
                     "QNN EP: Cannot get input shape for Resize op");
-  if (input_shape.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Resize only supports 4D!");
-  }
 
   const auto& output_0 = node_unit.Outputs()[0];
   std::vector<uint32_t> output_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output_0.node_arg, output_shape),
                     "QNN EP: Cannot get output shape for Resize op");
-  if (output_shape.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Resize only supports 4D!");
-  }
+
+  ORT_RETURN_IF(input_shape.size() != 4 || output_shape.size() != 4, "QNN Resize only supports 4D!");
 
   ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
-  if (input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float")) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type " + *input_data_type + " is not supported in CPU backend.");
-  }
+  ORT_RETURN_IF(input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
+                "QNN EP: Data type ", input_data_type->c_str(),
+                " is not supported for Resize operator in CPU backend.");
 
   return Status::OK();
 }
@@ -281,9 +278,7 @@ Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
                     "QNN EP: Cannot get shape for Resize input");
-  if (input_shape.size() < 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Resize input must have a rank >= 3.");
-  }
+  ORT_RETURN_IF(input_shape.size() < 3, "QNN EP: Resize input must have a rank >= 3.");
 
   return Status::OK();
 }
