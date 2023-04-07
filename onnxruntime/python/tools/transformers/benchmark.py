@@ -378,7 +378,7 @@ def run_pytorch(
                         device=device,
                     )
                 else:
-                    if sequence_length > max_input_size:
+                    if max_input_size is not None and sequence_length > max_input_size:
                         continue
 
                     logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
