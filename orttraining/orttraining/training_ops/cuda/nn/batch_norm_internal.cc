@@ -87,11 +87,11 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
 
   if (std::is_same<T1, MLFloat16>::value) {
     // Convert scale/B to float
-    p_f_scale = GetScratchBuffer<float>(C);
-    p_f_B = GetScratchBuffer<float>(C);
+    p_f_scale = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
+    p_f_B = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
 
-    Impl_Cast<CudaT1, float>(Stream(), scale_data, p_f_scale.get(), C);
-    Impl_Cast<CudaT1, float>(Stream(), b_data, p_f_B.get(), C);
+    Impl_Cast<CudaT1, float>(Stream(p_op_kernel_context), scale_data, p_f_scale.get(), C);
+    Impl_Cast<CudaT1, float>(Stream(p_op_kernel_context), b_data, p_f_B.get(), C);
 
     p_scale = p_f_scale.get();
     p_B = p_f_B.get();
@@ -99,13 +99,13 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
 
   if (std::is_same<T2, MLFloat16>::value) {
     // Convert mean/var to float
-    p_f_running_mean = GetScratchBuffer<float>(C);
-    p_f_running_var = GetScratchBuffer<float>(C);
-    p_f_saved_mean = GetScratchBuffer<float>(C);
-    p_f_saved_inv_std = GetScratchBuffer<float>(C);
+    p_f_running_mean = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
+    p_f_running_var = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
+    p_f_saved_mean = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
+    p_f_saved_inv_std = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
 
-    Impl_Cast<CudaT2, float>(Stream(), mean_data, p_f_running_mean.get(), C);
-    Impl_Cast<CudaT2, float>(Stream(), var_data, p_f_running_var.get(), C);
+    Impl_Cast<CudaT2, float>(Stream(p_op_kernel_context), mean_data, p_f_running_mean.get(), C);
+    Impl_Cast<CudaT2, float>(Stream(p_op_kernel_context), var_data, p_f_running_var.get(), C);
 
     p_running_mean = p_f_running_mean.get();
     p_running_var = p_f_running_var.get();
@@ -113,9 +113,9 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
     p_saved_inv_std = p_f_saved_inv_std.get();
   } else if (mean_data != running_mean_data) {
     CUDA_RETURN_IF_ERROR(
-      cudaMemcpyAsync(running_mean_data, mean_data, C * sizeof(T2), cudaMemcpyDeviceToDevice, Stream()));
+        cudaMemcpyAsync(running_mean_data, mean_data, C * sizeof(T2), cudaMemcpyDeviceToDevice, Stream(p_op_kernel_context)));
     CUDA_RETURN_IF_ERROR(
-      cudaMemcpyAsync(running_var_data, var_data, C * sizeof(T2), cudaMemcpyDeviceToDevice, Stream()));
+        cudaMemcpyAsync(running_var_data, var_data, C * sizeof(T2), cudaMemcpyDeviceToDevice, Stream(p_op_kernel_context)));
   }
 
   // NOTE: in cudnnBatchNorm, biased std/var is used when calculating `save_inv_std` and `y`, while
@@ -123,7 +123,7 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
   //     running_var = (1 - momentum_) * unbiased_batch_var + momentum_ * running_var
   // This is inconsistent with BatchNormalization Onnx spec, which uses population variance (biased).
   CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
-      CudnnHandle(),
+      GetCudnnHandle(p_op_kernel_context),
       cudnn_batch_norm_mode_,
       &alpha,
       &beta,
@@ -142,10 +142,10 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
       p_saved_inv_std));
 
   if (std::is_same<T2, MLFloat16>::value) {
-    Impl_Cast<float, CudaT2>(Stream(), reinterpret_cast<float*>(p_running_mean), running_mean_data, C);
-    Impl_Cast<float, CudaT2>(Stream(), reinterpret_cast<float*>(p_running_var), running_var_data, C);
-    Impl_Cast<float, CudaT2>(Stream(), reinterpret_cast<float*>(p_saved_mean), saved_mean_data, C);
-    Impl_Cast<float, CudaT2>(Stream(), reinterpret_cast<float*>(p_saved_inv_std), saved_inv_std_data, C);
+    Impl_Cast<float, CudaT2>(Stream(p_op_kernel_context), reinterpret_cast<float*>(p_running_mean), running_mean_data, C);
+    Impl_Cast<float, CudaT2>(Stream(p_op_kernel_context), reinterpret_cast<float*>(p_running_var), running_var_data, C);
+    Impl_Cast<float, CudaT2>(Stream(p_op_kernel_context), reinterpret_cast<float*>(p_saved_mean), saved_mean_data, C);
+    Impl_Cast<float, CudaT2>(Stream(p_op_kernel_context), reinterpret_cast<float*>(p_saved_inv_std), saved_inv_std_data, C);
   }
 
   return Status::OK();

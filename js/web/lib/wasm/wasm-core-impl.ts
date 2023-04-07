@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 import {InferenceSession, Tensor} from 'onnxruntime-common';
-import {SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
+
+import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
 import {allocWasmString} from './string-utils';
@@ -31,10 +32,17 @@ const activeSessions = new Map<number, SessionMetadata>();
  * create an instance of InferenceSession.
  * @returns the metadata of InferenceSession. 0-value handle for failure.
  */
-export const createSession =
-    (model: Uint8Array, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
+export const createSessionAllocate = (model: Uint8Array): [number, number] => {
+  const wasm = getInstance();
+  const modelDataOffset = wasm._malloc(model.byteLength);
+  wasm.HEAPU8.set(model, modelDataOffset);
+  return [modelDataOffset, model.byteLength];
+};
+
+export const createSessionFinalize =
+    (modelData: SerializableModeldata, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
       const wasm = getInstance();
-      const modelDataOffset = wasm._malloc(model.byteLength);
+
       let sessionHandle = 0;
       let sessionOptionsHandle = 0;
       let allocs: number[] = [];
@@ -42,13 +50,12 @@ export const createSession =
       try {
         [sessionOptionsHandle, allocs] = setSessionOptions(options);
 
-        wasm.HEAPU8.set(model, modelDataOffset);
-        sessionHandle = wasm._OrtCreateSession(modelDataOffset, model.byteLength, sessionOptionsHandle);
+        sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
         if (sessionHandle === 0) {
           throw new Error('Can\'t create a session');
         }
       } finally {
-        wasm._free(modelDataOffset);
+        wasm._free(modelData[0]);
         wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         allocs.forEach(wasm._free);
       }
@@ -79,6 +86,17 @@ export const createSession =
 
       activeSessions.set(sessionHandle, [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded]);
       return [sessionHandle, inputNames, outputNames];
+    };
+
+
+/**
+ * create an instance of InferenceSession.
+ * @returns the metadata of InferenceSession. 0-value handle for failure.
+ */
+export const createSession =
+    (model: Uint8Array, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
+      const modelData: SerializableModeldata = createSessionAllocate(model);
+      return createSessionFinalize(modelData, options);
     };
 
 export const releaseSession = (sessionId: number): void => {
@@ -176,9 +194,9 @@ const tensorDataTypeEnumToString = (typeProto: DataType): Tensor.Type => {
     case DataType.string:
       return 'string';
     case DataType.int64:
-      return 'int32';
+      return 'int64';
     case DataType.uint64:
-      return 'uint32';
+      return 'uint64';
 
     default:
       throw new Error(`unsupported data type: ${typeProto}`);
@@ -327,7 +345,7 @@ export const run =
                 errorCode = wasm._OrtGetTensorData(
                     tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
                 if (errorCode !== 0) {
-                  throw new Error(`Can't get a tensor data. error code = ${errorCode}`);
+                  throw new Error(`Can't access output tensor data. error code = ${errorCode}`);
                 }
                 let tensorDataIndex = tensorDataOffset / 4;
                 const dataType = wasm.HEAPU32[tensorDataIndex++];

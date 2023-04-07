@@ -4,10 +4,12 @@
 #include "core/codegen/common/common.h"
 
 #include "core/framework/tensorprotoutils.h"
+#include "core/common/inlined_containers.h"
 #include "core/graph/graph.h"
 #include "core/graph/schema_registry.h"
 #include <algorithm>
-#include <unordered_set>
+#include <string_view>
+
 
 namespace onnxruntime {
 
@@ -133,7 +135,8 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
   meta_def->name += "_With" + std::to_string(subgraph->nodes.size()) + "Nodes_";
   meta_def->name += end_node.OpType() + std::to_string(end_node_index);
 
-  std::unordered_set<std::string> real_output_names;
+  InlinedHashSet<std::string_view> real_output_names;
+  real_output_names.reserve(graph.GetOutputs().size());
   for (const auto* def : graph.GetOutputs()) {
     real_output_names.insert(def->Name());
   }
@@ -170,7 +173,7 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
       }
     };
 
-    std::unordered_set<std::string> input_names_from_the_output_node;
+    InlinedHashSet<std::string_view> input_names_from_the_output_node;
 
     for (auto o_iter = node.OutputEdgesBegin(); o_iter != node.OutputEdgesEnd(); ++o_iter) {
       const auto& p = *o_iter;
@@ -271,8 +274,8 @@ ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType(const NodeArg* def) {
 
 // Convert GraphNodes to internal NodePtrs without check lifetime.
 // Please use it only locally when GraphNodes still exist
-std::vector<const Node*> ConvertGraphNodesToNodePtrs(const ConstGraphNodes& graph_nodes) {
-  std::vector<const Node*> nodes;
+InlinedVector<const Node*> ConvertGraphNodesToNodePtrs(const ConstGraphNodes& graph_nodes) {
+  InlinedVector<const Node*> nodes;
   for (auto& node : graph_nodes) {
     nodes.push_back(&node);
   }

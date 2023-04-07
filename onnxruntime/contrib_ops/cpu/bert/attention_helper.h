@@ -62,75 +62,79 @@ inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPoo
 
 template <typename T>
 void PrepareMask(const int32_t* mask_index,
-                 const std::vector<int64_t>* mask_index_dims,
+                 gsl::span<const int64_t> mask_index_dims,
                  T* mask_data,
                  bool is_unidirectional,
                  int batch_size,
                  int sequence_length,
-                 int past_sequence_length) {
+                 int past_sequence_length,
+                 float mask_filter_value) {
   const int all_sequence_length = past_sequence_length + sequence_length;
 
-  // mask_data has been filled with 0, and its shape is BxSxS*
+  // mask_data has been filled with 0, and its shape is BxSxT
   T* p_mask = mask_data;
 
   // 4D mask in Megatron GPT2 is currently not support in CPU kernel
-  if (nullptr != mask_index_dims && mask_index_dims->size() == 4) {
+  if (nullptr != mask_index && mask_index_dims.size() == 4) {
     ORT_NOT_IMPLEMENTED("4D mask in attention cpu kernel is not supported");
   }
 
-  // For 3D mask, convert values 0 to -10000.0, and 1 to 0.0, then apply unidirectional mask if any.
-  if (nullptr != mask_index_dims && mask_index_dims->size() == 3) {
+  // For 3D mask, convert values 0 to mask_filter_value, and 1 to 0.0, then apply unidirectional mask if any.
+  if (nullptr != mask_index && mask_index_dims.size() == 3) {
     for (int i = 0; i < batch_size * sequence_length * all_sequence_length; i++) {
-      p_mask[i] = (mask_index[i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(-10000.0f);
+      p_mask[i] = (mask_index[i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(mask_filter_value);
     }
 
     if (is_unidirectional) {
       for (int b_i = 0; b_i < batch_size; b_i++) {
         for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
           for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-            p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(-10000.0f);
+            p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(mask_filter_value);
           }
         }
-        p_mask += sequence_length * all_sequence_length;
+        p_mask += static_cast<size_t>(sequence_length) * all_sequence_length;
       }
     }
 
     return;
   }
 
-  bool is_raw_attention_mask = (nullptr != mask_index_dims && mask_index_dims->size() == 2);
-  bool has_mask_start_position = (nullptr != mask_index_dims && mask_index_dims->size() == 1 && static_cast<int>(mask_index_dims->at(0)) == 2 * batch_size);
+  bool is_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() == 2);
+  bool has_mask_start_position = (nullptr != mask_index &&
+                                  mask_index_dims.size() == 1 &&
+                                  static_cast<int>(mask_index_dims[0]) == 2 * batch_size);
 
   for (int b_i = 0; b_i < batch_size; b_i++) {
     // TODO: mask_index can be used in softmax to save some calculation.
     if (nullptr != mask_index) {
       if (is_raw_attention_mask) {
-        // Raw attention mask has value 0 or 1. Here we convert 0 to -10000.0, and 1 to 0.0.
-        const int32_t* raw_mask = mask_index + b_i * all_sequence_length;
+        // Raw attention mask has value 0 or 1. Here we convert 0 to mask_filter_value, and 1 to 0.0.
+        ptrdiff_t off = SafeInt<ptrdiff_t>(b_i) * all_sequence_length;
+        const int32_t* raw_mask = mask_index + off;
         for (int m_i = 0; m_i < all_sequence_length; m_i++) {
-          p_mask[m_i] = (raw_mask[m_i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(-10000.0f);
+          p_mask[m_i] = (raw_mask[m_i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(mask_filter_value);
         }
       } else {
-        // mask_index is 1D: (B) or (2B) => (Bx)S*
+        // mask_index is 1D: (B) or (2B) => (Bx)T
 
-        // Handle right-side padding: mask value at or after the end position will be -10000.0
+        // Handle right-side padding: mask value at or after the end position will be mask_filter_value
         int end_position = mask_index[b_i];
         for (int m_i = end_position; m_i < all_sequence_length; m_i++) {
-          p_mask[m_i] = static_cast<T>(-10000.0f);
+          p_mask[m_i] = static_cast<T>(mask_filter_value);
         }
 
-        // Handle left-side padding: mask value before the start position will be -10000.0
+        // Handle left-side padding: mask value before the start position will be mask_filter_value
         if (has_mask_start_position) {
           int start_position = std::min(mask_index[b_i + batch_size], all_sequence_length);
           for (int m_i = 0; m_i < start_position; m_i++) {
-            p_mask[m_i] = static_cast<T>(-10000.0f);
+            p_mask[m_i] = static_cast<T>(mask_filter_value);
           }
         }
       }
     }
 
-    // Broadcast mask from (Bx)S* to (Bx)SxS*
-    for (int s_i = 1; s_i < sequence_length; s_i++) {
+    // Broadcast mask from (Bx)T to (Bx)SxT
+    for (ptrdiff_t s_i = 1; s_i < sequence_length; s_i++) {
       memcpy(p_mask + s_i * all_sequence_length, p_mask, all_sequence_length * sizeof(T));
     }
 
@@ -138,19 +142,24 @@ void PrepareMask(const int32_t* mask_index,
     if (is_unidirectional) {
       for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
         for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-          p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(-10000.0f);
+          p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(mask_filter_value);
         }
       }
     }
-
-    p_mask += sequence_length * all_sequence_length;
+    ptrdiff_t mask_to_advance = SafeInt<ptrdiff_t>(sequence_length) * all_sequence_length;
+    p_mask += mask_to_advance;
   }
 }
 
-// Concatenate a past state chunk S'xH with input state chunk SxH into present state chunk S*xH
+// Concatenate a past state chunk PxH with input state chunk LxH into present state chunk TxH
 // Returns a pointer to the start of present state chunk.
 template <typename T>
-T* ConcatStateChunk(const T* past, const T* chunk, T* present, size_t past_chunk_length, size_t present_chunk_length, std::ptrdiff_t i) {
+T* ConcatStateChunk(const T* past,
+                    const T* chunk,
+                    T* present,
+                    size_t past_chunk_length,
+                    size_t present_chunk_length,
+                    std::ptrdiff_t i) {
   T* start = present + i * present_chunk_length;
 
   T* p = start;

@@ -66,6 +66,9 @@ IModelInfo : IUnknown {
   STDMETHOD(GetName)
   (const char** out, size_t* len) PURE;
 
+  STDMETHOD(SetName)
+  (const char* name) PURE;
+
   STDMETHOD(GetDomain)
   (const char** out, size_t* len) PURE;
 
@@ -100,6 +103,9 @@ IModel : IUnknown {
   (_In_ const wchar_t* const file_name,
    _In_ unsigned size) PURE;
 
+  STDMETHOD(SetName)
+  (const char* name) PURE;
+
   STDMETHOD(AddOperator)
   (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,
    _In_ const char* const* op_input_names, _In_ const char* const* actual_input_names, size_t num_inputs,
@@ -111,6 +117,10 @@ IModel : IUnknown {
 
   STDMETHOD(AddModelOutput)
   (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider) PURE;
+
+  STDMETHOD(JoinModel)
+  (_In_ IModel* other_model, _In_ const char* const* output_names, _In_ const char* const* input_names,
+   size_t num_linkages, bool promote_unlinked_outputs, _In_ const char * const join_node_prefix) PURE;
 };
 
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac")
@@ -182,7 +192,7 @@ IEngine : IUnknown {
   (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue * value) PURE;
 
   STDMETHOD(GetSequenceOfTensorValues)
-  (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
+  (_In_ _winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
 
   STDMETHOD(GetNumberOfIntraOpThreads)
   (uint32_t * num_threads) PURE;
@@ -194,6 +204,11 @@ IEngine : IUnknown {
   (wfc::IMapView<winrt::hstring, uint32_t>& overrides) PURE;
 };
 
+MIDL_INTERFACE("69fbc1d5-66ff-4c79-b14d-fad288dbf8ca")
+IThreading : IUnknown {
+
+};
+
 MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")
 IEngineBuilder : IUnknown {
   STDMETHOD(SetD3D12Resources)
@@ -203,10 +218,10 @@ IEngineBuilder : IUnknown {
   (int enabled) PURE;
 
   STDMETHOD(GetD3D12Device)
-  (ID3D12Device **device) PURE;
+  (_Outptr_ ID3D12Device * *device) PURE;
 
   STDMETHOD(GetID3D12CommandQueue)
-  (ID3D12CommandQueue **queue) PURE;
+  (_Outptr_ ID3D12CommandQueue * *queue) PURE;
 
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override) PURE;
@@ -220,9 +235,13 @@ IEngineBuilder : IUnknown {
   STDMETHOD(SetIntraOpThreadSpinning)
   (bool allow_spinning) PURE;
 
+  STDMETHOD(SetThreadPool)
+  (IThreading* thread_pool) PURE;
+
   STDMETHOD(CreateEngine)
-  (IEngine **out) PURE;
+  (_Outptr_ IEngine * *out) PURE;
 };
+
 
 MIDL_INTERFACE("5eddd25a-70ad-46ef-a445-78fbaf792c2f")
 IEngineFactory : IUnknown {
@@ -230,7 +249,7 @@ IEngineFactory : IUnknown {
   (_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) PURE;
 
   STDMETHOD(CreateModel)
-  (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
+  (_In_opt_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
 
   STDMETHOD(CreateEmptyModel)
   (_In_ int64_t opset, _Outptr_ IModel * *out) PURE;
@@ -246,9 +265,9 @@ IEngineFactory : IUnknown {
 
   STDMETHOD(CreateTensorDescriptorInfo)
   (
-      winml::TensorKind kind,
-      int64_t* dims,
-      size_t num_dims,
+      _In_ winml::TensorKind kind,
+      _In_ int64_t* dims,
+      _In_ size_t num_dims,
       _Out_ IDescriptorInfo **info) PURE;
 
   STDMETHOD(CreateSequenceDescriptorInfo)
@@ -256,6 +275,9 @@ IEngineFactory : IUnknown {
 
   STDMETHOD(CreateMapDescriptorInfo)
   (_Out_ IDescriptorInfo **info) PURE;
+
+  STDMETHOD(CreateThreadPool)
+  (_In_ bool allow_spinning, _In_ uint32_t num_intra_op_threads, _Out_ IThreading** thread_pool) PURE;
 };
 
 }  // namespace _winml

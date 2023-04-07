@@ -29,7 +29,7 @@ void VerifyTensorProtoFileData(const PathString& tensor_proto_path, gsl::span<co
   actual_data.resize(expected_data.size());
   ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, Path{}, actual_data.data(), actual_data.size()));
 
-  ASSERT_EQ(gsl::make_span(actual_data), expected_data);
+  ASSERT_EQ(gsl::span<const T>(actual_data), expected_data);
 }
 }  // namespace
 
@@ -45,7 +45,7 @@ TEST(DebugNodeInputsOutputs, BasicFileOutput) {
           {env_vars::kOpTypeFilter, nullopt},
           {env_vars::kDumpDataDestination, "files"},
           {env_vars::kAppendRankToFileName, nullopt},
-          {env_vars::kOutputDir, ToMBString(temp_dir.Path())},
+          {env_vars::kOutputDir, ToUTF8String(temp_dir.Path())},
           {env_vars::kDumpingDataToFilesForAllNodesIsOk, "1"},
       }};
 

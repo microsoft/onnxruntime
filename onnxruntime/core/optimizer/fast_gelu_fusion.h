@@ -26,14 +26,15 @@ x * 0.5 * (1.0 + tanh((sqrt(2 / pi) * (x + 0.044715 * pow(x, 3))))), where x is 
 */
 class FastGeluFusion : public GraphTransformer {
  public:
-  FastGeluFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  FastGeluFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("FastGeluFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
-  MatchResult CheckFirstFormula(Graph& graph, Node& node, std::vector<std::reference_wrapper<Node>>& nodes_to_fuse) const;
+private:
+  MatchResult CheckFirstFormula(Graph& graph, Node& node, InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const;
 
-  MatchResult CheckSecondFormula(Graph& graph, Node& nodes, std::vector<std::reference_wrapper<Node>>& nodes_to_fuse) const;
+  MatchResult CheckSecondFormula(Graph& graph, Node& nodes, InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const;
 };
 
 }  // namespace onnxruntime

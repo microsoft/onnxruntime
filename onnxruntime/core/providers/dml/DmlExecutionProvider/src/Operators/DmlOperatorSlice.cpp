@@ -19,17 +19,12 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
         std::vector<std::optional<uint32_t>> kernelInputIndices = { 0 }; // Only bind GPU to first 'data' tensor.
-        DmlOperator::Initialize(kernelInfo, kernelInputIndices);
+        DmlOperator::Initialize(kernelInfo, kernelInputIndices, std::nullopt, std::nullopt, std::nullopt, /*minimumDimensionCount*/ 1);
 
         const uint32_t inputTensorRank = m_inputTensorDescs[0].GetDimensionCount();
         assert(inputTensorRank >= gsl::narrow_cast<uint32_t>(m_offsets.size()));
         assert(inputTensorRank >= gsl::narrow_cast<uint32_t>(m_sizes.size()));
         assert(inputTensorRank >= gsl::narrow_cast<uint32_t>(m_strides.size()));
-
-        // Pad the parameters to respect DML's requirements
-        FillWithLeadingValues(/*inout*/ m_offsets, inputTensorRank, 0u);
-        FillWithLeadingValues(/*inout*/ m_sizes, inputTensorRank, 1u);
-        FillWithLeadingValues(/*inout*/ m_strides, inputTensorRank, 1);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -55,4 +50,5 @@ void CALLBACK QuerySlice(IMLOperatorSupportQueryContextPrivate* context, bool* i
 DML_OP_DEFINE_CREATION_FUNCTION(Slice7,  VersionedKernel<DmlOperatorSlice, 7> );
 DML_OP_DEFINE_CREATION_FUNCTION(Slice10, VersionedKernel<DmlOperatorSlice, 10>);
 DML_OP_DEFINE_CREATION_FUNCTION(Slice11, VersionedKernel<DmlOperatorSlice, 11>);
+DML_OP_DEFINE_CREATION_FUNCTION(Slice13, VersionedKernel<DmlOperatorSlice, 13>);
 } // namespace Dml

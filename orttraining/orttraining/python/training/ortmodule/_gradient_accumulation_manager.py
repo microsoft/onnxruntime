@@ -2,15 +2,17 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-from . import _utils
 from onnxruntime.capi import _pybind_state as C
 
+from . import _utils
 
-class GradientAccumulationManager(object):
+
+class GradientAccumulationManager:
     """Handles Gradient accumulation optimization during training
 
     This feature must be enabled once before training and cannot be turned off within a training run.
     """
+
     # TODO: enable switching the feature on/off in the middle of the training
 
     def __init__(self):
@@ -35,8 +37,7 @@ class GradientAccumulationManager(object):
             # Since named_parameters() is a generator function, need to avoid overhead and
             # populate the params in memory to avoid generating the param map every
             # step. This will not work if the user adds or removes params between steps
-            self._param_name_value_map = {
-                name: param for name, param in module.named_parameters()}
+            self._param_name_value_map = {name: param for name, param in module.named_parameters()}
             self._param_version_map = dict()
             self._frontier_node_arg_map = graph_info.frontier_node_arg_map
             self._cached_node_arg_names = graph_info.cached_node_arg_names
@@ -44,8 +45,7 @@ class GradientAccumulationManager(object):
 
     @property
     def enabled(self):
-        """Indicates whether gradient accumulation optimization is enabled.
-        """
+        """Indicates whether gradient accumulation optimization is enabled."""
         return self._enabled
 
     def extract_outputs_and_maybe_update_cache(self, forward_outputs, device):
@@ -55,17 +55,19 @@ class GradientAccumulationManager(object):
             forward_outputs (OrtValueVector): List of outputs returned by forward function
         """
         if not self.enabled:
-            return tuple(_utils._ortvalue_to_torch_tensor(forward_output, device) for forward_output in forward_outputs)
+            return _utils._ortvalues_to_torch_tensor(forward_outputs, device)
         if self._update_cache:
             for i in range(self._cache_start, len(forward_outputs)):
-                self.cache.insert(
-                    self._cached_node_arg_names[i-self._cache_start], forward_outputs[i])
+                self.cache.insert(self._cached_node_arg_names[i - self._cache_start], forward_outputs[i])
             self._update_cache = False
-        return tuple(_utils._ortvalue_to_torch_tensor(forward_outputs[i], device) for i in range(self._cache_start))
+        ort_value_vector = C.OrtValueVector()
+        ort_value_vector.reserve(self._cache_start)
+        for i in range(self._cache_start):
+            ort_value_vector.push_back(forward_outputs[i])
+        return _utils._ortvalues_to_torch_tensor(ort_value_vector, device)  # pylint: disable=W0212
 
     def maybe_update_cache_before_run(self):
-        """Update cache when model parameters are modified and optimization is enabled.
-        """
+        """Update cache when model parameters are modified and optimization is enabled."""
         # The current implementation relies on param._version, which might not be
         # updated in all cases(eg. inplace update)
         # TODO: Make detection of parameter update robust

@@ -4,6 +4,7 @@
 #pragma once
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
+#include "core/framework/float16.h"
 
 typedef __half half;
 
@@ -34,6 +35,28 @@ __device__ __forceinline__ void atomic_add(half *address, half value) {
     old = (size_t)address & 2 ? (old & 0xffff) | (x << 16) : (old & 0xffff0000) | x;
     old = atomicCAS(base_address, assumed, old);
   } while (assumed != old);
+}
+
+__device__ __forceinline__ void atomic_add(BFloat16* address, BFloat16 value) {
+  unsigned int* base_address =
+      reinterpret_cast<unsigned int*>(reinterpret_cast<char*>(address) - (reinterpret_cast<size_t>(address) & 2));
+  unsigned int old = *base_address;
+  unsigned int assumed;
+  BFloat16 bsum;
+  do {
+    assumed = old;
+    bsum.val = reinterpret_cast<size_t>(address) & 2 ? (old >> 16) : (old & 0xffff);
+    bsum = bsum + value;
+    old = reinterpret_cast<size_t>(address) & 2 ? (old & 0xffff) | (bsum.val << 16) : (old & 0xffff0000) | bsum.val;
+    old = atomicCAS(base_address, assumed, old);
+  } while (assumed != old);
+}
+
+// This function is added to speed up atomic add for half/bf16 type on CUDA. For ROCM, use default implementation.
+template <typename T>
+__device__ __forceinline__ void AtomicAdd(T *start_addr, size_t index, const size_t numel, T value) {
+  ORT_UNUSED_PARAMETER(numel);
+  atomic_add(start_addr + index, value);
 }
 
 }  // namespace rocm

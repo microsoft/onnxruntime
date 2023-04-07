@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "batch_norm_grad.h"
+#include "orttraining/training_ops/rocm/nn/batch_norm_grad.h"
 #include "core/providers/common.h"
 #include "core/providers/rocm/miopen_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
@@ -59,6 +59,7 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   vector<int64_t> new_dims;
   BatchNormHelper::NormalizeDims(input_shape, new_dims);
   ORT_RETURN_IF_ERROR(input_tensor.Set(new_dims, MiopenTensor::GetDataType<HipT>()));
+  // for fp16 input, `scale_bias_tensor` will have a float type; otherwise it will be the same as input type.
   ORT_RETURN_IF_ERROR(scale_bias_tensor.Set(input_tensor, miopen_batch_norm_mode_));
 
   const int64_t C = new_dims[1];
@@ -71,11 +72,11 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   IAllocatorUniquePtr<float> p_f_scale, p_f_dScale, p_f_dBias, p_f_saved_mean, p_f_saved_inv_std;
 
   if (std::is_same<T1, MLFloat16>::value) {
-    p_f_scale = GetScratchBuffer<float>(C);
-    p_f_dScale = GetScratchBuffer<float>(C);
-    p_f_dBias = GetScratchBuffer<float>(C);
+    p_f_scale = GetScratchBuffer<float>(C, ctx->GetComputeStream());
+    p_f_dScale = GetScratchBuffer<float>(C, ctx->GetComputeStream());
+    p_f_dBias = GetScratchBuffer<float>(C, ctx->GetComputeStream());
 
-    Impl_Cast<HipT1, float>(Stream(), Scale_data, p_f_scale.get(), C);
+    Impl_Cast<HipT1, float>(Stream(ctx), Scale_data, p_f_scale.get(), C);
 
     p_scale = p_f_scale.get();
     p_dScale = p_f_dScale.get();
@@ -83,18 +84,18 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   }
 
   if (std::is_same<T2, MLFloat16>::value) {
-    p_f_saved_mean = GetScratchBuffer<float>(C);
-    p_f_saved_inv_std = GetScratchBuffer<float>(C);
+    p_f_saved_mean = GetScratchBuffer<float>(C, ctx->GetComputeStream());
+    p_f_saved_inv_std = GetScratchBuffer<float>(C, ctx->GetComputeStream());
 
-    Impl_Cast<HipT2, float>(Stream(), saved_mean_data, p_f_saved_mean.get(), C);
-    Impl_Cast<HipT2, float>(Stream(), saved_inv_std_data, p_f_saved_inv_std.get(), C);
+    Impl_Cast<HipT2, float>(Stream(ctx), saved_mean_data, p_f_saved_mean.get(), C);
+    Impl_Cast<HipT2, float>(Stream(ctx), saved_inv_std_data, p_f_saved_inv_std.get(), C);
 
     p_saved_mean = p_f_saved_mean.get();
     p_saved_inv_std = p_f_saved_inv_std.get();
   }
 
   MIOPEN_RETURN_IF_ERROR(miopenBatchNormalizationBackward(
-      MiopenHandle(),
+      GetMiopenHandle(ctx),
       miopen_batch_norm_mode_,
       &alpha,
       &beta,
@@ -115,8 +116,8 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
       p_saved_inv_std));
 
   if (std::is_same<T1, MLFloat16>::value) {
-    Impl_Cast<float, HipT1>(Stream(), reinterpret_cast<float*>(p_dScale), dScale_data, C);
-    Impl_Cast<float, HipT1>(Stream(), reinterpret_cast<float*>(p_dBias), dBias_data, C);
+    Impl_Cast<float, HipT1>(Stream(ctx), reinterpret_cast<float*>(p_dScale), dScale_data, C);
+    Impl_Cast<float, HipT1>(Stream(ctx), reinterpret_cast<float*>(p_dBias), dBias_data, C);
   }
 
   return Status::OK();

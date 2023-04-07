@@ -3,23 +3,17 @@
 
 #pragma once
 
+#include "core/common/basic_types.h"
+#include "core/common/gsl.h"
+#include "core/common/inlined_containers.h"
+#include "core/graph/graph.h"
+#include "core/graph/runtime_optimization_record.h"
+
 namespace onnxruntime {
 
 //
 // Selection helpers
 //
-
-// Struct to serialize the node indexes in an ORT format model.
-// Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-struct NodesToOptimizeIndexes {
-  std::vector<NodeIndex> nodes;
-  int num_inputs;
-  int num_outputs;
-  bool variadic_input;
-  bool variadic_output;
-  int num_variadic_inputs;
-  int num_variadic_outputs;
-};
 
 // Group of nodes that will be optimized. The group will either be merged into the target node, or a new node
 // will be created to replace the entire group, including the target node.
@@ -46,18 +40,16 @@ class NodesToOptimize {
 
   // nodes to assemble. num_inputs and num_outputs default to the size of input_nodes and output_nodes.
   // specify num_input_defs/num_output_defs if the last input/output is variadic
-  NodesToOptimize(const std::vector<Node*>& input_nodes,
+  NodesToOptimize(gsl::span<Node* const> input_nodes,
                   Node& target_node,
-                  const std::vector<Node*>& output_nodes,
+                  gsl::span<Node* const> output_nodes,
                   int num_input_defs = -1, int num_output_defs = -1);
 
   // construct from saved NodeIndex values. IsValid() will return false if one or more nodes were missing.
-  // Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-  NodesToOptimize(Graph& graph, const NodesToOptimizeIndexes& node_indexes);
+  // Use NodesToOptimizeIndices::kEmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
+  NodesToOptimize(Graph& graph, const NodesToOptimizeIndices& node_indices);
 
-  static constexpr NodeIndex EmptyNodeIndex = std::numeric_limits<NodeIndex>::max();
-
-  NodesToOptimizeIndexes ToIndexes() const;
+  NodesToOptimizeIndices ToIndices() const;
 
   // number of inputs and outputs that the target node has, as defined by the operator schema.
   // for each input/output, the node connected to that is stored
@@ -84,15 +76,15 @@ class NodesToOptimize {
   bool IsValid() const { return !nodes_.empty(); }
 
   // fetch an input.
-  // valid indexes are 0 to num_inputs - 1 if no variadic inputs.
-  // if there are variadic inputs, valid indexes are 0 to num_inputs + num_extra_variadic_inputs - 1
+  // valid indices are 0 to num_inputs - 1 if no variadic inputs.
+  // if there are variadic inputs, valid indices are 0 to num_inputs + num_extra_variadic_inputs - 1
   // e.g. 3 inputs. last is variadic with 3 values. num_inputs=3 num_extra_variadic_inputs=2 for a total of 5 inputs.
   Node* Input(int idx, bool required = true) const {
     return GetNode(idx, required);
   }
 
   // inputs filtered by index. includes all variadic.
-  std::vector<Node*> Inputs(const std::vector<int>& indexes, bool required = true) const;
+  InlinedVector<Node*> Inputs(gsl::span<const int> indices, bool required = true) const;
 
   Node& Target() const {
     return *GetNode(NumInputEntries() + 0, /*required*/ true);
@@ -103,59 +95,49 @@ class NodesToOptimize {
   }
 
   // outputs filtered by index. includes all variadic.
-  std::vector<Node*> Outputs(const std::vector<int>& indexes, bool required = true) const;
+  InlinedVector<Node*> Outputs(gsl::span<const int> indices, bool required = true) const;
 
   // Get the Node or Nodes (if variadic) at a specific index.
-  std::vector<Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
+  InlinedVector<Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
 
-  const std::vector<Node*>& AllNodes() const { return nodes_; }
+  gsl::span<Node* const> AllNodes() const { return nodes_; }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NodesToOptimize);
 
  private:
-  Node* GetNode(int index, bool required) const {
+  Node* GetNode(size_t index, bool required) const {
     Node* node = nullptr;
-    ORT_ENFORCE(static_cast<size_t>(index) < nodes_.size() &&
+    ORT_ENFORCE(index < nodes_.size() &&
                 ((node = nodes_[index]) != nullptr || !required));
 
     return node;
   }
 
-  // if the last input in num_inputs is for the variadic input, the variadic input could have zero or more values
-  // so we need to special case the zero and count that as one. same for outputs
-  int NumInputEntries() const { return variadic_input_ ? num_inputs + std::max(1, num_variadic_inputs_) - 1
-                                                       : num_inputs; }
-  int NumOutputEntries() const { return variadic_output_ ? num_outputs + std::max(1, num_variadic_outputs_) - 1
-                                                         : num_outputs; }
+  size_t NumInputEntries() const;
+  size_t NumOutputEntries() const;
 
   bool variadic_input_{false};  // is last input variadic
   bool variadic_output_{false};
   int num_variadic_inputs_{0};  // how many values does the variadic input have. can be zero or more.
   int num_variadic_outputs_{0};
-  std::vector<Node*> nodes_;
+  InlinedVector<Node*> nodes_;
 };
 
-// Helper to build a NodesToOptimize instance
+// Helper to build a NodesToOptimizeIndices instance
 // Use in selector to incrementally add pieces
-struct NodesToOptimizeBuilder {
-  std::vector<Node*> input_nodes;
-  Node* target_node{nullptr};
-  std::vector<Node*> output_nodes;
+struct NodesToOptimizeIndicesBuilder {
+  InlinedVector<NodeIndex> input_nodes;
+  NodeIndex target_node{NodesToOptimizeIndices::kEmptyNodeIndex};
+  InlinedVector<NodeIndex> output_nodes;
   int num_input_defs{-1};
   int num_output_defs{-1};
 
-  std::unique_ptr<NodesToOptimize> Build() {
-    ORT_ENFORCE(target_node != nullptr, "A target node must be set.");
-    return std::make_unique<NodesToOptimize>(input_nodes, *target_node, output_nodes, num_input_defs, num_output_defs);
-  }
+  NodesToOptimizeIndices Build() const;
 };
 
 //
 // Action helpers
 //
-
-enum class ArgType { kInput,
-                     kOutput };
 
 // struct to define the location of an input or output definition for a Node
 struct InOutDefSlot {
@@ -179,18 +161,24 @@ struct ValueMoveInfo {
   }
 
   // append single value (may be variadic) from source to destination
-  ValueMoveInfo(InOutDefSlot src_slot_in, ArgType dest_slot_type, bool is_optional = false)
+  ValueMoveInfo(InOutDefSlot src_slot_in,
+                ArgType dest_slot_type,
+                bool is_optional = false,
+                bool fill_optional_with_empty = false)
       : src_slot(src_slot_in),
         dest_slot{dest_slot_type, -1},
         copy_all{false},
         append{true},
-        optional{is_optional} {}
+        optional{is_optional},
+        fill_optional_with_empty{fill_optional_with_empty} {}
 
   InOutDefSlot src_slot;
   InOutDefSlot dest_slot;
-  bool copy_all{false};  // ignore src_slot.idx and copy all values
-  bool append{false};    // ignore dest_slot.idx and append to existing values
-  bool optional{false};  // optional copy that can be skipped if source node is missing
+  bool copy_all{false};           // ignore src_slot.idx and copy all values
+  bool append{false};             // ignore dest_slot.idx and append to existing values
+  bool optional{false};           // optional copy that can be skipped if source node is missing
+  bool fill_optional_with_empty;  // fill optional NodeArg by NodeArg with empty name.
+                                  // Only support in 'append single value' mode.
 
  private:
   ValueMoveInfo() = default;
@@ -203,10 +191,16 @@ struct NodeAndMoveInfo {
 };
 
 // helpers for moving inputs/outputs and their edges between nodes
+// if `only_update_dest_definitions` is true, only updates the destination node's definitions. otherwise, updates graph
+// edges and node definitions.
+// setting `only_update_dest_definitions` to true is useful for updating the destination node independently from the
+// rest of the graph. e.g., when creating a temporary node that is used to look up a kernel def, we can set the
+// temporary node's definitions (which is all we need) without updating existing graph edges.
 Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
-                       const std::vector<NodeAndMoveInfo>& moves);
+                       gsl::span<const NodeAndMoveInfo> moves, bool only_update_dest_definitions);
 
-Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info);
+Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info,
+                       bool only_update_dest_definitions);
 
 //
 // Helpers to make the 'move' configuration more easily read
@@ -226,10 +220,12 @@ inline NodeAndMoveInfo MoveToSlot(const NodesToOptimize::NodeLocation& src_node,
 inline NodeAndMoveInfo MoveAndAppend(const NodesToOptimize::NodeLocation& src_node,
                                      ArgType src_direction, int src_slot,
                                      ArgType dest_direction,
-                                     bool optional = false) {
+                                     bool optional = false,
+                                     bool fill_optional_with_empty = false) {
   return NodeAndMoveInfo{src_node, ValueMoveInfo{
                                        InOutDefSlot{src_direction, src_slot},  // move from this slot
-                                       dest_direction, optional}};             // append here
+                                       dest_direction, optional,
+                                       fill_optional_with_empty}};  // append here
 }
 
 // move all inputs/outputs from the source node to the target/replacement node

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {Backend, InferenceSession, SessionHandler} from 'onnxruntime-common';
+
 import {Binding, binding} from './binding';
 
 class OnnxruntimeSessionHandler implements SessionHandler {

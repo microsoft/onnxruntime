@@ -1,35 +1,53 @@
-import os
-import csv
-import logging
-import coloredlogs
-import argparse
-import copy
+import argparse  # noqa: F401
+import copy  # noqa: F401
+import csv  # noqa: F401
 import json
-import re
+import logging  # noqa: F401
+import os
 import pprint
-from benchmark import *
+import re
+
+import coloredlogs  # noqa: F401
+from benchmark import *  # noqa: F403
+from perf_utils import *  # noqa: F403
+
 
 def write_model_info_to_file(model, path):
-    with open(path, 'w') as file:
-        file.write(json.dumps(model)) # use `json.loads` to do the reverse
+    with open(path, "w") as file:
+        file.write(json.dumps(model))  # use `json.loads` to do the reverse
 
-def get_ep_list(comparison): 
-    if comparison == 'acl': 
-        ep_list = [cpu, acl]
-    else:   
+
+def get_ep_list(comparison):
+    if comparison == "acl":
+        ep_list = [cpu, acl]  # noqa: F405
+    else:
         # test with cuda and trt
-        ep_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
+        ep_list = [
+            cpu,  # noqa: F405
+            cuda,  # noqa: F405
+            trt,  # noqa: F405
+            standalone_trt,  # noqa: F405
+            cuda_fp16,  # noqa: F405
+            trt_fp16,  # noqa: F405
+            standalone_trt_fp16,  # noqa: F405
+        ]
     return ep_list
 
-def resolve_trtexec_path(workspace): 
-    trtexec_options = get_output(["find", workspace, "-name", "trtexec"])
-    trtexec_path = re.search(r'.*/bin/trtexec', trtexec_options).group(0)
-    logger.info("using trtexec {}".format(trtexec_path))
+
+def resolve_trtexec_path(workspace):
+    trtexec_options = get_output(["find", workspace, "-name", "trtexec"])  # noqa: F405
+    trtexec_path = re.search(r".*/bin/trtexec", trtexec_options).group(0)
+    logger.info(f"using trtexec {trtexec_path}")  # noqa: F405
     return trtexec_path
 
+
+def dict_to_args(dct):
+    return ",".join([f"{k}={v}" for k, v in dct.items()])
+
+
 def main():
-    args = parse_arguments()
-    setup_logger(False)
+    args = parse_arguments()  # noqa: F405
+    setup_logger(False)  # noqa: F405
     pp = pprint.PrettyPrinter(indent=4)
 
     # create ep list to iterate through
@@ -38,134 +56,179 @@ def main():
     else:
         ep_list = get_ep_list(args.comparison)
 
-    if standalone_trt in ep_list or standalone_trt_fp16 in ep_list: 
-        trtexec = resolve_trtexec_path(args.workspace)
+    trtexec = resolve_trtexec_path(args.workspace)
 
     models = {}
-    parse_models_helper(args, models)
+    parse_models_helper(args, models)  # noqa: F405
 
     model_to_fail_ep = {}
 
-    benchmark_fail_csv = 'fail.csv'
-    benchmark_metrics_csv = 'metrics.csv' 
-    benchmark_success_csv = 'success.csv'  
-    benchmark_latency_csv = 'latency.csv' 
-    benchmark_status_csv = 'status.csv' 
+    benchmark_fail_csv = fail_name + csv_ending  # noqa: F405
+    benchmark_metrics_csv = metrics_name + csv_ending  # noqa: F405
+    benchmark_success_csv = success_name + csv_ending  # noqa: F405
+    benchmark_latency_csv = latency_name + csv_ending  # noqa: F405
+    benchmark_status_csv = status_name + csv_ending  # noqa: F405
+    benchmark_session_csv = session_name + csv_ending  # noqa: F405
+    specs_csv = specs_name + csv_ending  # noqa: F405
+
+    validate = is_validate_mode(args.running_mode)  # noqa: F405
+    benchmark = is_benchmark_mode(args.running_mode)  # noqa: F405
 
     for model, model_info in models.items():
-        logger.info("\n" + "="*40 + "="*len(model))
-        logger.info("="*20 + model +"="*20)
-        logger.info("="*40 + "="*len(model))
+        logger.info("\n" + "=" * 40 + "=" * len(model))  # noqa: F405
+        logger.info("=" * 20 + model + "=" * 20)  # noqa: F405
+        logger.info("=" * 40 + "=" * len(model))  # noqa: F405
 
-        model_info["model_name"] = model 
-        
-        model_list_file = os.path.join(os.getcwd(), model +'.json')
+        model_info["model_name"] = model
+
+        model_list_file = os.path.join(os.getcwd(), model + ".json")
         write_model_info_to_file([model_info], model_list_file)
-        
-        for ep in ep_list:
-            
-            command =  ["python3",
-                        "benchmark.py",
-                        "-r", args.running_mode,
-                        "-m", model_list_file,
-                        "-o", args.perf_result_path,
-                        "--ep", ep,
-                        "--write_test_result", "false"]
-            
-            if "Standalone" in ep: 
-                if args.running_mode == "validate": 
-                    continue 
-                else:
-                    command.extend(["--trtexec", trtexec])
 
-            if args.running_mode == "validate":
+        for ep in ep_list:
+            command = [
+                "python3",
+                "benchmark.py",
+                "-r",
+                args.running_mode,
+                "-m",
+                model_list_file,
+                "-o",
+                args.perf_result_path,
+                "--ep",
+                ep,
+                "--write_test_result",
+                "false",
+            ]
+
+            if args.track_memory:
+                command.append("-z")
+
+            if ep in (standalone_trt, standalone_trt_fp16):  # noqa: F405
+                command.extend(["--trtexec", trtexec])
+
+            if len(args.cuda_ep_options):
+                command.extend(["--cuda_ep_options", dict_to_args(args.cuda_ep_options)])
+
+            if len(args.trt_ep_options):
+                command.extend(["--trt_ep_options", dict_to_args(args.trt_ep_options)])
+
+            if validate:
                 command.extend(["--benchmark_metrics_csv", benchmark_metrics_csv])
-            
-            elif args.running_mode == "benchmark":
-                command.extend(["-t", str(args.test_times),
-                                "-o", args.perf_result_path,
-                                "--write_test_result", "false",
-                                "--benchmark_fail_csv", benchmark_fail_csv,
-                                "--benchmark_latency_csv", benchmark_latency_csv,
-                                "--benchmark_success_csv", benchmark_success_csv]) 
-           
-            p = subprocess.run(command)
-            logger.info(p)
+
+            if benchmark:
+                command.extend(
+                    [
+                        "-t",
+                        str(args.test_times),
+                        "-o",
+                        args.perf_result_path,
+                        "--write_test_result",
+                        "false",
+                        "--benchmark_fail_csv",
+                        benchmark_fail_csv,
+                        "--benchmark_latency_csv",
+                        benchmark_latency_csv,
+                        "--benchmark_success_csv",
+                        benchmark_success_csv,
+                    ]
+                )
+
+            p = subprocess.run(command, stderr=subprocess.PIPE)  # noqa: F405
+            logger.info("Completed subprocess %s ", " ".join(p.args))  # noqa: F405
+            logger.info("Return code: %d", p.returncode)  # noqa: F405
 
             if p.returncode != 0:
-                error_type = "runtime error" 
+                error_type = "runtime error"
                 error_message = "Benchmark script exited with returncode = " + str(p.returncode)
-                logger.error(error_message)
-                update_fail_model_map(model_to_fail_ep, model, ep, error_type, error_message)
-                write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)
-                logger.info(model_to_fail_ep)
+
+                if p.stderr:
+                    error_message += "\nSTDERR:\n" + p.stderr.decode("utf-8")
+
+                logger.error(error_message)  # noqa: F405
+                update_fail_model_map(model_to_fail_ep, model, ep, error_type, error_message)  # noqa: F405
+                write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)  # noqa: F405
+                logger.info(model_to_fail_ep)  # noqa: F405
 
         os.remove(model_list_file)
 
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):
         from pathlib import Path
+
         Path(path).mkdir(parents=True, exist_ok=True)
 
-    if args.running_mode == "validate":
-        logger.info("\n=========================================")
-        logger.info("=========== Models/EPs metrics ==========")
-        logger.info("=========================================")
+    if validate:
+        logger.info("\n=========================================")  # noqa: F405
+        logger.info("=========== Models/EPs metrics ==========")  # noqa: F405
+        logger.info("=========================================")  # noqa: F405
 
-        if os.path.exists(METRICS_FILE):
-            model_to_metrics = read_map_from_file(METRICS_FILE)
-            output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
-            logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv)) 
-    
-    elif args.running_mode == "benchmark":
-        logger.info("\n=========================================================")
-        logger.info("========== Failing Models/EPs (accumulated) ==============")
-        logger.info("==========================================================")
+        if os.path.exists(METRICS_FILE):  # noqa: F405
+            model_to_metrics = read_map_from_file(METRICS_FILE)  # noqa: F405
+            output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))  # noqa: F405
+            logger.info(f"\nSaved model metrics results to {benchmark_metrics_csv}")  # noqa: F405
 
-        if os.path.exists(FAIL_MODEL_FILE) or len(model_to_fail_ep) > 1:
-            model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
-            output_fail(model_to_fail_ep, os.path.join(path, benchmark_fail_csv))
-            logger.info(model_to_fail_ep)
-            logger.info("\nSaved model failing results to {}".format(benchmark_fail_csv)) 
+    if benchmark:
+        logger.info("\n=========================================")  # noqa: F405
+        logger.info("======= Models/EPs session creation =======")  # noqa: F405
+        logger.info("=========================================")  # noqa: F405
 
-        logger.info("\n=======================================================")
-        logger.info("=========== Models/EPs Status (accumulated) ===========")
-        logger.info("=======================================================")
+        if os.path.exists(SESSION_FILE):  # noqa: F405
+            model_to_session = read_map_from_file(SESSION_FILE)  # noqa: F405
+            pretty_print(pp, model_to_session)  # noqa: F405
+            output_session_creation(model_to_session, os.path.join(path, benchmark_session_csv))  # noqa: F405
+            logger.info(f"\nSaved session creation results to {benchmark_session_csv}")  # noqa: F405
+
+        logger.info("\n=========================================================")  # noqa: F405
+        logger.info("========== Failing Models/EPs (accumulated) ==============")  # noqa: F405
+        logger.info("==========================================================")  # noqa: F405
+
+        if os.path.exists(FAIL_MODEL_FILE) or len(model_to_fail_ep) > 1:  # noqa: F405
+            model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)  # noqa: F405
+            output_fail(model_to_fail_ep, os.path.join(path, benchmark_fail_csv))  # noqa: F405
+            logger.info(model_to_fail_ep)  # noqa: F405
+            logger.info(f"\nSaved model failing results to {benchmark_fail_csv}")  # noqa: F405
+
+        logger.info("\n=======================================================")  # noqa: F405
+        logger.info("=========== Models/EPs Status (accumulated) ===========")  # noqa: F405
+        logger.info("=======================================================")  # noqa: F405
 
         model_status = {}
-        if os.path.exists(LATENCY_FILE):
-            model_latency = read_map_from_file(LATENCY_FILE)
+        if os.path.exists(LATENCY_FILE):  # noqa: F405
+            model_latency = read_map_from_file(LATENCY_FILE)  # noqa: F405
             is_fail = False
-            model_status = build_status(model_status, model_latency, is_fail)
-        if os.path.exists(FAIL_MODEL_FILE):
-            model_fail = read_map_from_file(FAIL_MODEL_FILE)
+            model_status = build_status(model_status, model_latency, is_fail)  # noqa: F405
+        if os.path.exists(FAIL_MODEL_FILE):  # noqa: F405
+            model_fail = read_map_from_file(FAIL_MODEL_FILE)  # noqa: F405
             is_fail = True
-            model_status = build_status(model_status, model_fail, is_fail)
-       
-        pretty_print(pp, model_status)
-        
-        output_status(model_status, os.path.join(path, benchmark_status_csv)) 
-        logger.info("\nSaved model status results to {}".format(benchmark_status_csv)) 
+            model_status = build_status(model_status, model_fail, is_fail)  # noqa: F405
 
-        logger.info("\n=========================================================")
-        logger.info("=========== Models/EPs latency (accumulated)  ===========")
-        logger.info("=========================================================")
+        pretty_print(pp, model_status)  # noqa: F405
 
-        if os.path.exists(LATENCY_FILE):
-            model_to_latency = read_map_from_file(LATENCY_FILE)
-            add_improvement_information(model_to_latency)
-            
-            pretty_print(pp, model_to_latency)
-            
-            output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
-            logger.info("\nSaved model status results to {}".format(benchmark_latency_csv)) 
+        output_status(model_status, os.path.join(path, benchmark_status_csv))  # noqa: F405
+        logger.info(f"\nSaved model status results to {benchmark_status_csv}")  # noqa: F405
 
-    logger.info("\n===========================================")
-    logger.info("=========== System information  ===========")
-    logger.info("===========================================")
-    info = get_system_info(args.workspace)
-    pretty_print(pp, info)
-    logger.info("\n")
+        logger.info("\n=========================================================")  # noqa: F405
+        logger.info("=========== Models/EPs latency (accumulated)  ===========")  # noqa: F405
+        logger.info("=========================================================")  # noqa: F405
+
+        if os.path.exists(LATENCY_FILE):  # noqa: F405
+            model_to_latency = read_map_from_file(LATENCY_FILE)  # noqa: F405
+            add_improvement_information(model_to_latency)  # noqa: F405
+
+            pretty_print(pp, model_to_latency)  # noqa: F405
+
+            output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))  # noqa: F405
+            logger.info(f"\nSaved model latency results to {benchmark_latency_csv}")  # noqa: F405
+
+    logger.info("\n===========================================")  # noqa: F405
+    logger.info("=========== System information  ===========")  # noqa: F405
+    logger.info("===========================================")  # noqa: F405
+    info = get_system_info(args)  # noqa: F405
+    pretty_print(pp, info)  # noqa: F405
+    logger.info("\n")  # noqa: F405
+    output_specs(info, os.path.join(path, specs_csv))  # noqa: F405
+    logger.info(f"\nSaved hardware specs to {specs_csv}")  # noqa: F405
+
 
 if __name__ == "__main__":
     main()

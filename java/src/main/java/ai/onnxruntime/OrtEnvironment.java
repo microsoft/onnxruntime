@@ -1,20 +1,26 @@
 /*
- * Copyright (c) 2019-2021 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import ai.onnxruntime.OrtSession.SessionOptions;
+import ai.onnxruntime.OrtTrainingSession.OrtCheckpointState;
 import java.io.IOException;
 import java.util.EnumSet;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 /**
  * The host object for the onnx-runtime system. Can create {@link OrtSession}s which encapsulate
  * specific models.
+ *
+ * <p>There can be at most one OrtEnvironment object created in a JVM lifetime. This class
+ * implements {@link AutoCloseable} as before for backwards compatibility with 1.10 and earlier, but
+ * the close method is a no-op. The environment is closed by a JVM shutdown hook registered on
+ * construction.
  */
-public class OrtEnvironment implements AutoCloseable {
+public final class OrtEnvironment implements AutoCloseable {
 
   private static final Logger logger = Logger.getLogger(OrtEnvironment.class.getName());
 
@@ -29,8 +35,6 @@ public class OrtEnvironment implements AutoCloseable {
   }
 
   private static volatile OrtEnvironment INSTANCE;
-
-  private static final AtomicInteger refCount = new AtomicInteger();
 
   private static volatile OrtLoggingLevel curLogLevel;
 
@@ -47,8 +51,6 @@ public class OrtEnvironment implements AutoCloseable {
       // If there's no instance, create one.
       return getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, DEFAULT_NAME);
     } else {
-      // else return the current one.
-      refCount.incrementAndGet();
       return INSTANCE;
     }
   }
@@ -106,7 +108,6 @@ public class OrtEnvironment implements AutoCloseable {
             "Tried to change OrtEnvironment's logging level or name while a reference exists.");
       }
     }
-    refCount.incrementAndGet();
     return INSTANCE;
   }
 
@@ -131,7 +132,6 @@ public class OrtEnvironment implements AutoCloseable {
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to create OrtEnvironment", e);
       }
-      refCount.incrementAndGet();
       return INSTANCE;
     } else {
       // As the thread pool state is unknown, and that's probably not what the user wanted.
@@ -143,8 +143,6 @@ public class OrtEnvironment implements AutoCloseable {
   final long nativeHandle;
 
   final OrtAllocator defaultAllocator;
-
-  private volatile boolean closed = false;
 
   /**
    * Create an OrtEnvironment using a default name.
@@ -165,6 +163,8 @@ public class OrtEnvironment implements AutoCloseable {
   private OrtEnvironment(OrtLoggingLevel loggingLevel, String name) throws OrtException {
     nativeHandle = createHandle(OnnxRuntime.ortApiHandle, loggingLevel.getValue(), name);
     defaultAllocator = new OrtAllocator(getDefaultAllocator(OnnxRuntime.ortApiHandle), true);
+    Runtime.getRuntime()
+        .addShutdownHook(new Thread(new OrtEnvCloser(OnnxRuntime.ortApiHandle, nativeHandle)));
   }
 
   /**
@@ -181,6 +181,17 @@ public class OrtEnvironment implements AutoCloseable {
         createHandle(
             OnnxRuntime.ortApiHandle, loggingLevel.getValue(), name, threadOptions.nativeHandle);
     defaultAllocator = new OrtAllocator(getDefaultAllocator(OnnxRuntime.ortApiHandle), true);
+    Runtime.getRuntime()
+        .addShutdownHook(new Thread(new OrtEnvCloser(OnnxRuntime.ortApiHandle, nativeHandle)));
+  }
+
+  /**
+   * Package accessor for native pointer.
+   *
+   * @return The native pointer.
+   */
+  long getNativeHandle() {
+    return nativeHandle;
   }
 
   /**
@@ -219,11 +230,8 @@ public class OrtEnvironment implements AutoCloseable {
    */
   OrtSession createSession(String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
-    if (!closed) {
-      return new OrtSession(this, modelPath, allocator, options);
-    } else {
-      throw new IllegalStateException("Trying to create an OrtSession on a closed OrtEnvironment.");
-    }
+    Objects.requireNonNull(modelPath, "model path must not be null");
+    return new OrtSession(this, modelPath, allocator, options);
   }
 
   /**
@@ -262,11 +270,88 @@ public class OrtEnvironment implements AutoCloseable {
    */
   OrtSession createSession(byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
-    if (!closed) {
-      return new OrtSession(this, modelArray, allocator, options);
+    Objects.requireNonNull(modelArray, "model array must not be null");
+    return new OrtSession(this, modelArray, allocator, options);
+  }
+
+  /**
+   * Create a training session using the default {@link SessionOptions}, model and the default
+   * memory allocator.
+   *
+   * @param checkpointPath Path to the checkpoint folder.
+   * @param trainPath Path to the training model.
+   * @param evalPath Path to the evaluation model. Null signifies there is no eval model.
+   * @param optimizerPath Path to the optimizer model. Null signifies there is no optimizer model.
+   * @return An {@link OrtTrainingSession} with the specified model loaded.
+   * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
+   */
+  public OrtTrainingSession createTrainingSession(
+      String checkpointPath, String trainPath, String evalPath, String optimizerPath)
+      throws OrtException {
+    return createTrainingSession(
+        checkpointPath, trainPath, evalPath, optimizerPath, new OrtSession.SessionOptions());
+  }
+
+  /**
+   * Create a training session using the specified {@link SessionOptions}, model and the default
+   * memory allocator.
+   *
+   * @param checkpointPath Path to the checkpoint folder.
+   * @param trainPath Path to the training model.
+   * @param evalPath Path to the evaluation model. Null signifies there is no eval model.
+   * @param optimizerPath Path to the optimizer model. Null signifies there is no optimizer model.
+   * @param options The session options.
+   * @return An {@link OrtTrainingSession} with the specified model.
+   * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
+   */
+  public OrtTrainingSession createTrainingSession(
+      String checkpointPath,
+      String trainPath,
+      String evalPath,
+      String optimizerPath,
+      SessionOptions options)
+      throws OrtException {
+    return createTrainingSession(
+        checkpointPath, trainPath, evalPath, optimizerPath, defaultAllocator, options);
+  }
+
+  /**
+   * Create a training session using the specified {@link SessionOptions} and model.
+   *
+   * @param checkpointPath Path to the checkpoint folder.
+   * @param trainPath Path to the training model.
+   * @param evalPath Path to the evaluation model.
+   * @param optimizerPath Path to the optimizer model.
+   * @param allocator The memory allocator to use.
+   * @param options The session options.
+   * @return An {@link OrtTrainingSession} with the specified model.
+   * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
+   */
+  OrtTrainingSession createTrainingSession(
+      String checkpointPath,
+      String trainPath,
+      String evalPath,
+      String optimizerPath,
+      OrtAllocator allocator,
+      SessionOptions options)
+      throws OrtException {
+    if (OnnxRuntime.trainingEnabled) {
+      Objects.requireNonNull(trainPath, "train path must not be null");
+      OrtCheckpointState checkpointState = OrtCheckpointState.loadCheckpoint(checkpointPath);
+      return new OrtTrainingSession(
+          this, allocator, options, checkpointState, trainPath, evalPath, optimizerPath);
     } else {
-      throw new IllegalStateException("Trying to create an OrtSession on a closed OrtEnvironment.");
+      throw new IllegalStateException("Training is not enabled in this build of ONNX Runtime.");
     }
+  }
+
+  /**
+   * Is training enabled in this build of ONNX Runtime?
+   *
+   * @return True if training is enabled.
+   */
+  public boolean isTrainingEnabled() {
+    return OnnxRuntime.trainingEnabled;
   }
 
   /**
@@ -280,38 +365,23 @@ public class OrtEnvironment implements AutoCloseable {
   }
 
   /**
-   * Is this environment closed?
+   * Gets the native library version string.
    *
-   * @return True if the environment is closed.
+   * @return The version string.
    */
-  public boolean isClosed() {
-    return closed;
+  public String getVersion() {
+    return OnnxRuntime.version();
   }
 
   @Override
   public String toString() {
-    return "OrtEnvironment(name=" + curLoggingName + ",logLevel=" + curLogLevel + ")";
-  }
-
-  /**
-   * Closes the OrtEnvironment. If this is the last reference to the environment then it closes the
-   * native handle.
-   *
-   * @throws OrtException If the close failed.
-   */
-  @Override
-  public synchronized void close() throws OrtException {
-    synchronized (refCount) {
-      int curCount = refCount.get();
-      if (curCount != 0) {
-        refCount.decrementAndGet();
-      }
-      if (curCount == 1) {
-        close(OnnxRuntime.ortApiHandle, nativeHandle);
-        closed = true;
-        INSTANCE = null;
-      }
-    }
+    return "OrtEnvironment(name="
+        + curLoggingName
+        + ",logLevel="
+        + curLogLevel
+        + ",version="
+        + getVersion()
+        + ")";
   }
 
   /**
@@ -377,11 +447,22 @@ public class OrtEnvironment implements AutoCloseable {
   private static native void setTelemetry(long apiHandle, long nativeHandle, boolean sendTelemetry)
       throws OrtException;
 
+  /** Close is a no-op on OrtEnvironment since ORT 1.11. */
+  @Override
+  public void close() {}
+
   /**
    * Controls the global thread pools in the environment. Only used if the session is constructed
    * using an options with {@link OrtSession.SessionOptions#disablePerSessionThreads()} set.
    */
   public static final class ThreadingOptions implements AutoCloseable {
+    static {
+      try {
+        OnnxRuntime.init();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to load onnx-runtime library", e);
+      }
+    }
 
     private final long nativeHandle;
 
@@ -485,5 +566,25 @@ public class OrtEnvironment implements AutoCloseable {
         throws OrtException;
 
     private native void closeThreadingOptions(long apiHandle, long nativeHandle);
+  }
+
+  private static final class OrtEnvCloser implements Runnable {
+
+    private final long apiHandle;
+    private final long nativeHandle;
+
+    OrtEnvCloser(long apiHandle, long nativeHandle) {
+      this.apiHandle = apiHandle;
+      this.nativeHandle = nativeHandle;
+    }
+
+    @Override
+    public void run() {
+      try {
+        OrtEnvironment.close(apiHandle, nativeHandle);
+      } catch (OrtException e) {
+        System.err.println("Error closing OrtEnvironment, " + e);
+      }
+    }
   }
 }

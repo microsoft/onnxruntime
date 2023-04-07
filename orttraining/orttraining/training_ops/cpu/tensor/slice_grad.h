@@ -21,10 +21,11 @@ class SliceGrad final : public OpKernel, public SliceBase {
   template <typename T>
   Status ComputeImpl(OpKernelContext* ctx,
                      Tensor& output_grad_tensor,
-                     const std::vector<int64_t>& output_dims,
-                     std::vector<int64_t>* flattened_output_dims,
-                     const std::vector<int64_t>& starts,
-                     const std::vector<int64_t>& steps) const;
+                     const gsl::span<const int64_t>& output_dims,
+                     TensorShapeVector* p_flattened_input_dims,
+                     TensorShapeVector* p_flattened_output_dims,
+                     const gsl::span<const int64_t>& starts,
+                     const gsl::span<const int64_t>& steps) const;
 };
 
 }  // namespace contrib

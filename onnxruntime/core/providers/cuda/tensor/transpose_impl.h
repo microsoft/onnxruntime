@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace cuda {
 
 bool CanDoTranspose3D(const cudaDeviceProp& prop,
-                      int32_t rank, const std::vector<int64_t>& input_dims, const std::vector<size_t>& permutations,
+                      size_t rank, const gsl::span<const int64_t>& input_dims, const gsl::span<const size_t>& permutations,
                       dim3& grid_size, dim3& block_size);
 Status Transpose3DImpl(cudaStream_t stream, size_t element_size, const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides, const void* input_data,
                        void* output_data, int64_t N,
@@ -18,8 +18,8 @@ Status Transpose3DImpl(cudaStream_t stream, size_t element_size, const TArray<in
 bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cudaDeviceProp& prop,
                                                                         size_t element_size,
                                                                         int32_t rank,
-                                                                        const std::vector<int64_t>& input_dims,
-                                                                        const std::vector<size_t>& permutations,
+                                                                        const gsl::span<const int64_t>& input_dims,
+                                                                        const gsl::span<const size_t>& permutations,
                                                                         dim3& grid_size, dim3& block_size);
 Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(cudaStream_t stream,
                                                                      size_t element_size, const TArray<int64_t>& input_shape,
@@ -30,8 +30,8 @@ Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(cudaStream_
 bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
                                                     size_t element_size,
                                                     int32_t rank,
-                                                    const std::vector<int64_t>& input_dims,
-                                                    const std::vector<size_t>& permutations,
+                                                    const gsl::span<const int64_t>& input_dims,
+                                                    const gsl::span<const size_t>& permutations,
                                                     dim3& grid_size, dim3& block_size);
 Status Transpose4DParallelizeOneElementPerThread(cudaStream_t stream,
                                                  size_t element_size, const TArray<int64_t>& input_shape,

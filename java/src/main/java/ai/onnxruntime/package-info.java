@@ -39,9 +39,9 @@
  * For troubleshooting, all shared library loading events are reported to Java logging at the level
  * FINE.
  *
- * <p>Note that CUDA, DNNL, OpenVINO and TensorRT are all "shared library execution providers", and
- * must be stored either in the directory containing the ONNX Runtime core native library, or as a
- * classpath resource. This is because these providers are loaded by the ONNX Runtime native library
- * itself and the Java API cannot control the loading location.
+ * <p>Note that CUDA, ROCM, DNNL, OpenVINO and TensorRT are all "shared library execution providers"
+ * and must be stored either in the directory containing the ONNX Runtime core native library, or as
+ * a classpath resource. This is because these providers are loaded by the ONNX Runtime native
+ * library itself and the Java API cannot control the loading location.
  */
 package ai.onnxruntime;

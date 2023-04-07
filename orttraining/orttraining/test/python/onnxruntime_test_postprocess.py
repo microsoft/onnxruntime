@@ -1,44 +1,53 @@
-import unittest
-import pytest
-import sys
 import os
-import copy
-from numpy.testing import assert_allclose, assert_array_equal
+import unittest
 
-import onnx
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-from orttraining_test_utils import map_optimizer_attributes
-from orttraining_test_transformers import BertModelTest, BertForPreTraining
-from orttraining_test_data_loader import create_ort_test_dataloader
 from orttraining_test_bert_postprocess import postprocess_model
-import onnxruntime
+from orttraining_test_data_loader import create_ort_test_dataloader
+from orttraining_test_transformers import BertForPreTraining, BertModelTest
+from orttraining_test_utils import map_optimizer_attributes
 
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
+import onnxruntime
+from onnxruntime.capi.ort_trainer import (  # noqa: F401
+    IODescription,
+    LossScaler,
+    ModelDescription,
+    ORTTrainer,
+    generate_sample,
+)
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
 
-class Test_PostPasses(unittest.TestCase):
-    def get_onnx_model(self, model, model_desc, inputs, device,
-                       _enable_internal_postprocess=True, _extra_postprocess=None):
-        lr_desc = IODescription('Learning_Rate', [1,], torch.float32)
-        model = ORTTrainer(model,
-                           None,
-                           model_desc,
-                           "LambOptimizer",
-                           map_optimizer_attributes,
-                           lr_desc,
-                           device,
-                           world_rank=0,
-                           world_size=1,
-                           _opset_version=12,
-                           _enable_internal_postprocess=_enable_internal_postprocess,
-                           _extra_postprocess=_extra_postprocess)
 
-        train_output = model.train_step(*inputs)
+class Test_PostPasses(unittest.TestCase):  # noqa: N801
+    def get_onnx_model(
+        self, model, model_desc, inputs, device, _enable_internal_postprocess=True, _extra_postprocess=None
+    ):
+        lr_desc = IODescription(
+            "Learning_Rate",
+            [
+                1,
+            ],
+            torch.float32,
+        )
+        model = ORTTrainer(
+            model,
+            None,
+            model_desc,
+            "LambOptimizer",
+            map_optimizer_attributes,
+            lr_desc,
+            device,
+            world_rank=0,
+            world_size=1,
+            _opset_version=14,
+            _enable_internal_postprocess=_enable_internal_postprocess,
+            _extra_postprocess=_extra_postprocess,
+        )
+
+        model.train_step(*inputs)
         return model.onnx_model_
 
     def count_all_nodes(self, model):
@@ -69,12 +78,12 @@ class Test_PostPasses(unittest.TestCase):
         res = os.path.join(data, name)
         if os.path.exists(res):
             return res
-        raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
+        raise FileNotFoundError(f"Unable to find '{name}' or '{rel}' or '{res}'")
 
     def test_layer_norm(self):
         class LayerNormNet(nn.Module):
             def __init__(self, target):
-                super(LayerNormNet, self).__init__()
+                super().__init__()
                 self.ln_1 = nn.LayerNorm(10)
                 self.loss = nn.CrossEntropyLoss()
                 self.target = target
@@ -89,13 +98,13 @@ class Test_PostPasses(unittest.TestCase):
         model = LayerNormNet(target)
         input = torch.randn(20, 5, 10, 10, dtype=torch.float32).to(device)
 
-        input_desc = IODescription('input', [], "float32")
-        output0_desc = IODescription('output0', [], "float32")
-        output1_desc = IODescription('output1', [20, 5, 10, 10], "float32")
+        input_desc = IODescription("input", [], "float32")
+        output0_desc = IODescription("output0", [], "float32")
+        output1_desc = IODescription("output1", [20, 5, 10, 10], "float32")
         model_desc = ModelDescription([input_desc], [output0_desc, output1_desc])
 
-        learning_rate = torch.tensor([1.0000000e+00]).to(device)
-        input_args=[input, learning_rate]
+        learning_rate = torch.tensor([1.0000000e00]).to(device)
+        input_args = [input, learning_rate]
 
         onnx_model = self.get_onnx_model(model, model_desc, input_args, device)
 
@@ -108,7 +117,7 @@ class Test_PostPasses(unittest.TestCase):
     def test_expand(self):
         class ExpandNet(nn.Module):
             def __init__(self, target):
-                super(ExpandNet, self).__init__()
+                super().__init__()
                 self.loss = nn.CrossEntropyLoss()
                 self.target = target
                 self.linear = torch.nn.Linear(2, 2)
@@ -127,13 +136,13 @@ class Test_PostPasses(unittest.TestCase):
         x = torch.randn(5, 3, 1, 2, dtype=torch.float32).to(device)
         x1 = torch.randn(5, 3, 5, 2, dtype=torch.float32).to(device)
 
-        input0_desc = IODescription('x', [5, 3, 1, 2], "float32")
-        input1_desc = IODescription('x1', [5, 3, 5, 2], "float32")
-        output0_desc = IODescription('output0', [], "float32")
-        output1_desc = IODescription('output1', [5, 3, 5, 2], "float32")
+        input0_desc = IODescription("x", [5, 3, 1, 2], "float32")
+        input1_desc = IODescription("x1", [5, 3, 5, 2], "float32")
+        output0_desc = IODescription("output0", [], "float32")
+        output1_desc = IODescription("output1", [5, 3, 5, 2], "float32")
         model_desc = ModelDescription([input0_desc, input1_desc], [output0_desc, output1_desc])
 
-        learning_rate = torch.tensor([1.0000000e+00]).to(device)
+        learning_rate = torch.tensor([1.0000000e00]).to(device)
         input_args = [x, x1, learning_rate]
 
         onnx_model = self.get_onnx_model(model, model_desc, input_args, device)
@@ -150,49 +159,61 @@ class Test_PostPasses(unittest.TestCase):
         device = torch.device("cpu")
 
         model_tester = BertModelTest.BertModelTester(self)
-        config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels = model_tester.prepare_config_and_inputs()
+        (
+            config,
+            input_ids,
+            token_type_ids,
+            input_mask,
+            sequence_labels,
+            token_labels,
+            choice_labels,
+        ) = model_tester.prepare_config_and_inputs()
 
         model = BertForPreTraining(config=config)
         model.eval()
 
-        loss, prediction_scores, seq_relationship_score = model(input_ids,
-                                                                attention_mask=input_mask,
-                                                                token_type_ids=token_type_ids,
-                                                                masked_lm_labels=token_labels,
-                                                                next_sentence_label=sequence_labels)
+        loss, prediction_scores, seq_relationship_score = model(
+            input_ids,
+            attention_mask=input_mask,
+            token_type_ids=token_type_ids,
+            masked_lm_labels=token_labels,
+            next_sentence_label=sequence_labels,
+        )
 
-        model_desc = ModelDescription([model_tester.input_ids_desc,
-                                       model_tester.attention_mask_desc,
-                                       model_tester.token_type_ids_desc,
-                                       model_tester.masked_lm_labels_desc,
-                                       model_tester.next_sentence_label_desc],
-                                      [model_tester.loss_desc,
-                                       model_tester.prediction_scores_desc,
-                                       model_tester.seq_relationship_scores_desc])
+        model_desc = ModelDescription(
+            [
+                model_tester.input_ids_desc,
+                model_tester.attention_mask_desc,
+                model_tester.token_type_ids_desc,
+                model_tester.masked_lm_labels_desc,
+                model_tester.next_sentence_label_desc,
+            ],
+            [model_tester.loss_desc, model_tester.prediction_scores_desc, model_tester.seq_relationship_scores_desc],
+        )
 
         from collections import namedtuple
-        MyArgs = namedtuple("MyArgs",
-                            "local_rank world_size max_steps learning_rate warmup_proportion batch_size seq_len")
-        args = MyArgs(local_rank=0,
-                      world_size=1,
-                      max_steps=100,
-                      learning_rate=0.00001,
-                      warmup_proportion=0.01,
-                      batch_size=13,
-                      seq_len=7)
-        
+
+        MyArgs = namedtuple(
+            "MyArgs", "local_rank world_size max_steps learning_rate warmup_proportion batch_size seq_len"
+        )
+        args = MyArgs(
+            local_rank=0,
+            world_size=1,
+            max_steps=100,
+            learning_rate=0.00001,
+            warmup_proportion=0.01,
+            batch_size=13,
+            seq_len=7,
+        )
+
         dataset_len = 100
-        dataloader = create_ort_test_dataloader(model_desc.inputs_,
-                                                args.batch_size,
-                                                args.seq_len,
-                                                dataset_len,
-                                                device)
-        learning_rate = torch.tensor(1.0e+0, dtype=torch.float32).to(device)
+        dataloader = create_ort_test_dataloader(model_desc.inputs_, args.batch_size, args.seq_len, dataset_len, device)
+        learning_rate = torch.tensor(1.0e0, dtype=torch.float32).to(device)
         for b in dataloader:
             batch = b
             break
-        learning_rate = torch.tensor([1.00e+00]).to(device)
-        inputs = batch + [learning_rate,]
+        learning_rate = torch.tensor([1.00e00]).to(device)
+        inputs = [*batch, learning_rate]
 
         onnx_model = self.get_onnx_model(model, model_desc, inputs, device, _extra_postprocess=postprocess_model)
 
@@ -233,12 +254,12 @@ class Test_PostPasses(unittest.TestCase):
             #                 Sub
             #                  |
             #             (subgraph 3)
-            add_nodes = [n for n in model.graph.node if n.op_type == 'Add']
+            add_nodes = [n for n in model.graph.node if n.op_type == "Add"]
             add_nodes[0].op_type = "Sub"
 
         class MultiAdd(nn.Module):
             def __init__(self, target):
-                super(MultiAdd, self).__init__()
+                super().__init__()
                 self.loss = nn.CrossEntropyLoss()
                 self.target = target
                 self.linear = torch.nn.Linear(2, 2, bias=False)
@@ -258,17 +279,18 @@ class Test_PostPasses(unittest.TestCase):
         x = torch.randn(5, 5, 2, dtype=torch.float32).to(device)
         x1 = torch.randn(5, 5, 2, dtype=torch.float32).to(device)
 
-        input0_desc = IODescription('x', [5, 5, 2], "float32")
-        input1_desc = IODescription('x1', [5, 5, 2], "float32")
-        output0_desc = IODescription('output0', [], "float32")
-        output1_desc = IODescription('output1', [5, 5, 2], "float32")
+        input0_desc = IODescription("x", [5, 5, 2], "float32")
+        input1_desc = IODescription("x1", [5, 5, 2], "float32")
+        output0_desc = IODescription("output0", [], "float32")
+        output1_desc = IODescription("output1", [5, 5, 2], "float32")
         model_desc = ModelDescription([input0_desc, input1_desc], [output0_desc, output1_desc])
 
-        learning_rate = torch.tensor([1.0000000e+00]).to(device)
+        learning_rate = torch.tensor([1.0000000e00]).to(device)
         input_args = [x, x1, learning_rate]
 
-        onnx_model = self.get_onnx_model(model, model_desc, input_args, device,
-                _extra_postprocess=postpass_replace_first_add_with_sub)
+        onnx_model = self.get_onnx_model(
+            model, model_desc, input_args, device, _extra_postprocess=postpass_replace_first_add_with_sub
+        )
 
         # check that extra postpass is called, and called only once.
         add_nodes = self.find_nodes(onnx_model, "Add")
@@ -276,17 +298,22 @@ class Test_PostPasses(unittest.TestCase):
         assert len(add_nodes) == 2
         assert len(sub_nodes) == 1
 
-
-        unprocessed_onnx_model = self.get_onnx_model(model, model_desc, input_args, device,
-                _extra_postprocess=None, _enable_internal_postprocess=False)
+        unprocessed_onnx_model = self.get_onnx_model(
+            model, model_desc, input_args, device, _extra_postprocess=None, _enable_internal_postprocess=False
+        )
         # check that the model is unchanged.
         add_nodes = self.find_nodes(unprocessed_onnx_model, "Add")
         sub_nodes = self.find_nodes(unprocessed_onnx_model, "Sub")
         assert len(add_nodes) == 3
         assert len(sub_nodes) == 0
 
-        processed_onnx_model = self.get_onnx_model(unprocessed_onnx_model, model_desc, input_args, device,
-                _extra_postprocess=postpass_replace_first_add_with_sub)
+        processed_onnx_model = self.get_onnx_model(
+            unprocessed_onnx_model,
+            model_desc,
+            input_args,
+            device,
+            _extra_postprocess=postpass_replace_first_add_with_sub,
+        )
         # check that extra postpass is called, and called only once.
         add_nodes = self.find_nodes(processed_onnx_model, "Add")
         sub_nodes = self.find_nodes(processed_onnx_model, "Sub")
@@ -294,5 +321,5 @@ class Test_PostPasses(unittest.TestCase):
         assert len(sub_nodes) == 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main(module=__name__, buffer=True)

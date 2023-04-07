@@ -1,0 +1,49 @@
+{{!Copyright (c) Microsoft. All rights reserved. Licensed under the MIT license. See LICENSE file in the project root for full license information.}}
+{{#inPackage}}
+Package {{name.0.value}}
+{{/inPackage}}
+{{#inNamespace}}
+Namespace {{name.0.value}}
+{{/inNamespace}}
+{{#inClass}}
+Class {{name.0.value}}
+{{/inClass}}
+{{#inStruct}}
+Struct {{name.0.value}}
+{{/inStruct}}
+{{#inInterface}}
+Interface {{name.0.value}}
+{{/inInterface}}
+{{#inEnum}}
+Enum {{name.0.value}}
+{{/inEnum}}
+{{#inDelegate}}
+Delegate {{name.0.value}}
+{{/inDelegate}}
+{{#inConstructor}}
+Constructor {{name.0.value}}
+{{/inConstructor}}
+{{#inField}}
+Field {{name.0.value}}
+{{/inField}}
+{{#inProperty}}
+Property {{name.0.value}}
+{{/inProperty}}
+{{#inMethod}}
+Method {{name.0.value}}
+{{/inMethod}}
+{{#inEvent}}
+Event {{name.0.value}}
+{{/inEvent}}
+{{#inOperator}}
+Operator {{name.0.value}}
+{{/inOperator}}
+{{#inEii}}
+Explict Interface Implementation {{name.0.value}}
+{{/inEii}}
+{{#inVariable}}
+Variable {{name.0.value}}
+{{/inVariable}}
+{{#inTypeAlias}}
+Type Alias {{name.0.value}}
+{{/inTypeAlias}}

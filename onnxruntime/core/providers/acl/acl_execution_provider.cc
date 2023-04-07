@@ -119,13 +119,4 @@ std::shared_ptr<KernelRegistry> ACLExecutionProvider::GetKernelRegistry() const 
   return kernel_registry;
 }
 
-std::vector<std::unique_ptr<ComputeCapability>>
-ACLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                    const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<std::unique_ptr<ComputeCapability>>
-      result = IExecutionProvider::GetCapability(graph, kernel_registries);
-
-  return result;
-}
-
 }  // namespace onnxruntime

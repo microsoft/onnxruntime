@@ -1,0 +1,145 @@
+parameters:
+
+- name: PostToDashboard
+  displayName: Post to Dashboard
+  type: boolean
+  default: true
+
+- name: TrtVersion
+  displayName: TensorRT Version
+  type: string
+  default: 8.5.1.1
+  values:
+  - 8.2.1.8
+  - 8.0.1.6
+  - 8.4.1.5
+  - 8.5.1.1
+  - BIN
+
+- name: ModelGroups
+  type: object
+  default: 
+    - "onnx-zoo-models"
+    - "partner-models"
+
+- name: MemTest
+  displayName: Run Memory Test
+  type: boolean
+  default: false
+
+- name: TrtEPOptions
+  displayName: TensorRT EP options
+  type: object
+  default:
+    - trt_max_workspace_size=4294967296
+    - trt_engine_cache_enable=True
+
+- name: CUDAEPOptions
+  displayName: CUDA EP options
+  type: object
+  default: []
+
+jobs:
+- job: 'Onnxruntime_Linux_GPU_TensorRT_Perf'
+  workspace:
+    clean: all
+  timeoutInMinutes: 3000
+  pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
+  
+  variables:
+    - name: branchName
+      ${{ if not(eq(variables['ortBranchOverride'], '')) }}:
+        value: $(ortBranchOverride)
+      ${{ else }}:
+        value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
+
+    - name: trtVersion
+      ${{ if eq(parameters.TrtVersion, 'BIN') }}:
+        value: $(tarTrtVersion)
+      ${{ else }}:
+        value: ${{ parameters.TrtVersion }}
+
+    - name: trtEPOptionsArg
+      ${{ if not(eq(length(parameters.TrtEPOptions), 0)) }}:
+        value: --trt_ep_options ${{ join(',',parameters.TrtEPOptions) }}
+
+    - name: cudaEPOptionsArg
+      ${{ if not(eq(length(parameters.CUDAEPOptions), 0)) }}:
+        value: --cuda_ep_options ${{ join(',',parameters.CUDAEPOptions) }}
+
+    - name: optional_arguments
+      value: -a "-a -z -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
+
+    - name: image
+      value: ort-image-$(Build.BuildId)
+
+  steps:
+    - ${{ if eq(parameters.TrtVersion, 'BIN') }}:
+      - script: 'ls -al $(trtBinsDir)'
+        displayName: 'Show available TensorRT .tar.gz packages'
+
+      - script: 'cp $(trtBinsDir)/TensorRT-$(trtVersion).Linux.x86_64-gnu.cuda-$(tarCudaVersion).cudnn$(tarCudnnVersion).tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
+        displayName: 'Copy TensorRT .tar.gz package into Docker build directory'
+
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=.'
+        displayName: 'Install TensorRT from binaries and build latest ORT Image'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    - ${{ else }}:
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75'
+        displayName: 'Build latest ORT Image'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+
+    - ${{ each option in parameters.ModelGroups }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -b true -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
+        displayName: '${{option}} perf'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
+        displayName: 'Run Memory Test'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
+
+    # Prepare and Publish Artifacts 
+    
+    - script: 'mkdir $(Build.SourcesDirectory)/Artifact'
+      displayName: 'Prepare Artifacts Directory'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      condition: always() 
+
+    - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
+      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
+        displayName: 'Copy Artifacts'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/build/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
+        displayName: 'Copy Artifacts'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        condition: always()
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
+        artifactName: 'result-$(Build.BuildNumber)'
+        
+    - ${{ if eq(parameters.PostToDashboard, true) }}:
+
+      - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas] coloredlogs'
+        displayName: 'Install dashboard dependencies'
+
+      - task: AzureCLI@2
+        displayName: 'Azure CLI Post to Dashboard'
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptLocation: inlineScript
+          scriptType: bash
+          inlineScript: |
+            short_hash=$(git rev-parse --short HEAD) &&
+            commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database)
+    
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+        
+    - template: templates/clean-agent-build-directory-step.yml

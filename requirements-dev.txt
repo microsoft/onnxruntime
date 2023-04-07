@@ -1,13 +1,17 @@
+black>=22.3
 cerberus
 codecov
 flatbuffers
+isort
 jinja2
 numpy
 onnx
 onnxmltools
 packaging
 pandas
+parameterized>=0.8.1
 protobuf
+pydocstyle[toml]
 pytest
 pytest-cov
 scikit-learn

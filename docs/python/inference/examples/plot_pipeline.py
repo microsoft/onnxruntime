@@ -6,13 +6,10 @@ Draw a pipeline
 ===============
 
 There is no other way to look into one model stored
-in ONNX format than looking into its node with 
+in ONNX format than looking into its node with
 *onnx*. This example demonstrates
 how to draw a model and to retrieve it in *json*
 format.
-
-.. contents::
-    :local:
 
 Retrieve a model in JSON format
 +++++++++++++++++++++++++++++++
@@ -21,49 +18,50 @@ That's the most simple way.
 """
 
 from onnxruntime.datasets import get_example
+
 example1 = get_example("mul_1.onnx")
 
-import onnx
+import onnx  # noqa: E402
+
 model = onnx.load(example1)  # model is a ModelProto protobuf message
 
-print(model) 
+print(model)
 
 
 #################################
 # Draw a model with ONNX
 # ++++++++++++++++++++++
-# We use `net_drawer.py <https://github.com/onnx/onnx/blob/master/onnx/tools/net_drawer.py>`_
+# We use `net_drawer.py <https://github.com/onnx/onnx/blob/main/onnx/tools/net_drawer.py>`_
 # included in *onnx* package.
 # We use *onnx* to load the model
 # in a different way than before.
 
 
-from onnx import ModelProto
+from onnx import ModelProto  # noqa: E402
+
 model = ModelProto()
-with open(example1, 'rb') as fid:
+with open(example1, "rb") as fid:
     content = fid.read()
     model.ParseFromString(content)
 
 ###################################
 # We convert it into a graph.
-from onnx.tools.net_drawer import GetPydotGraph, GetOpNodeProducer
-pydot_graph = GetPydotGraph(model.graph, name=model.graph.name, rankdir="LR",
-                            node_producer=GetOpNodeProducer("docstring"))
+from onnx.tools.net_drawer import GetOpNodeProducer, GetPydotGraph  # noqa: E402
+
+pydot_graph = GetPydotGraph(
+    model.graph, name=model.graph.name, rankdir="LR", node_producer=GetOpNodeProducer("docstring")
+)
 pydot_graph.write_dot("graph.dot")
 
 #######################################
 # Then into an image
-import os
-os.system('dot -O -Tpng graph.dot')
+import os  # noqa: E402
+
+os.system("dot -O -Tpng graph.dot")
 
 ################################
 # Which we display...
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402
+
 image = plt.imread("graph.dot.png")
 plt.imshow(image)
-
-
-
-
-
-

@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/framework/config_options.h"
+#include "core/common/common.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 
@@ -22,8 +24,8 @@ bool ConfigOptions::TryGetConfigEntry(const std::string& config_key, std::string
   return found;
 }
 
-const std::string ConfigOptions::GetConfigOrDefault(const std::string& config_key,
-                                                    const std::string& default_value) const noexcept {
+std::string ConfigOptions::GetConfigOrDefault(const std::string& config_key,
+                                              const std::string& default_value) const noexcept {
   return GetConfigEntry(config_key).value_or(default_value);
 }
 
@@ -33,8 +35,10 @@ Status ConfigOptions::AddConfigEntry(const char* config_key, const char* config_
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config key is empty or longer than maximum length 128");
 
   std::string val(config_value);
-  if (val.length() > 1024)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config value is longer than maximum length 1024");
+  if (val.length() > onnxruntime::kMaxStrLen)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Config value is longer than maximum length: ",
+                           onnxruntime::kMaxStrLen);
 
   auto iter = configurations.find(config_key);
   if (iter != configurations.cend()) {

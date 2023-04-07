@@ -89,7 +89,7 @@ class EquivalenceClass {
   bool operator==(const EquivalenceClass& other) const;
 
   friend struct ::std::hash<EquivalenceClass>;
-  friend std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node& node, const std::vector<const EquivalenceClass*>& inputs);
+  friend InlinedVector<InlinedVector<const EquivalenceClass*>> Normalize(const Node& node, gsl::span<const EquivalenceClass* const> inputs);
 
   explicit EquivalenceClass(const NodeArg* non_op_value)
       : attributes_(nullptr),
@@ -99,7 +99,7 @@ class EquivalenceClass {
         hash_(CalculateHash()) {
   }
 
-  EquivalenceClass(const Node& node, const std::vector<const EquivalenceClass*>& explicit_inputs,
+  EquivalenceClass(const Node& node, const gsl::span<const EquivalenceClass* const>& explicit_inputs,
                    OutputIndex output_index, int discriminator)
       : op_type_(node.OpType()),
         domain_(node.Domain()),
@@ -119,7 +119,7 @@ class EquivalenceClass {
   const std::string domain_;
 
   // Explicit inputs to the operation, sequence of inputs for each formal parameter.
-  const std::vector<std::vector<const EquivalenceClass*>> inputs_;
+  const InlinedVector<InlinedVector<const EquivalenceClass*>> inputs_;
 
   // Attributes of the operation.
   const NodeAttributes* attributes_;
@@ -141,10 +141,10 @@ class EquivalenceClass {
   const std::size_t hash_;
 };
 
-std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node& node, const std::vector<const EquivalenceClass*>& inputs) {
+InlinedVector<InlinedVector<const EquivalenceClass*>> Normalize(const Node& node, gsl::span<const EquivalenceClass* const> inputs) {
   const auto& arg_count = node.InputArgCount();
   auto input_iter = inputs.begin();
-  std::vector<std::vector<const EquivalenceClass*>> result(arg_count.size());
+  InlinedVector<InlinedVector<const EquivalenceClass*>> result(arg_count.size());
 
   for (std::size_t arg_index = 0; arg_index < arg_count.size(); ++arg_index) {
     auto& arg = result[arg_index];
@@ -318,7 +318,13 @@ struct NodeArgPtrEquality {
 };
 
 bool IsNodeSupported(const Node& node) {
-  return !node.ContainsSubgraph() && optimizer_utils::IsOperationDeterministic(node.Domain(), node.OpType());
+  // skip control flow nodes, nodes that produce non-deterministic output, and DequantizeLinear (DQ) nodes.
+  // the reason for skipping DQ is that the QDQ handling looks for QDQ node groups (DQ -> fp32 node -> Q node)
+  // and does not allow for a DQ node to be used in multiple groups. coalescing multiple DQ nodes into one
+  // would result in it having multiple consumers for its output, and it being used in multiple QDQ node groups.
+  return !node.ContainsSubgraph() &&
+         optimizer_utils::IsOperationDeterministic(node.Domain(), node.OpType()) &&
+         !(node.Domain() == kOnnxDomain && node.OpType() == "DequantizeLinear");
 }
 }  // namespace
 
@@ -340,7 +346,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
   // Pool of equivalence classes; unique_ptr to guarantee stable address.
-  std::vector<std::unique_ptr<EquivalenceClass>> unique_equivalence_classes;
+  InlinedVector<std::unique_ptr<EquivalenceClass>> unique_equivalence_classes;
   unique_equivalence_classes.reserve(graph.NumberOfNodes());
 
   // Maps an equivalence class of values to a representative NodeArg that belongs to this class.
@@ -364,7 +370,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
-    std::vector<const EquivalenceClass*> input_values;
+    InlinedVector<const EquivalenceClass*> input_values;
     input_values.reserve(node->InputDefs().size());
     for (const NodeArg* input_def : node->InputDefs()) {
       auto it = equivalence_classes.find(input_def);
@@ -403,7 +409,8 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
     }
   }
 
-  std::unordered_set<const NodeArg*> graph_outputs;
+  InlinedHashSet<const NodeArg*> graph_outputs;
+  graph_outputs.reserve(graph_viewer.GetOutputs().size());
   graph_outputs.insert(graph_viewer.GetOutputs().begin(), graph_viewer.GetOutputs().end());
 
   for (NodeIndex node_index : node_topology_list) {

@@ -13,6 +13,11 @@ export type SerializableTensor = [Tensor.Type, readonly number[], Tensor.DataTyp
  */
 export type SerializableSessionMetadata = [number, string[], string[]];
 
+/**
+ *  tuple elements are: modeldata.offset, modeldata.length
+ */
+export type SerializableModeldata = [number, number];
+
 interface MessageError {
   err?: string;
 }
@@ -25,6 +30,18 @@ interface MessageInitWasm extends MessageError {
 interface MessageInitOrt extends MessageError {
   type: 'init-ort';
   in ?: {numThreads: number; loggingLevel: number};
+}
+
+interface MessageCreateSessionAllocate extends MessageError {
+  type: 'create_allocate';
+  in ?: {model: Uint8Array};
+  out?: SerializableModeldata;
+}
+
+interface MessageCreateSessionFinalize extends MessageError {
+  type: 'create_finalize';
+  in ?: {modeldata: SerializableModeldata; options?: InferenceSession.SessionOptions};
+  out?: SerializableSessionMetadata;
 }
 
 interface MessageCreateSession extends MessageError {
@@ -52,5 +69,5 @@ interface MesssageEndProfiling extends MessageError {
   in ?: number;
 }
 
-export type OrtWasmMessage =
-    MessageInitWasm|MessageInitOrt|MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling;
+export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCreateSessionAllocate|MessageCreateSessionFinalize|
+    MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling;

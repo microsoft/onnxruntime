@@ -4,6 +4,8 @@
 #include <set>
 #include <iostream>
 #include <fstream>
+#include <string>
+#include <unordered_map>
 #ifdef _WIN32
 #include "getopt.h"
 #else
@@ -14,12 +16,14 @@
 #include "TestCase.h"
 #include "testenv.h"
 #include "providers.h"
+
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "nlohmann/json.hpp"
 
 using namespace onnxruntime;
 
@@ -36,11 +40,24 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
-      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'nnapi' or 'coreml'. "
+      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
+      "\t-t: Specify custom relative tolerance values for output value comparison. default: 1e-5\n"
+      "\t-a: Specify custom absolute tolerance values for output value comparison. default: 1e-5\n"
+      "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
+      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
+      "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
+      "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
+      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
+      "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
+      "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
+      "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
+      "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
+      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
+      "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
       "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
       "\n"
@@ -48,6 +65,37 @@ void usage() {
       "\n"
       "onnxruntime version: %s\n",
       OrtGetApiBase()->GetVersionString());
+}
+
+static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool useCustom, double atol, double rtol) {
+  TestTolerances::Map absolute_overrides;
+  TestTolerances::Map relative_overrides;
+  if (useCustom)
+  {
+    return TestTolerances(atol, rtol, absolute_overrides, relative_overrides);
+  }
+  std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
+      ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
+  if (!overrides_ifstream.good()) {
+    constexpr double absolute = 1e-3;
+    // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
+    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+    const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                  : 1e-3;
+    return TestTolerances(absolute, relative, absolute_overrides, relative_overrides);
+  }
+  const auto overrides_json = nlohmann::json::parse(
+      overrides_ifstream,
+      /*cb=*/nullptr, /*allow_exceptions=*/true
+      // Comment support is added in 3.9.0 with breaking change to default behavior.
+      #if NLOHMANN_JSON_VERSION_MAJOR * 1000 + NLOHMANN_JSON_VERSION_MINOR >= 3009
+      , /*ignore_comments=*/true
+      #endif
+    );
+  overrides_json["atol_overrides"].get_to(absolute_overrides);
+  overrides_json["rtol_overrides"].get_to(relative_overrides);
+  return TestTolerances(
+      overrides_json["atol_default"], overrides_json["rtol_default"], absolute_overrides, relative_overrides);
 }
 
 #ifdef _WIN32
@@ -94,20 +142,26 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_cuda = false;
   bool enable_dnnl = false;
   bool enable_openvino = false;
-  bool enable_nuphar = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
+  bool enable_qnn = false;
   bool enable_nnapi = false;
   bool enable_coreml = false;
+  bool enable_snpe = false;
   bool enable_dml = false;
   bool enable_acl = false;
   bool enable_armnn = false;
   bool enable_rocm = false;
   bool enable_migraphx = false;
+  bool enable_xnnpack = false;
+  bool override_tolerance = false;
+  double atol = 1e-5;
+  double rtol = 1e-5;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
   bool set_denormal_as_zero = false;
+  std::basic_string<ORTCHAR_T> ep_runtime_config_string;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
@@ -115,7 +169,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:pz"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:i:pz"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -161,14 +215,16 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_dnnl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
             enable_openvino = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
-            enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
+            enable_qnn = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
             enable_coreml = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("snpe"))) {
+            enable_snpe = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
             enable_dml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
@@ -179,10 +235,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_rocm = true;
           } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
             enable_migraphx = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("xnnpack"))) {
+            enable_xnnpack = true;
           } else {
             usage();
             return -1;
           }
+          break;
+        case 't':
+          override_tolerance = true;
+          rtol = OrtStrtod<PATH_CHAR_TYPE>(optarg, nullptr);
+          break;
+        case 'a':
+          override_tolerance = true;
+          atol = OrtStrtod<PATH_CHAR_TYPE>(optarg, nullptr);
           break;
         case 'x':
           execution_mode = ExecutionMode::ORT_PARALLEL;
@@ -224,6 +290,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             usage();
             return -1;
           }
+          break;
+        case 'i':
+          ep_runtime_config_string = optarg;
           break;
         case 'z':
           set_denormal_as_zero = true;
@@ -288,12 +357,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
   std::vector<std::unique_ptr<ITestCase>> owned_tests;
   {
-    double per_sample_tolerance = 1e-3;
-    // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
-                                                                                 : 1e-3;
-
     Ort::SessionOptions sf;
 
     if (enable_cpu_mem_arena)
@@ -311,8 +374,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
       OrtCUDAProviderOptions cuda_options;
-      cuda_options.device_id=device_id;
-      cuda_options.do_copy_in_default_stream=true;
+      cuda_options.device_id = device_id;
+      cuda_options.do_copy_in_default_stream = true;
       // TODO: Support arena configuration for users of test runner
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
       sf.AppendExecutionProvider_CUDA(cuda_options);
@@ -323,7 +386,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_openvino) {
 #ifdef USE_OPENVINO
-      //Setting default optimization level for OpenVINO can be overriden with -o option
+      // Setting default optimization level for OpenVINO can be overridden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
       sf.AppendExecutionProvider_OpenVINO(OrtOpenVINOProviderOptions{});
 #else
@@ -334,7 +397,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_cuda) {
 #ifdef USE_CUDA
       OrtCUDAProviderOptions cuda_options;
-      cuda_options.do_copy_in_default_stream=true;
+      cuda_options.do_copy_in_default_stream = true;
       // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
@@ -342,19 +405,62 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_nuphar) {
-#ifdef USE_NUPHAR
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
+    if (enable_dnnl) {
+#ifdef USE_DNNL
+      // Generate dnnl_options to optimize dnnl performance
+      OrtDnnlProviderOptions dnnl_options;
+      dnnl_options.use_arena = enable_cpu_mem_arena ? 1 : 0;
+      dnnl_options.threadpool_args = nullptr;
+#if defined(DNNL_ORT_THREAD)
+      dnnl_options.threadpool_args = static_cast<void*>(TestEnv::GetDefaultThreadPool(Env::Default()));
+#endif  // defined(DNNL_ORT_THREAD)
+      sf.AppendExecutionProvider_Dnnl(dnnl_options);
 #else
-      fprintf(stderr, "Nuphar is not supported in this build");
+      fprintf(stderr, "DNNL is not supported in this build");
       return -1;
 #endif
     }
-    if (enable_dnnl) {
-#ifdef USE_DNNL
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
+    if (enable_qnn) {
+#ifdef USE_QNN
+#ifdef _MSC_VER
+      std::string option_string = ToUTF8String(ep_runtime_config_string);
 #else
-      fprintf(stderr, "DNNL is not supported in this build");
+      std::string option_string = ep_runtime_config_string;
+#endif
+      std::istringstream ss(option_string);
+      std::string token;
+      std::unordered_map<std::string, std::string> qnn_options;
+
+      while (ss >> token) {
+        if (token == "") {
+          continue;
+        }
+        auto pos = token.find("|");
+        if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+          ORT_THROW("Use a '|' to separate the key and value for the run-time option you are trying to use.");
+        }
+
+        std::string key(token.substr(0, pos));
+        std::string value(token.substr(pos + 1));
+
+        if (key == "backend_path") {
+          if (value.empty()) {
+            ORT_THROW("Please provide the QNN backend path.");
+          } else {
+            qnn_options[key] = value;
+          }
+        } else if (key == "profiling_level") {
+          qnn_options[key] = value;
+        } else if (key == "rpc_control_latency") {
+          qnn_options[key] = value;
+        } else {
+          ORT_THROW(R"(Wrong key type entered. Choose from options:
+['backend_path', 'profiling_level', 'rpc_control_latency'])");
+        }
+      }
+      sf.AppendExecutionProvider("QNN", qnn_options);
+#else
+      fprintf(stderr, "QNN is not supported in this build");
       return -1;
 #endif
     }
@@ -371,6 +477,57 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sf, 0));
 #else
       fprintf(stderr, "CoreML is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_snpe) {
+#ifdef USE_SNPE
+#ifdef _MSC_VER
+      std::string option_string = ToUTF8String(ep_runtime_config_string);
+#else
+      std::string option_string = ep_runtime_config_string;
+#endif
+      std::istringstream ss(option_string);
+      std::string token;
+      std::unordered_map<std::string, std::string> snpe_options;
+
+      while (ss >> token) {
+        if (token == "") {
+          continue;
+        }
+        auto pos = token.find("|");
+        if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+          ORT_THROW(R"(Use a '|' to separate the key and value for
+the run-time option you are trying to use.\n)");
+        }
+
+        std::string key(token.substr(0, pos));
+        std::string value(token.substr(pos + 1));
+
+        if (key == "runtime") {
+          std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
+          if (supported_runtime.find(value) == supported_runtime.end()) {
+            ORT_THROW(R"(Wrong configuration value for the key 'runtime'.
+select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
+          }
+        } else if (key == "priority") {
+          // no validation
+        } else if (key == "buffer_type") {
+          std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
+          if (supported_buffer_type.find(value) == supported_buffer_type.end()) {
+            ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
+select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
+          }
+        } else {
+          ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
+        }
+
+        snpe_options[key] = value;
+      }
+
+      sf.AppendExecutionProvider("SNPE", snpe_options);
+#else
+      fprintf(stderr, "SNPE is not supported in this build");
       return -1;
 #endif
     }
@@ -405,11 +562,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_rocm) {
 #ifdef USE_ROCM
-      OrtROCMProviderOptions rocm_options{
-          0,
-          0,
-          std::numeric_limits<size_t>::max(),
-          0};
+      OrtROCMProviderOptions rocm_options;
+      rocm_options.do_copy_in_default_stream = true;
+      // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_ROCM(rocm_options);
 #else
       fprintf(stderr, "ROCM is not supported in this build");
@@ -425,10 +580,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
     }
 
+    if (enable_xnnpack) {
+#ifdef USE_XNNPACK
+      sf.AppendExecutionProvider("XNNPACK", {});
+#else
+      fprintf(stderr, "XNNPACK is not supported in this build");
+      return -1;
+#endif
+    }
+
     if (user_graph_optimization_level_set) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
+    // TODO: Get these from onnx_backend_test_series_filters.jsonc.
     // Permanently exclude following tests because ORT support only opset staring from 7,
     // Please make no more changes to the list
     static const ORTCHAR_T* immutable_broken_tests[] =
@@ -479,7 +644,45 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                                                      ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
                                                      ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
-
+    static const ORTCHAR_T* qnn_disabled_tests[] = {
+        ORT_TSTR("basic_conv_without_padding"),
+        ORT_TSTR("basic_conv_with_padding"),
+        ORT_TSTR("convtranspose"),
+        ORT_TSTR("convtranspose_autopad_same"),
+        ORT_TSTR("convtranspose_dilations"),
+        ORT_TSTR("convtranspose_kernel_shape"),
+        ORT_TSTR("convtranspose_output_shape"),
+        ORT_TSTR("convtranspose_pad"),
+        ORT_TSTR("convtranspose_pads"),
+        ORT_TSTR("convtranspose_with_kernel"),
+        ORT_TSTR("conv_with_autopad_same"),
+        ORT_TSTR("conv_with_strides_and_asymmetric_padding"),
+        ORT_TSTR("conv_with_strides_no_padding"),
+        ORT_TSTR("conv_with_strides_padding"),
+        ORT_TSTR("nllloss_NCd1d2d3_none_no_weight_negative_ii"),
+        ORT_TSTR("nllloss_NCd1d2d3_none_no_weight_negative_ii_expanded"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_expanded"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_log_prob"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_log_prob_expanded"),
+        ORT_TSTR("gather_negative_indices"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_ii_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_ii"),
+        ORT_TSTR("nllloss_NCd1_weight_ii_expanded"),
+        ORT_TSTR("nllloss_NCd1_ii_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_no_weight_reduction_mean_ii_expanded"),
+        ORT_TSTR("sce_none_weights"),
+        ORT_TSTR("sce_none_weights_log_prob"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_log_prob"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_log_prob_expanded"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
+        ORT_TSTR("sce_none_weights_log_prob_expanded"),
+        ORT_TSTR("sce_none_weights_expanded")};
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
@@ -492,21 +695,26 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
     }
+    if (enable_qnn) {
+      all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
+    }
 #if !defined(__amd64__) && !defined(_M_AMD64)
-    //out of memory
+    // out of memory
     static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("vgg19"), ORT_TSTR("coreml_VGG16_ImageNet")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
+    LoadTests(data_dirs, whitelisted_test_cases,
+              LoadTestTolerances(enable_cuda, enable_openvino, override_tolerance, atol, rtol),
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
                 tests.push_back(l.get());
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv test_env(env, sf, TestEnv::GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    auto tp = TestEnv::CreateThreadPool(Env::Default());
+    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat);
     Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
@@ -528,70 +736,84 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   };
 
   std::set<BrokenTest> broken_tests = {
-      {"BERT_Squad", "test data bug"},
-      {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
-      {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
-      {"convtranspose_autopad_same", "Implementation need to be adjusted for ONNX changes"},
-      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
-      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
-      // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
-      // which doesn't match the expected output that was generated with numpy.
-      {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
-      {"tf_nasnet_large", "disable temporarily"},
-      {"tf_nasnet_mobile", "disable temporarily"},
-      {"tf_pnasnet_large", "disable temporarily"},
-      {"shrink", "test case is wrong", {"onnx141"}},
-      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
-      {"tf_inception_v2", "result mismatch"},
-      {"tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied"},
-      {"tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied"},
-      {"tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied"},
-      {"mxnet_arcface", "Model is an invalid ONNX model"},
-      {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
-      {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
-      {"resize_downsample_scales_cubic_align_corners", "results mismatch with onnx tests"},
-      {"resize_downsample_scales_linear_align_corners", "results mismatch with onnx tests"},
-      {"resize_tf_crop_and_resize", "Bad onnx test output. Needs test fix."},
-      {"resize_upsample_sizes_nearest_ceil_half_pixel", "Bad onnx test output. Needs test fix."},
-      {"resize_upsample_sizes_nearest_floor_align_corners", "Bad onnx test output. Needs test fix."},
-      {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
-      {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
-      {"training_dropout", "result differs", {}},                       // Temporary, subsequent PR will remove this.
-      {"training_dropout_default", "result differs", {}},               // Temporary, subsequent PR will remove this.
-      {"training_dropout_default_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
-      {"training_dropout_mask", "result differs", {}},                  // Temporary, subsequent PR will remove this.
-      {"adagrad", "not a registered function/op", {}},                  // Op not registered.
-      {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
-      {"adam", "not a registered function/op", {}},                     // Op not registered.
-      {"adam_multiple", "not a registered function/op", {}},            // Op not registered.
-      {"gradient_of_add", "not a registered function/op", {}},          // Op not registered.
-      {"gradient_of_add_and_mul", "not a registered function/op", {}},  // Op not registered.
-      {"momentum", "not a registered function/op", {}},                 // Op not registered.
-      {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
-      {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
-      {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
-      {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
-      {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
-      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
-      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
-      {"castlike_FLOAT_to_BFLOAT16", "Depends on cast.", {}},
-      {"castlike_BFLOAT16_to_FLOAT", "Depends on cast", {}},
-      {"castlike_FLOAT_to_BFLOAT16_expanded", "Depends on cast.", {}},
-      {"castlike_BFLOAT16_to_FLOAT_expanded", "Depends on cast", {}},
-      {"castlike_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results.", {}},
-      {"castlike_FLOAT_to_STRING_expanded", "Numpy float to string has unexpected rounding for some results.", {}},
-      {"bernoulli", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"bernoulli_double", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"bernoulli_double_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"test_optional_get_element", "opset15 updates not supported yet."},
-      {"test_optional_get_element_sequence", "opset15 updates not supported yet."},
-      {"test_optional_has_element", "opset15 updates not supported yet."},
-      {"test_optional_has_element_empty", "opset15 updates not supported yet."},
+    {"BERT_Squad", "test data bug"},
+    {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
+    {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
+    {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"onnx180", "onnx181", "onnx190"}},
+    {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
+    // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
+    // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
+    // which doesn't match the expected output that was generated with numpy.
+    {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
+    {"cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose", {}},
+    {"tf_nasnet_large", "disable temporarily"},
+    {"tf_nasnet_mobile", "disable temporarily"},
+    {"tf_pnasnet_large", "disable temporarily"},
+    {"shrink", "test case is wrong", {"onnx141"}},
+    {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
+    {"tf_inception_v2", "result mismatch"},
+    {"tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied"},
+    {"tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied"},
+    {"tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied"},
+    {"mxnet_arcface", "Model is an invalid ONNX model"},
+    {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
+    {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
+    {"resize_downsample_scales_cubic_align_corners", "results mismatch with onnx tests"},
+    {"resize_downsample_scales_linear_align_corners", "results mismatch with onnx tests"},
+    {"resize_tf_crop_and_resize", "Bad onnx test output. Needs test fix."},
+    {"resize_upsample_sizes_nearest_ceil_half_pixel", "Bad onnx test output. Needs test fix."},
+    {"resize_upsample_sizes_nearest_floor_align_corners", "Bad onnx test output. Needs test fix."},
+    {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
+    {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
+    {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
+    {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
+    {"training_dropout", "result differs", {}},                       // Temporary, subsequent PR will remove this.
+    {"training_dropout_default", "result differs", {}},               // Temporary, subsequent PR will remove this.
+    {"training_dropout_default_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
+    {"training_dropout_mask", "result differs", {}},                  // Temporary, subsequent PR will remove this.
+    {"adagrad", "not a registered function/op", {}},                  // Op not registered.
+    {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
+    {"adam", "not a registered function/op", {}},                     // Op not registered.
+    {"adam_multiple", "not a registered function/op", {}},            // Op not registered.
+    {"gradient_of_add", "not a registered function/op", {}},          // Op not registered.
+    {"gradient_of_add_and_mul", "not a registered function/op", {}},  // Op not registered.
+    {"momentum", "not a registered function/op", {}},                 // Op not registered.
+    {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
+    {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
+    {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
+    {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
+    {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
+    {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
+    {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
+    {"castlike_FLOAT_to_BFLOAT16", "Depends on cast.", {}},
+    {"castlike_BFLOAT16_to_FLOAT", "Depends on cast", {}},
+    {"castlike_FLOAT_to_BFLOAT16_expanded", "Depends on cast.", {}},
+    {"castlike_BFLOAT16_to_FLOAT_expanded", "Depends on cast", {}},
+    {"castlike_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results.", {}},
+    {"castlike_FLOAT_to_STRING_expanded", "Numpy float to string has unexpected rounding for some results.", {}},
+    {"bernoulli", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"bernoulli_double", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"bernoulli_double_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"test_roialign_aligned_true", "Opset 16 not supported yet."},
+    {"test_roialign_aligned_false", "Opset 16 not supported yet."},
+    {"test_scatternd_add", "Opset 16 not supported yet."},
+    {"test_scatternd_multiply", "Opset 16 not supported yet."},
+    {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
+    {"col2im_pads", "onnx 18 test data error."},
+
+#if defined(DISABLE_OPTIONAL_TYPE)
+    {"test_optional_get_element", "Optional type not supported in this build flavor."},
+    {"test_optional_get_element_sequence", "Optional type not supported in this build flavor."},
+    {"test_optional_has_element", "Optional type not supported in this build flavor."},
+    {"test_optional_has_element_empty", "Optional type not supported in this build flavor."},
+    {"test_if_opt", "Optional type not supported in this build flavor."},
+    {"test_loop16_seq_none", "Optional type not supported in this build flavor."},
+    {"test_identity_opt", "Optional type not supported in this build flavor."},
+#endif
+
 
   };
 
@@ -812,7 +1034,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
     broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
-    broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
+    broken_tests.insert({"tf_inception_v1", "flaky test"});  // TODO: Investigate cause for flakiness
     broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
     broken_tests.insert({"split_zero_size_splits", "alloc failed"});
   }
@@ -826,6 +1048,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
 
     // These tests are temporarily disabled pending investigation
+    broken_tests.insert({"dynamicquantizelinear", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
@@ -862,8 +1085,76 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded", "DML does not support 5D+ tensors"});
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "DML does not support 5D+ tensors"});
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded", "DML does not support 5D+ tensors"});
-  }
 
+    // TODO: Remove identity tests when fixed #42638109
+    broken_tests.insert({"identity_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_2_sequences_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_extract_shapes_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_extract_shapes_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_2_sequences_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
+  }
+  if (enable_qnn) {
+    broken_tests.insert({"gemm_default_no_bias", "result differs"});
+    broken_tests.insert({"resize_downsample_scales_linear", "result differs"});
+    broken_tests.insert({"resize_downsample_scales_linear_antialias", "result differs"});
+    broken_tests.insert({"resize_downsample_sizes_linear_antialias", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_expanded", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_log_prob", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean", "result differs"});
+    broken_tests.insert({"sce_mean_3d", "result differs"});
+    broken_tests.insert({"sce_mean_3d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_3d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_3d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight", "result differs"});
+    broken_tests.insert({"sce_mean_weight_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_none", "result differs"});
+    broken_tests.insert({"sce_none_expanded", "result differs"});
+    broken_tests.insert({"sce_none_log_prob", "result differs"});
+    broken_tests.insert({"sce_none_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_sum", "result differs"});
+    broken_tests.insert({"sce_sum_expanded", "result differs"});
+    broken_tests.insert({"sce_sum_log_prob", "result differs"});
+    broken_tests.insert({"sce_sum_log_prob_expanded", "result differs"});
+  }
 #if defined(_WIN32) && !defined(_WIN64)
   broken_tests.insert({"vgg19", "failed: bad allocation"});
 #endif

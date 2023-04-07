@@ -90,7 +90,7 @@ class NchwcUpsample final : public OpKernel {
 
  public:
   NchwcUpsample(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttrs<int64_t>("scales", scales_).IsOK());
+    ORT_ENFORCE(info.GetAttrs("scales", scales_).IsOK());
     ORT_ENFORCE(scales_.size() == 4);
     // Batch and channel dimensions cannot scale and spatial scaling must be positive.
     ORT_ENFORCE(scales_[0] == 1 && scales_[1] == 1 && scales_[2] >= 1 && scales_[3] >= 1);
@@ -126,7 +126,7 @@ class NchwcUpsample final : public OpKernel {
                                           int64_t output_length,
                                           int64_t scale) const;
 
-  std::vector<int64_t> scales_;
+  TensorShapeVector scales_;
   TransformationMode transformation_mode_;
   bool nearest_mode_;
 };

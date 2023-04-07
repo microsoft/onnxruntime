@@ -42,31 +42,5 @@ bool SetDenormalAsZero(bool on) {
   return false;
 }
 
-#ifdef _OPENMP
-// To execute an initialization for each openmp thread, use a property of the firstprivate clause:
-// "the initialization or construction of the given variable happens as if it were done once per thread,
-// prior to the thread's execution of the construct".
-class DenormalAsZeroInitializer {
- public:
-  explicit DenormalAsZeroInitializer(bool on) : on_(on) {}
-
-  // Working as initializer per each openmp thread.
-  DenormalAsZeroInitializer(const DenormalAsZeroInitializer& init) : on_(init.on_) {
-    SetDenormalAsZero(on_);
-  }
-
- private:
-  bool on_;
-};
-
-void InitializeWithDenormalAsZero(bool on) {
-  DenormalAsZeroInitializer init(on);
-// Each openmp thread calls DenormalAsZeroInitializer's copy constructor by firstprivate.
-// Even if loop count is less than the maximum number of openmp threads, all openmp threads are initialized here.
-#pragma omp parallel for firstprivate(init)
-  for (auto i = 0; i < 1; ++i) {
-  }
-}
-#endif
 
 }  // namespace onnxruntime

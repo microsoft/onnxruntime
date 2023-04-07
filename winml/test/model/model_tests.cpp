@@ -23,6 +23,8 @@ namespace WinML {
 // Global needed to keep the actual ITestCase alive while the tests are going on. Only ITestCase* are used as test parameters.
 std::vector<std::unique_ptr<ITestCase>> ownedTests;
 
+static std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKind deviceKind);
+
 class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::LearningModelDeviceKind>> {
  protected:
   void SetUp() override {
@@ -30,7 +32,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
     winrt_activation_handler = WINRT_RoGetActivationFactory;
 #endif
     std::tie(m_testCase, m_deviceKind) = GetParam();
-    WINML_EXPECT_NO_THROW(m_testCase->GetPerSampleTolerance(&m_perSampleTolerance));
+    WINML_EXPECT_NO_THROW(m_testCase->GetPerSampleTolerance(&m_absolutePerSampleTolerance));
     WINML_EXPECT_NO_THROW(m_testCase->GetRelativePerSampleTolerance(&m_relativePerSampleTolerance));
     WINML_EXPECT_NO_THROW(m_testCase->GetPostProcessing(&m_postProcessing));
 
@@ -38,12 +40,15 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
 #ifdef USE_DML
     if (m_deviceKind == winml::LearningModelDeviceKind::DirectX) {
       m_relativePerSampleTolerance = 0.009;  // tolerate up to 0.9% difference of expected result.
-      auto gpuSampleTolerancePerTestsItr = gpuSampleTolerancePerTests.find(m_testCase->GetTestCaseName());
-      if (gpuSampleTolerancePerTestsItr != gpuSampleTolerancePerTests.end()) {
-        m_perSampleTolerance = gpuSampleTolerancePerTestsItr->second;
-      }
     }
 #endif
+
+    // Check for any specific tolerances with this test.
+    std::string fullTestName = GetFullNameOfTest(m_testCase, m_deviceKind);
+    auto sampleTolerancePerTestsIter = sampleTolerancePerTests.find(fullTestName);
+    if (sampleTolerancePerTestsIter != sampleTolerancePerTests.end()) {
+      m_absolutePerSampleTolerance = sampleTolerancePerTestsIter->second;
+    }
   }
   // Called after the last test in this test suite.
   static void TearDownTestSuite() {
@@ -51,7 +56,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
   }
   winml::LearningModelDeviceKind m_deviceKind;
   ITestCase* m_testCase;
-  double m_perSampleTolerance = 1e-3;
+  double m_absolutePerSampleTolerance = 1e-3;
   double m_relativePerSampleTolerance = 1e-3;
   bool m_postProcessing = false;
 
@@ -70,7 +75,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
     for (const auto& [name, value] : expectedOutputFeeds) {
       // Extract the output buffer from the evaluation output
       std::wstring outputName = _winml::Strings::WStringFromString(name);
-      
+
       // find the output descriptor
       ILearningModelFeatureDescriptor outputDescriptor = nullptr;
       for (const auto& descriptor : outputFeatureDescriptors) {
@@ -87,7 +92,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
         auto actualOutputTensorValue = results.Outputs().Lookup(outputName).as<ITensor>();
         Ort::Value actualOutput = OrtValueHelpers::CreateOrtValueFromITensor(actualOutputTensorValue);
         // Use the expected and actual OrtValues to compare
-        std::pair<COMPARE_RESULT, std::string> ret = CompareOrtValue(*actualOutput, *value, m_perSampleTolerance, m_relativePerSampleTolerance, m_postProcessing);
+        std::pair<COMPARE_RESULT, std::string> ret = CompareOrtValue(*actualOutput, *value, m_absolutePerSampleTolerance, m_relativePerSampleTolerance, m_postProcessing);
         WINML_EXPECT_EQUAL(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
       } else if (outputDescriptor.Kind() == LearningModelFeatureKind::Sequence) {
         auto sequenceOfMapsStringToFloat = results.Outputs().Lookup(outputName).try_as<IVectorView<IMap<winrt::hstring, float>>>();
@@ -95,7 +100,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
           WINML_EXPECT_TRUE(CompareFeatureValuesHelper::CompareSequenceOfMapsStringToFloat(
               sequenceOfMapsStringToFloat,
               value,
-              m_perSampleTolerance,
+              m_absolutePerSampleTolerance,
               m_relativePerSampleTolerance));
         } else {
           throw winrt::hresult_not_implemented(L"This particular type of sequence output hasn't been handled yet.");
@@ -113,9 +118,9 @@ TEST_P(ModelTest, Run) {
   WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(m_testCase->GetModelUrl()));
   WINML_EXPECT_NO_THROW(device = LearningModelDevice(m_deviceKind));
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
-  WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
   for (size_t i = 0; i < m_testCase->GetDataCount(); i++) {
     // Load and bind inputs
+    WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
     onnxruntime::test::HeapBuffer inputHolder;
     std::unordered_map<std::string, Ort::Value> inputFeeds;
     WINML_EXPECT_NO_THROW(m_testCase->LoadTestData(i, inputHolder, inputFeeds, true));
@@ -124,6 +129,8 @@ TEST_P(ModelTest, Run) {
     // evaluate
     LearningModelEvaluationResult results = nullptr;
     WINML_EXPECT_NO_THROW(results = session.Evaluate(binding, L"Testing"));
+    binding.Clear();
+    binding = nullptr;
 
     // Load expected outputs
     onnxruntime::test::HeapBuffer outputHolder;
@@ -168,8 +175,6 @@ std::string GetTestDataPath() {
 static std::vector<ITestCase*> GetAllTestCases() {
   std::vector<ITestCase*> tests;
   std::vector<std::basic_string<PATH_CHAR_TYPE>> whitelistedTestCases;
-  double perSampleTolerance = 1e-3;
-  double relativePerSampleTolerance = 1e-3;
   std::unordered_set<std::basic_string<ORTCHAR_T>> allDisabledTests;
   std::vector<std::basic_string<PATH_CHAR_TYPE>> dataDirs;
   auto testDataPath = GetTestDataPath();
@@ -224,9 +229,11 @@ static std::vector<ITestCase*> GetAllTestCases() {
   };
   allDisabledTests.insert(std::begin(x86DisabledTests), std::end(x86DisabledTests));
 #endif
+// Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
+allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
 
-  
-  WINML_EXPECT_NO_THROW(LoadTests(dataDirs, whitelistedTestCases, perSampleTolerance, relativePerSampleTolerance,
+
+  WINML_EXPECT_NO_THROW(LoadTests(dataDirs, whitelistedTestCases, TestTolerances(1e-3, 1e-3, {}, {}),
                                   allDisabledTests,
                                   [&tests](std::unique_ptr<ITestCase> l) {
                                     tests.push_back(l.get());
@@ -243,7 +250,7 @@ bool ShouldSkipTestOnGpuAdapterDxgi(std::string& testName) {
   while (spFactory->EnumAdapters1(i, spAdapter.put()) != DXGI_ERROR_NOT_FOUND) {
     DXGI_ADAPTER_DESC1 pDesc;
     WINML_EXPECT_HRESULT_SUCCEEDED(spAdapter->GetDesc1(&pDesc));
-    
+
     // Check if WARP adapter
     // see here for documentation on filtering WARP adapter:
     // https://docs.microsoft.com/en-us/windows/desktop/direct3ddxgi/d3d10-graphics-programming-guide-dxgi#new-info-about-enumerating-adapters-for-windows-8
@@ -276,7 +283,7 @@ bool ShouldSkipTestOnGpuAdapterDxcore(std::string& testName) {
   WINML_EXPECT_HRESULT_SUCCEEDED(spFactory->CreateAdapterList(1, gpuFilter, IID_PPV_ARGS(spAdapterList.put())));
 
   winrt::com_ptr<IDXCoreAdapter> firstHardwareAdapter;
-  
+
   // select first hardware adapter
   for (uint32_t i = 0; i < spAdapterList->GetAdapterCount(); i++) {
     winrt::com_ptr<IDXCoreAdapter> spCurrAdapter;
@@ -319,19 +326,18 @@ bool ShouldSkipTestOnGpuAdapter(std::string& testName) {
   return false;
 }
 
-// determine if test should be disabled
-void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKind deviceKind) {
+// Determine if test should be disabled, and prepend "DISABLED" in front of the name if so.
+bool ModifyNameIfDisabledTest(/*inout*/ std::string& testName, winml::LearningModelDeviceKind deviceKind) {
   bool shouldSkip = false;
   std::string reason = "Reason not found.";
+
+  // Check for any tests by name that should be disabled, for either CPU or GPU.
   if (disabledTests.find(testName) != disabledTests.end()) {
     reason = disabledTests.at(testName);
     shouldSkip = true;
   } else if (deviceKind == LearningModelDeviceKind::DirectX) {
     if (SkipGpuTests()) {
       reason = "GPU tests are not enabled for this build.";
-      shouldSkip = true;
-    } else if (disabledGpuTests.find(testName) != disabledGpuTests.end()) {
-      reason = disabledGpuTests.at(testName);
       shouldSkip = true;
     } else if (disabledGpuAdapterTests.find(testName) != disabledGpuAdapterTests.end() && ShouldSkipTestOnGpuAdapter(testName)) {
       reason = disabledGpuAdapterTests[testName].second;
@@ -342,12 +348,14 @@ void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKin
     printf("Disabling %s test because : %s\n", testName.c_str(), reason.c_str());
     testName = "DISABLED_" + testName;
   }
+
+  return shouldSkip;
 }
 
-// This function gets the name of the test
-static std::string GetNameOfTest(const testing::TestParamInfo<ModelTest::ParamType>& info) {
+// This function constructs the full name of the test from the file path and device kind.
+std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKind deviceKind) {
   std::string name = "";
-  auto modelPath = std::wstring(std::get<0>(info.param)->GetModelUrl());
+  auto modelPath = std::wstring(testCase->GetModelUrl());
   auto modelPathStr = _winml::Strings::UTF8FromUnicode(modelPath.c_str(), modelPath.length());
   std::vector<std::string> tokenizedModelPath;
   std::istringstream ss(modelPathStr);
@@ -360,20 +368,38 @@ static std::string GetNameOfTest(const testing::TestParamInfo<ModelTest::ParamTy
   name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_";  // model name
   name += tokenizedModelPath[tokenizedModelPath.size() - 3];         // opset version
 
+  // To introduce models from model zoo, the model path is structured like this "<source>/<opset>/<model_name>/?.onnx"
+  std::string source = tokenizedModelPath[tokenizedModelPath.size() - 4];
+  // `models` means the root of models, to be ompatible with the old structure, that is, the source name is empty.
+  if (source != "models"){
+    name += "_" + source;
+  }
+
   std::replace_if(name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_');
 
-  auto deviceKind = std::get<1>(info.param);
-  // Determine if test should be skipped
-  DetermineIfDisableTest(name, deviceKind);
+  // Determine if test should be skipped, using the generic name (no CPU or GPU suffix yet).
+  bool isDisabled = ModifyNameIfDisabledTest(/*inout*/ name, deviceKind);
+
   if (deviceKind == winml::LearningModelDeviceKind::Cpu) {
     name += "_CPU";
   } else {
     name += "_GPU";
   }
 
+  // Check once more with the full name, lest any GPU-specific/CPU-specific cases exist.
+  if (!isDisabled)
+  {
+    ModifyNameIfDisabledTest(/*inout*/ name, deviceKind);
+  }
+
   return name;
 }
 
+// This function gets the name of the test
+static std::string GetNameOfTestFromTestParam(const testing::TestParamInfo<ModelTest::ParamType>& info) {
+  return GetFullNameOfTest(std::get<0>(info.param), std::get<1>(info.param));
+}
+
 INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Combine(testing::ValuesIn(GetAllTestCases()), testing::Values(winml::LearningModelDeviceKind::Cpu, winml::LearningModelDeviceKind::DirectX)),
-                         GetNameOfTest);
+                         GetNameOfTestFromTestParam);
 }  // namespace WinML

@@ -8,7 +8,7 @@
 // WebAssembly side, so there is no need to rebuild WebAssembly.
 //
 // It performs the following operations:
-// 1. query build ID for latest successful build on master branch
+// 1. query build ID for latest successful build on main branch
 // 2. query download URL of build artifacts
 // 3. download and unzip the files to folders
 //
@@ -80,11 +80,11 @@ downloadJson(
         '&$top=1' +
         '&repositoryId=Microsoft/onnxruntime' +
         '&repositoryType=GitHub' +
-        '&branchName=refs/heads/master',
+        '&branchName=refs/heads/main',
     data => {
       const buildId = data.value[0].id;
 
-      console.log(`=== Found latest master build : ${buildId} ===`);
+      console.log(`=== Found latest build on main branch: ${buildId} ===`);
 
       // API reference: https://docs.microsoft.com/en-us/rest/api/azure/devops/build/artifacts/get%20artifact
       downloadJson(

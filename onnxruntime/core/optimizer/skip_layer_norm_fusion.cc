@@ -48,8 +48,13 @@ static bool CheckFirstAdd(Node& add, ProviderType providertype) {
     if (!utils::HasDimValue(add_input1_shape->dim(i)) ||
         !utils::HasDimValue(add_input2_shape->dim(i)) ||
         add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
-      is_valid_input = false;
-      break;
+      // Allow dimension only has dim_param.
+      if (!utils::HasDimParam(add_input1_shape->dim(i)) ||
+          !utils::HasDimParam(add_input2_shape->dim(i)) ||
+          add_input1_shape->dim(i).dim_param() != add_input2_shape->dim(i).dim_param()) {
+        is_valid_input = false;
+        break;
+      }
     }
   }
   return is_valid_input;
@@ -135,7 +140,7 @@ Note: This fusion doesn't consider the following case:
 Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     Node* p_layernorm = graph.GetNode(node_index);
     if (p_layernorm == nullptr)
@@ -144,7 +149,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     Node& ln_node = *p_layernorm;
     ORT_RETURN_IF_ERROR(Recurse(ln_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1, 17}) ||
         !graph_utils::IsSupportedProvider(ln_node, GetCompatibleExecutionProviders()) ||
         !IsSupportedDataType(ln_node)) {
       continue;
@@ -163,8 +168,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     // Format 1
     std::vector<graph_utils::EdgeEndToMatch> format1_parent_path{
-        {0, 0, "Add", {7, 13}, kOnnxDomain},
-        {0, 0, "Add", {7, 13}, kOnnxDomain}};
+        {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
+        {0, 0, "Add", {7, 13, 14}, kOnnxDomain}};
 
     std::vector<const Node::EdgeEnd*> edges;
     if (graph_utils::FindPath(ln_node, true, format1_parent_path, edges, logger)) {
@@ -182,8 +187,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (matched_format == Format::None) {
       // Format 2
       std::vector<graph_utils::EdgeEndToMatch> format2_parent_path{
-          {0, 0, "Add", {7, 13}, kOnnxDomain},
-          {0, 1, "Add", {7, 13}, kOnnxDomain}};
+          {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
+          {0, 1, "Add", {7, 13, 14}, kOnnxDomain}};
 
       if (graph_utils::FindPath(ln_node, true, format2_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
@@ -201,7 +206,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (matched_format == Format::None) {
       // Format 3
       std::vector<graph_utils::EdgeEndToMatch> format3_parent_path{
-          {0, 0, "Add", {7, 13}, kOnnxDomain}};
+          {0, 0, "Add", {7, 13, 14}, kOnnxDomain}};
 
       if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
@@ -220,10 +225,10 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     NodeArg beta_place_holder("", nullptr);
 
     // Get the inputs for the new SkipLayerNormalization node.
-    std::vector<NodeArg*> skip_layer_norm_input_defs{p_add1->MutableInputDefs()[0],
-                                                     p_add1->MutableInputDefs()[1],
-                                                     ln_node.MutableInputDefs()[1],
-                                                     ln_node.MutableInputDefs().size() == 2 ? &beta_place_holder : ln_node.MutableInputDefs()[2]};
+    InlinedVector<NodeArg*> skip_layer_norm_input_defs{p_add1->MutableInputDefs()[0],
+                                                       p_add1->MutableInputDefs()[1],
+                                                       ln_node.MutableInputDefs()[1],
+                                                       ln_node.MutableInputDefs().size() == 2 ? &beta_place_holder : ln_node.MutableInputDefs()[2]};
 
     if (matched_format == Format::Format1) {
       skip_layer_norm_input_defs[0] = p_add2->MutableInputDefs()[0];
@@ -248,7 +253,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     NodeAttributes ln_attrs = ln_node.GetAttributes();
     NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
     if (epsilon != ln_attrs.end()) {
-      skip_layer_norm_node.AddAttribute("epsilon", epsilon->second);
+      skip_layer_norm_node.AddAttributeProto(epsilon->second);
     } else {
       skip_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultSkipLayerNormEpsilon);
     }

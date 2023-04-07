@@ -27,7 +27,9 @@ using onnxruntime::Tensor;
 using onnxruntime::TensorShape;
 
 namespace on = ONNX_NAMESPACE;
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 OrtTypeInfo::OrtTypeInfo(ONNXType type1) noexcept : type(type1) {
 }
 
@@ -265,7 +267,7 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
               break;
             case on::TensorShapeProto::Dimension::kDimParam:
               dim_params[i] = t.dim_param();
-              // fall through
+              [[fallthrough]];
             case on::TensorShapeProto::Dimension::VALUE_NOT_SET:
               shape_data[i] = -1;
               break;

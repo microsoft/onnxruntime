@@ -14,8 +14,8 @@ namespace cuda {
 template <typename T, typename GeluComputationMode, int num_elements_per_thread>
 __global__ void BiasGeluGradDxKernel(int64_t bias_size, const T* dY, const T* X, const T* B, T* dX) {
   const auto num_elements_per_block = num_elements_per_thread * blockDim.x;
-  const auto input_base_idx = bias_size * blockIdx.y + num_elements_per_block * blockIdx.x + threadIdx.x;
-  const auto bias_base_idx = num_elements_per_block * blockIdx.x + threadIdx.x;
+  const auto input_base_idx = bias_size * blockIdx.x + num_elements_per_block * blockIdx.y + threadIdx.x;
+  const auto bias_base_idx = num_elements_per_block * blockIdx.y + threadIdx.x;
   const auto element_stride = blockDim.x;
 
   T reg_dY[num_elements_per_thread];
@@ -60,15 +60,24 @@ void LaunchBiasGeluGradDxKernel(
     int64_t input_size, int64_t bias_size,
     const T* dY, const T* X, const T* B, T* dX) {
   // given a 2D grid of blocks:
-  // each grid row handles bias_size elements
-  // there are input_size / bias_size rows
-  constexpr int num_elements_per_thread = GridDim::maxElementsPerThread;
-  const int num_threads_per_block =
-      std::min<int>(static_cast<int>(CeilDiv(bias_size, num_elements_per_thread)), static_cast<int>(GridDim::maxThreadsPerBlock));
+  // each grid column handles bias_size elements
+  // there are input_size / bias_size columns.
+
+  const int num_elements_per_thread = GridDim::maxElementsPerThread;
+
+#ifdef USE_ROCM
+  // Optimization for ROCm MI100
+  const int max_threads_per_block = 512;
+#else
+  const int max_threads_per_block = GridDim::maxThreadsPerBlock;
+#endif
+
+  int num_threads_per_block =
+      std::min<int>(static_cast<int>(CeilDiv(bias_size, num_elements_per_thread)), max_threads_per_block);
   const auto grid_width = CeilDiv(bias_size, num_elements_per_thread * num_threads_per_block);
   const auto grid_height = input_size / bias_size;
 
-  const dim3 grid_dim{static_cast<uint32_t>(grid_width), static_cast<uint32_t>(grid_height)};
+  const dim3 grid_dim{static_cast<uint32_t>(grid_height), static_cast<uint32_t>(grid_width)};
 
   BiasGeluGradDxKernel<T, GeluComputationMode, num_elements_per_thread>
       <<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, dY, X, B, dX);
@@ -88,10 +97,8 @@ SPECIALIZED_BIAS_GELU_GRAD_IMPL(half, gelu_computation_mode::Approximation);
 SPECIALIZED_BIAS_GELU_GRAD_IMPL(float, gelu_computation_mode::Approximation);
 SPECIALIZED_BIAS_GELU_GRAD_IMPL(double, gelu_computation_mode::Approximation);
 
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_BIAS_GELU_GRAD_IMPL(nv_bfloat16, gelu_computation_mode::Default);
-SPECIALIZED_BIAS_GELU_GRAD_IMPL(nv_bfloat16, gelu_computation_mode::Approximation);
-#endif
+SPECIALIZED_BIAS_GELU_GRAD_IMPL(BFloat16, gelu_computation_mode::Default);
+SPECIALIZED_BIAS_GELU_GRAD_IMPL(BFloat16, gelu_computation_mode::Approximation);
 
 #undef SPECIALIZED_BIAS_GELU_GRAD_IMPL
 

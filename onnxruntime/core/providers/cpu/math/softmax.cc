@@ -113,10 +113,10 @@ template <typename T>
 Status Softmax<T>::ComputeImpl(const Tensor& input, Tensor& output, size_t axis,
                                concurrency::ThreadPool* thread_pool) const {
   const auto& X_shape = input.Shape();
-  const size_t N = X_shape.SizeToDimension(axis);
-  const size_t D = X_shape.SizeFromDimension(axis);
+  const size_t N = onnxruntime::narrow<size_t>(X_shape.SizeToDimension(axis));
+  const size_t D = onnxruntime::narrow<size_t>(X_shape.SizeFromDimension(axis));
 
-  return SoftmaxCPU<T>(N, D, input.template Data<T>(), output.template MutableData<T>(), log_softmax_, thread_pool);
+  return SoftmaxCPU<T>(N, D, input.Data<T>(), output.MutableData<T>(), log_softmax_, thread_pool);
 }
 
 // opset-13 and above
@@ -133,8 +133,8 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_
   std::vector<size_t> permutation(rank);
 
   // The "semantic" meaning of axis has changed in opset-13.
-  // Please compare: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax
-  // with https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11 for detailed explanations
+  // Please compare: https://github.com/onnx/onnx/blob/main/docs/Operators.md#Softmax
+  // with https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Softmax-11 for detailed explanations
   // To account for the opset-13 behavior, our plan will be to transpose the "axis" dim to the innermost dim
   // and perform softmax and then reverse the transpose. We can skip the transposing aspect if the axis is already
   // the innermost dim
@@ -171,21 +171,17 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_
     intermediate_output = std::move(temp_output);
   }
 
-  const size_t N = is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(rank - 1);
-  const size_t D = is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(rank - 1);
+  const size_t N = onnxruntime::narrow<size_t>(is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(rank - 1));
+  const size_t D = onnxruntime::narrow<size_t>(is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(rank - 1));
 
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(N, D,
-                                    is_transpose_required ? transposed_input.template Data<T>() : input.template Data<T>(),
-                                    is_transpose_required ? intermediate_output.template MutableData<T>() : output.template MutableData<T>(),
+                                    is_transpose_required ? transposed_input.Data<T>() : input.Data<T>(),
+                                    is_transpose_required ? intermediate_output.MutableData<T>() : output.MutableData<T>(),
                                     log_softmax_, thread_pool));
 
   if (is_transpose_required) {
-    std::vector<size_t> reverse_permutation(rank);
-    for (size_t i = 0, end = permutation.size(); i < end; ++i) {
-      reverse_permutation[permutation[i]] = i;
-    }
     // Perform the transpose to get the axes back to the original ordering
-    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(reverse_permutation, intermediate_output, output));
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutation, intermediate_output, output));
   }
 
   return Status::OK();

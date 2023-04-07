@@ -6,12 +6,12 @@
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/communication_common.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
-#include "core/providers/cuda/nvtx_profile.h" 
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
-#include <mpi.h>
 
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {
@@ -53,7 +53,7 @@ void Send::SendData(
 #endif
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
+  IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes, ctx->GetComputeStream());
 #else
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
       aggregated_aligned_tensor_bytes);
@@ -66,11 +66,11 @@ void Send::SendData(
 #endif
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                              tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice, Stream()));
+    CUDA_CALL_THROW(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
+                                    tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice, Stream(ctx)));
 #else
-    CUDA_CALL(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                              tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, Stream()));
+    CUDA_CALL_THROW(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
+                                    tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, Stream(ctx)));
 #endif
   }
 

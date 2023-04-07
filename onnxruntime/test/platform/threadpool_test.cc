@@ -4,6 +4,11 @@
 #include "core/platform/threadpool.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
+#include "core/util/thread_utils.h"
+#ifdef _WIN32
+#include "test/platform/windows/env.h"
+#include <Windows.h>
+#endif
 
 #include "gtest/gtest.h"
 #include <algorithm>
@@ -46,11 +51,17 @@ void ValidateTestData(TestData& test_data, int expected=1) {
 // test the function with a null pointer, reflecting scenarios where we
 // run with just the main thread.  Note that the thread pool API uses
 // static methods and should operate across all of these cases.
-void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body) {
+void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body, int dynamic_block_base = 0, bool mock_hybrid = false) {
   if (num_threads > 0) {
-    auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
-                                                   num_threads, true);
-    test_body(tp.get());
+    if (dynamic_block_base > 0) {
+      onnxruntime::ThreadOptions thread_options;
+      thread_options.dynamic_block_base_ = dynamic_block_base;
+      auto tp_dynamic_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), thread_options, nullptr, num_threads, true, mock_hybrid);
+      test_body(tp_dynamic_block_size.get());  // test thread pool with dynamic block size
+    } else {
+      auto tp_constant_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, true, mock_hybrid);
+      test_body(tp_constant_block_size.get()); // test thread pool with constant block size
+    } 
   } else {
     test_body(nullptr);
   }
@@ -74,40 +85,42 @@ void TestBatchParallelFor(const std::string& name, int num_threads, int num_task
   ValidateTestData(*test_data);
 }
 
-void TestConcurrentParallelFor(const std::string& name, int num_threads, int num_concurrent, int num_tasks) {
+void TestConcurrentParallelFor(const std::string& name, int num_threads, int num_concurrent, int num_tasks, int dynamic_block_base = 0, bool mock_hybrid = false) {
   // Test running multiple concurrent loops over the same thread pool.  This aims to provoke a
   // more diverse mix of interleavings than with a single loop running at a time.
   for (int rep = 0; rep < 5; rep++) {
-    CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-      std::vector<std::unique_ptr<TestData>> td;
-      onnxruntime::Barrier b(num_concurrent - 1);
+    CreateThreadPoolAndTest(
+        name, num_threads, [&](ThreadPool* tp) {
+          std::vector<std::unique_ptr<TestData>> td;
+          onnxruntime::Barrier b(num_concurrent - 1);
 
-      // Each concurrent tests runs with its own set of counters
-      for (int c = 0; c < num_concurrent; c++) {
-        td.push_back(CreateTestData(num_tasks));
-      }
+          // Each concurrent tests runs with its own set of counters
+          for (int c = 0; c < num_concurrent; c++) {
+            td.push_back(CreateTestData(num_tasks));
+          }
 
-      // For a range of scenarios, run some tests via the thread pool, and one directly
-      for (int c = 0; c < num_concurrent - 1; c++) {
-        ThreadPool::Schedule(tp, [&, c]() {
-            ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+          // For a range of scenarios, run some tests via the thread pool, and one directly
+          for (int c = 0; c < num_concurrent - 1; c++) {
+            ThreadPool::Schedule(tp, [&, c]() {
+              ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
                 IncrementElement(*td[c], i);
               });
-            b.Notify();
+              b.Notify();
+            });
+          }
+
+          ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+            IncrementElement(*td[num_concurrent - 1], i);
           });
-      }
 
-      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
-        IncrementElement(*td[num_concurrent - 1], i);
-      });
-
-      // Validate all outputs
-      b.Wait();
-      for (int c = 0; c < num_concurrent; c++) {
-        ValidateTestData(*td[c]);
-      }
-      td.clear();
-    });
+          // Validate all outputs
+          b.Wait();
+          for (int c = 0; c < num_concurrent; c++) {
+            ValidateTestData(*td[c]);
+          }
+          td.clear();
+        },
+        dynamic_block_base, mock_hybrid);
   }
 }
 
@@ -171,7 +184,7 @@ void TestPoolCreation(const std::string&, int iter) {
 // Test multi-loop parallel sections, with a series of fixed-size loops
 void TestMultiLoopSections(const std::string& name, int num_threads, int num_loops) {
   for (int rep = 0; rep < 5; rep++) {
-    const int num_tasks = 1024;
+    constexpr int num_tasks = 1024;
     auto test_data = CreateTestData(num_tasks);
     CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
 	ThreadPool::ParallelSection ps(tp);
@@ -319,16 +332,88 @@ TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_0Tasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_0Tasks", 4, 4, 0);
 }
 
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_1) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_1", 4, 4, 0, 1);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_4) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_4", 4, 4, 0, 4);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_16) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_16", 4, 4, 0, 16);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_128) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_128", 4, 4, 0, 128);
+}
+
 TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1Tasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1Tasks", 4, 4, 1);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_1) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_1", 4, 4, 1, 1);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_4) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_4", 4, 4, 1, 4);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_16) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_16", 4, 4, 1, 16);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_128) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_128", 4, 4, 1, 128);
 }
 
 TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_8Tasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_8Tasks", 4, 4, 8);
 }
 
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_1) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_1", 4, 4, 8, 1);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_4) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_4", 4, 4, 8, 4);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_16) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_16", 4, 4, 8, 16);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_128) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_128", 4, 4, 8, 128);
+}
+
 TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks", 4, 4, 1000000);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_1) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_1", 4, 4, 1000000, 1);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_4) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_4", 4, 4, 1000000, 4);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_16) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_16", 4, 4, 1000000, 16);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_16_hybrid) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_16", 4, 4, 1000000, 16, true);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_128) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_128", 4, 4, 1000000, 128);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_128_hybrid) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_128", 4, 4, 1000000, 128, true);
 }
 
 TEST(ThreadPoolTest, TestBurstScheduling_0Tasks) {
@@ -424,6 +509,7 @@ TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_10Loop) {
 TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_100Loop) {
   TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_100Loop", 4, 100);
 }
+
 #ifdef _WIN32
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #pragma warning(push)
@@ -455,6 +541,134 @@ TEST(ThreadPoolTest, TestStackSize) {
     ASSERT_EQ(high_limit - low_limit, to.stack_size);
 }
 #pragma warning(pop)
+#endif
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
+  OrtThreadPoolParams tp_params;
+  tp_params.thread_pool_size = 3;
+  const char* wrong_formats[] = {
+      ",",     //1st and 2nd processor id are empty strings
+      "1,",    //2nd processor id is an empty string
+      ";",     //affinity settings for both threads are empty
+      ";1",    //missing the affinity setting for the 1st thread
+      "a",     //invalid char, must be digit
+      "a;b",   //invalid char, must be digit
+      "1;a",   //invalid char, must be digit
+      "0;1",   //processor string must start from 1
+      "-;2",   //invalid char, must be digit
+      "--",    //invalid char, must be digit
+      "2-1;3", //invalid interval, "from" must be equal to or smaller than "to"
+      "5;3a"   //invalid processor id containing non-digit as suffix
+  };
+  for (const auto* wrong_format : wrong_formats) {
+    tp_params.affinity_str = wrong_format;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+  const char* less_than_expected_vec[] = {"1", "1,2", "1-2"};
+  for (const auto* less_than_expected : less_than_expected_vec) {
+    tp_params.affinity_str = less_than_expected;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+  const char* more_than_expected_vec[] = {"1;2;3", "1-2;2-2;3-4", "1;2;3;4;5"};
+  for (const auto* more_than_expected : more_than_expected_vec) {
+    tp_params.affinity_str = more_than_expected;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+}
+#endif
+
+TEST(ThreadPoolTest, TestAffinityStringWellShaped) {
+  OrtThreadPoolParams tp_params;
+  auto default_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                  tp_params,
+                                                  concurrency::ThreadPoolType::INTRA_OP);
+  if (concurrency::ThreadPool::DegreeOfParallelism(default_tp.get()) < 3) {
+    return;
+  }
+  tp_params.thread_pool_size = 3;
+  const char* good_formats[] = {"1;1",
+                                "2;2",
+                                "1-1;2-2",
+                                "1-2;1-2"};
+  for (const auto* good_format : good_formats) {
+    tp_params.affinity_str = good_format;
+    auto non_default_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                        tp_params,
+                                                        concurrency::ThreadPoolType::INTRA_OP);
+    auto DOP = concurrency::ThreadPool::DegreeOfParallelism(non_default_tp.get());
+    ASSERT_TRUE(DOP >= 3 && DOP % 3 == 0); // for hybrid cpu, dop is a multiple of 3
+  }
+}
+
+#ifdef _WIN32
+TEST(ThreadPoolTest, TestDefaultAffinity) {
+  test::CpuGroup cpu_group = {{0, 1},
+                              {2, 3},
+                              {4, 5},
+                              {6, 7}};
+  // 2 logical processors per core, single group
+  test::CpuInfo cpu_info_single = {cpu_group};
+  test::WindowsEnvTester win_env;
+  win_env.SetCpuInfo(cpu_info_single);
+  auto default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 4);
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 2);
+    for (int j = 0; j < 2; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
+    }
+  }
+  // 2 logical processors per core, two groups
+  test::CpuInfo cpu_info_double = {cpu_group, cpu_group};
+  win_env.SetCpuInfo(cpu_info_double);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 8);
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 2);
+    for (int j = 0; j < 2; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
+    }
+  }
+  // 4 logical processors per core, single group
+  cpu_group = {{0, 1, 2, 3},
+               {4, 5, 6, 7},
+               {8, 9, 10, 11},
+               {12, 13, 14, 15}};
+  cpu_info_single = {cpu_group};
+  win_env.SetCpuInfo(cpu_info_single);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 4);
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 4);
+    for (int j = 0; j < 4; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 4 + j);
+    }
+  }
+  // 4 logical processors per core, two groups
+  cpu_info_double = {cpu_group, cpu_group};
+  win_env.SetCpuInfo(cpu_info_double);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 8);
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 4);
+    for (int j = 0; j < 4; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 4 + j);
+    }
+  }
+}
 #endif
 #endif
 

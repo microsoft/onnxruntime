@@ -5,7 +5,7 @@
 
 #include "boost/mp11.hpp"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "gtest/gtest.h"
 
@@ -36,7 +36,7 @@ template <typename SrcType,
           typename DstType>
 void TestCastOp(gsl::span<const SrcType> input,
                 gsl::span<const DstType> output,
-                const std::vector<int64_t>& dimensions,
+                const std::vector<int64_t> &dimensions,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& expected_failure_string = "") {
   OpTester test("Cast", 13);
@@ -113,7 +113,7 @@ struct CastNonStringTester {
     auto output_span = gsl::make_span<DstType>(output_buffer.get(), size);
     CastSpan<SrcType, DstType>(input_span, output_span);
 
-    TestCastOp<SrcType, DstType>(input_span, output_span, shape.GetDims());
+    TestCastOp<SrcType, DstType>(input_span, output_span, GetShapeVector(shape));
   }
 };
 
@@ -126,6 +126,11 @@ using CastNonStringTypes =
         MLFloat16, BFloat16>;
 
 TEST(CastOpTest, NonStringTypes) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Expected equality of these values: true and true";
+  }
+
   boost::mp11::mp_for_each<boost::mp11::mp_product<std::pair, CastNonStringTypes, CastNonStringTypes>>(
       CastNonStringTester{});
 }

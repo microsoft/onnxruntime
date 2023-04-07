@@ -7,7 +7,7 @@ class QMaxPool(Direct8BitOp):
 
     def quantize(self):
         node = self.node
-        assert (node.op_type == "MaxPool")
+        assert node.op_type == "MaxPool"
 
         # if version is less than 12, go to normal quantize.
         if self.quantizer.opset_version < 12:
@@ -24,7 +24,7 @@ class QDQMaxPool(QDQDirect8BitOp):
 
     def quantize(self):
         node = self.node
-        assert (node.op_type == "MaxPool")
+        assert node.op_type == "MaxPool"
 
         # if version is less than 12, just no change
         if self.quantizer.opset_version < 12:

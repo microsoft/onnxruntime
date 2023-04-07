@@ -1,14 +1,18 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
-import sys
-import os
+import os  # noqa: F401
+import sys  # noqa: F401
 
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_inference_collection import (Session, InferenceSession, IOBinding,
-                                                               check_and_normalize_provider_args)
+from onnxruntime.capi.onnxruntime_inference_collection import IOBinding  # noqa: F401
+from onnxruntime.capi.onnxruntime_inference_collection import (
+    InferenceSession,
+    Session,
+    check_and_normalize_provider_args,
+)
 
 
 class TrainingSession(InferenceSession):
@@ -20,15 +24,21 @@ class TrainingSession(InferenceSession):
         else:
             self._sess = C.TrainingSession()
 
-        providers, provider_options = check_and_normalize_provider_args(providers, provider_options,
-                                                                        C.get_available_providers())
+        # providers needs to be passed explicitly as of ORT 1.10
+        # retain the pre-1.10 behavior by setting to the available providers.
+        if providers is None:
+            providers = C.get_available_providers()
+
+        providers, provider_options = check_and_normalize_provider_args(
+            providers, provider_options, C.get_available_providers()
+        )
 
         if isinstance(path_or_bytes, str):
             config_result = self._sess.load_model(path_or_bytes, parameters, providers, provider_options)
         elif isinstance(path_or_bytes, bytes):
             config_result = self._sess.read_bytes(path_or_bytes, parameters, providers, provider_options)
         else:
-            raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
+            raise TypeError(f"Unable to load from type '{type(path_or_bytes)}'")
 
         self.loss_scale_input_name = config_result.loss_scale_input_name
 
@@ -44,7 +54,7 @@ class TrainingSession(InferenceSession):
 
     def get_model_state(self, include_mixed_precision_weights=False):
         return self._sess.get_model_state(include_mixed_precision_weights)
-    
+
     def get_optimizer_state(self):
         return self._sess.get_optimizer_state()
 

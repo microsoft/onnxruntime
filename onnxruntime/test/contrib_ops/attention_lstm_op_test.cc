@@ -250,15 +250,15 @@ static std::vector<T> ConvertIcfoToIofc(const std::vector<T>& icfo, int cell_hid
 }
 
 //Settings for this group of test data
-static const int batch_size = 1;
-static const int memory_max_step = 3;
-static const int memory_depth = 3;
-static const int input_max_step = 3;
-static const int input_only_depth = 3;
-static const int am_attn_size = 2;
-static const int cell_hidden_size = 3;
-static const int aw_attn_size = 2;
-static const int input_size = input_only_depth + aw_attn_size;
+static constexpr int batch_size = 1;
+static constexpr int memory_max_step = 3;
+static constexpr int memory_depth = 3;
+static constexpr int input_max_step = 3;
+static constexpr int input_only_depth = 3;
+static constexpr int am_attn_size = 2;
+static constexpr int cell_hidden_size = 3;
+static constexpr int aw_attn_size = 2;
+static constexpr int input_size = input_only_depth + aw_attn_size;
 
 // [batch_size=1, memory_max_step=3, memory_depth=3]
 static std::vector<float> s_M_data{0.1f, -0.25f, 1.0f, 1.0f, -1.0f, -1.5f, 1.0f, 0.25f, -0.125f};
@@ -324,7 +324,7 @@ TEST(AttnLSTMTest, ForwardLstmWithBahdanauAMZeroAttention) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   // Fake zero for attention input weight now
   std::fill(W_T_data.begin() + 3 * 12, W_T_data.begin() + W_data_size, 0.0f);
@@ -364,7 +364,7 @@ TEST(AttnLSTMTest, ForwardLstmWithBahdanauAM) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   std::vector<float> R_T_data(&(WR_T_data[0]) + W_data_size, &(WR_T_data[0]) + WR_T_data.size());
 
@@ -401,7 +401,7 @@ TEST(AttnLSTMTest, ForwardLstmWithBahdanauAMShortenSeqLength) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   std::vector<float> R_T_data(&(WR_T_data[0]) + W_data_size, &(WR_T_data[0]) + WR_T_data.size());
 
@@ -440,7 +440,7 @@ TEST(AttnLSTMTest, ReverseLstmWithBahdanauAMShortenSeqLength) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   std::vector<float> R_T_data(&(WR_T_data[0]) + W_data_size, &(WR_T_data[0]) + WR_T_data.size());
 
@@ -479,7 +479,7 @@ TEST(AttnLSTMTest, BidirectionLstmWithBahdanauAMShortenSeqLength) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   std::vector<float> R_T_data(&(WR_T_data[0]) + W_data_size, &(WR_T_data[0]) + WR_T_data.size());
 
@@ -529,8 +529,8 @@ TEST(AttnLSTMTest, BidirectionLstmWithBahdanauAMShortenSeqLength) {
 }
 
 TEST(AttnLSTMTest, BidirectionLstmWithBahdanauAM2BatchShortenSeqLen) {
-  const int batch2Size = 2;
-  const int inputMaxStep4 = 4;
+  constexpr int batch2Size = 2;
+  constexpr int inputMaxStep4 = 4;
 
   static const std::vector<float> s_X_T_2batch{0.25f, -1.5f, 1.0f, 0.25f, -0.5f, -1.5f, 0.1f, 1.5f, 0.25f, 0.0f, 0.0f, 0.0f,
                                                0.1f, -0.125f, 0.25f, -0.5f, 0.25f, 0.1f, 1.0f, 0.5f, -1.5f, 0.0f, 0.0f, 0.0f};
@@ -540,7 +540,7 @@ TEST(AttnLSTMTest, BidirectionLstmWithBahdanauAM2BatchShortenSeqLen) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   std::vector<float> R_T_data(&(WR_T_data[0]) + W_data_size, &(WR_T_data[0]) + WR_T_data.size());
 

@@ -12,22 +12,29 @@ namespace ort_dnnl {
 DnnlConv::DnnlConv() {}
 
 void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
+  bool has_relu = false;
+  if (node.OpType() == "ConvRelu") {
+    has_relu = true;
+  }
+
   auto dnnl_engine = sp.GetEngine();
 
-  auto conv_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto conv_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = conv_src_mem.get_desc();
-  auto src_dims = conv_src_mem.get_desc().dims();
+  src_md = dnnl::memory::desc(src_md.get_dims(), src_md.get_data_type(), dnnl::memory::format_tag::any);
+  auto src_dims = conv_src_mem.get_desc().get_dims();
 
-  auto conv_weights_mem = sp.GetMemory(node.Input(IN_W).Name());
+  auto conv_weights_mem = sp.GetMemory(node.Input(IN_W));
   auto weight_md = conv_weights_mem.get_desc();
-  auto weight_dims_original = conv_weights_mem.get_desc().dims();
+  weight_md = dnnl::memory::desc(weight_md.get_dims(), weight_md.get_data_type(), dnnl::memory::format_tag::any);
+  auto weight_dims_original = conv_weights_mem.get_desc().get_dims();
   dnnl::memory::dims weight_dims = weight_dims_original;
 
   bool bias_exists = node.Input(IN_B).Exists();
   dnnl::memory conv_bias_mem;
   dnnl::memory::desc bias_md;
   if (bias_exists) {
-    conv_bias_mem = sp.GetMemory(node.Input(IN_B).Name());
+    conv_bias_mem = sp.GetMemory(node.Input(IN_B));
     bias_md = conv_bias_mem.get_desc();
   }
 
@@ -82,25 +89,28 @@ void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dst_mem_dims = InferOutputShape(node, src_dims, weight_dims_original, kernel_shape, strides, dilations, padding);
   dnnl::memory::desc dst_md = dnnl::memory::desc({dst_mem_dims}, node.Input(IN_X).Type(), dnnl::memory::format_tag::any);
 
-  #ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING
   auto prop_kind = dnnl::prop_kind::forward_training;
 #else
   auto prop_kind = dnnl::prop_kind::forward_inference;
 #endif  // ENABLE_TRAINING
 
+  dnnl::primitive_attr attr;
+  if (has_relu) {
+    dnnl::post_ops ops;
+    ops.append_eltwise(dnnl::algorithm::eltwise_relu, 0.f, 0.f);
+    attr.set_post_ops(ops);
+  }
+
   dnnl::convolution_forward::primitive_desc conv_pd;
   if (bias_exists) {
-    auto conv_desc = dnnl::convolution_forward::desc(
-            prop_kind, dnnl::algorithm::convolution_direct,
-            src_md, weight_md, bias_md, dst_md,
-            strides, dilations, padding_left, padding_right);
-    conv_pd = dnnl::convolution_forward::primitive_desc(conv_desc, dnnl_engine);
+    conv_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::convolution_direct,
+                                                        src_md, weight_md, bias_md, dst_md, strides, dilations,
+                                                        padding_left, padding_right, attr);
   } else {
-    auto conv_desc = dnnl::convolution_forward::desc(
-            prop_kind, dnnl::algorithm::convolution_direct,
-            src_md, weight_md, dst_md,
-            strides, dilations, padding_left, padding_right);
-    conv_pd = dnnl::convolution_forward::primitive_desc(conv_desc, dnnl_engine);
+    conv_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::convolution_direct,
+                                                        src_md, weight_md, dst_md, strides, dilations, padding_left,
+                                                        padding_right, attr);
   }
 
   // If using GPU this will move the memory from the CPU to the GPU.
@@ -151,7 +161,7 @@ std::vector<int64_t> DnnlConv::GetInferedPads(DnnlNode& node,
   assert(src_dims.size() == shape + 2);
   for (size_t i = 0; i < shape; ++i) {
     if (ComputePad(src_dims[2 + i], strides[i], kernel_shape[i], (dilations[i] + 1), auto_pad, pad_head, pad_tail)) {
-      pads[i]= pad_head;
+      pads[i] = pad_head;
       pads[shape + i] = pad_tail;
     }
   }
@@ -304,8 +314,7 @@ dnnl::memory::dims DnnlConv::InferOutputShape(DnnlNode& node,
                                               const std::vector<int64_t>& kernel_shape,
                                               const dnnl::memory::dims& strides,
                                               const dnnl::memory::dims& dilations,
-                                              const std::vector<int64_t>& pads)
-{
+                                              const std::vector<int64_t>& pads) {
   auto pad_type = GetAutoPad(node);
   ConvShape shape = static_cast<ConvShape>(kernel_shape.size());
   dnnl::memory::dims output_shape;
@@ -323,12 +332,10 @@ dnnl::memory::dims DnnlConv::InferOutputShape(DnnlNode& node,
     switch (pad_type) {
       case onnxruntime::AutoPadType::NOTSET: {
         output_shape.push_back(static_cast<int64_t>(static_cast<float>(src_dims[dim + 2] + pads[dim] + pads[dim + shape] - dkernel) / strides[dim] + 1));
-      }
-        break;
+      } break;
       case onnxruntime::AutoPadType::VALID: {
         output_shape.push_back((src_dims[dim + 2] - dkernel) / strides[dim] + 1);
-      }
-        break;
+      } break;
       case onnxruntime::AutoPadType::SAME_UPPER: {
         if (dilations[dim] != 0) {
           LOGS_DEFAULT(ERROR) << "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.";
@@ -337,14 +344,12 @@ dnnl::memory::dims DnnlConv::InferOutputShape(DnnlNode& node,
         int64_t legacy_target_size = (src_dims[dim + 2] + strides[dim] - 1) / strides[dim];
         int64_t pad_needed = (legacy_target_size - 1) * strides[dim] + kernel_shape[dim] - src_dims[dim + 2];
         output_shape.push_back((src_dims[dim + 2] + pad_needed - dkernel) / strides[dim] + 1);
-      }
-        break;
+      } break;
       case onnxruntime::AutoPadType::SAME_LOWER: {
         int64_t legacy_target_size = (src_dims[dim + 2] + strides[dim] - 1) / strides[dim];
         int64_t pad_needed = (legacy_target_size - 1) * strides[dim] + kernel_shape[dim] - src_dims[dim + 2];
         output_shape.push_back((src_dims[dim + 2] + pad_needed - dkernel) / strides[dim] + 1);
-      }
-        break;
+      } break;
       default:
         break;
     }

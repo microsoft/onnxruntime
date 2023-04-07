@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/test/session/training_session_test_utils.h"
+#include "core/common/span_utils.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "test/util/include/default_providers.h"
 
@@ -46,14 +47,14 @@ void GenerateOptimizerInitialState(const std::string& optimizer_op_name, const T
       optim_state.insert(std::make_pair(param_prefix, std::move(mlValue)));
     }
     if (optimizer_op_name == k_adam_optimizer_op_name) {
-      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, uc_value, &mlValue);
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, uc_value, &mlValue);
       optim_state.insert(std::make_pair(ADAM_UC_PREFIX, std::move(mlValue)));
     }
     result.insert(std::make_pair(weight_name, std::move(optim_state)));
   }
   if (optimizer_op_name == k_lamb_optimizer_op_name) {
     // add "Step" for lamb
-    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, uc_value, &mlValue);
+    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, uc_value, &mlValue);
     shared_states.insert(std::make_pair(LAMB_STEP_TENSOR_NAME, std::move(mlValue)));
     result.insert(std::make_pair(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY, std::move(shared_states)));
   }
@@ -104,7 +105,7 @@ void VerifyState(const DataTransferManager& data_transfer_mgr, const NameMLValMa
     auto& actual_gpu_tensor = a_state_it.second.Get<Tensor>();
 
     // Copying tensor to CPU when cuda is enabled.
-    auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+    auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
     Tensor actual_tensor{actual_gpu_tensor.DataType(), actual_gpu_tensor.Shape(), cpu_allocator};
     ORT_ENFORCE(data_transfer_mgr.CopyTensor(actual_gpu_tensor, actual_tensor).IsOK());
 #else
@@ -115,8 +116,7 @@ void VerifyState(const DataTransferManager& data_transfer_mgr, const NameMLValMa
       // compare "Update_Count" or "Step"
       ASSERT_EQ(actual_tensor.GetElementType(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       ASSERT_EQ(expected_tensor.Shape(), actual_tensor.Shape());
-      std::vector<int64_t> dims = {1};
-      ASSERT_EQ(expected_tensor.Shape().GetDims(), dims);
+      ASSERT_TRUE(SpanEq(expected_tensor.Shape().GetDims(), AsSpan<int64_t>({1})));
       auto size = expected_tensor.Shape().Size();
       const std::vector<int64_t> expected(expected_tensor.template Data<int64_t>(), expected_tensor.template Data<int64_t>() + size);
       const std::vector<int64_t> actual(actual_tensor.template Data<int64_t>(), actual_tensor.template Data<int64_t>() + size);
@@ -167,7 +167,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 
   std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
 
-  std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
+  std::cout << "Loading source model file = " << ToUTF8String(forward_model_file) << "\n";
 
   ORT_THROW_IF_ERROR(training_session->Load(forward_model_file));
 
@@ -183,8 +183,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 #ifdef USE_CUDA
   ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo xp_info;
-  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(xp_info)));
+  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
   ORT_THROW_IF_ERROR(training_session->Initialize());
 
@@ -213,7 +212,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 
     float lr = 0.001f;
     OrtValue lrMLValue;
-    TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{lr}, &lrMLValue);
+    TrainingUtil::CreateCpuMLValue(std::array<int64_t, 1>{1}, std::vector<float>{lr}, &lrMLValue);
     fw_feeds.first.push_back(lr_feed_name);
     fw_feeds.second.push_back(lrMLValue);
   }
@@ -223,7 +222,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
         config_result.mixed_precision_config_result.value().loss_scale_input_name;
     float loss_scale = 2048.0f;
     OrtValue loss_scaleMLValue;
-    TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scaleMLValue);
+    TrainingUtil::CreateCpuMLValue(std::array<int64_t, 1>{1}, std::vector<float>{loss_scale}, &loss_scaleMLValue);
     fw_feeds.first.push_back(loss_scale_input_name);
     fw_feeds.second.push_back(loss_scaleMLValue);
   }

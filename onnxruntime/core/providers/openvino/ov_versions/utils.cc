@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #include "core/providers/shared_library/provider_api.h"
@@ -115,8 +115,10 @@ GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const st
     if (!this_cluster.empty()) {
       ng_clusters.push_back(std::move(this_cluster));
     }
-    // Point prev to node idx past this unsuported node.
-    prev = ++it;
+    if (it != topological_order.end()) {
+      // Point prev to node idx past this unsuported node.
+      prev = ++it;
+    }
   }
 
   //Tail

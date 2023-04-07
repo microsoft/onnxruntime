@@ -16,8 +16,8 @@ template <typename T>
 class Clip_6Base {
  public:
   explicit Clip_6Base(const OpKernelInfo& info) {
-    auto min_val = std::numeric_limits<T>::lowest();
-    auto max_val = std::numeric_limits<T>::max();
+    constexpr auto min_val = std::numeric_limits<T>::lowest();
+    constexpr auto max_val = std::numeric_limits<T>::max();
     info.GetAttrOrDefault("min", &min_, min_val);
     info.GetAttrOrDefault("max", &max_, max_val);
     ORT_ENFORCE(min_ <= max_);

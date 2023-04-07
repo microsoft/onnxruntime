@@ -33,7 +33,7 @@ static void RunTest(const std::vector<float>& x_vals,
 }
 
 TEST(HardmaxOperator, Simple) {
-  // https://github.com/onnx/onnx/blob/master/docs/Operators.md#Hardmax
+  // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Hardmax
   std::vector<float> x_vals = {-1.0f, 0.0f, 1.0f};
   std::vector<float> expected_vals = {0.0f, 0.0f, 1.0f};
   std::vector<int64_t> dimensions = {1, 3};

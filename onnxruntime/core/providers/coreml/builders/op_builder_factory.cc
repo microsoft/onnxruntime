@@ -23,6 +23,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateActivationOpBuilder("Sigmoid", op_registrations);
     CreateActivationOpBuilder("Tanh", op_registrations);
     CreateActivationOpBuilder("Relu", op_registrations);
+    CreateActivationOpBuilder("PRelu", op_registrations);
   }
 
   {  // Transpose
@@ -39,6 +40,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Reshape
     CreateReshapeOpBuilder("Reshape", op_registrations);
+  }
+
+  {  // DepthToSpace
+    CreateDepthToSpaceOpBuilder("DepthToSpace", op_registrations);
   }
 
   {  // Pool
@@ -75,6 +80,18 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Cast
     CreateCastOpBuilder("Cast", op_registrations);
+  }
+
+  {  // Flatten
+    CreateFlattenOpBuilder("Flatten", op_registrations);
+  }
+
+  {  // LRN
+    CreateLRNOpBuilder("LRN", op_registrations);
+  }
+
+  {  // Pad
+    CreatePadOpBuilder("Pad", op_registrations);
   }
 
   return op_registrations;

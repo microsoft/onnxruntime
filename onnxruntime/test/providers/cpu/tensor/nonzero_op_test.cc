@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -68,17 +69,22 @@ TEST(NonZeroOpTest, ThreeDims) {
 }
 
 TEST(NonZeroOpTest, Scalar) {
+  // TODO: ONNX shape inference disagrees about the output shape.
+  // ONNX spec is ambiguous: https://github.com/onnx/onnx/issues/2428.
+  // Once spec clarified, remove strict_shape_type_inference override.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
   {
     OpTester test{kOpName, kOpVersion};
     test.AddInput<int32_t>("X", {}, {0});
     test.AddOutput<int64_t>("Y", {1, 0}, {});
-    test.Run();
+    test.Run(so);
   }
   {
     OpTester test{kOpName, kOpVersion};
     test.AddInput<int32_t>("X", {}, {1});
     test.AddOutput<int64_t>("Y", {1, 1}, {0});
-    test.Run();
+    test.Run(so);
   }
 }
 

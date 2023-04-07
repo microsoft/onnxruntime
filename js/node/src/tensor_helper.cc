@@ -210,11 +210,10 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value &value) {
   returnValue.Set("type", Napi::String::New(env, typeCstr));
 
   // dims
-  size_t dimsCount = tensorTypeAndShapeInfo.GetDimensionsCount();
+  const size_t dimsCount = tensorTypeAndShapeInfo.GetDimensionsCount();
   std::vector<int64_t> dims;
   if (dimsCount > 0) {
-    dims.resize(dimsCount);
-    tensorTypeAndShapeInfo.GetDimensions(&dims[0], dimsCount);
+    dims = tensorTypeAndShapeInfo.GetShape();
   }
   auto dimsArray = Napi::Array::New(env, dimsCount);
   for (uint32_t i = 0; i < dimsCount; i++) {
@@ -250,7 +249,7 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value &value) {
     // TODO: optimize memory
     auto arrayBuffer = Napi::ArrayBuffer::New(env, size * DATA_TYPE_ELEMENT_SIZE_MAP[elemType]);
     if (size > 0) {
-      memcpy(arrayBuffer.Data(), value.GetTensorMutableData<void>(), size * DATA_TYPE_ELEMENT_SIZE_MAP[elemType]);
+      memcpy(arrayBuffer.Data(), value.GetTensorRawData(), size * DATA_TYPE_ELEMENT_SIZE_MAP[elemType]);
     }
     napi_value typedArrayData;
     napi_status status =

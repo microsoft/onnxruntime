@@ -209,12 +209,12 @@ static void RunQuantLSTM(int64_t input_size,
   // X
   int64_t seq_len = 1;  // only use seq length 1 to model the test
   std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
-  std::vector<float> X_data = rand_gen.Gaussian<float>({seq_len, batch_size, input_size}, 0.0f, 0.25f);
+  std::vector<float> X_data = rand_gen.Gaussian<float>(std::array<int64_t, 3>{seq_len, batch_size, input_size}, 0.0f, 0.25f);
   test.AddInput<float>("X", X_dims, X_data);
 
   // W
   std::vector<int64_t> W_dims = {num_directions, input_size, 4 * hidden_size};
-  std::vector<float> W_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, input_size}, 0.0f, 0.25f);
+  std::vector<float> W_data = rand_gen.Gaussian<float>(std::array<int64_t, 3>{num_directions, 4 * hidden_size, input_size}, 0.0f, 0.25f);
 
   std::vector<float> w_scale;
   std::vector<QType> w_zp;
@@ -224,7 +224,7 @@ static void RunQuantLSTM(int64_t input_size,
 
   // R
   std::vector<int64_t> R_dims = {num_directions, hidden_size, 4 * hidden_size};
-  std::vector<float> R_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, hidden_size}, 0.0f, 0.25f);
+  std::vector<float> R_data = rand_gen.Gaussian<float>(std::array<int64_t, 3>{num_directions, 4 * hidden_size, hidden_size}, 0.0f, 0.25f);
 
   std::vector<float> r_scale;
   std::vector<QType> r_zp;
@@ -362,7 +362,8 @@ TEST(DynamicQuantLSTMTest, LargeSize) {
   RunQuantLSTM<uint8_t>(12, 3, 278);
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
 
@@ -384,12 +385,12 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   // X
   int64_t seq_len = 1;  // only use seq length 1 to model the test
   std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
-  std::vector<float> X_data = rand_gen.Gaussian<float>({seq_len, batch_size, input_size}, 0.0f, 0.25f);
+  std::vector<float> X_data = rand_gen.Gaussian<float>(std::array<const int64_t, 3>{seq_len, batch_size, input_size}, 0.0f, 0.25f);
   test.AddInput<float>("X", X_dims, X_data);
 
   // W
   std::vector<int64_t> W_dims = {num_directions, input_size, 4 * hidden_size};
-  std::vector<float> W_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, input_size}, 0.0f, 0.25f);
+  std::vector<float> W_data = rand_gen.Gaussian<float>(std::array<const int64_t, 3>{num_directions, 4 * hidden_size, input_size}, 0.0f, 0.25f);
 
   std::vector<float> w_scale;
   std::vector<int8_t> w_zp;
@@ -399,7 +400,7 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
 
   // R
   std::vector<int64_t> R_dims = {num_directions, hidden_size, 4 * hidden_size};
-  std::vector<float> R_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, hidden_size}, 0.0f, 0.25f);
+  std::vector<float> R_data = rand_gen.Gaussian<float>(std::array<const int64_t, 3>{num_directions, 4 * hidden_size, hidden_size}, 0.0f, 0.25f);
 
   std::vector<float> r_scale;
   std::vector<int8_t> r_zp;

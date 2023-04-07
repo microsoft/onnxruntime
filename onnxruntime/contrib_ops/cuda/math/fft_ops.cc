@@ -19,7 +19,7 @@ void SetFFTState(FFTState* state,
                  cudaDataType exec_type) {
   memset(state, 0, sizeof(FFTState));
   state->signal_ndim = signal_ndim;
-  for (int32_t i = 0; i < signal_dims.size(); ++i) {
+  for (int64_t i = 0; i < static_cast<int64_t>(signal_dims.size()); ++i) {
     state->signal_dims[i] = signal_dims[i];
   }
   state->itype = itype;
@@ -82,12 +82,12 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuFFT does not support tensor type: ", X->DataType());
   }
 
-  //calculate batch size
+  // calculate batch size
   int64_t batch_ndim = input_ndim - signal_tensor_ndim;
   int64_t batch_size = (batch_ndim == 0 ? 1 : input_shape.SizeToDimension(batch_ndim));
 
-  //infer output shape
-  //copy the input shape up to the second last dimention
+  // infer output shape
+  // copy the input shape up to the second last dimention
   std::vector<int64_t> output_dims, signal_dims;
   int i = 0;
   for (; i < batch_ndim + signal_ndim_ - 1; ++i) {
@@ -97,9 +97,9 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
     }
   }
 
-  //process the last dim(s)
+  // process the last dim(s)
   if (onesided_) {
-    if (complex_input && !complex_output) {  //IRFFT
+    if (complex_input && !complex_output) {  // IRFFT
       int64_t inferred_size = input_shape[i] * 2 - 1;
       output_dims.push_back(inferred_size);
       signal_dims.push_back(inferred_size);
@@ -125,13 +125,13 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
   int64_t output_size = std::accumulate(output_dims.begin(), output_dims.end(), 1ll, std::multiplies<int64_t>());
 
   Tensor* Y = const_cast<OpKernelContext*>(context)->Output(0, TensorShape(output_dims));
-  auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
-  auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-  CUFFT_RETURN_IF_ERROR(cufftSetStream(plan_info.plan, Stream()));
+  auto* x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
+  auto* y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+  CUFFT_RETURN_IF_ERROR(cufftSetStream(plan_info.plan, Stream(context)));
   CUFFT_RETURN_IF_ERROR(cufftXtExec(plan_info.plan, const_cast<CudaT*>(x_data), y_data, inverse ? CUFFT_INVERSE : CUFFT_FORWARD));
 
   if (inverse) {
-    PostProcess(Stream(), signal_dims, output_size, y_data);
+    PostProcess(Stream(context), signal_dims, output_size, y_data);
   }
 
   return Status::OK();

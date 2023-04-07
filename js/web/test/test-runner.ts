@@ -43,20 +43,20 @@ function fromInternalTensor(tensor: Tensor): ort.Tensor {
   return new ort.Tensor(tensor.type, tensor.data as ort.Tensor.DataType, tensor.dims);
 }
 
-async function loadFile(uri: string): Promise<Uint8Array|ArrayBuffer> {
+async function loadFile(uri: string): Promise<Uint8Array> {
   if (typeof fetch === 'undefined') {
     // node
     return promisify(readFile)(uri);
   } else {
     // browser
     const response = await fetch(uri);
-    return response.arrayBuffer();
+    return new Uint8Array(await response.arrayBuffer());
   }
 }
 
 async function loadTensorProto(uriOrData: string|Uint8Array): Promise<Test.NamedTensor> {
   const buf = (typeof uriOrData === 'string') ? await loadFile(uriOrData) : uriOrData;
-  const tensorProto = onnxProto.TensorProto.decode(Buffer.from(buf));
+  const tensorProto = onnxProto.TensorProto.decode(buf);
   const tensor = Tensor.fromProto(tensorProto);
   // add property 'name' to the tensor object.
   const namedTensor = fromInternalTensor(tensor) as unknown as Test.NamedTensor;
@@ -87,7 +87,7 @@ async function loadTensors(
 
       const uriOrData = fileCache && fileCache[dataFile] ? fileCache[dataFile] : dataFile;
       const t = ext.toLowerCase() === '.pb' ? await loadTensorProto(uriOrData) :  // onnx.TensorProto
-          await loadMlProto(uriOrData);                                           // (TBD)
+                                              await loadMlProto(uriOrData);
 
       const dataFileBasename = dataFile.split(/[/\\]/).pop()!;
 
@@ -114,7 +114,7 @@ async function loadTensors(
 }
 
 async function initializeSession(
-    modelFilePath: string, backendHint: string, profile: boolean,
+    modelFilePath: string, backendHint: string, profile: boolean, sessionOptions: ort.InferenceSession.SessionOptions,
     fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
   const preloadModelData: Uint8Array|undefined =
       fileCache && fileCache[modelFilePath] ? fileCache[modelFilePath] : undefined;
@@ -124,7 +124,8 @@ async function initializeSession(
           preloadModelData ? ` [preloaded(${preloadModelData.byteLength})]` : ''}`);
 
   const profilerConfig = profile ? {maxNumberEvents: 65536} : undefined;
-  const sessionConfig = {executionProviders: [backendHint], profiler: profilerConfig, enableProfiling: profile};
+  const sessionConfig =
+      {...sessionOptions, executionProviders: [backendHint], profiler: profilerConfig, enableProfiling: profile};
   let session: ort.InferenceSession;
 
   try {
@@ -197,7 +198,9 @@ export class ModelTestContext {
   /**
    * create a ModelTestContext object that used in every test cases in the given ModelTest.
    */
-  static async create(modelTest: Test.ModelTest, profile: boolean): Promise<ModelTestContext> {
+  static async create(
+      modelTest: Test.ModelTest, profile: boolean,
+      sessionOptions?: ort.InferenceSession.SessionOptions): Promise<ModelTestContext> {
     if (this.initializing) {
       throw new Error('cannot create a ModelTestContext object when the previous creation is not done');
     }
@@ -206,7 +209,8 @@ export class ModelTestContext {
       this.initializing = true;
 
       const initStart = now();
-      const session = await initializeSession(modelTest.modelUrl, modelTest.backend!, profile, this.cache);
+      const session =
+          await initializeSession(modelTest.modelUrl, modelTest.backend!, profile, sessionOptions || {}, this.cache);
       const initEnd = now();
 
       for (const testCase of modelTest.cases) {
@@ -271,7 +275,7 @@ export class TensorResultValidator {
         this.absoluteThreshold = WEBGL_THRESHOLD_ABSOLUTE_ERROR;
         this.relativeThreshold = WEBGL_THRESHOLD_RELATIVE_ERROR;
       }
-    } else if (backend === 'wasm') {
+    } else if (backend === 'wasm' || backend === 'xnnpack') {
       this.absoluteThreshold = WASM_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WASM_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'onnxruntime') {

@@ -1,19 +1,21 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+from collections.abc import Iterable
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from collections.abc import Iterable
 from torch.utils.checkpoint import checkpoint
-from onnxruntime.training.ortmodule import ORTModule
+
+from onnxruntime.training.ortmodule import ORTModule  # noqa: F401
 from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import HierarchicalORTModule
 
 
 class A(nn.Module):
     # A supported module.
     def __init__(self):
-        super(A, self).__init__()
+        super().__init__()
         self.l1 = nn.Linear(2, 2)
 
     def forward(self, x):
@@ -25,16 +27,17 @@ class B(nn.Module):
     # uses gradient-checkpointing. However, its two sub-module's
     # are exportable, so ORTModule should be used to compute them.
     def __init__(self):
-        super(B, self).__init__()
+        super().__init__()
         self.l1 = nn.Linear(2, 2)
         self.a = A()
 
     def forward(self, x):
-
         def custom():
             def custom_forward(x_):
                 return self.a(x_)
+
             return custom_forward
+
         z = self.l1(checkpoint(custom(), x))
         return z
 
@@ -42,7 +45,7 @@ class B(nn.Module):
 class C(nn.Module):
     # A supported module.
     def __init__(self):
-        super(C, self).__init__()
+        super().__init__()
         self.l1 = nn.Linear(2, 2)
 
     def forward(self, x):
@@ -54,7 +57,7 @@ class D(nn.Module):
     # This module is not exportable to ONNX because it
     # inner module self.b uses gradient-checkpointing.
     def __init__(self):
-        super(D, self).__init__()
+        super().__init__()
         self.b = B()
 
     def forward(self, x):
@@ -65,7 +68,7 @@ class D(nn.Module):
 class Main(nn.Module):
     # Main module.
     def __init__(self):
-        super(Main, self).__init__()
+        super().__init__()
         self.alpha = nn.Parameter(torch.tensor(0.941736), requires_grad=True)
         self.a = A()
         self.b = B()
@@ -80,7 +83,7 @@ class Main(nn.Module):
 class MainWithNonTensorInput(nn.Module):
     # Module for testing non-tensor input.
     def __init__(self):
-        super(MainWithNonTensorInput, self).__init__()
+        super().__init__()
         self.alpha = nn.Parameter(torch.tensor(0.941736), requires_grad=True)
         self.a = A()
         self.b = B()
@@ -88,7 +91,7 @@ class MainWithNonTensorInput(nn.Module):
         self.d = D()
 
     def forward(self, x, case):
-        if case == 'reverse':
+        if case == "reverse":
             z = self.alpha * self.a(self.b(self.c(self.d(x))))
         else:
             z = self.alpha * self.d(self.c(self.b(self.a(x))))
@@ -98,7 +101,7 @@ class MainWithNonTensorInput(nn.Module):
 class E(nn.Module):
     # Sub-modules are stored in nn.ModuleList.
     def __init__(self):
-        super(E, self).__init__()
+        super().__init__()
         self.my_layers = nn.ModuleList([A(), B(), C(), D()])
 
     def forward(self, x):
@@ -111,7 +114,7 @@ class E(nn.Module):
 class MainWithModuleList(nn.Module):
     # Sub-modules are stored in nn.ModuleList.
     def __init__(self):
-        super(MainWithModuleList, self).__init__()
+        super().__init__()
         self.my_layers = nn.ModuleList([E(), E()])
 
     def forward(self, x):
@@ -125,7 +128,7 @@ class MainWithMultiModuleOutputs(nn.Module):
     # Module with repeated sub-modules and producing
     # multiple outputs.
     def __init__(self):
-        super(MainWithMultiModuleOutputs, self).__init__()
+        super().__init__()
         self.layer_list1 = nn.ModuleList([D(), A(), B()])
         self.layer_list2 = nn.ModuleList([C(), B(), D()])
 
@@ -139,11 +142,52 @@ class MainWithMultiModuleOutputs(nn.Module):
         return y1, y2
 
 
+class G(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.l1 = nn.Linear(2, 2)
+
+    def forward(self, x):
+        if x.dtype == torch.float16:
+            x = x.to(torch.float32)
+        x = self.l1(x)
+        return x if x.dtype == torch.float32 else x.to(torch.float16)
+
+    def forward_fp16(self, x):
+        assert x.dtype == torch.float16
+        return self.l1(x.to(torch.float32)).to(torch.float16)
+
+
+class MainWithModuleMultipleCalls(nn.Module):
+    # Module with mixed precision.
+    def __init__(self):
+        super().__init__()
+        self.b = B()
+        self.g = G()
+
+    def forward(self, x):
+        x = self.g(x)
+        x = self.g(x.to(torch.float16)).to(torch.float32)
+        return self.b(x)
+
+
+class MainWithNonForwardCall(nn.Module):
+    # Module with mixed precision.
+    def __init__(self):
+        super().__init__()
+        self.b = B()
+        self.g = G()
+
+    def forward(self, x):
+        x = self.g.forward_fp16(x.to(torch.float16)).to(torch.float32)
+        return self.b(x)
+
+
 def test_hierarchical_ortmodule():
-    def count_ortmodule(module):
-        n = 1 if isinstance(module, ORTModule) else 0
+    def count_ortmodule(module, is_iterated=False):
+        n = 1 if type(module).__name__ == ("_IteratedORTModule" if is_iterated else "ORTModule") else 0
         for sub in module._modules.values():
-            n = n + count_ortmodule(sub)
+            n = n + count_ortmodule(sub, is_iterated)
         return n
 
     def call_backward(y):
@@ -161,7 +205,7 @@ def test_hierarchical_ortmodule():
         else:
             torch.allclose(y, y_ref)
 
-    def trial(module_to_wrap, args, expected_num_ortmodule):
+    def trial(module_to_wrap, args, expected_num_ortmodule, expected_num_iterated_ortmodule=0):
         # Run baseline model.
         m = module_to_wrap
 
@@ -184,6 +228,7 @@ def test_hierarchical_ortmodule():
 
         # Some sub-modules become ORTModule.
         assert expected_num_ortmodule == count_ortmodule(m)
+        assert expected_num_iterated_ortmodule == count_ortmodule(m, is_iterated=True)
 
         call_allclose(y, y_ref)
         call_allclose(g, g_ref)
@@ -192,13 +237,12 @@ def test_hierarchical_ortmodule():
     for _ in range(num_trials):
         trial(Main(), [torch.rand(2).requires_grad_()], 6)
         trial(MainWithModuleList(), [torch.rand(2).requires_grad_()], 12)
-        trial(MainWithMultiModuleOutputs(), [
-              torch.rand(2).requires_grad_()], 10)
-        trial(MainWithNonTensorInput(), [
-              torch.rand(2).requires_grad_(), 'reverse'], 6)
-        trial(MainWithNonTensorInput(), [
-              torch.rand(2).requires_grad_(), 'normal'], 6)
+        trial(MainWithMultiModuleOutputs(), [torch.rand(2).requires_grad_()], 10)
+        trial(MainWithNonTensorInput(), [torch.rand(2).requires_grad_(), "reverse"], 6)
+        trial(MainWithNonTensorInput(), [torch.rand(2).requires_grad_(), "normal"], 6)
+        trial(MainWithModuleMultipleCalls(), [torch.rand(2).requires_grad_()], 2, 1)
+        trial(MainWithNonForwardCall(), [torch.rand(2).requires_grad_()], 3)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_hierarchical_ortmodule()

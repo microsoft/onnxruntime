@@ -10,7 +10,7 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/providers/op_kernel_type_control_utils.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #endif
 
 namespace onnxruntime {
@@ -57,7 +57,7 @@ class ConstantOfShapeBase {
 
     const auto span = shape_tensor->DataAsSpan<int64_t>();
 
-    TensorShape output_shape(span.begin(), span.size());
+    TensorShape output_shape(span);
     (*output_tensor) = ctx->Output(0, output_shape);
 
     return Status::OK();

@@ -5,10 +5,11 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #endif
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include <limits>
 
 namespace onnxruntime {
@@ -38,7 +39,7 @@ class Shape final : public OpKernel {
 
     if (!needs_slicing_) {  // vanilla use of Shape (no slicing)
       Tensor* output = context->Output(0, {rank});
-      input_shape.CopyDims(output->template MutableData<int64_t>(), static_cast<size_t>(rank));
+      input_shape.CopyDims(output->MutableData<int64_t>(), static_cast<size_t>(rank));
     } else {  // slicing is needed
       int64_t true_start = start_index_;
       int64_t true_end = end_index_;
@@ -54,7 +55,7 @@ class Shape final : public OpKernel {
       Tensor* output = context->Output(0, {slice_length < 0 ? 0 : slice_length});
 
       if (slice_length > 0) {
-        input_shape.CopyDims(output->template MutableData<int64_t>(), true_start, slice_length);
+        input_shape.CopyDims(output->MutableData<int64_t>(), onnxruntime::narrow<size_t>(true_start), onnxruntime::narrow<size_t>(slice_length));
       }
     }
 

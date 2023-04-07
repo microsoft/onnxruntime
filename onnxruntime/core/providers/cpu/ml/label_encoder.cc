@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/label_encoder.h"
 #include <algorithm>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
@@ -32,14 +32,14 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
     if (!Y.IsDataType<int64_t>())
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(string) must have output of tensor(int64)");
 
-    auto input = gsl::make_span(X.template Data<std::string>(), shape.Size());
-    auto output = gsl::make_span(Y.template MutableData<int64_t>(), shape.Size());
+    auto input = gsl::make_span(X.Data<std::string>(), onnxruntime::narrow<size_t>(shape.Size()));
+    auto output = gsl::make_span(Y.MutableData<int64_t>(), onnxruntime::narrow<size_t>(shape.Size()));
     auto out = output.begin();
 
     // map isn't going to change so get end() once instead of calling inside the for_each loop
     const auto map_end = string_to_int_map_.end();
 
-    std::for_each(input.cbegin(), input.cend(),
+    std::for_each(input.begin(), input.end(),
                   [&out, &map_end, this](const std::string& value) {
                     auto map_to = string_to_int_map_.find(value);
                     *out = map_to == map_end ? default_int_ : map_to->second;
@@ -49,13 +49,13 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
     if (!Y.IsDataTypeString())
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(int64) must have output of tensor(string)");
 
-    auto input = gsl::make_span(X.template Data<int64_t>(), shape.Size());
-    auto output = gsl::make_span(Y.template MutableData<std::string>(), shape.Size());
+    auto input = gsl::make_span(X.Data<int64_t>(), onnxruntime::narrow<size_t>(shape.Size()));
+    auto output = gsl::make_span(Y.MutableData<std::string>(), onnxruntime::narrow<size_t>(shape.Size()));
     auto out = output.begin();
 
     const auto map_end = int_to_string_map_.end();
 
-    std::for_each(input.cbegin(), input.cend(),
+    std::for_each(input.begin(), input.end(),
                   [&out, &map_end, this](const int64_t& value) {
                     auto map_to = int_to_string_map_.find(value);
                     *out = map_to == map_end ? default_string_ : map_to->second;
@@ -133,6 +133,41 @@ void LabelEncoder_2<float, std::int64_t>::InitializeSomeFields(const OpKernelInf
   _value_field_name = "values_int64s";
   info.GetAttrOrDefault<std::int64_t>("default_int64", &_default_value, (std::int64_t)-1);
 };
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder,
+    2,
+    string_string,
+    KernelDefBuilder().TypeConstraint("T1",
+                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>()}),
+    LabelEncoder_2<std::string, std::string>)
+
+template <>
+void LabelEncoder_2<std::string, std::string>::InitializeSomeFields(const OpKernelInfo& info) {
+  _key_field_name = "keys_strings";
+  _value_field_name = "values_strings";
+  info.GetAttrOrDefault<std::string>("default_string", &_default_value, std::string("_Unused"));
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder,
+    2,
+    float_float,
+    KernelDefBuilder().TypeConstraint("T1",
+                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>()}),
+    LabelEncoder_2<float, float>)
+
+template <>
+void LabelEncoder_2<float, float>::InitializeSomeFields(const OpKernelInfo& info) {
+  _key_field_name = "keys_floats";
+  _value_field_name = "values_floats";
+  info.GetAttrOrDefault<float>("default_float", &_default_value, -0.0f);
+};
+
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder,

@@ -15,7 +15,7 @@ and it is faster.
 */
 class GeluApproximation : public GraphTransformer {
  public:
-  GeluApproximation(const std::unordered_set<std::string>& compatible_execution_providers={}) noexcept
+  GeluApproximation(const InlinedHashSet<std::string_view>& compatible_execution_providers={}) noexcept
       : GraphTransformer("GeluApproximation", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

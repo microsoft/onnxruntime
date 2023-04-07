@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include <core/common/safeint.h>
 
 namespace onnxruntime {
 
@@ -125,7 +126,7 @@ struct TfIdfVectorizer::Impl {
   // Contains output indexes
   // represents ngram_indexes output
   gsl::span<const int64_t> ngram_indexes_;
-  gsl::span<const float>   weights_;
+  gsl::span<const float> weights_;
 
   // This map contains references to pool_string_ entries
   // of pool_strings attribute
@@ -145,13 +146,13 @@ struct TfIdfVectorizer::Impl {
     assert(ngram_id != 0);
     --ngram_id;
     assert(ngram_id < ngram_indexes_.size());
-    auto output_idx = row_num * output_size_ + ngram_indexes_[ngram_id];
-    assert(static_cast<size_t>(output_idx) < frequencies.size());
+    size_t output_idx = row_num * output_size_ + SafeInt<size_t>(ngram_indexes_[ngram_id]);
+    assert(output_idx < frequencies.size());
     ++frequencies[output_idx];
   }
 };
 
-TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
+TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), impl_(std::make_unique<Impl>()) {
   std::string mode;
   Status status = info.GetAttr("mode", &mode);
   ORT_ENFORCE(status.IsOK(), "mode is required");
@@ -191,12 +192,12 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
   ORT_ENFORCE(status.IsOK() && !impl_->ngram_indexes_.empty(), "Non-empty ngram_indexes is required");
   {
     // Check that all are positive
-    ORT_ENFORCE(std::all_of(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend(),
+    ORT_ENFORCE(std::all_of(impl_->ngram_indexes_.begin(), impl_->ngram_indexes_.end(),
                             [](int64_t i) { return i >= 0; }),
                 "Negative ngram_indexes values are not allowed");
     // Set output size to max output index + 1;
-    auto greatest_hit = std::max_element(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend());
-    impl_->output_size_ = *greatest_hit + 1;
+    auto greatest_hit = std::max_element(impl_->ngram_indexes_.begin(), impl_->ngram_indexes_.end());
+    impl_->output_size_ = SafeInt<size_t>(*greatest_hit) + 1;
   }
 
   status = info.GetAttrsAsSpan("weights", impl_->weights_);
@@ -221,12 +222,12 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
   const auto total_items = (pool_strings.empty()) ? pool_int64s.size() : pool_strings.size();
   size_t ngram_id = 1;  // start with 1, 0 - means no n-gram
   // Load into dictionary only required gram sizes
-  const size_t min_gram_length = impl_->min_gram_length_;
-  const size_t max_gram_length = impl_->max_gram_length_;
+  const size_t min_gram_length = onnxruntime::narrow<size_t>(impl_->min_gram_length_);
+  const size_t max_gram_length = onnxruntime::narrow<size_t>(impl_->max_gram_length_);
   size_t ngram_size = 1;
   for (size_t i = 0; i < impl_->ngram_counts_.size(); ++i) {
-    size_t start_idx = impl_->ngram_counts_[i];
-    size_t end_idx = ((i + 1) < impl_->ngram_counts_.size()) ? impl_->ngram_counts_[i + 1] : total_items;
+    size_t start_idx = onnxruntime::narrow<size_t>(impl_->ngram_counts_[i]);
+    size_t end_idx = onnxruntime::narrow<size_t>((i + 1) < impl_->ngram_counts_.size() ? impl_->ngram_counts_[i + 1] : total_items);
     ORT_ENFORCE(end_idx >= start_idx && end_idx <= total_items,
                 "n-gram counts out of bounds for ", std::to_string(ngram_size), "-grams");
     auto items = end_idx - start_idx;
@@ -329,7 +330,7 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, ptrdiff_t row_num, size_
 
     while (ngram_start < ngram_row_end) {
       // We went far enough so no n-grams of any size can be gathered
-      auto at_least_this = AdvanceElementPtr(ngram_start, skip_distance * (start_ngram_size - 1), elem_size);
+      auto at_least_this = AdvanceElementPtr(ngram_start, SafeInt<size_t>(skip_distance) * (start_ngram_size - 1), elem_size);
       if (at_least_this >= ngram_row_end) {
         break;
       }
@@ -384,22 +385,22 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, ptrdiff_t row_num, size_
 Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   auto X = ctx->Input<Tensor>(0);
   auto& input_shape = X->Shape();
-  const size_t total_items = input_shape.Size();
+  const size_t total_items = onnxruntime::narrow<size_t>(input_shape.Size());
 
   int32_t num_rows = 0;
   size_t B = 0;
   size_t C = 0;
-  auto& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   if (input_dims.empty()) {
     num_rows = 1;
     C = 1;
     assert(total_items == 1);
   } else if (input_dims.size() == 1) {
     num_rows = 1;
-    C = input_dims[0];
+    C = onnxruntime::narrow<size_t>(input_dims[0]);
   } else if (input_dims.size() == 2) {
-    B = input_dims[0];
-    C = input_dims[1];
+    B = onnxruntime::narrow<size_t>(input_dims[0]);
+    C = onnxruntime::narrow<size_t>(input_dims[1]);
     num_rows = static_cast<int32_t>(B);
     if (B < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,

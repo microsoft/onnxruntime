@@ -33,6 +33,17 @@ namespace Dml
         GpuEvent GetNextCompletionEvent();
 
         void QueueReference(IUnknown* object, bool waitForUnsubmittedWork);
+
+#ifdef _GAMING_XBOX
+        void QueueReference(IGraphicsUnknown* object, bool waitForUnsubmittedWork)
+        {
+            // TODO(justoeck): consider changing QueuedReference to hold a variant of
+            // ComPtr<IUnknown>, ComPtr<IGraphicsUnknown>.
+            auto wrapper = Microsoft::WRL::Make<GraphicsUnknownWrapper>(object);
+            QueueReference(wrapper.Get(), waitForUnsubmittedWork);
+        }
+#endif
+
         void Close();
         void ReleaseCompletedReferences();
 

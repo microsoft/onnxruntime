@@ -15,6 +15,11 @@ export const unsqueeze: OperatorImplementation<number[]> =
       return [output];
     };
 
+export const unsqueezeV13 = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  validateInputsV13(inputs);
+  return unsqueeze(inferenceHandler, [inputs[0]], Array.from(inputs[1].integerData));
+};
+
 export const parseUnsqueezeAttributes: OperatorInitialization<number[]> = (node: Graph.Node): number[] =>
     node.attributes.getInts('axes');
 
@@ -25,5 +30,15 @@ const validateInputs = (inputs: Tensor[]): void => {
 
   if (inputs[0].type === 'string') {
     throw new Error('invalid input tensor types.');
+  }
+};
+
+const validateInputsV13 = (inputs: Tensor[]): void => {
+  if (!inputs || inputs.length !== 2) {
+    throw new Error('Unsqueeze requires 2 inputs.');
+  }
+
+  if (inputs[1].type !== 'int32') {
+    throw new Error('Invalid input type.');
   }
 };

@@ -27,8 +27,8 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   Tensor* Y = context->Output(0, X->Shape());
 
-  const T* src_data = X->template Data<T>();
-  T* dst_data = Y->template MutableData<T>();
+  const T* src_data = X->Data<T>();
+  T* dst_data = Y->MutableData<T>();
 
   in.allocator()->init(arm_compute::TensorInfo(ACLTensorShape(X->Shape()), arm_compute::Format::F32));
   ACLImportMemory(in.allocator(), (void*)src_data, X->Shape().Size() * 4);

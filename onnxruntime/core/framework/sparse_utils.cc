@@ -4,6 +4,8 @@
 #if !defined(DISABLE_SPARSE_TENSORS)
 
 #include "core/framework/sparse_utils.h"
+
+#include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
 #include "core/framework/data_types_internal.h"
@@ -127,19 +129,19 @@ Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Ten
       } break;
       case sizeof(uint16_t): {
         // MFFloat16 and BFloat16 are handled fine
-        auto span16 = src_span.as_span<const uint16_t>();
+        auto span16 = ReinterpretAsSpan<const uint16_t>(src_span);
         ScanAndRecordCsr(span16, cols, inner_indices, outer_indices, [&](uint16_t v) { values_16.push_back(v); });
         Tensor t(src.DataType(), {static_cast<int64_t>(values_16.size())}, values_16.data(), cpu_allocator->Info());
         nnz_tensor = std::move(t);
       } break;
       case sizeof(uint32_t): {
-        auto span32 = src_span.as_span<const uint32_t>();
+        auto span32 = ReinterpretAsSpan<const uint32_t>(src_span);
         ScanAndRecordCsr(span32, cols, inner_indices, outer_indices, [&](uint32_t v) { values_32.push_back(v); });
         Tensor t(src.DataType(), {static_cast<int64_t>(values_32.size())}, values_32.data(), cpu_allocator->Info());
         nnz_tensor = std::move(t);
       } break;
       case sizeof(uint64_t): {
-        auto span64 = src_span.as_span<const uint64_t>();
+        auto span64 = ReinterpretAsSpan<const uint64_t>(src_span);
         ScanAndRecordCsr(span64, cols, inner_indices, outer_indices, [&](uint64_t v) { values_64.push_back(v); });
         Tensor t(src.DataType(), {static_cast<int64_t>(values_64.size())}, values_64.data(), cpu_allocator->Info());
         nnz_tensor = std::move(t);
@@ -463,21 +465,21 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
       } break;
       case sizeof(uint16_t): {
         // MFFloat16 and BFloat16 are handled fine
-        auto span16 = src_span.as_span<const uint16_t>();
+        auto span16 = ReinterpretAsSpan<const uint16_t>(src_span);
         ScanAndRecordCoo(span16, cols, linear_index, gathered_indices, [&](int16_t v) { values_16.push_back(v); });
         Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_16.size())},
                  values_16.data(), cpu_allocator->Info());
         nnz_tensor = std::move(t);
       } break;
       case sizeof(uint32_t): {
-        auto span32 = src_span.as_span<const uint32_t>();
+        auto span32 = ReinterpretAsSpan<const uint32_t>(src_span);
         ScanAndRecordCoo(span32, cols, linear_index, gathered_indices, [&](int32_t v) { values_32.push_back(v); });
         Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_32.size())},
                  values_32.data(), cpu_allocator->Info());
         nnz_tensor = std::move(t);
       } break;
       case sizeof(uint64_t): {
-        auto span64 = src_span.as_span<const uint64_t>();
+        auto span64 = ReinterpretAsSpan<const uint64_t>(src_span);
         ScanAndRecordCoo(span64, cols, linear_index, gathered_indices, [&](int64_t v) { values_64.push_back(v); });
         Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_64.size())},
                  values_64.data(), cpu_allocator->Info());

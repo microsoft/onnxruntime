@@ -21,7 +21,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -102,10 +102,10 @@ class ScanImpl {
   ScanImpl(OpKernelContextInternal& context,
            const SessionState& session_state,
            const Scan<9>::Info& info,
-           const std::vector<int64_t>& input_directions,
-           const std::vector<int64_t>& output_directions,
-           const std::vector<int64_t>& input_axes,
-           const std::vector<int64_t>& output_axes,
+           const gsl::span<const int64_t>& input_directions,
+           const gsl::span<const int64_t>& output_directions,
+           const gsl::span<const int64_t>& input_axes,
+           const gsl::span<const int64_t>& output_axes,
            const scan::detail::DeviceHelpers& device_helpers);
 
   // Initialize by validating all the inputs, and allocating the output tensors
@@ -138,11 +138,11 @@ class ScanImpl {
 
   int64_t sequence_len_ = -1;
 
-  const std::vector<int64_t>& input_directions_;
-  const std::vector<int64_t>& output_directions_;
-  const std::vector<int64_t>& input_axes_from_attribute_;
-  const std::vector<int64_t>& output_axes_from_attribute_;
-  std::vector<int64_t> input_axes_;
+  gsl::span<const int64_t> input_directions_;
+  gsl::span<const int64_t> output_directions_;
+  gsl::span<const int64_t> input_axes_from_attribute_;
+  gsl::span<const int64_t> output_axes_from_attribute_;
+  TensorShapeVector input_axes_;
 
   // inputs for graph. either original input value or transposed input if an axis other than 0 was specified
   std::vector<OrtValue> inputs_;
@@ -167,26 +167,26 @@ void Scan<9>::Init(const OpKernelInfo& info) {
   auto num_loop_state_vars = info.GetInputCount() - num_scan_inputs_;
   auto num_scan_outputs = info.GetOutputCount() - num_loop_state_vars;
 
-  ReadDirections(info, "scan_input_directions", input_directions_, num_scan_inputs_);
-  ReadDirections(info, "scan_output_directions", output_directions_, num_scan_outputs);
+  ReadDirections(info, "scan_input_directions", input_directions_, onnxruntime::narrow<size_t>(num_scan_inputs_));
+  ReadDirections(info, "scan_output_directions", output_directions_, onnxruntime::narrow<size_t>(num_scan_outputs));
 
-  if (info.GetAttrs<int64_t>("scan_input_axes", input_axes_).IsOK()) {
+  if (info.GetAttrs("scan_input_axes", input_axes_).IsOK()) {
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(input_axes_.size()) == num_scan_inputs_,
                 "Number of entries in 'scan_input_axes' was ", input_axes_.size(), " but expected ", num_scan_inputs_);
   } else {
-    input_axes_ = std::vector<int64_t>(num_scan_inputs_, 0);
+    input_axes_.resize(onnxruntime::narrow<size_t>(num_scan_inputs_), 0);
   }
 
-  if (info.GetAttrs<int64_t>("scan_output_axes", output_axes_).IsOK()) {
+  if (info.GetAttrs("scan_output_axes", output_axes_).IsOK()) {
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(output_axes_.size()) == num_scan_outputs,
                 "Number of entries in 'scan_output_axes' was ", output_axes_.size(), " but expected ",
                 num_scan_outputs);
   } else {
-    output_axes_ = std::vector<int64_t>(num_scan_outputs, 0);
+    output_axes_.resize(onnxruntime::narrow<size_t>(num_scan_outputs), 0);
   }
 
-  device_helpers_.transpose_func = [](const std::vector<size_t>& permutations, const Tensor& input,
-                                      Tensor& output) -> Status {
+  device_helpers_.transpose_func = [](const gsl::span<const size_t>& permutations, const Tensor& input,
+                                      Tensor& output, Stream* /*no stream needed for cpu*/) -> Status {
     return TransposeBase::DoTranspose(permutations, input, output);
   };
 
@@ -205,7 +205,7 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state,
 
   const auto& node = Node();
   info_ = std::make_unique<Scan<9>::Info>(node, subgraph_session_state.GetGraphViewer(),
-                                                  static_cast<int>(num_scan_inputs_));
+                                          static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
                                                         /* is_v8 */ false, feeds_fetches_manager_);
@@ -236,10 +236,10 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
 ScanImpl::ScanImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
                    const Scan<9>::Info& info,
-                   const std::vector<int64_t>& input_directions,
-                   const std::vector<int64_t>& output_directions,
-                   const std::vector<int64_t>& input_axes,
-                   const std::vector<int64_t>& output_axes,
+                   const gsl::span<const int64_t>& input_directions,
+                   const gsl::span<const int64_t>& output_directions,
+                   const gsl::span<const int64_t>& input_axes,
+                   const gsl::span<const int64_t>& output_axes,
                    const scan::detail::DeviceHelpers& device_helpers)
     : context_(context),
       session_state_(session_state),
@@ -281,8 +281,8 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
                              " Expected ", min_dims_required,
                              " dimensions or more but input had shape of ", input_shape);
 
-    auto seq_len_dim = input_axes_[i - info_.num_loop_state_variables];
-    auto this_seq_len = input_shape[seq_len_dim];
+    auto seq_len_dim = input_axes_[static_cast<ptrdiff_t>(i) - info_.num_loop_state_variables];
+    auto this_seq_len = input_shape[onnxruntime::narrow<size_t>(seq_len_dim)];
 
     if (sequence_len_ < 0) {
       sequence_len_ = this_seq_len;
@@ -345,8 +345,8 @@ Status ScanImpl::SetupInputs() {
       auto& input_tensor = *context_.Input<Tensor>(i + info_.num_loop_state_variables);
       const auto& input_shape = input_tensor.Shape();
 
-      std::vector<size_t> permutations;
-      std::vector<int64_t> new_shape;
+      InlinedVector<size_t> permutations;
+      TensorShapeVector new_shape;
       CalculateTransposedShapeForInput(input_shape, sequence_dim, permutations, new_shape);
 
       if (!alloc) {
@@ -356,7 +356,8 @@ Status ScanImpl::SetupInputs() {
 
       OrtValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
-      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
+      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>(),
+                                              context_.GetComputeStream());
       ORT_RETURN_IF_ERROR(status);
 
       inputs_.push_back(transpose_output);
@@ -432,7 +433,7 @@ Status ScanImpl::Execute(const FeedsFetchesManager& ffm) {
 
   // Setup input OrtValue streams
   std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
-  scan_input_stream_iterators.reserve(info_.num_inputs - info_.num_loop_state_variables);
+  scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_inputs) - info_.num_loop_state_variables);
 
   for (int i = 0, end = info_.num_scan_inputs; i < end; ++i) {
     const auto& ort_value = inputs_[i];
@@ -478,14 +479,15 @@ Status ScanImpl::TransposeOutput() {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_output_axes for output ", i,
                                " of ", axis, ". Output tensor rank was ", output_rank);
 
-      std::vector<size_t> permutations;
-      std::vector<int64_t> new_shape;
+      InlinedVector<size_t> permutations;
+      TensorShapeVector new_shape;
       CalculateTransposedShapeForOutput(temporary_output_tensor.Shape(), axis, permutations, new_shape);
 
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output);
+      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output, 
+                                              context_.GetComputeStream());
       ORT_RETURN_IF_ERROR(status);
     }
   }
@@ -497,15 +499,27 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
                                    9,
                                    10,
                                    KernelDefBuilder()
-                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
+                                       //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                    Scan<9>);
 
 // Opset 11 starts to support Neg Axis.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
+                                   11,
+                                   15,
+                                   KernelDefBuilder()
+                                       // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
+                                       //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   Scan<9>);
+
+// Opset 16 starts to support BFloat16 type for the type constraint "V"
 ONNX_CPU_OPERATOR_KERNEL(Scan,
-                         11,
+                         16,
                          KernelDefBuilder()
-                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                             // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
+                             //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                          Scan<9>);
 }  // namespace onnxruntime

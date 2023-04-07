@@ -2,29 +2,22 @@
 // Licensed under the MIT License.
 
 #include "onnx_model_info.h"
-#include "core/platform/env.h"
-#include "re2/re2.h"
-#include "pb_helper.h"
-
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 
 #include <fstream>
+
+#include "pb_helper.h"
+#include "re2/re2.h"
+
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
-using namespace onnxruntime::experimental;
-
-#endif
+#include "core/platform/env.h"
 
 using namespace onnxruntime;
 
 OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model)
     : model_url_(model_url) {
   if (is_ort_model) {
-#if defined(ENABLE_ORT_FORMAT_LOAD)
     InitOrtModelInfo(model_url);
-#else
-    ORT_THROW("ort model is not supported in this build");
-#endif
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
     InitOnnxModelInfo(model_url);
@@ -62,18 +55,16 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
   (void)Env::Default().FileClose(model_fd);
   {
     const RE2::Anchor re2_anchor = RE2::UNANCHORED;
-    const std::string model_url_string = ToMBString(model_url);
+    const std::string model_url_string = ToUTF8String(model_url);
     re2::StringPiece text(model_url_string);
     re2::StringPiece submatch;
-    re2::RE2 regex("onnx[0-9a-z]{3}", re2::RE2::Options());  //e.g. onnx141, onnx150, onnxtip
-    if (!regex.ok()) {
-      ORT_THROW("Failed to parse regex: onnx[0-9a-z]{3}");
-    }
-    bool match = regex.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
+    re2::RE2 regex_op("opset[0-9a-z]{1,2}", re2::RE2::Options());  // e.g. opset14, opset15
+
+    bool match = regex_op.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
     if (match) {
-      onnx_commit_tag_.assign(submatch.data(), submatch.length());
+      onnx_nominal_opset_vesion_.assign(submatch.data(), submatch.length());
     } else {
-      onnx_commit_tag_ = TestModelInfo::unknown_version;
+      onnx_nominal_opset_vesion_ = TestModelInfo::unknown_version;
     }
   }
   for (const auto& opset : model_pb.opset_import()) {
@@ -100,8 +91,6 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   std::vector<uint8_t> bytes;
   size_t num_bytes = 0;
@@ -110,9 +99,6 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   bytes.resize(num_bytes);
   std::ifstream bytes_stream(model_location, std::ifstream::in | std::ifstream::binary);
   bytes_stream.read(reinterpret_cast<char*>(bytes.data()), num_bytes);
-
-  // TODO use ort format version here?
-  onnx_commit_tag_ = TestModelInfo::unknown_version;
 
   // TODO, verify it is a valid ort format
   // TODO, version matches the ORT version
@@ -129,7 +115,7 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
     ORT_THROW("Missing Graph. Invalid ORT format model.");
 
   std::unordered_map<std::string, int> _opset_import;
-  ORT_THROW_IF_ERROR(experimental::utils::LoadOpsetImportOrtFormat(fbs_model->opset_import(), _opset_import));
+  ORT_THROW_IF_ERROR(fbs::utils::LoadOpsetImportOrtFormat(fbs_model->opset_import(), _opset_import));
   for (const auto& entry : _opset_import)
     domain_to_version_[entry.first] = entry.second;
 
@@ -142,7 +128,7 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
       if (nullptr == fbs_value_info)
         ORT_THROW("NodeArg is missing. Invalid ORT format model.");
       ONNX_NAMESPACE::ValueInfoProto node_arg_info;
-      ORT_THROW_IF_ERROR(experimental::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
+      ORT_THROW_IF_ERROR(fbs::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
       // NodeArg ctor is private, cannot use make_unique
       _node_args[fbs_value_info->name()->str()] = std::move(node_arg_info);
     }
@@ -175,5 +161,3 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   ORT_THROW_IF_ERROR(add_node_args(fbs_graph->inputs(), input_value_info_));
   ORT_THROW_IF_ERROR(add_node_args(fbs_graph->outputs(), output_value_info_));
 }
-
-#endif  //#if defined(ENABLE_ORT_FORMAT_LOAD)

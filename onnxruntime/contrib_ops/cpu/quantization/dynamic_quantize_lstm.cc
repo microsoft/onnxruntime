@@ -1,3 +1,4 @@
+#include "core/common/narrow.h"
 #include "core/providers/cpu/rnn/lstm_base.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 #include "core/providers/cpu/rnn/uni_directional_lstm.h"
@@ -48,17 +49,17 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
   const size_t K = static_cast<size_t>(shape[1]);
   const size_t N = static_cast<size_t>(shape[2]);
 
-  if ((shape[0] != num_directions_) || (N != static_cast<size_t>(hidden_size_ * 4))) {
+  if ((shape[0] != num_directions_) || (N != static_cast<size_t>(hidden_size_) * 4)) {
     return Status::OK();
   }
 
   is_weight_signed = weights.IsDataType<int8_t>();
-  const size_t packed_weights_size = MlasGemmPackBSize(N, K, is_weight_signed);
+  const size_t packed_weights_size = MlasGemmPackBSize(N, K, false /*AIsSigned*/, is_weight_signed);
   if (packed_weights_size == 0) {
     return Status::OK();
   }
 
-  size_t packed_weights_data_size = SafeInt<size_t>(packed_weights_size) * num_directions_;
+  size_t packed_weights_data_size = SafeInt<size_t>(packed_weights_size * num_directions_);
   auto* packed_weights_data = alloc->Alloc(packed_weights_data_size);
 
   // Initialize memory to 0 as there could be some padding associated with pre-packed
@@ -73,7 +74,7 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
 
   const auto* weights_data = static_cast<const uint8_t*>(weights.DataRaw());
   for (int i = 0; i < num_directions_; i++) {
-    MlasGemmPackB(N, K, weights_data, N, is_weight_signed, packed_weights_data);
+    MlasGemmPackB(N, K, weights_data, N, false /*AIsSigned*/, is_weight_signed, packed_weights_data);
     packed_weights_data = static_cast<uint8_t*>(packed_weights_data) + packed_weights_size;
     weights_data += N * K;
   }
@@ -131,7 +132,7 @@ Status DynamicQuantizeLSTM::UseSharedPrePackedBuffers(std::vector<BufferUniquePt
 
 #define WeightCheck(weight_shape, weight_name)                                                                                              \
   if ((weight_shape.NumDimensions() != 1 && weight_shape.NumDimensions() != 2) ||                                                           \
-      (weight_shape.NumDimensions() == 2 && weight_shape[1] != hidden_size_ * 4) ||                                                         \
+      (weight_shape.NumDimensions() == 2 && weight_shape[1] != static_cast<int64_t>(hidden_size_) * 4) ||                                                         \
       weight_shape[0] != num_directions_) {                                                                                                 \
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,                                                                                   \
                            "Input ", #weight_name, " must have shape {", num_directions_, "} for per-tensor/layer quantization or shape {", \
@@ -188,8 +189,8 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   ZeroPointCheck(w_zp, W_zp_shape, is_W_signed, Input);
   ZeroPointCheck(r_zp, R_zp_shape, is_R_signed, Recurrent);
 
-  size_t W_scale_size = W_scale_shape.NumDimensions() == 2 ? W_scale_shape[1] : 1;
-  size_t R_scale_size = R_scale_shape.NumDimensions() == 2 ? R_scale_shape[1] : 1;
+  size_t W_scale_size = W_scale_shape.NumDimensions() == 2 ? narrow<size_t>(W_scale_shape[1]) : 1;
+  size_t R_scale_size = R_scale_shape.NumDimensions() == 2 ? narrow<size_t>(R_scale_shape[1]) : 1;
 
   QuantizationParameter quant_para_W_1(w_scale->Data<float>(),
                                        static_cast<const uint8_t*>(w_zp->DataRaw()),
@@ -204,8 +205,8 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   const uint8_t* R_data = R != nullptr ? static_cast<const uint8_t*>(R->DataRaw()) : nullptr;
 
   // spans for first direction
-  const size_t W_size_per_direction = W_shape[1] * W_shape[2];
-  const size_t R_size_per_direction = R_shape[1] * R_shape[2];
+  const size_t W_size_per_direction = SafeInt<size_t>(W_shape[1] * W_shape[2]);
+  const size_t R_size_per_direction = SafeInt<size_t>(R_shape[1] * R_shape[2]);
 
   GemmWeights<uint8_t> W_1(0, W_data, W_size_per_direction, packed_W_, &quant_para_W_1);
   GemmWeights<uint8_t> R_1(0, R_data, R_size_per_direction, packed_R_, &quant_para_R_1);

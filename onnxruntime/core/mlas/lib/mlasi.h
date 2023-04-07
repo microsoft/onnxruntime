@@ -17,14 +17,24 @@ Abstract:
 
 #pragma once
 
-#include <mlas.h>
-#include <memory.h>
 #include <algorithm>
-#include <limits>
 #include <cmath>
-#include <type_traits>
-#include <stdexcept>
 #include <functional>
+#include <limits>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+
+#ifdef MLAS_NO_EXCEPTION
+#if defined(__ANDROID__)
+#include <android/log.h>
+#else
+#include <iostream>
+#endif
+#endif  // MLAS_NO_EXCEPTION
+
+#include "mlas.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -93,21 +103,172 @@ Abstract:
 
 #define MLAS_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
+#ifdef MLAS_NO_EXCEPTION
+
+MLAS_FORCEINLINE
+void
+MlasPrintFinalMessage(const std::string& msg)
+{
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_ERROR, "mlas", "%s", msg.c_str());
+#else
+    // TODO, consider changing the output of the error message from std::cerr to logging when the
+    // exceptions are disabled, since using std::cerr might increase binary size, and std::cerr
+    // output might not be easily accesible on some systems such as mobile
+    // TODO, see if we need to change the output of the error message from std::cerr to NSLog for
+    // iOS
+    std::cerr << msg << std::endl;
+#endif
+}
+
+#define MLAS_THROW_EX(ex, what)     \
+    do {                            \
+        std::string msg = #ex;      \
+        msg.append(what);           \
+        MlasPrintFinalMessage(msg); \
+        abort();                    \
+    } while (false)
+
+#else
+
+#define MLAS_THROW_EX(ex, ...) throw ex(__VA_ARGS__)
+
+#endif  // MLAS_NO_EXCEPTION
+
 //
 // Select the threading model.
 //
-// N.B. MLAS_NO_ONNXRUNTIME_THREADPOOL is used to build MLAS test code outside
+// N.B. BUILD_MLAS_NO_ONNXRUNTIME is used to build MLAS test code outside
 // of the ONNX Runtime source tree. OpenMP may or may not be enabled in this
 // configuration.
 //
 
-#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 #include "core/platform/threadpool.h"
-#endif
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
+#include "core/common/cpuid_info.h"
+using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
+
+#include "core/framework/float16.h"
+
+#else  // BUILD_MLAS_NO_ONNXRUNTIME
+
+class MLASCPUIDInfo
+{
+   public:
+    static const MLASCPUIDInfo& GetCPUIDInfo()
+    {
+        static MLASCPUIDInfo cpuid_info;
+        return cpuid_info;
+    }
+
+    // ARM
+    bool HasArmNeonDot() const { return has_arm_neon_dot_; }
+
+    bool HasFp16VectorAcceleration() const { return has_fp16_; }
+
+    uint32_t GetCurrentCoreIdx() const { return 0xFFFFFFFF; }
+
+    int32_t GetCurrentUarch() const { return -1; }
+
+    int32_t GetCoreUarch(uint32_t coreId) const { return -1; }
+
+    bool IsCoreArmv8NarrowLd(uint32_t coreId) const { return false; }
+
+    bool IsCurrentCoreArmv8NarrowLd() const { return false; }
+
+   private:
+    MLASCPUIDInfo();
+
+    bool has_arm_neon_dot_{false};
+    bool has_fp16_{false};
+};
+using MLAS_CPUIDINFO = MLASCPUIDInfo;
+
+#if defined(MLAS_TARGET_ARM64)
+/**
+ * @brief IDs for cpu microarchitectures.
+ *
+ * Copied from python cpuinfo package. Can't use the definition
+ * from cpuinfo directly as it causes lots of compilation issues
+ * in many platforms that we support.
+ */
+enum MlasUArch {
+    cpuinfo_uarch_unknown = 0,
+
+    /** ARM Cortex-A32. */
+    cpuinfo_uarch_cortex_a32 = 0x00300332,
+    /** ARM Cortex-A35. */
+    cpuinfo_uarch_cortex_a35 = 0x00300335,
+    /** ARM Cortex-A53. */
+    cpuinfo_uarch_cortex_a53 = 0x00300353,
+    /** ARM Cortex-A55 revision 0 (restricted dual-issue capabilities compared to revision 1+). */
+    cpuinfo_uarch_cortex_a55r0 = 0x00300354,
+    /** ARM Cortex-A55. */
+    cpuinfo_uarch_cortex_a55 = 0x00300355,
+    /** ARM Cortex-A57. */
+    cpuinfo_uarch_cortex_a57 = 0x00300357,
+    /** ARM Cortex-A65. */
+    cpuinfo_uarch_cortex_a65 = 0x00300365,
+    /** ARM Cortex-A72. */
+    cpuinfo_uarch_cortex_a72 = 0x00300372,
+    /** ARM Cortex-A73. */
+    cpuinfo_uarch_cortex_a73 = 0x00300373,
+    /** ARM Cortex-A75. */
+    cpuinfo_uarch_cortex_a75 = 0x00300375,
+    /** ARM Cortex-A76. */
+    cpuinfo_uarch_cortex_a76 = 0x00300376,
+    /** ARM Cortex-A77. */
+    cpuinfo_uarch_cortex_a77 = 0x00300377,
+    /** ARM Cortex-A78. */
+    cpuinfo_uarch_cortex_a78 = 0x00300378,
+};
+
+#endif // MLAS_TARGET_ARM64
+
+//
+// Define MLAS_FP16
+//
+#include "mlas_float16.h"
+
+namespace onnxruntime
+{
+struct MLFloat16 {
+    uint16_t val{0};
+
+    MLFloat16() = default;
+    explicit constexpr MLFloat16(uint16_t x) : val(x) {}
+    explicit MLFloat16(float ff) : val(MLAS_Float2Half(ff)) {}
+
+    float ToFloat() const { return MLAS_Half2Float(val); }
+
+    operator float() const { return ToFloat(); }
+
+    MLFloat16& operator=(float ff)
+    {
+        val = MLAS_Float2Half(ff);
+        return *this;
+    }
+};
+
+inline bool
+operator==(const MLFloat16& left, const MLFloat16& right)
+{
+    return left.val == right.val;
+}
+
+inline bool
+operator!=(const MLFloat16& left, const MLFloat16& right)
+{
+    return left.val != right.val;
+}
+
+}
+
+#endif  // BUILD_MLAS_NO_ONNXRUNTIME
+
+static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
+
 
 //
 // Define the maximum number of threads supported by this implementation.
@@ -465,14 +626,14 @@ void
     int8_t ZeroPoint
     );
 
-template<typename FilterType>
-struct MLAS_U8X8_KERNEL
+template<typename InputType, typename FilterType>
+struct MLAS_QUANT_KERNEL
 {
     typedef
     void
     (MLASCALL DepthwiseKernel)(
-        const uint8_t* const* Input,
-        uint8_t InputZeroPoint,
+        const InputType* const* Input,
+        InputType InputZeroPoint,
         const FilterType* Filter,
         FilterType FilterZeroPoint,
         int32_t* Output,
@@ -498,6 +659,10 @@ extern "C" {
 #elif defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
+    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
+    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelPOWER10;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelVSX;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelVSX;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -624,9 +789,9 @@ extern "C" {
 // thread to perform additional work.
 //
 
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_QGEMM_THREAD_COMPLEXITY                (64 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_QGEMM_THREAD_COMPLEXITY                65536
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
@@ -653,28 +818,55 @@ MlasSgemmOperation(
 // Quantized integer matrix/matrix dispatch structure.
 //
 
-struct MLAS_GEMM_U8X8_DISPATCH;
+struct MLAS_GEMM_QUANT_DISPATCH;
 
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchWasmSimd;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
+#ifdef MLAS_AMX_SUPPORTED
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAmx;
+#endif
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
+
+//
+// Symmetric quantized qgemm dispatch structure
+//
+struct MLAS_SYMM_QGEMM_DISPATCH;
+extern const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchNeon;
+extern const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchSdot;
+
+//
+// Symmetric quantized integer convolution dispatch structure.
+//
+
+struct MLAS_CONV_SYM_DISPATCH;
+
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchNeon;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot;
 
 //
 // Quantized depthwise convolution kernels.
 //
 
-template<typename FilterType>
+template<typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernel(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
@@ -683,12 +875,12 @@ MlasConvDepthwiseKernel(
     size_t KernelSize
     );
 
-template<typename FilterType>
+template <typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernelAvx2(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
@@ -696,10 +888,32 @@ MlasConvDepthwiseKernelAvx2(
     size_t OutputCount,
     size_t KernelSize
     );
+
+//
+// Define the kernel flags for conv sym
+//
+
+#define MLAS_CONV_SYM_FLAG_INPUT_DIRECT             0x00000001
+#define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE        0x00000002
+
+//
+// Define the post-processing parameters for conv sym: bias and re-quant params
+//
+
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias;
+    const float* Scale;
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+};
 
 //
 // Environment information class.
 //
+
+enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big = 3 };
+
 
 struct MLAS_PLATFORM {
 
@@ -707,10 +921,30 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
 #endif
 
+#if defined(MLAS_TARGET_AMD64_IX86)
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
+#elif defined(MLAS_TARGET_ARM64)
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
+#endif
+    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch{nullptr};
+
+    const MLAS_CONV_SYM_DISPATCH* ConvSymU8S8Dispatch{nullptr};
+    const MLAS_CONV_SYM_DISPATCH* ConvSymS8S8Dispatch{nullptr};
+
+    MLAS_QUANT_KERNEL<uint8_t, int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
+    MLAS_QUANT_KERNEL<uint8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
+    MLAS_QUANT_KERNEL<int8_t, int8_t>::DepthwiseKernel* ConvDepthwiseS8S8Kernel;
+    MLAS_QUANT_KERNEL<int8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseS8U8Kernel;
+
+#if defined(MLAS_TARGET_POWER)
+    MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
+#endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
@@ -727,8 +961,6 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
-    MLAS_U8X8_KERNEL<int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
-    MLAS_U8X8_KERNEL<uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
@@ -742,16 +974,19 @@ struct MLAS_PLATFORM {
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
+#elif defined(MLAS_TARGET_ARM64)
+    static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT * 4;
 #else
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
 
-#if defined(MLAS_TARGET_ARM64)
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
-#endif
 };
 
-extern MLAS_PLATFORM MlasPlatform;
+inline
+MLAS_PLATFORM& GetMlasPlatform(){
+    static MLAS_PLATFORM MlasPlatform;
+    return MlasPlatform;
+}
 
 //
 // Threading support.
@@ -771,6 +1006,13 @@ MlasExecuteThreaded(
     ptrdiff_t Iterations,
     MLAS_THREADPOOL* ThreadPool
     );
+
+constexpr
+size_t
+MlasDivRoundup(size_t up, size_t down)
+{
+    return (up + down - 1) / down;
+}
 
 /**
  * @brief Distribute multiple iterations of work over a thread pool if supported
@@ -792,14 +1034,9 @@ MlasGetMaximumThreadCount(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
-
-#if defined(_OPENMP)
-    return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#else
     return 1;
-#endif
 #else
     return onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(ThreadPool);
 #endif
@@ -839,6 +1076,11 @@ MlasPartitionWork(
 //
 // Helpers to cast a floating point type to and from an integer bit format.
 //
+#if defined(_MSC_VER) && !defined(__clang__)
+  #pragma warning(push)
+  // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
+  #pragma warning(disable:26497)
+#endif
 
 MLAS_FORCEINLINE
 uint32_t
@@ -867,7 +1109,9 @@ MlasFp32FromBits(
     u.IntegerValue = IntegerValue;
     return u.FloatValue;
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 #if defined(MLAS_TARGET_WASM_SCALAR)
 
@@ -1005,6 +1249,8 @@ MlasBroadcastInt32x4(int32_t Value)
     return _mm_set1_epi32(Value);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_i32x4_splat(Value);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_splats(Value);
 #else
     return MLAS_INT32X4{Value, Value, Value, Value};
 #endif
@@ -1054,6 +1300,8 @@ MlasAddInt32x4(MLAS_INT32X4 Vector1, MLAS_INT32X4 Vector2)
     return _mm_add_epi32(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_i32x4_add(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_add(Vector1, Vector2);
 #else
     return Vector1 + Vector2;
 #endif
@@ -1129,6 +1377,8 @@ MlasXorInt32x4(MLAS_INT32X4 Vector1, MLAS_INT32X4 Vector2)
     return _mm_xor_si128(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_v128_xor(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_xor(Vector1, Vector2);
 #else
     return Vector1 ^ Vector2;
 #endif
@@ -1218,6 +1468,10 @@ MlasBroadcastFloat32x4(float Value)
     return _mm_set1_ps(Value);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_splat(Value);
+#elif defined(MLAS_VSX_INTRINSICS)
+    // Suppress wrong GCC warnings
+    MLAS_UNREFERENCED_PARAMETER(Value);
+    return vec_splats(Value);
 #else
     return MLAS_FLOAT32X4{Value, Value, Value, Value};
 #endif
@@ -1233,6 +1487,8 @@ MlasBroadcastFloat32x4(const float* Value)
     return _mm_load_ps1(Value);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_v128_load32_splat(Value);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_splats(*Value);
 #else
     return MLAS_FLOAT32X4{*Value, *Value, *Value, *Value};
 #endif
@@ -1457,6 +1713,8 @@ MlasAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return _mm_add_ps(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_add(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_add(Vector1, Vector2);
 #else
     return Vector1 + Vector2;
 #endif
@@ -1472,6 +1730,8 @@ MlasSubtractFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return _mm_sub_ps(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_sub(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_sub(Vector1, Vector2);
 #else
     return Vector1 - Vector2;
 #endif
@@ -1487,6 +1747,11 @@ MlasMultiplyFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return _mm_mul_ps(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_mul(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    // Suppress wrong GCC warnings
+    MLAS_UNREFERENCED_PARAMETER(Vector1);
+    MLAS_UNREFERENCED_PARAMETER(Vector2);
+    return vec_mul(Vector1, Vector2);
 #else
     return Vector1 * Vector2;
 #endif
@@ -1631,7 +1896,8 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_max_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
+    // Don't use vec_max to avoid undefined behavior if NAN
+    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_max(Vector1, Vector2);
 #else
@@ -1648,7 +1914,8 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
+    // Don't use vec_min to avoid undefined behavior if NAN
+    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_min(Vector1, Vector2);
 #else
@@ -1755,18 +2022,44 @@ MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
 
 #if defined(MLAS_SSE2_INTRINSICS)
 typedef __m128d MLAS_FLOAT64X2;
+#elif defined(MLAS_VSX_INTRINSICS)
+typedef __vector double MLAS_FLOAT64X2;
 #else
 #define MLAS_FLOAT64X2_UNSUPPORTED
 #endif
 
 #ifndef MLAS_FLOAT64X2_UNSUPPORTED
 
+#if defined(MLAS_VSX_INTRINSICS)
+template<unsigned Lane>
+MLAS_FORCEINLINE
+double
+MlasExtractLaneFloat64x2(MLAS_FLOAT64X2 Vector)
+{
+    return Vector[Lane];
+}
+MLAS_FORCEINLINE
+MLAS_FLOAT64X2
+MlasMultiplyAddFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2, MLAS_FLOAT64X2 Vector3)
+{
+    return vec_madd(Vector1, Vector2, Vector3);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT64X2
+MlasBroadcastFloat64x2(const double *Value)
+{
+    return MLAS_FLOAT64X2{*Value, *Value};
+}
+#endif
 MLAS_FORCEINLINE
 MLAS_FLOAT64X2
 MlasBroadcastFloat64x2(double Value)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_set1_pd(Value);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return MLAS_FLOAT64X2{Value, Value};
 #endif
 }
 
@@ -1776,6 +2069,8 @@ MlasZeroFloat64x2(void)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_setzero_pd();
+#elif defined(MLAS_VSX_INTRINSICS)
+    return MlasBroadcastFloat64x2(0.0f);
 #endif
 }
 
@@ -1785,6 +2080,8 @@ MlasLoadFloat64x2(const double* Buffer)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_loadu_pd(Buffer);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_vsx_ld(0, Buffer);
 #endif
 }
 
@@ -1794,6 +2091,8 @@ MlasStoreFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     _mm_storeu_pd(Buffer, Vector);
+#elif defined(MLAS_VSX_INTRINSICS)
+    vec_vsx_st(Vector, 0, Buffer);
 #endif
 }
 
@@ -1803,6 +2102,8 @@ MlasStoreAlignedFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     _mm_store_pd(Buffer, Vector);
+#elif defined(MLAS_VSX_INTRINSICS)
+    *((MLAS_FLOAT64X2*)Buffer) = Vector;
 #endif
 }
 
@@ -1812,10 +2113,12 @@ MlasMultiplyFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_mul_pd(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return Vector1 * Vector2;
 #endif
 }
 
-#endif
+#endif  // !MLAS_FLOAT64X2_UNSUPPORTED
 
 //
 // Reads a platform specific time stamp counter.
@@ -1850,4 +2153,51 @@ MlasReadTimeStampCounter(void)
     return 0;
 #endif
 #endif
+}
+
+//
+// Aligned buffer for GEMM packing, etc.
+//
+
+
+constexpr size_t ThreadedBufAlignment = 64;
+extern thread_local size_t ThreadedBufSize;
+#ifdef _MSC_VER
+extern thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder;
+#else
+extern thread_local std::unique_ptr<uint8_t, decltype(&free)> ThreadedBufHolder;
+#endif
+
+MLAS_FORCEINLINE
+constexpr size_t
+UpAlignSize(size_t size)
+{
+    size = (size + ThreadedBufAlignment - 1) / ThreadedBufAlignment;
+    return size * ThreadedBufAlignment;
+}
+
+
+MLAS_FORCEINLINE
+void
+MlasThreadedBufAlloc(size_t size)
+{
+    if (size > ThreadedBufSize) {
+#ifdef _MSC_VER
+        ThreadedBufHolder.reset(
+            reinterpret_cast<uint8_t*>(_aligned_malloc(size, ThreadedBufAlignment)));
+#elif (__STDC_VERSION__ >= 201112L) && !defined(__APPLE__)
+        ThreadedBufHolder.reset(
+            reinterpret_cast<uint8_t*>(aligned_alloc(ThreadedBufAlignment, size)));
+#else
+	// aligned_alloc unavailable macos 10.14 or earlier
+        void* ptr;
+        int err = posix_memalign(&ptr, ThreadedBufAlignment, size);
+        if (err != 0) {
+            ptr = nullptr;
+        }
+        ThreadedBufHolder.reset(reinterpret_cast<uint8_t*>(ptr));
+#endif
+
+        ThreadedBufSize = size;
+    }
 }

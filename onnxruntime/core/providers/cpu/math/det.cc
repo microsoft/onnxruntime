@@ -3,6 +3,11 @@
 
 #include "core/providers/cpu/math/det.h"
 #include "core/util/math_cpuonly.h"
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 
 using namespace onnxruntime::common;
 
@@ -40,7 +45,7 @@ Status Det<T>::Compute(OpKernelContext* context) const {
 
   if (X_num_dims == 2) {
     auto* Y = context->Output(0, {});  // as per spec output should be a scalar when input is 2D
-    auto* Y_data = Y->template MutableData<T>();
+    auto* Y_data = Y->MutableData<T>();
     *Y_data = get_determinant(X_data);
   } else {
     // calculate batch size and output shape
@@ -54,7 +59,7 @@ Status Det<T>::Compute(OpKernelContext* context) const {
 
     int num_matrix_elems = matrix_dim * matrix_dim;
     auto* Y = context->Output(0, output_shape);
-    auto* Y_data = Y->template MutableData<T>();
+    auto* Y_data = Y->MutableData<T>();
     for (int b = 0; b < static_cast<int>(batch_size); ++b) {  // can be parallelized if need to
       const T* one_matrix = X_data + (b * num_matrix_elems);
       *Y_data++ = get_determinant(one_matrix);

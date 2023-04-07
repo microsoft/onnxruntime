@@ -3,15 +3,17 @@
 
 # -*- coding: UTF-8 -*-
 import unittest
+
 import numpy as np
+from helper import get_name
 from numpy.testing import assert_allclose
+
 import onnxruntime as onnxrt
 import onnxruntime.backend as backend
-from helper import get_name
+
 
 class TestBackend(unittest.TestCase):
-
-    def testRunModel(self):
+    def testRunModel(self):  # noqa: N802
         name = get_name("mul_1.onnx")
         rep = backend.prepare(name)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -19,11 +21,11 @@ class TestBackend(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testAllocationPlanWorksWithOnlyExecutePathToFetchesOption(self):
+    def testAllocationPlanWorksWithOnlyExecutePathToFetchesOption(self):  # noqa: N802
         """
                (inp0)  (inp1)
-                  |  \/  |
-                  |  /\  |
+                  |  \\/  |
+                  |  /\\  |
                  Add    Sub
                   |      |
               (tsor0)  (tsor1)
@@ -39,18 +41,18 @@ class TestBackend(unittest.TestCase):
         This test is to ensure that the case is covered.
         """
         name = get_name("alloc_tensor_reuse.onnx")
-        sess = onnxrt.InferenceSession(name)
+        sess = onnxrt.InferenceSession(name, providers=onnxrt.get_available_providers())
 
         run_options = onnxrt.RunOptions()
         run_options.only_execute_path_to_fetches = True
         inp0, inp1 = np.ones((10,), dtype=np.float32), np.ones((10,), dtype=np.float32)
 
-        session_run_results = sess.run(['outp0'], {'inp0': inp0, 'inp1': inp1}, run_options)
+        session_run_results = sess.run(["outp0"], {"inp0": inp0, "inp1": inp1}, run_options)
         assert_allclose(session_run_results[0], -(inp0 + inp1))
 
-        session_run_results = sess.run(['outp1'], {'inp0': inp0, 'inp1': inp1}, run_options)
+        session_run_results = sess.run(["outp1"], {"inp0": inp0, "inp1": inp1}, run_options)
         assert_allclose(session_run_results[0], -(inp0 - inp1))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main(module=__name__, buffer=True)

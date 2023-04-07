@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/reduction/all.h"
+#include "orttraining/training_ops/cuda/reduction/all_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -26,7 +27,7 @@ Status All<T>::ComputeInternal(OpKernelContext* ctx) const {
               size, ") exceeds the max allowed value (", std::numeric_limits<int>::max(), ").");
 
   LaunchAllKernel(
-      Stream(),
+      Stream(ctx),
       input.Data<T>(),
       static_cast<int>(size),
       output.MutableData<bool>());

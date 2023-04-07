@@ -9,7 +9,7 @@ file(GLOB onnxruntime_flatbuffers_srcs CONFIGURE_DEPENDS
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_flatbuffers_srcs})
 
 onnxruntime_add_static_library(onnxruntime_flatbuffers ${onnxruntime_flatbuffers_srcs})
-onnxruntime_add_include_to_target(onnxruntime_flatbuffers onnx flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_flatbuffers onnx flatbuffers::flatbuffers ${GSL_TARGET})
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_flatbuffers PUBLIC ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
@@ -21,16 +21,11 @@ set_target_properties(onnxruntime_flatbuffers PROPERTIES FOLDER "ONNXRuntime")
 if (FLATBUFFERS_BUILD_FLATC)
   add_dependencies(onnxruntime_flatbuffers flatc)
 endif()
-
-if (WINDOWS_STORE)
-  function(target_force_include target scope file)
-    if (MSVC)
-        target_compile_options(${target} ${scope} "/FI${file}")
-    else()
-        target_compile_options(${target} ${scope} -include "${file}")
-    endif()
-  endfunction()
-
-  target_force_include(flatbuffers PRIVATE uwp_stubs.h)
-  target_force_include(flatc PRIVATE uwp_stubs.h)
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_flatbuffers
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
+

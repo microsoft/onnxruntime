@@ -26,7 +26,7 @@ using namespace ::onnxruntime::common;
 using namespace std;
 
 namespace onnxruntime {
-// spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot
+// spec: https://github.com/onnx/onnx/blob/main/docs/Operators.md#OneHot
 
 // T1: indices, T2: depth, T3: values
 #define REG_TYPED_ONE_HOT_OP_V9_10(types_str, in_type, out_type, depth_type) \
@@ -87,14 +87,14 @@ Status ValidateInputs(const Tensor* depth, const Tensor* values) {
 
 Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
                           int64_t& prefix_dim_size, int64_t& suffix_dim_size,
-                          std::vector<int64_t>& output_shape) {
+                          TensorShapeVector& output_shape) {
   const auto& indices_shape = indices->Shape();
-  const auto& indices_dims = indices_shape.GetDims();
+  const auto indices_dims = indices_shape.GetDims();
   const auto indices_num_dims = indices_shape.NumDimensions();
-  output_shape = indices_dims;
+  output_shape = indices_shape.AsShapeVector();
 
   // output rank is always 1 more than the input rank as a new dimension is added to the input shape
-  const auto output_rank = static_cast<int64_t>(indices_num_dims + 1);
+  const auto output_rank = static_cast<int64_t>(indices_num_dims) + 1;
 
   auto true_axis = HandleNegativeAxis(axis, output_rank);
 
@@ -102,7 +102,7 @@ Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const 
 
   prefix_dim_size = 1;
   for (int64_t i = 0; i < true_axis; ++i) {
-    prefix_dim_size *= indices_dims[i];
+    prefix_dim_size *= indices_dims[onnxruntime::narrow<size_t>(i)];
   }
   suffix_dim_size = indices_shape.Size() / prefix_dim_size;
 
@@ -160,7 +160,7 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
 
   // prepare output shape
   int64_t prefix_dim_size, suffix_dim_size;
-  std::vector<int64_t> output_shape;
+  TensorShapeVector output_shape;
   ORT_RETURN_IF_ERROR(PrepareOutputShape(indices, depth_val, axis_, prefix_dim_size, suffix_dim_size, output_shape));
 
   // allocate output
@@ -180,7 +180,7 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   const auto* indices_data = indices->Data<in_type>();
   const auto indices_size = indices->Shape().Size();
   std::vector<in_type> adjusted_indices;
-  adjusted_indices.reserve(indices_size);
+  adjusted_indices.reserve(onnxruntime::narrow<size_t>(indices_size));
   for (int64_t i = 0; i < indices_size; ++i) {
     if (indices_data[i] < 0)
       adjusted_indices.push_back(indices_data[i] + static_cast<in_type>(depth_val));

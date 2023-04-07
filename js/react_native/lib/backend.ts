@@ -3,18 +3,21 @@
 
 import {Buffer} from 'buffer';
 import {Backend, InferenceSession, SessionHandler, Tensor,} from 'onnxruntime-common';
+import {Platform} from 'react-native';
 
 import {binding, Binding} from './binding';
 
 type SupportedTypedArray = Exclude<Tensor.DataType, string[]>;
 
 const tensorTypeToTypedArray = (type: Tensor.Type):|Float32ArrayConstructor|Int8ArrayConstructor|Int16ArrayConstructor|
-    Int32ArrayConstructor|BigInt64ArrayConstructor|Float64ArrayConstructor => {
+    Int32ArrayConstructor|BigInt64ArrayConstructor|Float64ArrayConstructor|Uint8ArrayConstructor => {
       switch (type) {
         case 'float32':
           return Float32Array;
         case 'int8':
           return Int8Array;
+        case 'uint8':
+          return Uint8Array;
         case 'int16':
           return Int16Array;
         case 'int32':
@@ -32,6 +35,15 @@ const tensorTypeToTypedArray = (type: Tensor.Type):|Float32ArrayConstructor|Int8
       }
     };
 
+const normalizePath = (path: string): string => {
+  // remove 'file://' prefix in iOS
+  if (Platform.OS === 'ios' && path.toLowerCase().startsWith('file://')) {
+    return path.substring(7);
+  }
+
+  return path;
+};
+
 class OnnxruntimeSessionHandler implements SessionHandler {
   #inferenceSession: Binding.InferenceSession;
   #key: string;
@@ -41,7 +53,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
 
   constructor(path: string) {
     this.#inferenceSession = binding;
-    this.#key = path;
+    this.#key = normalizePath(path);
     this.inputNames = [];
     this.outputNames = [];
   }
@@ -58,7 +70,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
       this.inputNames = results.inputNames;
       this.outputNames = results.outputNames;
     } catch (e) {
-      throw new Error(`Can't load a model: ${e.message}`);
+      throw new Error(`Can't load a model: ${(e as Error).message}`);
     }
   }
 

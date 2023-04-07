@@ -5,6 +5,8 @@
 
 #include <string>
 #include <vector>
+#include <optional>
+#include "core/common/inlined_containers_fwd.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/framework/ort_value.h"
@@ -30,25 +32,43 @@ struct DeviceCopyChecks {
 
 struct FeedsFetchesInfo {
   FeedsFetchesInfo() = default;
-  FeedsFetchesInfo(const std::vector<std::string>& feed_names_in,
-                   const std::vector<std::string>& output_names_in,
+  FeedsFetchesInfo(gsl::span<const std::string> feed_names_in,
+                   gsl::span<const std::string> output_names_in,
                    const OrtValueNameIdxMap& ort_value_name_idx_map)
-      : feed_names{feed_names_in}, output_names{output_names_in} {
+      : feed_names(), 
+        output_names() {
+    feed_names.reserve(feed_names_in.size());
+    feed_names.assign(feed_names_in.begin(), feed_names_in.end());
+    output_names.reserve(output_names_in.size());
+    output_names.assign(output_names_in.begin(), output_names_in.end());
     ORT_THROW_IF_ERROR(SetMLValueIdxs(ort_value_name_idx_map));
   }
 
-  static Status MapNamesToMLValueIdxs(const std::vector<std::string>& names,
+  FeedsFetchesInfo(gsl::span<const std::string_view> feed_names_in,
+                   gsl::span<const std::string> output_names_in,
+                   const OrtValueNameIdxMap& ort_value_name_idx_map)
+      : feed_names(),
+        output_names() {
+    feed_names.reserve(feed_names_in.size());
+    feed_names.assign(feed_names_in.begin(), feed_names_in.end());
+    output_names.reserve(output_names_in.size());
+    output_names.assign(output_names_in.begin(), output_names_in.end());
+    ORT_THROW_IF_ERROR(SetMLValueIdxs(ort_value_name_idx_map));
+  }
+
+
+  static Status MapNamesToMLValueIdxs(gsl::span<const std::string> names,
                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                      std::vector<int>& ort_value_idxs);
+                                      InlinedVector<int>& ort_value_idxs);
 
   // set the ort_value_idxs for the current values in feed_names and output_names
   Status SetMLValueIdxs(const OrtValueNameIdxMap& ort_value_name_idx_map);
 
-  std::vector<std::string> feed_names;
-  std::vector<std::string> output_names;
+  InlinedVector<std::string> feed_names;
+  InlinedVector<std::string> output_names;
 
-  std::vector<int> feeds_mlvalue_idxs;
-  std::vector<int> fetches_mlvalue_idxs;
+  InlinedVector<int> feeds_mlvalue_idxs;
+  InlinedVector<int> fetches_mlvalue_idxs;
 };
 
 struct MLValueCopyInfo {
@@ -58,9 +78,13 @@ struct MLValueCopyInfo {
 
 class FeedsFetchesManager {
  public:
-  static Status Create(const std::vector<std::string>& feed_names, const std::vector<std::string>& output_names,
+  static Status Create(gsl::span<const std::string> feed_names, gsl::span<const std::string> output_names,
                        const OrtValueNameIdxMap& ort_value_name_idx_map,
                        std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
+
+  static Status Create(gsl::span<const std::string_view> feed_names, gsl::span<const std::string> output_names,
+                       const OrtValueNameIdxMap& ort_value_name_idx_map,
+                       std::optional<FeedsFetchesManager>& feeds_fetches_manager);
 
   FeedsFetchesManager(FeedsFetchesInfo&& info);
 

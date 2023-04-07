@@ -3,7 +3,7 @@
 
 #pragma once
 #include <functional>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
@@ -43,8 +43,8 @@ struct Info {
 // Provide as needed when Scan is being run by a non-CPU based ExecutionProvider
 struct DeviceHelpers {
   using ZeroData = std::function<common::Status(void* data, size_t size_in_bytes)>;
-  using Transpose = std::function<common::Status(const std::vector<size_t>& permutations,
-                                                 const Tensor& input, Tensor& output)>;
+  using Transpose = std::function<common::Status(const gsl::span<const size_t>& permutations,
+                                                 const Tensor& input, Tensor& output, Stream*)>;
   using CreateConstSlicer = std::function<OrtValueTensorSlicer<const OrtValue>(const OrtValue& ort_value,
                                                                                int64_t slice_dimension /*=0*/,
                                                                                int64_t dim0_offset /*=0*/)>;
@@ -89,10 +89,10 @@ class Scan : public controlflow::IControlFlowKernel {
 
  private:
   int64_t num_scan_inputs_;
-  std::vector<int64_t> input_directions_;
-  std::vector<int64_t> output_directions_;
-  std::vector<int64_t> input_axes_;
-  std::vector<int64_t> output_axes_;
+  TensorShapeVector input_directions_;
+  TensorShapeVector output_directions_;
+  TensorShapeVector input_axes_;
+  TensorShapeVector output_axes_;
 
   // Info and FeedsFetchesManager re-used for each subgraph execution.
   std::unique_ptr<Info> info_;

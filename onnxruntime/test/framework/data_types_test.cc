@@ -4,8 +4,10 @@
 #include <typeinfo>
 #include <cmath>
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/float16.h"
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
@@ -419,10 +421,10 @@ TEST_F(DataTypeTest, VectorMapInt64ToFloatTest) {
 TEST_F(DataTypeTest, BFloat16Test) {
   // Test data type
   {
-    const float sample = 1.0f;
+    constexpr float sample = 1.0f;
     BFloat16 flt16(sample);
     auto int_rep = flt16.val;
-    BFloat16 flt_from_int(int_rep);
+    BFloat16 flt_from_int(int_rep, BFloat16::FromBits());
     const double diff = std::fabs(sample - flt_from_int.ToFloat());
     if (diff > FLT_EPSILON || (std::isnan(diff) && !std::isnan(sample))) {
       EXPECT_TRUE(false);
@@ -662,6 +664,55 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     EXPECT_EQ(op_dt, op_from_str);
     const auto& from_dt_proto = DataTypeUtils::ToTypeProto(op_dt);
     EXPECT_TRUE(DataTypeImpl::GetType<TestOpaqueNoNames>()->IsCompatible(from_dt_proto));
+  }
+}
+
+#ifndef  DISABLE_ABSEIL
+
+template <typename T>
+using Calc = CalculateInlinedVectorDefaultInlinedElements<T>;
+
+template <typename... Types>
+struct TypeMinimunInlinedElements {
+  std::array<std::pair<size_t, size_t>, sizeof...(Types)> sizes_{std::make_pair(sizeof(Types), Calc<Types>::value)...};
+  void print(std::ostream& os) const {
+    os << " CalculateInlinedVectorDefaultInlinedElements Sizes: ";
+    for (auto& p : sizes_) {
+      os << p.first << " -> " << p.second << std::endl;
+    }
+    os << std::endl;
+  }
+};
+
+TEST(InlinedVectorTests, TestDefaultInlinedCapacity) {
+  // We want to test all the type here
+  TypeMinimunInlinedElements<int8_t, int16_t, int32_t, int64_t, std::string> sizes;
+  sizes.print(std::cout);
+}
+
+#endif  // ! DISABLE_ABSEIL
+
+TEST(TypeLiterals, Tests) {
+  {
+    // uint16_t test
+    MLFloat16 mlfloat{static_cast<uint16_t>(16)};
+    auto mlfloat_literal = 16_f16;
+    ASSERT_EQ(mlfloat, mlfloat_literal);
+
+    BFloat16 bfloat{static_cast<uint16_t>(16), BFloat16::FromBits()};
+    auto bfloat_literal = 16_b16;
+    ASSERT_EQ(bfloat, bfloat_literal);
+  }
+
+  {
+    // float
+    MLFloat16 mlfloat{17.0f};
+    auto mlfloat_literal = 17.0_fp16;
+    ASSERT_EQ(mlfloat, mlfloat_literal);
+
+    BFloat16 bfloat{17.0f};
+    auto bfloat_literal = 17.0_bfp16;
+    ASSERT_EQ(bfloat, bfloat_literal);
   }
 }
 

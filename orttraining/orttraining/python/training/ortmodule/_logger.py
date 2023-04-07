@@ -3,12 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from onnxruntime.capi._pybind_state import Severity
-from contextlib import contextmanager
-from enum import IntEnum
 import io
 import sys
 import warnings
+from contextlib import contextmanager
+from enum import IntEnum
+
+from onnxruntime.capi._pybind_state import Severity
 
 
 class LogLevel(IntEnum):
@@ -21,9 +22,9 @@ class LogLevel(IntEnum):
 
 @contextmanager
 def suppress_os_stream_output(suppress_stdout=True, suppress_stderr=True, log_level=LogLevel.WARNING):
-    """Supress output from being printed to stdout and stderr if log_level is WARNING or higher.
+    """Suppress output from being printed to stdout and stderr if log_level is WARNING or higher.
 
-    If there is any output detected, a single warning is issued at of the context
+    If there is any output detected, a single warning is issued in the context
     """
 
     # stdout and stderr is written to a tempfile instead
@@ -49,12 +50,18 @@ def suppress_os_stream_output(suppress_stdout=True, suppress_stderr=True, log_le
         if fo.tell() > 0 and suppress_logs:
             # If anything was captured in fo, raise a single user warning letting users know that there was
             # some warning or error that was raised
-            warnings.warn("There were one or more warnings or errors raised while exporting the PyTorch "
-                          "model. Please enable INFO level logging to view all warnings and errors.", UserWarning)
+            warnings.warn(
+                "There were one or more warnings or errors raised while exporting the PyTorch "
+                "model. Please enable INFO level logging to view all warnings and errors.",
+                UserWarning,
+            )
+
 
 def ortmodule_loglevel_to_onnxruntime_c_loglevel(loglevel):
-    return {LogLevel.VERBOSE: Severity.VERBOSE,
-            LogLevel.INFO: Severity.INFO,
-            LogLevel.WARNING: Severity.WARNING,
-            LogLevel.ERROR: Severity.ERROR,
-            LogLevel.FATAL: Severity.FATAL}.get(loglevel, Severity.WARNING)
+    return {
+        LogLevel.VERBOSE: Severity.VERBOSE,
+        LogLevel.INFO: Severity.INFO,
+        LogLevel.WARNING: Severity.WARNING,
+        LogLevel.ERROR: Severity.ERROR,
+        LogLevel.FATAL: Severity.FATAL,
+    }.get(loglevel, Severity.WARNING)

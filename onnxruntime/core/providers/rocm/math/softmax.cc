@@ -11,101 +11,94 @@
 namespace onnxruntime {
 namespace rocm {
 
-template <typename T, bool is_log_softmax>
+template <typename T, typename TOut, bool IsLogSoftmax>
 Status SoftMaxComputeHelper(
     hipStream_t stream,
     const T* X,
     const TensorShape& input_shape,
-    T* Y,
-    miopenHandle_t handle,
-    int64_t axis) {
-  typedef typename ToHipType<T>::MappedType HipT;
+    TOut* Y,
+    int64_t axis,
+    RocmTuningContext* tuning_ctx) {
+  typedef typename ToHipType<T>::MappedType HipT_IN;
+  typedef typename ToHipType<TOut>::MappedType HipT_OUT;
+  typedef typename ToHipType<T>::MappedType HipT_ACCUM;
 
   int64_t N = input_shape.SizeToDimension(axis);
   int64_t D = input_shape.SizeFromDimension(axis);
-  auto Y_data = reinterpret_cast<HipT*>(Y);
-  auto X_data = reinterpret_cast<const HipT*>(X);
+  auto Y_data = reinterpret_cast<HipT_OUT*>(Y);
+  auto X_data = reinterpret_cast<const HipT_IN*>(X);
 
-  // miopenSoftmaxForward/Backward is not optimal implementation.
-  // TODO: remove miopen path completely in the future.
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, is_log_softmax>(stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
-    return Status::OK();
+    return dispatch_warpwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
+        stream, Y_data, X_data, gsl::narrow_cast<int>(D),
+        gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
   }
-
-  std::vector<int64_t> dims({N, 1, 1, D});  // miopen expects 4D shape in NCHW format
-
-  const auto alpha = Consts<HipT>::One;
-  const auto beta = Consts<HipT>::Zero;
-  MiopenTensor input_tensor;
-  MiopenTensor output_tensor;
-  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, MiopenTensor::GetDataType<HipT>()));
-  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, MiopenTensor::GetDataType<HipT>()));
-  if (is_log_softmax) {
-    MIOPEN_RETURN_IF_ERROR(miopenSoftmaxForward_V2(handle, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data, MIOPEN_SOFTMAX_LOG, MIOPEN_SOFTMAX_MODE_INSTANCE));
-  } else {
-    MIOPEN_RETURN_IF_ERROR(miopenSoftmaxForward_V2(handle, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data, MIOPEN_SOFTMAX_ACCURATE, MIOPEN_SOFTMAX_MODE_INSTANCE));
-  }
-
-  return Status::OK();
+  return dispatch_blockwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
+      gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
 }
 
-#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                            \
-  template Status SoftMaxComputeHelper<T, false>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, miopenHandle_t handle, int64_t axis); \
-  template Status SoftMaxComputeHelper<T, true>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, miopenHandle_t handle, int64_t axis);
+#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                                              \
+  template Status SoftMaxComputeHelper<T, TOut, false>(hipStream_t stream, const T* input, const TensorShape& shape, TOut* Y, \
+                                                       int64_t axis, RocmTuningContext* tuning_ctx);                          \
+  template Status SoftMaxComputeHelper<T, TOut, true>(hipStream_t stream, const T* input, const TensorShape& shape, TOut* Y,  \
+                                                      int64_t axis, RocmTuningContext* tuning_ctx);
 
-SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
-// SPECIALIZED_SOFTMAX_HELPER_IMPL(double)
-SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
+SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16, float)
+SPECIALIZED_SOFTMAX_HELPER_IMPL(float, float)
+// MIOpen double data type not supported
+// SPECIALIZED_SOFTMAX_HELPER_IMPL(double, double)
+SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16, MLFloat16)
+SPECIALIZED_SOFTMAX_HELPER_IMPL(BFloat16, BFloat16)
 
-#define REGISTER_KERNEL_TYPED(T)                                                \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      Softmax,                                                                  \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Softmax<T>);                                                              \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      Softmax,                                                                  \
-      kOnnxDomain,                                                              \
-      11, 12,                                                                   \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Softmax<T>);                                                              \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      Softmax,                                                                  \
-      kOnnxDomain,                                                              \
-      13,                                                                       \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Softmax<T>);                                                              \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      LogSoftmax,                                                               \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Softmax<T>);                                                              \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      LogSoftmax,                                                               \
-      kOnnxDomain,                                                              \
-      11, 12,                                                                   \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Softmax<T>);                                                              \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      LogSoftmax,                                                               \
-      kOnnxDomain,                                                              \
-      13,                                                                       \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                                           \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      Softmax,                                                                             \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                                         \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      Softmax,                                                                             \
+      kOnnxDomain,                                                                         \
+      11, 12,                                                                              \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      Softmax,                                                                             \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                                         \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      LogSoftmax,                                                                          \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                                         \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      LogSoftmax,                                                                          \
+      kOnnxDomain,                                                                         \
+      11, 12,                                                                              \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      LogSoftmax,                                                                          \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);
 
 template <typename T>
@@ -123,14 +116,14 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, rank));
 
   bool is_transpose_required = false;
-  Tensor transposed_input;
+  std::unique_ptr<Tensor> transposed_input;
   std::vector<int64_t> transposed_input_dims;
-  Tensor intermediate_output;  // output that the softmax implementation will write into while using transposed input
+  std::unique_ptr<Tensor> intermediate_output;  // output that the softmax implementation will write into while using transposed input
   std::vector<size_t> permutation(rank);
 
   // The "semantic" meaning of axis has changed in opset-13.
-  // Please compare: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax
-  // with https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11 for detailed explanations
+  // Please compare: https://github.com/onnx/onnx/blob/main/docs/Operators.md#Softmax
+  // with https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Softmax-11 for detailed explanations
   // To account for the opset-13 behavior, our plan will be to transpose the "axis" dim to the innermost dim
   // and perform softmax and then reverse the transpose. We can skip the transposing aspect if the axis is already
   // the innermost dim
@@ -156,18 +149,17 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
 
     // Allocate a temporary tensor to hold transposed input
-    Tensor temp_input(X->DataType(), TensorShape(transposed_input_dims), alloc);
+    auto temp_input = Tensor::Create(X->DataType(), TensorShape(transposed_input_dims), alloc);
 
     // Perform the transpose
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(rocm_ep_->GetDeviceProp(),
-                                               Stream(),
-                                               RocblasHandle(),
-                                               permutation, *X, temp_input));
+                                               Stream(ctx),
+                                               GetRocblasHandle(ctx),
+                                               permutation, *X, *temp_input));
     transposed_input = std::move(temp_input);
 
     // Allocate memory for the intermediate output
-    Tensor temp_output(Y->DataType(), TensorShape(transposed_input_dims), alloc);
-    intermediate_output = std::move(temp_output);
+    intermediate_output = Tensor::Create(Y->DataType(), TensorShape(transposed_input_dims), alloc);
   }
 
   const T* X_data = nullptr;
@@ -175,39 +167,37 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape* compute_input_shape = nullptr;
 
   if (is_transpose_required) {  // use intermediate buffers to compute the softmax values
-    X_data = transposed_input.template Data<T>();
-    Y_data = intermediate_output.template MutableData<T>();
-    compute_input_shape = &transposed_input.Shape();
+    X_data = transposed_input->Data<T>();
+    Y_data = intermediate_output->MutableData<T>();
+    compute_input_shape = &transposed_input->Shape();
   } else {  // use the node input/output directly
-    X_data = X->template Data<T>();
-    Y_data = Y->template MutableData<T>();
+    X_data = X->Data<T>();
+    Y_data = Y->MutableData<T>();
     compute_input_shape = &input_shape;
   }
 
   Status status;
   if (log_softmax_) {
-    status = SoftMaxComputeHelper<T, true>(Stream(), X_data, *compute_input_shape, Y_data, MiopenHandle(), 
-                                           is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                 : static_cast<int64_t>(axis));
+    status = SoftMaxComputeHelper<T, T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data,
+                                              is_transpose_required ? static_cast<int64_t>(rank) - 1
+                                                                    : static_cast<int64_t>(axis),
+                                              GetTuningContext());
   } else {
-    status = SoftMaxComputeHelper<T, false>(Stream(), X_data, *compute_input_shape, Y_data, MiopenHandle(), 
-                                            is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                  : static_cast<int64_t>(axis));
+    status = SoftMaxComputeHelper<T, T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data,
+                                               is_transpose_required ? static_cast<int64_t>(rank) - 1
+                                                                     : static_cast<int64_t>(axis),
+                                               GetTuningContext());
   }
 
   if (!status.IsOK())
     return status;
 
   if (is_transpose_required) {
-    std::vector<size_t> reverse_permutation(rank);
-    for (size_t i = 0, end = permutation.size(); i < end; ++i) {
-      reverse_permutation[permutation[i]] = i;
-    }
     // Perform the transpose to get the axes back to the original ordering
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(rocm_ep_->GetDeviceProp(),
-                                               Stream(),
-                                               RocblasHandle(),
-                                               reverse_permutation, intermediate_output, *Y));
+                                               Stream(ctx),
+                                               GetRocblasHandle(ctx),
+                                               permutation, *intermediate_output, *Y));
   }
 
   return Status::OK();
@@ -218,8 +208,10 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   template Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const;
 
 SPECIALIZED_COMPUTE(float)
+// MIOpen double data type not supported
 // SPECIALIZED_COMPUTE(double)
 SPECIALIZED_COMPUTE(MLFloat16)
+SPECIALIZED_COMPUTE(BFloat16)
 
 }  // namespace rocm
 }  // namespace onnxruntime

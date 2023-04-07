@@ -5,10 +5,12 @@
 
 #include "LearningModelDevice.g.h"
 
+#include "iengine.h"
+
 namespace _winml {
 class ConverterResourceStore;
 class D3DDeviceCache;
-}
+}  // namespace _winml
 
 namespace WINMLP {
 
@@ -41,6 +43,12 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   // internal:
   STDMETHOD_(boolean, SharedHandleInitialized)
   ();
+
+  STDMETHOD(GetThreadPool)(
+        _winml::IThreading** thread_pool);
+
+  STDMETHOD(CacheThreadPool)(
+        _winml::IThreading* thread_pool);
 
   // internal:
 
@@ -77,6 +85,12 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   std::shared_ptr<_winml::ConverterResourceStore>
   DetensorizerStore();
 
+  uint32_t
+  NumberOfIntraOpThreads();
+
+  bool
+  AllowSpinning();
+
  private:
   // stores the device kind that was originally chosen in the constructor
   winml::LearningModelDeviceKind m_deviceKind;
@@ -89,6 +103,8 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   std::once_flag m_tensorizerStoreInitialized;
 
   std::unique_ptr<_winml::D3DDeviceCache> m_deviceCache;
+
+  com_ptr<_winml::IThreading> m_threadPool;
 };
 }  // namespace WINMLP
 

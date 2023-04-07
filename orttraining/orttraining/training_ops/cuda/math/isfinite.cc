@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/math/isfinite.h"
+#include "orttraining/training_ops/cuda/math/isfinite_impl.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -26,7 +27,7 @@ Status IsFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   const Tensor& input = *context->Input<Tensor>(0);
   Tensor& output = *context->Output(0, input.Shape());
   IsFinite(
-      Stream(),
+      Stream(context),
       reinterpret_cast<const CudaTSrc*>(input.Data<TSrc>()),
       output.MutableData<bool>(), input.Shape().Size());
 

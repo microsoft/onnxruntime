@@ -36,6 +36,7 @@ class Profiler;
 #define WINML_TLM_RUNTIME_PERF_VERSION 0
 #define WINML_TLM_NATIVE_API_INTRAOP_THREADS_VERSION 0
 #define WINML_TLM_NATIVE_API_INTRAOP_THREAD_SPINNING_VERSION 0
+#define WINML_TLM_DEVICE_KIND_VERSION 0
 #define WINML_TLM_NAMED_DIMENSION_OVERRIDE_VERSION 0
 #define WINML_TLM_EXPERIMENTAL_API_VERSION 0
 
@@ -63,7 +64,8 @@ class WinMLTelemetryHelper {
   bool telemetry_enabled_ = false;
 
   WinMLTelemetryHelper();
-  ~WinMLTelemetryHelper();
+  virtual ~WinMLTelemetryHelper();
+
 
   //
   // Register telemetry provider and check success.  Will only succeed if
@@ -107,6 +109,8 @@ class WinMLTelemetryHelper {
   void SetNamedDimensionOverride(
       winrt::hstring name,
       uint32_t value);
+  void SetLearningModelDeviceKind(
+      int device_kind);
   void EndRuntimeSession() { ++runtime_session_id_; };
   bool IsMeasureSampled();
   int GetRuntimeSessionId() { return runtime_session_id_; }

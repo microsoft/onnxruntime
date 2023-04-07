@@ -1,19 +1,7 @@
-trigger: none
-
-jobs:
-- template: templates/mac-ci.yml
+stages:
+- template: templates/mac-cpu-packaging-pipeline.yml
   parameters:
-    JobName: 'Mac_CPU_Training'
-    SubmoduleCheckoutMode: 'recursive'
-    BuildCommand: >
-      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py
-      --build_dir $(Build.BinariesDirectory)
-      --skip_submodule_sync
-      --parallel
-      --build_shared_lib
-      --config Debug RelWithDebInfo
-      --enable_training
-    DoNugetPack: 'false'
-    # Enable unreleased onnx opsets in CI builds
-    # This facilitates testing the implementation for the new opsets
-    AllowReleasedOpsetOnly: '0'
+    AllowReleasedOpsetOnly: 0
+    BuildForAllArchs: false
+    AdditionalBuildFlags: --enable_training
+    WithCache: true

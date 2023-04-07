@@ -104,6 +104,7 @@ export declare namespace Test {
    */
   export interface Options {
     debug?: boolean;
+    sessionOptions?: InferenceSession.SessionOptions;
     cpuOptions?: InferenceSession.CpuExecutionProviderOption;
     cpuFlags?: Record<string, unknown>;
     cudaOptions?: InferenceSession.CudaExecutionProviderOption;

@@ -137,7 +137,7 @@ void read_mnist_image_file(Container<Image>& images, const std::string& path, st
     for (size_t i = 0; i < count; ++i) {
       images.push_back(func());
 
-      for (size_t j = 0; j < rows * columns; ++j) {
+      for (size_t j = 0; j < static_cast<size_t>(rows) * columns; ++j) {
         auto pixel = *image_buffer++;
         images[i][j] = static_cast<typename Image::value_type>(pixel);
       }

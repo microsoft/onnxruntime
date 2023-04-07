@@ -12,6 +12,9 @@
 
 struct AbstractOperatorDesc;
 interface IMLOperatorTensor;
+struct DML_INPUT_GRAPH_EDGE_DESC;
+struct DML_OUTPUT_GRAPH_EDGE_DESC;
+struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
 namespace onnxruntime
 {
@@ -26,7 +29,7 @@ namespace Windows::AI::MachineLearning::Adapter
     {
     public:
         // Hold a reference to an object until preceding work in the queue is complete.  This
-        // only needs to be handled by providers which hide the asynchronous nature of 
+        // only needs to be handled by providers which hide the asynchronous nature of
         // computation, and involve resoures which cannot be automatically by work in the
         // the provider's underlying queues.
         virtual void QueueReference(IUnknown *object) = 0;
@@ -40,12 +43,12 @@ namespace Windows::AI::MachineLearning::Adapter
             bool isInternalOperator,
             IUnknown* data,
             IUnknown** abiData) const = 0;
-        
+
         virtual uint64_t TryGetPooledAllocationId(
             IUnknown* data,
             bool isInternalOperator) = 0;
 
-        virtual void GetABIExecutionInterface(
+        virtual void GetABIExecutionInterfaceAndInvalidateState(
             bool isInternalOperator,
             IUnknown** abiExecutionObject) const = 0;
 
@@ -60,12 +63,12 @@ namespace Windows::AI::MachineLearning::Adapter
             uint32_t resourceCount,
             IUnknown** resources) = 0;
 
-        // Waits for flushed work, discards unflushed work, and discards associated references to 
+        // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.
         virtual void Close() = 0;
     };
 
-    using MLOperatorTensorGetter = std::function<Microsoft::WRL::ComPtr<IMLOperatorTensor>(uint32_t index)>;
+    using MLOperatorTensorGetter = std::function<std::variant<Microsoft::WRL::ComPtr<IMLOperatorTensor>, std::vector<Microsoft::WRL::ComPtr<IMLOperatorTensor>>>(uint32_t index)>;
 
     struct DmlOperatorParams
     {
@@ -73,26 +76,23 @@ namespace Windows::AI::MachineLearning::Adapter
         std::unique_ptr<AbstractOperatorDesc> desc;
     };
 
-    // This is the counterpart to the MLOperatorKernelDmlProperties ABI struct which owns its memory and uses containers.
+    // This is the counterpart to the MLOperatorGraphDesc ABI struct which owns its memory and uses containers.
+    // Either nodesAsOperatorDesc or nodesAsIDMLOperator can have non-zero size.
     struct DmlGraphNodeCreateInfo
     {
-        bool initialized = false;
-
-        // Mapping between DML in/out indices and kernel in/out indices
-        std::vector<uint32_t> kernelInputIndices;
-        std::vector<uint32_t> kernelOutputIndices;
-
-        Microsoft::WRL::ComPtr<IDMLOperator> op;
-        std::unique_ptr<AbstractOperatorDesc> desc;
-
-        bool allowHalfPrecisionComputation = false;
+        uint32_t nodeCount;
+        std::vector<std::unique_ptr<AbstractOperatorDesc>> nodesAsOperatorDesc;
+        std::vector<Microsoft::WRL::ComPtr<IDMLOperator>> nodesAsIDMLOperator;
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+        std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
+        std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
     };
 
     using GraphNodeFactory = std::function<void(
-        const onnxruntime::Node& node, 
+        const onnxruntime::Node& node,
         MLOperatorTensorGetter& constantInputGetter,
         const void* executionHandle,
-        DmlGraphNodeCreateInfo* graphNodeCreateInfo
+        /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo
         )>;
 
     struct GraphNodeFactoryRegistration
@@ -108,20 +108,6 @@ namespace Windows::AI::MachineLearning::Adapter
         std::vector<uint32_t> requiredConstantCpuInputs;
         std::optional<GraphNodeFactoryRegistration> graphNodeFactoryRegistration;
         KernelSupportQuery supportQuery;
-
-        // Many ONNX operators use 64-bit tensors, but most DML operators only support
-        // 32-bit indices. This flag indicates to the graph whether it's okay to compute
-        // the result using 32-bit tensors (ignoring the upper bits) via doubled strides.
-        bool supportedWith64BitTensorsVia32BitStrides = false;
-
-        // When true, the input to the current operator may come from any execution
-        // provider. Otherwise it must have come from another DML node to assume it's safe
-        // to use 64-bit to 32-bit striding.
-        bool supportedWith64BitTensorsVia32BitStridesFromAnyEp = false;
-
-        // Operator supports true 64-bit tensors directly, no strides needed.
-        // So fallback to strided 32-bit only occurs when the device lacks 64-bit support.
-        bool prefer64BitTensorsDirectly = false;
     };
 
     using InternalRegistrationInfoMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<InternalRegistrationInfo>>;

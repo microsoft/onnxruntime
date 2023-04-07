@@ -56,6 +56,6 @@ public:
 
 
 DML_OP_DEFINE_CREATION_FUNCTION(MatMul, DmlOperatorMatMul);
-DML_OP_DEFINE_CREATION_FUNCTION(FusedMatMul, DmlOperatorMatMul);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedMatMul, DmlOperatorMatMul);
 
 } // namespace Dml

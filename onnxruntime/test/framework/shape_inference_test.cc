@@ -7,6 +7,7 @@
 #include "gtest/gtest.h"
 #include "core/graph/model.h"
 #include "test/framework/model_builder_utils.h"
+#include "test/util/include/test_utils.h"
 #include "test/test_environment.h"
 
 using namespace ONNX_NAMESPACE;
@@ -56,27 +57,6 @@ class ShapeInferenceTest : public ::testing::Test {
     return node.OutputDefs()[arg_num]->Shape();
   }
 
-  void CheckShapeEquality(const TensorShapeProto* shape1, const TensorShapeProto* shape2) {
-    EXPECT_NE(shape1, nullptr);
-    EXPECT_NE(shape2, nullptr);
-    if ((shape1 != nullptr) && (shape2 != nullptr)) {
-      EXPECT_EQ(shape1->dim_size(), shape2->dim_size()) << "Shapes do not have same rank";
-      auto min_dims = std::min(shape1->dim_size(), shape2->dim_size());
-      for (int i = 0; i < min_dims; ++i) {
-        auto dim1 = shape1->dim(i);
-        auto dim2 = shape2->dim(i);
-        EXPECT_EQ(dim1.has_dim_value(), dim2.has_dim_value());
-        if (dim1.has_dim_value()) {
-          EXPECT_EQ(dim1.dim_value(), dim2.dim_value());
-        }
-        EXPECT_EQ(dim1.has_dim_param(), dim2.has_dim_param());
-        if (dim1.has_dim_param()) {
-          EXPECT_EQ(dim1.dim_param(), dim2.dim_param());
-        }
-      }
-    }
-  }
-
 };  // namespace test
 
 TEST_F(ShapeInferenceTest, BasicTest) {
@@ -84,18 +64,7 @@ TEST_F(ShapeInferenceTest, BasicTest) {
   Input("X1", type1);
 
   auto& node = Node("Cast", "X1", "Y1");
-  //AttributeProto squeezed_axes;
-  //squeezed_axes.set_name("axes");
-  //squeezed_axes.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
-  //squeezed_axes.add_ints(0);
-  //p_node->AddAttribute("axes", squeezed_axes);
-  AttributeProto cast_to;
-  cast_to.set_name("to");
-  cast_to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-  cast_to.set_i(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-  //cast_to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
-  //cast_to.set_s("INT16");
-  node.AddAttribute("to", cast_to);
+  node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_INT32});
 
   DoShapeInference();
   // check inferred shapes

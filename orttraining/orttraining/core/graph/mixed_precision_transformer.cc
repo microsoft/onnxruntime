@@ -425,93 +425,6 @@ Status TransformStage2(Graph& graph,
   return Status::OK();
 }
 
-static Status HandleFunctionCalls(Graph& graph, ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type, LossSubgraph* p_loss_subgraph = nullptr);
-
-// TODO: Ideally, we should not need to transform a function-body here.
-// Ideally, for any full-precision function F, there should be a corresponding 16-bit precision
-// version of F too: that is, the type-signature of F should include both the full-precision and
-// low-precision. Thus, transforming the types of actual-parameters of a call to F should be
-// sufficient. We explicitly transform a function body here due to a couple of limitations.
-// (a) First, the existing function-mechanism does not allow us to express the body of the
-// full-precision and low-precision function because of the treatment of constants.
-// (b) The existing ORT pipeline specializes function-bodies to the types of actual-parameters
-// eagerly during Graph resolution. Ideally, the function-body specialization should be delayed
-// until after mixed-precision-transformation or any transformation that changes types.
-// Once (a) and (b) are addressed elsewhere, we can simplify the treatment here.
-// In cases where we do need to transform the function-body, we should ideally inline the transformed
-// body if its transformed semantics does not match the original semantics (or rename the function):
-// otherwise, we may end up using a kernel with the original semantics erroneously.
-
-static Status HandleFunctionBody(const Function& node_func, ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type) {
-  const Graph& fn_body = node_func.Body();
-  // TODO: eliminate use of const_casts
-  Graph& graph = const_cast<Graph&>(fn_body);
-  // TODO: The resolve below is likely unnecessary.
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-
-  // Stage 1 for functions:
-  // Update the types of inputs of function body graph:
-  const std::string& fn_name = node_func.OpSchema().Name();
-  int argnum = 0;
-  for (const NodeArg* input : graph.GetInputs()) {
-    // Reduce input type to lower precision (unless specified as FP32 by stage2_fp32_node_args).
-    onnx::TypeProto type = *(input->TypeAsProto());
-    if (type.has_tensor_type() && type.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      if (!IsFP32(stage2_fp32_node_args, fn_name, argnum)) {
-        type.mutable_tensor_type()->set_elem_type(mixed_precision_type);
-        graph.SetNodeArgType(const_cast<NodeArg&>(*input), type);
-        // Introduce cast to full-precision if required:
-        // TODO: fix const_cast; Graph doesn't provide us a method "GetMutableInputs".
-        NodeArg* mutable_input = const_cast<NodeArg*>(input);
-        ORT_RETURN_IF_ERROR(CastNodeArg(graph,
-                    stage1_fp32_node_args,
-                    std::unordered_map<Node*, std::vector<int>>(),
-                    mutable_input,
-                    ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-      }
-    }
-
-    ++argnum;
-  }
-
-  ORT_RETURN_IF_ERROR(TransformConstants(graph, mixed_precision_type));
-
-  // End of stage 1. Update types of intermediate-values and return-values:[
-  Graph::ResolveOptions options;
-  options.override_types = true;
-  ORT_RETURN_IF_ERROR(graph.Resolve(options));
-
-  // Stage 2:
-  ORT_RETURN_IF_ERROR(TransformStage2(graph, mixed_precision_type));
-
-  // Recursively transform nested function call bodies.
-  ORT_RETURN_IF_ERROR(HandleFunctionCalls(graph, mixed_precision_type));
-
-  // Update types of intermediate-values and return-values:
-  auto status = graph.Resolve(options);
-  return status;
-}
-
-static Status HandleFunctionCalls(Graph& graph, ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type, LossSubgraph* p_loss_subgraph) {
-  GraphViewer graph_viewer(graph);
-  const auto& order = graph_viewer.GetNodesInTopologicalOrder();
-  for (auto index : order) {
-    Node* node = graph.GetNode(index);
-    // Bodies of FP32 Functions are not transformed.
-    if (IsFP32Node(node) ||
-        (p_loss_subgraph != nullptr && p_loss_subgraph->Contains(node))) {
-      continue;
-    }
-
-    const Function* node_func = node->GetFunctionBody();
-    if (nullptr != node_func) {
-      ORT_RETURN_IF_ERROR(HandleFunctionBody(*node_func, mixed_precision_type));
-    }
-  }
-
-  return Status::OK();
-}
-
 // Create FP16/BFloat16 NodeArg and update the consumers of arg with new FP16/BFloat16 NodeArg.
 static NodeArg* CreateMixedPrecisionNodeArgAndUpdateConsumers(Graph& graph,
                                                               const std::unordered_map<std::string, std::vector<int>>& fp32_node_args_by_op_type,
@@ -648,9 +561,6 @@ Status TransformGraphForMixedPrecision(Graph& graph,
 
   // Handle implicit data type casting nodes such as Cast, ConstantOfShape
   ORT_RETURN_IF_ERROR(TransformConstants(graph, mixed_precision_type, &loss_subgraph));
-
-  // Handle function body
-  ORT_RETURN_IF_ERROR(HandleFunctionCalls(graph, mixed_precision_type, &loss_subgraph));
 
   // Handle loss graph inputs and outputs.
   ORT_RETURN_IF_ERROR(loss_subgraph.CastInputsToFP32(graph));

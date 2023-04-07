@@ -6,27 +6,31 @@
 
 #include <cstdint>
 #include <vector>
+#include "core/common/gsl.h"
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 
 namespace SliceOp {
 struct PrepareForComputeMetadata {
-  explicit PrepareForComputeMetadata(const std::vector<int64_t>& input_dimensions)
+  explicit PrepareForComputeMetadata(gsl::span<const int64_t> input_dimensions)
       : input_dimensions_(input_dimensions),
-        ends_(input_dimensions),
-        output_dims_(input_dimensions) {
+        ends_(input_dimensions.begin(), input_dimensions.end()),
+        output_dims_(input_dimensions.begin(), input_dimensions.end()) {
     size_t dimension_count = input_dimensions.size();
     starts_.resize(dimension_count, 0);
     steps_.resize(dimension_count, 1);
   }
 
-  const std::vector<int64_t>& input_dimensions_;
-  std::vector<int64_t> starts_;
-  std::vector<int64_t> ends_;
-  std::vector<int64_t> steps_;
-  std::vector<int64_t> output_dims_;
-  std::vector<int64_t> flattened_output_dims_;
-  std::vector<int64_t>* p_flattened_output_dims_ = &flattened_output_dims_;
+  gsl::span<const int64_t> input_dimensions_;
+  TensorShapeVector starts_;
+  TensorShapeVector ends_;
+  TensorShapeVector steps_;
+  TensorShapeVector output_dims_;
+  TensorShapeVector flattened_input_dims_;
+  TensorShapeVector* p_flattened_input_dims_ = &flattened_input_dims_;
+  TensorShapeVector flattened_output_dims_;
+  TensorShapeVector* p_flattened_output_dims_ = &flattened_output_dims_;
 };
 
 }  // namespace SliceOp

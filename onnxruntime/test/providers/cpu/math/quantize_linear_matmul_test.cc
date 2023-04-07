@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/math/quantize_linear_matmul.h"
+#include "core/providers/cpu/quantization/quantize_linear_matmul.h"
+#include "core/mlas/inc/mlas.h"
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -85,6 +87,44 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8S8) {
   test.Run();
 }
 
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
+  OpTester test("QLinearMatMul", 10);
+  test.AddInput<int8_t>("T1", {2, 2, 4},
+                        {80, -2, -128, 110,
+                         -125, 86, 127, -99,
+
+                         80, 108, -128, 110,
+                         -125, 86, 127, -99});
+
+  test.AddInput<float>("a_scale", {}, {0.0066f});
+  test.AddInput<int8_t>("a_zero_point", {}, {-15});
+
+  test.AddInput<int8_t>("T2", {2, 4, 3},
+                        {-43, 51, -34,
+                         60, 26, -17,
+                         0, 63, -55,
+                         47, -29, -31,
+
+                         -62, 51, -42,
+                         60, 26, -22,
+                         0, -8, -19,
+                         37, -2, -47});
+
+  test.AddInput<float>("b_scale", {}, {0.00802f});
+  test.AddInput<int8_t>("b_zero_point", {}, {-2});
+
+  test.AddInput<float>("y_scale", {}, {0.0123f});
+  test.AddInput<int8_t>("y_zero_point", {}, {-10});
+  test.AddOutput<int8_t>("T3", {2, 2, 3},
+                         {2, -33, -14,
+                          20, 27, -23,
+
+                          18, 29, -53,
+                          32, -27, 6});
+
+  test.Run();
+}
+
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
   auto run_test = [](bool only_t1_not_initializer) {
     OpTester test("QLinearMatMul", 10);
@@ -145,6 +185,41 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
     test.AddOutput<uint8_t>("T3", {2, 3},
                             {129, 94, 113,
                              147, 154, 104});
+
+    test.Run();
+  };
+
+  run_test(false);
+
+  // NNAPI will require all inputs except T1 to be initializers
+  run_test(true);
+}
+
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
+  auto run_test = [](bool only_t1_not_initializer) {
+    OpTester test("QLinearMatMul", 10);
+    test.AddInput<int8_t>("T1", {2, 4},
+                          {80, -2, -128, 110,
+                           -125, 86, 127, -99});
+
+    test.AddInput<float>("a_scale", {}, {0.0066f}, only_t1_not_initializer);
+    test.AddInput<int8_t>("a_zero_point", {}, {-15}, only_t1_not_initializer);
+
+    test.AddInput<int8_t>("T2", {4, 3},
+                          {-43, 51, -34,
+                           60, 26, -17,
+                           0, 63, -55,
+                           47, -29, -31},
+                          only_t1_not_initializer);
+
+    test.AddInput<float>("b_scale", {}, {0.00802f}, only_t1_not_initializer);
+    test.AddInput<int8_t>("b_zero_point", {}, {0}, only_t1_not_initializer);
+
+    test.AddInput<float>("y_scale", {}, {0.0123f}, only_t1_not_initializer);
+    test.AddInput<int8_t>("y_zero_point", {}, {-10}, only_t1_not_initializer);
+    test.AddOutput<int8_t>("T3", {2, 3},
+                           {1, -34, -15,
+                            19, 26, -24});
 
     test.Run();
   };
@@ -224,7 +299,42 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
   test.Run();
 }
 
+TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
+  OpTester test("QLinearMatMul", 10);
+  test.AddInput<int8_t>("a",
+                        {2, 4},
+                        {-3, 7, 5, -6,
+                         4, -5, 8, 7});
+  test.AddInput<float>("a_scale", {}, {0.1f});
+  test.AddInput<int8_t>("a_zero_point", {}, {5});
+  test.AddInput<int8_t>("b",
+                        {4, 4},
+                        {0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2});
+  test.AddInput<float>("b_scale", {4},
+                       {0.1f, 0.2f, 0.3f, 0.4f});
+  test.AddInput<int8_t>("b_zero_point",
+                        {1, 4},
+                        {1, -2, 2, -1});
+  test.AddInput<float>("y_scale", {}, {0.2f});
+  test.AddInput<int8_t>("y_zero_point", {}, {2});
+
+  test.AddOutput<int8_t>("y",
+                         {2, 4},
+                         {0, 0, 20, -10,
+                          8, 16, 14, -7});
+
+  test.Run();
+}
+
 TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   OpTester test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("a",
                          {2, 2, 4},
@@ -267,9 +377,57 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
   test.Run();
 }
 
+TEST(QuantizeLinearMatmulOpTest, PerColumn_ND_S8S8) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  OpTester test("QLinearMatMul", 10);
+  test.AddInput<int8_t>("a",
+                        {2, 2, 4},
+                        {-3, 7, 5, -6,
+                         4, -5, 8, 7,
+
+                         -3, 7, 5, -6,
+                         4, -5, 8, 7});
+  test.AddInput<float>("a_scale", {}, {0.1f});
+  test.AddInput<int8_t>("a_zero_point", {}, {5});
+  test.AddInput<int8_t>("b",
+                        {2, 4, 4},
+                        {0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2,
+
+                         0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2});
+  test.AddInput<float>("b_scale", {2, 1, 4},
+                       {0.1f, 0.2f, 0.3f, 0.4f,
+                        0.4f, 0.3f, 0.2f, 0.1f});
+  test.AddInput<int8_t>("b_zero_point",
+                        {2, 1, 4},
+                        {1, -2, 2, -1,
+                         2, -4, -1, 0});
+  test.AddInput<float>("y_scale", {}, {0.2f});
+  test.AddInput<int8_t>("y_zero_point", {}, {2});
+
+  test.AddOutput<int8_t>("y",
+                         {2, 2, 4},
+                         {0, 0, 20, -10,
+                          8, 16, 14, -7,
+
+                          -2, -6, 9, 0,
+                          29, 22, 8, 0});
+
+  test.Run();
+}
+
 /**
- * @brief Extend QLinearMatMul for verifying prepacking behavior 
-*/
+ * @brief Extend QLinearMatMul for verifying prepacking behavior
+ */
 struct PrePackTestOp {
   // TODO!! use template and macro to extract a common utility out of this
   //   for grey box kernel testing by extending kernel classes.
@@ -335,12 +493,13 @@ struct PrePackTestOp {
 };
 
 #ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   auto registry = std::make_shared<CustomRegistry>();
   std::vector<ONNX_NAMESPACE::OpSchema> schemas{PrePackTestOp::OpSchema()};
   Status status;
   ASSERT_TRUE((status = registry->RegisterOpSet(schemas, PrePackTestOp::OpDomain, 10, 11)).IsOK()) << status;
-  KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename PrePackTestOp::QLinearMatMulPrePackT(info); };
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<typename PrePackTestOp::QLinearMatMulPrePackT>(info); return Status::OK(); };
   auto kernel_def = PrePackTestOp::KernelDef();
   ASSERT_TRUE((status = registry->RegisterCustomKernel(kernel_def, kernel_create_fn)).IsOK()) << status;
 

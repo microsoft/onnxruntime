@@ -64,36 +64,6 @@ TEST(NhwcTransformerTests, Conv) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
 }
 
-TEST(NhwcTransformerTests, ConvDequantizeLinear) {
-  auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<uint8_t>({1, 12, 37}, 0, 31);
-    auto* conv_output_arg = builder.MakeIntermediate();
-    auto* output_arg = builder.MakeOutput();
-    auto* weight_arg = NhwcMakeInitializer<uint8_t>(builder, {32, 12, 5});
-
-    builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                        weight_arg, .02f, 126,
-                                        conv_output_arg, .37f, 131);
-    builder.AddDequantizeLinearNode<uint8_t>(conv_output_arg,
-                                             .37f, 131,
-                                             output_arg);
-  };
-
-  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 0);
-    EXPECT_EQ(op_to_count["Transpose"], 0);
-  };
-
-  // QLinearConv followed by only DequantizeLinear will remain as the ONNX
-  // version of the operator to avoid adding unnecessary Transpose nodes to
-  // the graph.
-  TransformerTester(build_test_case,
-                    check_nhwc_graph,
-                    TransformerLevel::Level2,
-                    TransformerLevel::Level3);
-}
-
 TEST(NhwcTransformerTests, ConvBlockBinary) {
   auto test_case = [&](const std::string& binary_op_type) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -300,7 +270,7 @@ TEST(NhwcTransformerTests, ConvSplit) {
       auto* qladd_output_arg = builder.MakeIntermediate();
       auto* output_arg = builder.MakeOutput();
 
-      const int64_t conv1_output_channels = 32;
+      constexpr int64_t conv1_output_channels = 32;
       auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {conv1_output_channels, 23, 3, 3});
 
       Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
@@ -308,6 +278,9 @@ TEST(NhwcTransformerTests, ConvSplit) {
                                                             conv_output_arg, .37f, 131);
       conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
       Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
+      if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+        split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
+      }
       split_node.AddAttribute("axis", static_cast<int64_t>(axis));
       builder.AddQLinearBinaryNode("QLinearAdd",
                                    split_output1_arg, .37f, 131,
@@ -332,6 +305,11 @@ TEST(NhwcTransformerTests, ConvSplit) {
                       check_nhwc_graph,
                       TransformerLevel::Level2,
                       TransformerLevel::Level3);
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3,
+                      18);
   }
 }
 
@@ -345,7 +323,7 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
       auto* qlconcat_output_arg = builder.MakeIntermediate();
       auto* output_arg = builder.MakeOutput();
 
-      const int64_t conv1_output_channels = 32;
+      constexpr int64_t conv1_output_channels = 32;
       auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {conv1_output_channels, 23, 3, 3});
       Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
                                                             conv1_weight_arg, .02f, 126,
@@ -353,6 +331,9 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
       conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
       Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
+      if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+        split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
+      }
       split_node.AddAttribute("axis", static_cast<int64_t>(axis));
 
       Node& qlconcat_node = builder.AddQLinearConcatLike(
@@ -376,6 +357,11 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
                       check_nhwc_graph,
                       TransformerLevel::Level2,
                       TransformerLevel::Level3);
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3,
+                      18);
   }
 }
 

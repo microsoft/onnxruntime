@@ -3,7 +3,6 @@
 
 #pragma once
 #include <functional>
-#include "gsl/gsl"
 
 #include "core/common/common.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -37,6 +36,8 @@ class Loop : public controlflow::IControlFlowKernel {
 
     std::vector<std::string> subgraph_input_names;
     std::vector<std::string> subgraph_output_names;
+
+    std::vector<const ONNX_NAMESPACE::TypeProto*> loop_carried_vars_types;
   };
 
   // function to concatenate the OrtValue instances from each Loop iteration into a single output buffer.
@@ -50,13 +51,11 @@ class Loop : public controlflow::IControlFlowKernel {
  protected:
   // derived class can provide implementation for handling concatenation of Loop output on a different device
   void SetConcatOutputFunc(const ConcatOutput& concat_output_func) { concat_output_func_ = concat_output_func; }
-  void SetComputeStream(void* stream) { stream_ = stream; }
 
  private:
   // Info and FeedsFetchesManager re-used for each subgraph execution.
   std::unique_ptr<Info> info_;
   std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
   ConcatOutput concat_output_func_;
-  void* stream_;
 };
 }  // namespace onnxruntime

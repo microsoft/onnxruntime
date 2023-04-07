@@ -1,11 +1,9 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
 
 #include <memory>
-#include <inference_engine.hpp>
-
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -14,7 +12,7 @@ namespace openvino_ep {
 
 class IBackend {
  public:
-  virtual void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
+  virtual void Infer(OrtKernelContext* context) = 0;
 };
 
 class BackendFactory {

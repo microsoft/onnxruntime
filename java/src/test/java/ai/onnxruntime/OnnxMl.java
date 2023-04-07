@@ -24951,7 +24951,7 @@ public final class OnnxMl {
        * Standard denotation can optionally be used to denote tensor
        * dimensions with standard semantic descriptions to ensure
        * that operations are applied to the correct axis of a tensor.
-       * Refer to https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md#denotation-definition
+       * Refer to https://github.com/onnx/onnx/blob/main/docs/DimensionDenotation.md#denotation-definition
        * for pre-defined dimension denotations.
        * </pre>
        *
@@ -24965,7 +24965,7 @@ public final class OnnxMl {
        * Standard denotation can optionally be used to denote tensor
        * dimensions with standard semantic descriptions to ensure
        * that operations are applied to the correct axis of a tensor.
-       * Refer to https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md#denotation-definition
+       * Refer to https://github.com/onnx/onnx/blob/main/docs/DimensionDenotation.md#denotation-definition
        * for pre-defined dimension denotations.
        * </pre>
        *
@@ -25177,7 +25177,7 @@ public final class OnnxMl {
        * Standard denotation can optionally be used to denote tensor
        * dimensions with standard semantic descriptions to ensure
        * that operations are applied to the correct axis of a tensor.
-       * Refer to https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md#denotation-definition
+       * Refer to https://github.com/onnx/onnx/blob/main/docs/DimensionDenotation.md#denotation-definition
        * for pre-defined dimension denotations.
        * </pre>
        *
@@ -25201,7 +25201,7 @@ public final class OnnxMl {
        * Standard denotation can optionally be used to denote tensor
        * dimensions with standard semantic descriptions to ensure
        * that operations are applied to the correct axis of a tensor.
-       * Refer to https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md#denotation-definition
+       * Refer to https://github.com/onnx/onnx/blob/main/docs/DimensionDenotation.md#denotation-definition
        * for pre-defined dimension denotations.
        * </pre>
        *
@@ -25742,7 +25742,7 @@ public final class OnnxMl {
          * Standard denotation can optionally be used to denote tensor
          * dimensions with standard semantic descriptions to ensure
          * that operations are applied to the correct axis of a tensor.
-         * Refer to https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md#denotation-definition
+         * Refer to https://github.com/onnx/onnx/blob/main/docs/DimensionDenotation.md#denotation-definition
          * for pre-defined dimension denotations.
          * </pre>
          *
@@ -25766,7 +25766,7 @@ public final class OnnxMl {
          * Standard denotation can optionally be used to denote tensor
          * dimensions with standard semantic descriptions to ensure
          * that operations are applied to the correct axis of a tensor.
-         * Refer to https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md#denotation-definition
+         * Refer to https://github.com/onnx/onnx/blob/main/docs/DimensionDenotation.md#denotation-definition
          * for pre-defined dimension denotations.
          * </pre>
          *
@@ -25790,7 +25790,7 @@ public final class OnnxMl {
          * Standard denotation can optionally be used to denote tensor
          * dimensions with standard semantic descriptions to ensure
          * that operations are applied to the correct axis of a tensor.
-         * Refer to https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md#denotation-definition
+         * Refer to https://github.com/onnx/onnx/blob/main/docs/DimensionDenotation.md#denotation-definition
          * for pre-defined dimension denotations.
          * </pre>
          *
@@ -25812,7 +25812,7 @@ public final class OnnxMl {
          * Standard denotation can optionally be used to denote tensor
          * dimensions with standard semantic descriptions to ensure
          * that operations are applied to the correct axis of a tensor.
-         * Refer to https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md#denotation-definition
+         * Refer to https://github.com/onnx/onnx/blob/main/docs/DimensionDenotation.md#denotation-definition
          * for pre-defined dimension denotations.
          * </pre>
          *
@@ -25831,7 +25831,7 @@ public final class OnnxMl {
          * Standard denotation can optionally be used to denote tensor
          * dimensions with standard semantic descriptions to ensure
          * that operations are applied to the correct axis of a tensor.
-         * Refer to https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md#denotation-definition
+         * Refer to https://github.com/onnx/onnx/blob/main/docs/DimensionDenotation.md#denotation-definition
          * for pre-defined dimension denotations.
          * </pre>
          *
@@ -26657,7 +26657,7 @@ public final class OnnxMl {
      * <pre>
      * An optional denotation can be used to denote the whole
      * type with a standard semantic description as to what is
-     * stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
+     * stored inside. Refer to https://github.com/onnx/onnx/blob/main/docs/TypeDenotation.md#type-denotation-definition
      * for pre-defined type denotations.
      * </pre>
      *
@@ -26670,7 +26670,7 @@ public final class OnnxMl {
      * <pre>
      * An optional denotation can be used to denote the whole
      * type with a standard semantic description as to what is
-     * stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
+     * stored inside. Refer to https://github.com/onnx/onnx/blob/main/docs/TypeDenotation.md#type-denotation-definition
      * for pre-defined type denotations.
      * </pre>
      *
@@ -30755,7 +30755,7 @@ public final class OnnxMl {
      * <pre>
      * An optional denotation can be used to denote the whole
      * type with a standard semantic description as to what is
-     * stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
+     * stored inside. Refer to https://github.com/onnx/onnx/blob/main/docs/TypeDenotation.md#type-denotation-definition
      * for pre-defined type denotations.
      * </pre>
      *
@@ -30778,7 +30778,7 @@ public final class OnnxMl {
      * <pre>
      * An optional denotation can be used to denote the whole
      * type with a standard semantic description as to what is
-     * stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
+     * stored inside. Refer to https://github.com/onnx/onnx/blob/main/docs/TypeDenotation.md#type-denotation-definition
      * for pre-defined type denotations.
      * </pre>
      *
@@ -32122,7 +32122,7 @@ public final class OnnxMl {
        * <pre>
        * An optional denotation can be used to denote the whole
        * type with a standard semantic description as to what is
-       * stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
+       * stored inside. Refer to https://github.com/onnx/onnx/blob/main/docs/TypeDenotation.md#type-denotation-definition
        * for pre-defined type denotations.
        * </pre>
        *
@@ -32145,7 +32145,7 @@ public final class OnnxMl {
        * <pre>
        * An optional denotation can be used to denote the whole
        * type with a standard semantic description as to what is
-       * stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
+       * stored inside. Refer to https://github.com/onnx/onnx/blob/main/docs/TypeDenotation.md#type-denotation-definition
        * for pre-defined type denotations.
        * </pre>
        *
@@ -32168,7 +32168,7 @@ public final class OnnxMl {
        * <pre>
        * An optional denotation can be used to denote the whole
        * type with a standard semantic description as to what is
-       * stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
+       * stored inside. Refer to https://github.com/onnx/onnx/blob/main/docs/TypeDenotation.md#type-denotation-definition
        * for pre-defined type denotations.
        * </pre>
        *
@@ -32189,7 +32189,7 @@ public final class OnnxMl {
        * <pre>
        * An optional denotation can be used to denote the whole
        * type with a standard semantic description as to what is
-       * stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
+       * stored inside. Refer to https://github.com/onnx/onnx/blob/main/docs/TypeDenotation.md#type-denotation-definition
        * for pre-defined type denotations.
        * </pre>
        *
@@ -32207,7 +32207,7 @@ public final class OnnxMl {
        * <pre>
        * An optional denotation can be used to denote the whole
        * type with a standard semantic description as to what is
-       * stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
+       * stored inside. Refer to https://github.com/onnx/onnx/blob/main/docs/TypeDenotation.md#type-denotation-definition
        * for pre-defined type denotations.
        * </pre>
        *

@@ -36,6 +36,28 @@ endif()
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_framework_srcs})
 
 onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_srcs})
+
+if (onnxruntime_USE_AZURE)
+
+  add_dependencies(onnxruntime_framework triton)
+  target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include)
+  link_directories(${TRITON_BIN}/lib ${TRITON_BIN}/lib64 ${TRITON_THIRD_PARTY}/curl/lib ${TRITON_THIRD_PARTY}/curl/lib64)
+
+  if (WIN32)
+
+    link_directories(${VCPKG_SRC}/installed/${onnxruntime_target_platform}-windows/lib)
+    target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32 zlib)
+
+  else()
+
+    find_package(ZLIB REQUIRED)
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB OpenSSL::Crypto OpenSSL::SSL)
+
+  endif() #if (WIN32)
+
+endif() #if (onnxruntime_USE_AZURE)
+
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
@@ -47,22 +69,32 @@ else()
 target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
-if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+if (onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_include_to_target(onnxruntime_framework Python::Module)
-    target_include_directories(onnxruntime_framework PRIVATE ${PROJECT_SOURCE_DIR}/external/dlpack/include)
-  endif()
-  if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)  
-    target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
+    target_include_directories(onnxruntime_framework PRIVATE ${dlpack_SOURCE_DIR}/include)
   endif()
 endif()
-if (onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_USE_MPI)
+  target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
+endif()
+
+if (onnxruntime_ENABLE_ATEN)
   # DLPack is a header-only dependency
-  set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+  set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
   target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})
 endif()
-onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11 nlohmann_json::nlohmann_json)
+
+if (onnxruntime_USE_MIMALLOC)
+    target_link_libraries(onnxruntime_framework mimalloc-static)
+endif()
+
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  target_link_libraries(onnxruntime_framework ${ABSEIL_LIBS})
+endif()
+
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes
 add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -84,6 +116,18 @@ if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
     message( FATAL_ERROR "Could not locate SQLite3 package." )
   endif (SQLITE3_FOUND)
   target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
+endif()
+
+if (WIN32)
+  target_compile_definitions(onnxruntime_framework PRIVATE _SCL_SECURE_NO_WARNINGS)
+endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_framework
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)

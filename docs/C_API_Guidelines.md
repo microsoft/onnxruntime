@@ -36,13 +36,13 @@ If an API such as CreateSession creates an Ort object such as Session, Session c
 
 No C++ exceptions must propagate through the C++/C boundaries. All C++ exceptions must be converted to OrtStatus instances at API boundaries. Such functions should return nullptr on success.
 
-Macros API_IMPL_BEGIN and API_IMPL_END are helpful in this regard. 
+Macros API_IMPL_BEGIN and API_IMPL_END are helpful in this regard.
 
 Cleanup API that destroys objects or simply deallocates memory must return void. Most of the time such API can never error out. Adding return status creates more uncertainty for the client and does not help in exception scenarios such as try/finally in C#. Returning void helps clients to write cleaner code and preserve original exception if any with its meaningful error message rather than memory deallocation failure.
 
 This requirement will also help us to create C++ API wrappers that are exception safe.
 
-Consider logging errors if you must rather than return them to the client.  
+Consider logging errors if you must rather than return them to the client.
 
 Example: on Windows delete operator is implemented on top of HeapFree() which may return an error. However, delete never returns anything and can be relied upon as a no throw primitive for cleanup purposes.
 
@@ -52,7 +52,7 @@ When API errors out it must leave all its out parameters and buffers untouched, 
 
 The obvious exception in this rule is the actual OrtStatus that is dynamically allocated and must be released by the client using the corresponding API.
 
-Some of the client code, notably in C#, attempts to detect which out arguments need a cleanup when an API errors out. The way it is done, out arguments are pre-set to a specific value, such as zero. If the API errors out, the client code attempts to cleanup if the out argument has changed.  
+Some of the client code, notably in C#, attempts to detect which out arguments need a cleanup when an API errors out. The way it is done, out arguments are pre-set to a specific value, such as zero. If the API errors out, the client code attempts to cleanup if the out argument has changed.
 
 Such a technique is error prone and dangerous, as the client has no way of finding out if the out argument has already been cleaned up by the API as should be the case. It may result in double free. One reason for this is our insufficient documentation. This also results in a convoluted hard to read code with nested try/finally/catch clauses.
 
@@ -80,4 +80,4 @@ Use types that fall into established patterns. For example, we use int64_t for d
 
 ### 9.  Adding a new API
 
-Follow these guidelines and instructions in the source code.  "Rules on how to add a new Ort API version" in [onnxruntime_c_api.cc](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/session/onnxruntime_c_api.cc).
+Follow these guidelines and instructions in the source code.  "Rules on how to add a new Ort API version" in [onnxruntime_c_api.cc](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/session/onnxruntime_c_api.cc).

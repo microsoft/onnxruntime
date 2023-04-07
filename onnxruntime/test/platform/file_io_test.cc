@@ -10,12 +10,15 @@
 
 #ifndef _WIN32
 #include <unistd.h>  // for sysconf() and _SC_PAGESIZE
+#else
+#include <Windows.h>
 #endif
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "gtest/gtest.h"
 
+#include "core/common/span_utils.h"
 #include "test/util/include/file_util.h"
 
 namespace onnxruntime {
@@ -61,7 +64,11 @@ std::vector<char> GenerateData(size_t length, uint32_t seed = 0) {
 }
 
 void WriteDataToFile(gsl::span<const char> data, const PathString& path) {
+#ifndef _WIN32
   std::ofstream out{path, std::ios_base::out | std::ios_base::trunc};
+#else
+  std::ofstream out{path, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary};
+#endif
   out.write(data.data(), data.size());
 }
 
@@ -96,7 +103,7 @@ TEST(FileIoTest, ReadFileIntoBuffer) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(buffer_span, expected_data_span);
+    ASSERT_TRUE(SpanEq(buffer_span, expected_data_span));
   }
 
   // invalid - negative offset
@@ -134,7 +141,60 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(mapped_span, expected_data_span);
+    ASSERT_TRUE(SpanEq(mapped_span, expected_data_span));
+  }
+
+  {
+    Env::MappedMemoryPtr mapped_memory{};
+
+    // invalid - negative offset
+    ASSERT_FALSE(Env::Default().MapFileIntoMemory(tmp.path.c_str(), -1, 0, mapped_memory).IsOK());
+  }
+}
+#else
+TEST(FileIoTest, MapFileIntoMemory) {
+  SYSTEM_INFO sysinfo;
+  GetSystemInfo(&sysinfo);
+  static const auto page_size = sysinfo.dwPageSize;
+  static const auto allocation_granularity = sysinfo.dwAllocationGranularity;
+  ASSERT_GT(page_size, static_cast<DWORD>(0));
+
+  TempFilePath tmp(ORT_TSTR("map_file_test_"));
+  const auto expected_data = GenerateData(page_size * 3 / 2);
+  WriteDataToFile(gsl::make_span(expected_data), tmp.path);
+
+  const auto offsets_and_lengths = GenerateValidOffsetLengthPairs(
+      0, expected_data.size(), page_size / 10);
+
+  for (const auto& offset_and_length : offsets_and_lengths) {
+    const auto offset = offset_and_length.first;
+    const auto length = offset_and_length.second;
+
+    // The offset must be a multiple of the allocation granularity
+    if (offset % allocation_granularity != 0) {
+      continue;
+    }
+
+    Env::MappedMemoryPtr mapped_memory{};
+    auto status = Env::Default().MapFileIntoMemory(
+        tmp.path.c_str(), offset, length, mapped_memory);
+    ASSERT_TRUE(status.IsOK())
+        << "MapFileIntoMemory failed for offset " << offset << " and length " << length
+        << " with error: " << status.ErrorMessage();
+
+    auto mapped_span = gsl::make_span(mapped_memory.get(), length);
+
+    auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
+
+    ASSERT_TRUE(SpanEq(mapped_span, expected_data_span));
+  }
+
+  {
+    Env::MappedMemoryPtr mapped_memory{};
+
+    // invalid - offset is not a multiple of the allocation granularity
+    ASSERT_FALSE(Env::Default().MapFileIntoMemory(
+        tmp.path.c_str(), allocation_granularity * 3 / 2, page_size / 10, mapped_memory).IsOK());
   }
 
   {

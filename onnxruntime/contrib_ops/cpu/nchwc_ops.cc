@@ -2,14 +2,17 @@
 // Licensed under the MIT License.
 
 #include "nchwc_ops.h"
+#include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
+using ConvPadVector = ConvAttributes::ConvPadVector;
 namespace contrib {
 
 Status ReorderInput::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
-  const auto& X_shape = X->Shape().GetDims();
+  const auto X_shape = X->Shape().GetDims();
   const auto X_rank = X_shape.size();
   ORT_ENFORCE(X_rank == 4);
 
@@ -24,7 +27,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
   const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
   const int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
 
-  std::vector<int64_t> Y_shape(X_rank);
+  TensorShapeVector Y_shape(X_rank);
   Y_shape[0] = batch_count;
   Y_shape[1] = nchwc_channels;
   int64_t spatial_size = 1;
@@ -52,7 +55,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
     // elements, so that operations involving a smaller number of channels will
     // process more rows per worker.
     constexpr ptrdiff_t worker_goal = 48 * 1024;
-    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal / nchwc_channels, 1);
+    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal / narrow<ptrdiff_t>(nchwc_channels), 1);
     worker_count = std::max<ptrdiff_t>(total_work / work_per_worker, 1);
   } else {
     // Each iteration produces one spatial_size chunk of NCHWc blocks.
@@ -60,15 +63,15 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
     worker_count = total_work;
   }
 
-  const auto* x_data = X->template Data<float>();
-  auto* y_data = Y->template MutableData<float>();
+  const auto* x_data = X->Data<float>();
+  auto* y_data = Y->MutableData<float>();
 
   auto reorder_worker = [&](ptrdiff_t batch) {
     auto work = concurrency::ThreadPool::PartitionWork(batch, worker_count, total_work);
 
     if (channels_last_) {
       int64_t work_index = static_cast<int64_t>(work.start);
-      int64_t work_remaining = static_cast<int64_t>(work.end - work.start);
+      int64_t work_remaining = static_cast<int64_t>(work.end) - work.start;
 
       while (work_remaining > 0) {
         const int64_t batch_index = work_index / spatial_size;
@@ -87,7 +90,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
       }
     } else {
       int64_t work_index = static_cast<int64_t>(work.start) * nchwc_block_size;
-      int64_t work_remaining = static_cast<int64_t>(work.end - work.start) * nchwc_block_size;
+      int64_t work_remaining = (static_cast<int64_t>(work.end) - work.start) * nchwc_block_size;
 
       while (work_remaining > 0) {
         const int64_t batch_index = work_index / nchwc_channels;
@@ -127,7 +130,7 @@ Status ReorderOutput::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(channels_ <= X_shape[1]);
 
   // Build the output shape in NCHW or NHWC order.
-  std::vector<int64_t> Y_shape(X_rank);
+  TensorShapeVector Y_shape(X_rank);
   Y_shape[0] = X_shape[0];
   Y_shape[channels_last_ ? X_rank - 1 : 1] = channels_;
   auto* Y_spatial_dims = Y_shape.data() + (channels_last_ ? 1 : 2);
@@ -136,12 +139,12 @@ Status ReorderOutput::Compute(OpKernelContext* context) const {
   }
   auto* Y = context->Output(0, Y_shape);
 
-  const auto* x_data = X->template Data<float>();
-  auto* y_data = Y->template MutableData<float>();
+  const auto* x_data = X->Data<float>();
+  auto* y_data = Y->MutableData<float>();
   if (channels_last_) {
     MlasReorderOutputNhwc(Y_shape.data(), x_data, y_data);
   } else {
-    MlasReorderOutputNchw(Y_shape.data(), x_data, y_data);
+    MlasReorderOutputNchw(Y_shape.data(), x_data, y_data, context->GetOperatorThreadPool());
   }
 
   return Status::OK();
@@ -162,40 +165,40 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
   ORT_ENFORCE((static_cast<size_t>(X_shape[1]) < nchwc_block_size) || ((X_shape[1] % nchwc_block_size) == 0));
 
-  std::vector<int64_t> kernel_shape;
+  TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
   if (kernel_shape.size() != 2) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported convolution size.");
   }
 
-  std::vector<int64_t> pads(conv_attrs_.pads);
+  ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
-  std::vector<int64_t> dilations(conv_attrs_.dilations);
+  TensorShapeVector dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_shape.size(), 1);
   }
-  std::vector<int64_t> strides(conv_attrs_.strides);
+  TensorShapeVector strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> Y_dims;
+  TensorShapeVector Y_dims;
   Y_dims.insert(Y_dims.begin(), {X_shape[0], W_shape[0]});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   auto* Y = context->Output(0, Y_dims);
-  auto* y_data = Y->template MutableData<float>();
+  auto* y_data = Y->MutableData<float>();
 
   // Check for the optional Conv/Sum fusion.
   if (Sum != nullptr) {
     const auto& sum_shape = Sum->Shape();
     ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
     // If the output was not allocated inplace with the sum tensor, then copy here.
-    const auto* sum_data = Sum->template Data<float>();
+    const auto* sum_data = Sum->Data<float>();
     if (y_data != sum_data) {
-      memcpy(y_data, sum_data, sum_shape.Size() * sizeof(float));
+      memcpy(y_data, sum_data, SafeInt<size_t>(sum_shape.Size()) * sizeof(float));
     }
   }
 
@@ -207,9 +210,9 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
       strides.data(),
       Y_dims.data(),
       static_cast<size_t>(conv_attrs_.group),
-      X->template Data<float>(),
-      W->template Data<float>(),
-      B != nullptr ? B->template Data<float>() : nullptr,
+      X->Data<float>(),
+      W->Data<float>(),
+      B != nullptr ? B->Data<float>() : nullptr,
       y_data,
       &activation_,
       Sum == nullptr,
@@ -224,8 +227,8 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
 
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(X_shape, X_shape[1], &pads);
+  TensorShapeVector pads = pool_attrs_.pads;
+  TensorShapeVector output_dims = pool_attrs_.SetOutputSize(X_shape, X_shape[1], &pads);
   auto* Y = context->Output(0, output_dims);
 
   MlasNchwcPool(
@@ -236,8 +239,8 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
       pool_attrs_.global_pooling ? nullptr : pads.data(),
       pool_attrs_.global_pooling ? nullptr : pool_attrs_.strides.data(),
       output_dims.data(),
-      X->template Data<float>(),
-      Y->template MutableData<float>(),
+      X->Data<float>(),
+      Y->MutableData<float>(),
       context->GetOperatorThreadPool());
 
   return Status::OK();
@@ -256,27 +259,27 @@ std::vector<float> NchwcUpsample::ComputeInterpolation(int64_t input_length,
                                                        int64_t output_length,
                                                        int64_t scale) const {
   std::vector<float> interpolation;
-  interpolation.resize(output_length);
+  interpolation.resize(narrow<size_t>(output_length));
 
   if (scale == 1) {
     // Identity map for unscaled.
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[o] = static_cast<float>(o);
+      interpolation[narrow<size_t>(o)] = static_cast<float>(o);
     }
   } else if (transformation_mode_ == TransformationMode::ALIGN_CORNERS) {
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[o] =
+      interpolation[narrow<size_t>(o)] =
           static_cast<float>(o) * static_cast<float>(input_length - 1) / static_cast<float>(output_length - 1);
     }
   } else if (transformation_mode_ == TransformationMode::HALF_PIXEL) {
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[o] =
+      interpolation[narrow<size_t>(o)] =
           std::max(0.0f, (static_cast<float>(o) + 0.5f) / static_cast<float>(scale) - 0.5f);
     }
   } else {
     // Default to TransformationMode::ASYMMETRIC.
     for (int64_t o = 0; o < output_length; o++) {
-      interpolation[o] = static_cast<float>(o) / static_cast<float>(scale);
+      interpolation[narrow<size_t>(o)] = static_cast<float>(o) / static_cast<float>(scale);
     }
   }
 
@@ -285,7 +288,7 @@ std::vector<float> NchwcUpsample::ComputeInterpolation(int64_t input_length,
 
 Status NchwcUpsample::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
-  const auto& X_shape = X->Shape().GetDims();
+  const auto X_shape = X->Shape().GetDims();
   ORT_ENFORCE(X_shape.size() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
 
@@ -305,8 +308,8 @@ Status NchwcUpsample::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  const auto* x_data = X->template Data<float>();
-  auto* y_data = Y->template MutableData<float>();
+  const auto* x_data = X->Data<float>();
+  auto* y_data = Y->MutableData<float>();
 
   if (nearest_mode_) {
     MlasNchwcUpsampleNearest(
@@ -320,18 +323,18 @@ Status NchwcUpsample::Compute(OpKernelContext* context) const {
     const auto interpolation_w = ComputeInterpolation(input_w, output_w, scales_[3]);
 
     const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
-    const ptrdiff_t total_work = ((batch_count * nchwc_channels) / nchwc_block_size) * output_h;
+    const ptrdiff_t total_work =((SafeInt<ptrdiff_t>(batch_count) * nchwc_channels) / nchwc_block_size) * output_h;
     // Partition the work with the goal of generating the following number of
     // elements, so that operations involving a smaller number of columns will
     // process more rows per worker.
     constexpr ptrdiff_t worker_goal = 16 * 1024;
-    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal / (output_w * nchwc_block_size), 1);
+    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal /  (SafeInt<ptrdiff_t>(output_w) * nchwc_block_size), 1);
     ptrdiff_t worker_count = std::max<ptrdiff_t>(total_work / work_per_worker, 1);
 
     auto upsample_worker = [&](ptrdiff_t batch) {
       auto work = concurrency::ThreadPool::PartitionWork(batch, worker_count, total_work);
       int64_t work_index = static_cast<int64_t>(work.start);
-      int64_t work_remaining = static_cast<int64_t>(work.end - work.start);
+      int64_t work_remaining = static_cast<int64_t>(work.end) - work.start;
 
       while (work_remaining > 0) {
         // Limit the current loop iteration to the same source image.
@@ -351,7 +354,7 @@ Status NchwcUpsample::Compute(OpKernelContext* context) const {
               static_cast<size_t>(input_h),
               static_cast<size_t>(input_w),
               static_cast<size_t>(output_w),
-              interpolation_h[row_index],
+              interpolation_h[narrow<size_t>(row_index)],
               interpolation_w.data(),
               x_channel_base,
               y_row);

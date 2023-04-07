@@ -7,20 +7,12 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
-#include "core/session/environment.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/random_seed.h"
-#include "core/providers/cpu/cpu_provider_factory_creator.h"
-#ifdef USE_CUDA
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-}  // namespace onnxruntime
-#endif
-#ifdef USE_ROCM
-#include "core/providers/rocm/rocm_allocator.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
-#endif
+#include "core/providers/provider_factory_creators.h"
+#include "core/session/environment.h"
+#include "core/session/onnxruntime_c_api.h"
+
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
@@ -29,6 +21,17 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
 
+#ifdef USE_CUDA
+namespace onnxruntime {
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
+#endif
+#ifdef USE_ROCM
+namespace onnxruntime {
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
+#endif
+
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
@@ -36,27 +39,36 @@ using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
 static SessionOptions session_options = {
-    ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
-    ExecutionOrder::PRIORITY_BASED,    //execution_order
-    false,                             //enable_profiling
-    ORT_TSTR(""),                      //optimized_model_filepath
-    true,                              //enable_mem_pattern
-    true,                              //enable_mem_reuse
-    true,                              //enable_cpu_mem_arena
-    ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
-    "",                                //session_logid
-    -1,                                //session_log_severity_level
-    0,                                 //session_log_verbosity_level
-    5,                                 //max_num_graph_transformation_steps
-    TransformerLevel::Level1,          //graph_optimization_level
-    {},                                //intra_op_param
-    {},                                //inter_op_param
-    {},                                //free_dimension_overrides
-    true,                              //use_per_session_threads
-    true,                              //thread_pool_allow_spinning
-    false,                             //use_deterministic_compute
-    {},                                //config_options
+    ExecutionMode::ORT_SEQUENTIAL,     // execution_mode
+    ExecutionOrder::PRIORITY_BASED,    // execution_order
+    false,                             // enable_profiling
+    ORT_TSTR(""),                      // optimized_model_filepath
+    true,                              // enable_mem_pattern
+    true,                              // enable_mem_reuse
+    true,                              // enable_cpu_mem_arena
+    ORT_TSTR("onnxruntime_profile_"),  // profile_file_prefix
+    "",                                // session_logid
+    -1,                                // session_log_severity_level
+    0,                                 // session_log_verbosity_level
+    5,                                 // max_num_graph_transformation_steps
+    TransformerLevel::Level1,          // graph_optimization_level
+    {},                                // intra_op_param
+    {},                                // inter_op_param
+    {},                                // free_dimension_overrides
+    true,                              // use_per_session_threads
+    true,                              // thread_pool_allow_spinning
+    false,                             // use_deterministic_compute
+    {},                                // config_options
     {},                                // initializers_to_share_map
+#if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    {},                                // external_initializers
+#endif
+    nullptr,                           // custom_create_thread_fn
+    nullptr,                           // custom_thread_creation_options
+    nullptr,                           // custom_join_thread_fn
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+    {},                                // custom_op_libs
+#endif
 };
 
 struct BertParameters : public TrainingRunner::Parameters {
@@ -618,18 +630,24 @@ void setup_training_params(BertParameters& params) {
     }
     info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 
-    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
+    params.providers.emplace(kCudaExecutionProvider, CudaProviderFactoryCreator::Create(&info));
     params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
 
 #ifdef USE_ROCM
   {
-    ROCMExecutionProviderInfo info{};
+    OrtROCMProviderOptions info;
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream = true;
 
-    params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_ROCM(info));
-    params.input_allocator = std::make_shared<ROCMPinnedAllocator>(info.device_id, CUDA_PINNED);
+    if (params.gpu_mem_limit_in_gb > 0) {
+      info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
+    }
+    info.miopen_conv_exhaustive_search = true; // true, exhaustive search (slow)
+
+    params.providers.emplace(kRocmExecutionProvider, RocmProviderFactoryCreator::Create(&info));
+    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
 
@@ -792,7 +810,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
 }
 
 static Status RunTraining(const BertParameters& params, const Environment& env) {
-  const size_t max_num_files_preload = 2;
+  constexpr size_t max_num_files_preload = 2;
 
   auto runner = std::make_unique<TrainingRunner>(params, env, session_options);
   ORT_RETURN_IF_ERROR(runner->Initialize());
@@ -845,7 +863,7 @@ int main(int argc, char* argv[]) {
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
+  logging::LoggingManager default_logging_manager{std::make_unique<logging::CLogSink>(),
                                                   ort_params.log_severity,
                                                   false,
                                                   logging::LoggingManager::InstanceType::Default,
@@ -866,7 +884,7 @@ int main(int argc, char* argv[]) {
   if (!params.convergence_test_output_file.empty()) {
     std::ofstream output_file(params.convergence_test_output_file);
     LOGS_DEFAULT_IF(!output_file, WARNING)
-        << "Failed to open convergence test output file: " << ToMBString(params.convergence_test_output_file);
+        << "Failed to open convergence test output file: " << ToUTF8String(params.convergence_test_output_file);
     output_file << ConvergenceTestDataRecord::GetCsvHeaderLine();
   }
 

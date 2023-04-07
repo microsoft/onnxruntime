@@ -44,10 +44,10 @@ Routine Description:
 Arguments:
 
     A (x0) - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>.
+        using MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>.
 
     B (x1) - Supplies the address of matrix B. The matrix data has been packed
-        using MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>.
+        using MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>.
 
     C (x2) - Supplies the address of matrix C.
 
@@ -92,7 +92,7 @@ Return Value:
         ldr     x9,[sp,#.LGemmU8X8KernelFrame_ZeroPointB]
         ldrb    w13,[sp,#.LGemmU8X8KernelFrame_ZeroMode]
         mov     x14,x0
-        ld1     {v8.4s},[x7],#16            // load row sum 0 ~ 4
+        ld1     {v8.4s},[x7],#16            // load row sum 1 ~ 4
         mov     x15,x3
         cmp     x4,#1                       // CountM == 1?
         beq     .LGemmU8X8.M1.ProcessLoop

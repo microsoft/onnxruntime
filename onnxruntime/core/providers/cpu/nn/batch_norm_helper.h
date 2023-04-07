@@ -8,7 +8,12 @@
 #include "core/framework/tensor.h"
 #endif
 #include <sstream>
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 class BatchNormHelper {
  public:
@@ -106,12 +111,12 @@ class BatchNormHelper {
 
   static void NormalizeDims(const TensorShape& x_shape, std::vector<int64_t>& new_dims) {
     new_dims.clear();
-    auto& orig_dims = x_shape.GetDims();
+    auto orig_dims = x_shape.GetDims();
     ORT_ENFORCE(orig_dims.size() < 6,
                 "Input dim size should be < 6 for BatchNorm, but got ", std::to_string(orig_dims.size()));
     if (orig_dims.size() == 4 /*supported size by CUDA*/ ||
         orig_dims.size() == 5 /*supported size by CUDA*/) {
-      new_dims = orig_dims;
+      new_dims = std::vector<int64_t>(orig_dims.begin(), orig_dims.end());
       return;
     }
 
@@ -124,3 +129,6 @@ class BatchNormHelper {
   }
 };
 }  // namespace onnxruntime
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif

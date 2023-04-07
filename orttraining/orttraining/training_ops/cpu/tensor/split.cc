@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/tensor/split.h"
+
+#include "core/common/gsl.h"
+#include "core/common/narrow.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-
-#include "gsl/gsl"
 
 namespace onnxruntime {
 namespace contrib {
@@ -23,17 +24,17 @@ ONNX_OPERATOR_KERNEL_EX(
 Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                  int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                  std::vector<int64_t>& split_sizes) {
-  auto& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   int64_t axis_value = axis;
   axis = HandleNegativeAxis(axis_value, num_dimensions);  // handle negative and enforce axis is valid
   const int64_t split_dim_size = input_dims[axis];
 
-  before_dims = gsl::narrow<int>(input_shape.SizeToDimension(axis));
-  after_dims_including_split_axis = gsl::narrow<int>(input_shape.SizeFromDimension(axis));
+  before_dims = narrow<int>(input_shape.SizeToDimension(axis));
+  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(axis));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1  // we multiply by this value so must be 1 not 0
-                                   : gsl::narrow<int>(input_shape.SizeFromDimension(axis + 1));
+                                   : narrow<int>(input_shape.SizeFromDimension(axis + 1));
 
   std::vector<int64_t> split_sizes_values(split_sizes);
   split_sizes.clear();
@@ -118,15 +119,14 @@ Status SplitTraining::ComputeImpl(OpKernelContext& context, const Tensor& input)
                                                 split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  auto& input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dimensions{input_dims};
+  auto output_dimensions{input_shape.AsShapeVector()};
 
   int64_t input_offset = 0;
   const T* input_data = input.template Data<T>();
 
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on
-    auto split_size = gsl::narrow<int>(split_sizes[i]);
+    auto split_size = narrow<int>(split_sizes[i]);
     output_dimensions[axis] = split_size;
 
     Tensor* output = context.Output(i, TensorShape{output_dimensions});
@@ -143,7 +143,7 @@ Status SplitTraining::ComputeImpl(OpKernelContext& context, const Tensor& input)
           copy_data<T>(src, dst, count);
         });
 
-    input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
+    input_offset += static_cast<int64_t>(split_size) * after_dims_excluding_split;  // offset by the N data we used in this iteration
   }
 
   return Status::OK();

@@ -29,7 +29,7 @@ Status PassThrough::Compute(OpKernelContext* context) const {
     const auto* X = context->Input<Tensor>(i);
     ORT_ENFORCE(X != nullptr);
     Tensor* Y = context->Output(i, X->Shape());
-    ORT_ENFORCE(X->DataRaw() == Y->DataRaw(), "PassThrough input and outpu are not sharing the same buffer.");
+    ORT_ENFORCE(X->DataRaw() == Y->DataRaw(), "PassThrough input and output are not sharing the same buffer.");
   }
   return Status::OK();
 }

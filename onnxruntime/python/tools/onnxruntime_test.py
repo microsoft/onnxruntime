@@ -1,28 +1,35 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 import argparse
-import onnxruntime as onnxrt
-import numpy as np
 import os
 import sys
 from timeit import default_timer as timer
 
-float_dict = {'tensor(float16)': 'float16', 'tensor(float)': 'float32', 'tensor(double)': 'float64'}
+import numpy as np
 
-integer_dict = {
-    'tensor(int32)': 'int32',
-    'tensor(int8)': 'int8',
-    'tensor(uint8)': 'uint8',
-    'tensor(int16)': 'int16',
-    'tensor(uint16)': 'uint16',
-    'tensor(int64)': 'int64',
-    'tensor(uint64)': 'uint64'
+import onnxruntime as onnxrt
+
+float_dict = {
+    "tensor(float16)": "float16",
+    "tensor(float)": "float32",
+    "tensor(double)": "float64",
 }
 
-def generate_feeds(sess, symbolic_dims={}):
+integer_dict = {
+    "tensor(int32)": "int32",
+    "tensor(int8)": "int8",
+    "tensor(uint8)": "uint8",
+    "tensor(int16)": "int16",
+    "tensor(uint16)": "uint16",
+    "tensor(int64)": "int64",
+    "tensor(uint64)": "uint64",
+}
+
+
+def generate_feeds(sess, symbolic_dims={}):  # noqa: B006
     feeds = {}
     for input_meta in sess.get_inputs():
         # replace any symbolic dimensions
@@ -43,25 +50,29 @@ def generate_feeds(sess, symbolic_dims={}):
         if input_meta.type in float_dict:
             feeds[input_meta.name] = np.random.rand(*shape).astype(float_dict[input_meta.type])
         elif input_meta.type in integer_dict:
-            feeds[input_meta.name] = np.random.uniform(high=1000,
-                                                       size=tuple(shape)).astype(integer_dict[input_meta.type])
-        elif input_meta.type == 'tensor(bool)':
-            feeds[input_meta.name] = np.random.randint(2, size=tuple(shape)).astype('bool')
+            feeds[input_meta.name] = np.random.uniform(high=1000, size=tuple(shape)).astype(
+                integer_dict[input_meta.type]
+            )
+        elif input_meta.type == "tensor(bool)":
+            feeds[input_meta.name] = np.random.randint(2, size=tuple(shape)).astype("bool")
         else:
-            print("unsupported input type {} for input {}".format(input_meta.type, input_meta.name))
+            print(f"unsupported input type {input_meta.type} for input {input_meta.name}")
             sys.exit(-1)
     return feeds
 
+
 # simple test program for loading onnx model, feeding all inputs and running the model num_iters times.
-def run_model(model_path,
-              num_iters=1,
-              debug=None,
-              profile=None,
-              symbolic_dims={},
-              feeds=None,
-              override_initializers=True):
+def run_model(
+    model_path,
+    num_iters=1,
+    debug=None,
+    profile=None,
+    symbolic_dims={},  # noqa: B006
+    feeds=None,
+    override_initializers=True,
+):
     if debug:
-        print("Pausing execution ready for debugger to attach to pid: {}".format(os.getpid()))
+        print(f"Pausing execution ready for debugger to attach to pid: {os.getpid()}")
         print("Press key to continue.")
         sys.stdin.read(1)
 
@@ -71,7 +82,11 @@ def run_model(model_path,
         sess_options.enable_profiling = True
         sess_options.profile_file_prefix = os.path.basename(model_path)
 
-    sess = onnxrt.InferenceSession(model_path, sess_options)
+    sess = onnxrt.InferenceSession(
+        model_path,
+        sess_options=sess_options,
+        providers=onnxrt.get_available_providers(),
+    )
     meta = sess.get_modelmeta()
 
     if not feeds:
@@ -86,42 +101,61 @@ def run_model(model_path,
             if initializer.type in float_dict:
                 feeds[initializer.name] = np.random.rand(*shape).astype(float_dict[initializer.type])
             elif initializer.type in integer_dict:
-                feeds[initializer.name] = np.random.uniform(high=1000,
-                                                            size=tuple(shape)).astype(integer_dict[initializer.type])
-            elif initializer.type == 'tensor(bool)':
-                feeds[initializer.name] = np.random.randint(2, size=tuple(shape)).astype('bool')
+                feeds[initializer.name] = np.random.uniform(high=1000, size=tuple(shape)).astype(
+                    integer_dict[initializer.type]
+                )
+            elif initializer.type == "tensor(bool)":
+                feeds[initializer.name] = np.random.randint(2, size=tuple(shape)).astype("bool")
             else:
-                print("unsupported initializer type {} for initializer {}".format(initializer.type, initializer.name))
+                print(f"unsupported initializer type {initializer.type} for initializer {initializer.name}")
                 sys.exit(-1)
 
     start = timer()
-    for i in range(num_iters):
+    for _i in range(num_iters):
         outputs = sess.run([], feeds)  # fetch all outputs
     end = timer()
 
-    print("model: {}".format(meta.graph_name))
-    print("version: {}".format(meta.version))
-    print("iterations: {}".format(num_iters))
-    print("avg latency: {} ms".format(((end - start) * 1000) / num_iters))
+    print(f"model: {meta.graph_name}")
+    print(f"version: {meta.version}")
+    print(f"iterations: {num_iters}")
+    print(f"avg latency: {((end - start) * 1000) / num_iters} ms")
 
     if profile:
         trace_file = sess.end_profiling()
-        print("trace file written to: {}".format(trace_file))
+        print(f"trace file written to: {trace_file}")
 
     return 0, feeds, num_iters > 0 and outputs
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Simple ONNX Runtime Test Tool.')
-    parser.add_argument('model_path', help='model path')
-    parser.add_argument('num_iters', nargs='?', type=int, default=1000, help='model run iterations. default=1000')
-    parser.add_argument('--debug', action='store_true', help='pause execution to allow attaching a debugger.')
-    parser.add_argument('--profile', action='store_true', help='enable chrome timeline trace profiling.')
-    parser.add_argument('--symbolic_dims', default={}, type=lambda s: dict(x.split("=") for x in s.split(",")),
-                        help='Comma separated name=value pairs for any symbolic dimensions in the model input. '
-                             'e.g. --symbolic_dims batch=1,seqlen=5. '
-                             'If not provided, the value of 1 will be used for all symbolic dimensions.')
+def main():
+    parser = argparse.ArgumentParser(description="Simple ONNX Runtime Test Tool.")
+    parser.add_argument("model_path", help="model path")
+    parser.add_argument(
+        "num_iters",
+        nargs="?",
+        type=int,
+        default=1000,
+        help="model run iterations. default=1000",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="pause execution to allow attaching a debugger.",
+    )
+    parser.add_argument("--profile", action="store_true", help="enable chrome timeline trace profiling.")
+    parser.add_argument(
+        "--symbolic_dims",
+        default={},
+        type=lambda s: dict(x.split("=") for x in s.split(",")),
+        help="Comma separated name=value pairs for any symbolic dimensions in the model input. "
+        "e.g. --symbolic_dims batch=1,seqlen=5. "
+        "If not provided, the value of 1 will be used for all symbolic dimensions.",
+    )
 
     args = parser.parse_args()
     exit_code, _, _ = run_model(args.model_path, args.num_iters, args.debug, args.profile, args.symbolic_dims)
     sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()

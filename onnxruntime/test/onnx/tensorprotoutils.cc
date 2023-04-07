@@ -6,7 +6,6 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
-#include <gsl/gsl>
 
 #include "mem_buffer.h"
 #include "core/common/safeint.h"
@@ -69,7 +68,7 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
     ORT_CXX_API_THROW(MakeString("UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
                                  expected_size_in_bytes, ", got ", raw_data_length),
                       OrtErrorCode::ORT_FAIL);
-  if constexpr(endian::native != endian::little) {
+  if constexpr (endian::native != endian::little) {
     ORT_CXX_API_THROW("UnpackTensorWithRawData only handles little-endian native byte order for now.",
                       OrtErrorCode::ORT_NOT_IMPLEMENTED);
   }
@@ -99,7 +98,7 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
                         OrtErrorCode::ORT_FAIL);                                                          \
     auto& data = tensor.field_name();                                                                     \
     for (auto data_iter = data.cbegin(); data_iter != data.cend(); ++data_iter)                           \
-      *p_data++ = *reinterpret_cast<const T*>(data_iter);                                                 \
+      *p_data++ = onnxruntime::narrow<T>(*data_iter);                                                     \
     return;                                                                                               \
   }
 
@@ -298,7 +297,9 @@ OrtStatus* OrtInitializeBufferForTensor(void* input, size_t input_len,
 }
 
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 static void UnInitTensor(void* param) noexcept {
   UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
   OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);

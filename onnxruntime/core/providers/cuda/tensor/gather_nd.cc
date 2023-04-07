@@ -40,7 +40,7 @@ Status CheckBatchDimensionsMatch(
 
 template <typename TIndex>
 Status GatherNDBase::PrepareCompute(
-    cudaStream_t stream,
+    onnxruntime::Stream* stream,
     const int64_t batch_dims,
     const TensorShape& input_shape,
     const TensorShape& indices_shape,
@@ -54,6 +54,7 @@ Status GatherNDBase::PrepareCompute(
   const auto num_batches = input_shape.SizeToDimension(batch_dims);
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims);
   const auto num_slices_per_batch = num_slices / num_batches;
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   const TIndex* const indices_data = indices_tensor->Data<TIndex>();
 
@@ -66,19 +67,19 @@ Status GatherNDBase::PrepareCompute(
     }
   }
 
-  auto sizes_from_slice_dims_buffer = GetScratchBuffer<int64_t>(sizes_from_slice_dims.size());
+  auto sizes_from_slice_dims_buffer = GetScratchBuffer<int64_t>(sizes_from_slice_dims.size(), stream);
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
       sizes_from_slice_dims_buffer.get(),
       sizes_from_slice_dims.data(),
       sizes_from_slice_dims.size() * sizeof(int64_t),
-      cudaMemcpyHostToDevice, stream));
+      cudaMemcpyHostToDevice, cuda_stream));
 
-  input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices);
+  input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices, stream);
 
   TArray<int64_t> input_dims(input_shape.GetDims());
 
   ComputeSliceOffsetsImpl(
-      stream,
+      cuda_stream,
       batch_dims,
       input_dims,
       num_slices,
@@ -92,63 +93,37 @@ Status GatherNDBase::PrepareCompute(
   return Status::OK();
 }
 
-#define REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(TIndex, startver, endver) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                  \
-      GatherND,                                                             \
-      kOnnxDomain,                                                          \
-      startver,                                                             \
-      endver,                                                               \
-      TIndex,                                                               \
-      kCudaExecutionProvider,                                               \
-      (*KernelDefBuilder::Create())                                         \
-          .TypeConstraint("T",                                              \
-                          std::vector<MLDataType>{                          \
-                              DataTypeImpl::GetTensorType<float>(),         \
-                              DataTypeImpl::GetTensorType<double>(),        \
-                              DataTypeImpl::GetTensorType<MLFloat16>(),     \
-                              DataTypeImpl::GetTensorType<int64_t>(),       \
-                              DataTypeImpl::GetTensorType<bool>(),          \
-                          })                                                \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),   \
+#define REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(TIndex, startver, endver)  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                   \
+      GatherND,                                                              \
+      kOnnxDomain,                                                           \
+      startver,                                                              \
+      endver,                                                                \
+      TIndex,                                                                \
+      kCudaExecutionProvider,                                                \
+      (*KernelDefBuilder::Create())                                          \
+          .TypeConstraint("T",                                               \
+                          std::vector<MLDataType>{                           \
+                              DataTypeImpl::GetTensorType<float>(),          \
+                              DataTypeImpl::GetTensorType<double>(),         \
+                              DataTypeImpl::GetTensorType<MLFloat16>(),      \
+                              DataTypeImpl::GetTensorType<int64_t>(),        \
+                              DataTypeImpl::GetTensorType<bool>(),           \
+                          })                                                 \
+          .TypeConstraint("indices", DataTypeImpl::GetTensorType<TIndex>()), \
       GatherND<TIndex>);
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define GATHER_ND_T_TENSOR_TYPES              \
-  { DataTypeImpl::GetTensorType<float>(),     \
-    DataTypeImpl::GetTensorType<double>(),    \
-    DataTypeImpl::GetTensorType<MLFloat16>(), \
-    DataTypeImpl::GetTensorType<BFloat16>(),  \
-    DataTypeImpl::GetTensorType<bool>(),      \
-    DataTypeImpl::GetTensorType<int64_t>() }
-#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, BFloat16, bool
-#else
-#define GATHER_ND_T_TENSOR_TYPES              \
-  { DataTypeImpl::GetTensorType<float>(),     \
-    DataTypeImpl::GetTensorType<double>(),    \
-    DataTypeImpl::GetTensorType<MLFloat16>(), \
-    DataTypeImpl::GetTensorType<bool>(),      \
-    DataTypeImpl::GetTensorType<int64_t>() }
-#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, bool
-#endif
-
-#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                          \
-      GatherND,                                                           \
-      kOnnxDomain,                                                        \
-      ver,                                                                \
-      TIndex,                                                             \
-      kCudaExecutionProvider,                                             \
-      (*KernelDefBuilder::Create())                                       \
-          .TypeConstraint("T", GATHER_ND_T_TENSOR_TYPES)                  \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()), \
+#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                                                           \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                               \
+      GatherND, kOnnxDomain, ver, TIndex, kCudaExecutionProvider,                                              \
+      (*KernelDefBuilder::Create())                                                                            \
+          .TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16, double, int64_t, BFloat16, bool>()) \
+          .TypeConstraint("indices", DataTypeImpl::GetTensorType<TIndex>()),                                   \
       GatherND<TIndex>);
 
-// TODO: decprecate GatherND-1 after updating training models to opset-12
-#ifdef ENABLE_TRAINING
-REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 1)
-#endif
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 13)
 REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 12, 12)
+REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 11, 11)
 
 template <typename T>
 struct GatherNDComputeImpl {
@@ -205,15 +180,15 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   int64_t num_slices;
   int64_t slice_size;
   IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
-  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(Stream(),
+  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(context->GetComputeStream(),
                                              batch_dims_, input_shape, indices_shape, indices_tensor,
                                              num_slices, slice_size, input_slice_offsets_buffer));
 
   const void* const kernel_input_data = input_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
-  utils::MLTypeCallDispatcher<GATHER_ND_T_DATA_TYPES> t_disp(input_tensor->GetElementType());
-  t_disp.Invoke<GatherNDComputeImpl>(
-      Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
+  utils::MLTypeCallDispatcher<float, MLFloat16, double, int64_t, BFloat16, bool> t_disp(input_tensor->GetElementType());
+  t_disp.Invoke<GatherNDComputeImpl>(Stream(context), num_slices, slice_size, kernel_input_data, kernel_output_data,
+                                     input_slice_offsets_buffer.get());
 
   return Status::OK();
 }

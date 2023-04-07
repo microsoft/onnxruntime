@@ -8,7 +8,7 @@
 #include "core/providers/providers.h"
 
 namespace onnxruntime {
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-
+struct CPUProviderFactoryCreator {
+  static std::shared_ptr<IExecutionProviderFactory> Create(int use_arena);
+};
 }  // namespace onnxruntime

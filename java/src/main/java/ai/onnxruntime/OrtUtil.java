@@ -1,10 +1,18 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import java.lang.reflect.Array;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
+import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -33,9 +41,9 @@ public final class OrtUtil {
     int[] newShape = new int[shape.length];
     for (int i = 0; i < shape.length; i++) {
       long curDim = shape[i];
-      if (curDim < 1 || curDim > Integer.MAX_VALUE) {
+      if (curDim < 0 || curDim > Integer.MAX_VALUE) {
         throw new IllegalArgumentException(
-            "Invalid shape for a Java array, expected positive entries smaller than Integer.MAX_VALUE. Found "
+            "Invalid shape for a Java array, expected non-negative entries smaller than Integer.MAX_VALUE. Found "
                 + Arrays.toString(shape));
       } else {
         newShape[i] = (int) curDim;
@@ -337,20 +345,23 @@ public final class OrtUtil {
   /**
    * Counts the number of elements stored in a Tensor of this shape.
    *
-   * <p>Multiplies all the elements together if they are positive, throws an {@link
+   * <p>Multiplies all the elements together if they are non-negative, throws an {@link
    * IllegalArgumentException} otherwise.
    *
    * @param shape The shape to use.
    * @return The number of elements.
    */
   public static long elementCount(long[] shape) {
+    // Java side tensors must be less than Integer.MAX_VALUE,
+    // tensors created in native code can be larger, but are not usable in Java.
+    // Tensors should not be able to be created which will overflow a 64-bit long.
     long count = 1;
     for (int i = 0; i < shape.length; i++) {
-      if (shape[i] > 0) {
+      if (shape[i] >= 0) {
         count *= shape[i];
       } else {
         throw new IllegalArgumentException(
-            "Received non-positive value in shape " + Arrays.toString(shape) + " .");
+            "Received negative value in shape " + Arrays.toString(shape) + " .");
       }
     }
     return count;
@@ -459,6 +470,100 @@ public final class OrtUtil {
       case UNKNOWN:
       default:
         return null;
+    }
+  }
+
+  /**
+   * Returns expected JDK map capacity for a given size, this factors in the default JDK load factor
+   *
+   * @param size The expected map size
+   * @return The capacity for a map that guarantees no resizing
+   */
+  static int capacityFromSize(int size) {
+    // 0.75 is the default JDK load factor
+    return (int) (size / 0.75 + 1);
+  }
+
+  /**
+   * Prepares a buffer, either copying it if it's not direct, or computing it's size and position if
+   * it is.
+   *
+   * @param data The buffer to prepare.
+   * @param type The Java-side type.
+   * @return The prepared buffer tuple.
+   */
+  static BufferTuple prepareBuffer(Buffer data, OnnxJavaType type) {
+    int bufferPos;
+    long bufferSizeLong = data.remaining() * (long) type.size;
+    if (bufferSizeLong > (Integer.MAX_VALUE - (8 * type.size))) {
+      // The maximum direct byte buffer size is a little below Integer.MAX_VALUE depending
+      // on the JVM, so we check for something 8 elements below the maximum size which
+      // should be allocatable (assuming there is enough memory) on all 64-bit JVMs.
+      throw new IllegalStateException(
+          "Cannot allocate a direct buffer of the requested size and type, size "
+              + data.remaining()
+              + ", type = "
+              + type);
+    }
+    // Now we know we're in range
+    int bufferSize = data.remaining() * type.size;
+    Buffer tmp;
+    if (data.isDirect()) {
+      tmp = data;
+      bufferPos = data.position() * type.size;
+    } else {
+      // Copy the data to a new direct buffer, then restore the state of the input.
+      int origPosition = data.position();
+      ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
+      switch (type) {
+        case FLOAT:
+          tmp = buffer.asFloatBuffer().put((FloatBuffer) data);
+          break;
+        case DOUBLE:
+          tmp = buffer.asDoubleBuffer().put((DoubleBuffer) data);
+          break;
+        case UINT8:
+        case INT8:
+          // buffer is already a ByteBuffer, no cast needed.
+          tmp = buffer.put((ByteBuffer) data);
+          break;
+        case INT16:
+          tmp = buffer.asShortBuffer().put((ShortBuffer) data);
+          break;
+        case INT32:
+          tmp = buffer.asIntBuffer().put((IntBuffer) data);
+          break;
+        case INT64:
+          tmp = buffer.asLongBuffer().put((LongBuffer) data);
+          break;
+        case BOOL:
+        case STRING:
+        case UNKNOWN:
+        default:
+          throw new IllegalStateException(
+              "Impossible to reach here, managed to cast a buffer as an incorrect type");
+      }
+      data.position(origPosition);
+      tmp.rewind();
+      bufferPos = 0;
+    }
+
+    return new BufferTuple(tmp, bufferPos, bufferSize, data.remaining(), tmp != data);
+  }
+
+  static final class BufferTuple {
+    final Buffer data;
+    final int pos;
+    final long byteSize;
+    final long size;
+    final boolean isCopy;
+
+    BufferTuple(Buffer data, int pos, long byteSize, long size, boolean isCopy) {
+      this.data = data;
+      this.pos = pos;
+      this.byteSize = byteSize;
+      this.size = size;
+      this.isCopy = isCopy;
     }
   }
 }

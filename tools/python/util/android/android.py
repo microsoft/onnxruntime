@@ -11,21 +11,19 @@ import subprocess
 import time
 import typing
 
+from ..platform_helpers import is_windows
 from ..run import run
-from ..platform import is_windows
-
 
 _log = logging.getLogger("util.android")
 
 
-SdkToolPaths = collections.namedtuple(
-    "SdkToolPaths", ["emulator", "adb", "sdkmanager", "avdmanager"])
+SdkToolPaths = collections.namedtuple("SdkToolPaths", ["emulator", "adb", "sdkmanager", "avdmanager"])
 
 
 def get_sdk_tool_paths(sdk_root: str):
     def filename(name, windows_extension):
         if is_windows():
-            return "{}.{}".format(name, windows_extension)
+            return f"{name}.{windows_extension}"
         else:
             return name
 
@@ -35,47 +33,45 @@ def get_sdk_tool_paths(sdk_root: str):
             path = shutil.which(os.path.join(dirname, basename))
             if path is not None:
                 path = os.path.realpath(path)
-                _log.debug("Found {} at {}".format(basename, path))
+                _log.debug(f"Found {basename} at {path}")
                 return path
-        _log.warning("Failed to resolve path for {}".format(basename))
-        return None
+        raise FileNotFoundError(f"Failed to resolve path for {basename}")
 
     return SdkToolPaths(
-        emulator=resolve_path(
-            [os.path.join(sdk_root, "emulator")],
-            filename("emulator", "exe")),
-        adb=resolve_path(
-            [os.path.join(sdk_root, "platform-tools")],
-            filename("adb", "exe")),
+        emulator=resolve_path([os.path.join(sdk_root, "emulator")], filename("emulator", "exe")),
+        adb=resolve_path([os.path.join(sdk_root, "platform-tools")], filename("adb", "exe")),
         sdkmanager=resolve_path(
-            [os.path.join(sdk_root, "tools", "bin"),
-             os.path.join(sdk_root, "cmdline-tools", "tools", "bin")],
-            filename("sdkmanager", "bat")),
+            [os.path.join(sdk_root, "cmdline-tools", "latest", "bin")],
+            filename("sdkmanager", "bat"),
+        ),
         avdmanager=resolve_path(
-            [os.path.join(sdk_root, "tools", "bin"),
-             os.path.join(sdk_root, "cmdline-tools", "tools", "bin")],
-            filename("avdmanager", "bat")))
+            [os.path.join(sdk_root, "cmdline-tools", "latest", "bin")],
+            filename("avdmanager", "bat"),
+        ),
+    )
 
 
-def create_virtual_device(
-        sdk_tool_paths: SdkToolPaths,
-        system_image_package_name: str,
-        avd_name: str):
-    run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name,
-        input=b"y")
+def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str, avd_name: str):
+    run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
 
-    run(sdk_tool_paths.avdmanager, "create", "avd",
-        "--name", avd_name,
-        "--package", system_image_package_name,
+    run(
+        sdk_tool_paths.avdmanager,
+        "create",
+        "avd",
+        "--name",
+        avd_name,
+        "--package",
+        system_image_package_name,
         "--force",
-        input=b"no")
+        input=b"no",
+    )
 
 
 _process_creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if is_windows() else 0
 
 
 def _start_process(*args) -> subprocess.Popen:
-    _log.debug("Starting process - args: {}".format([*args]))
+    _log.debug(f"Starting process - args: {[*args]}")
     return subprocess.Popen([*args], creationflags=_process_creationflags)
 
 
@@ -83,7 +79,7 @@ _stop_signal = signal.CTRL_BREAK_EVENT if is_windows() else signal.SIGTERM
 
 
 def _stop_process(proc: subprocess.Popen):
-    _log.debug("Stopping process - args: {}".format(proc.args))
+    _log.debug(f"Stopping process - args: {proc.args}")
     proc.send_signal(_stop_signal)
 
     try:
@@ -95,35 +91,41 @@ def _stop_process(proc: subprocess.Popen):
 
 def _stop_process_with_pid(pid: int):
     # not attempting anything fancier than just sending _stop_signal for now
-    _log.debug("Stopping process - pid: {}".format(pid))
+    _log.debug(f"Stopping process - pid: {pid}")
     os.kill(pid, _stop_signal)
 
 
 def start_emulator(
-        sdk_tool_paths: SdkToolPaths,
-        avd_name: str,
-        extra_args: typing.Optional[typing.Sequence[str]] = None) -> subprocess.Popen:
-    with contextlib.ExitStack() as emulator_stack, \
-         contextlib.ExitStack() as waiter_stack:
+    sdk_tool_paths: SdkToolPaths, avd_name: str, extra_args: typing.Optional[typing.Sequence[str]] = None
+) -> subprocess.Popen:
+    with contextlib.ExitStack() as emulator_stack, contextlib.ExitStack() as waiter_stack:
         emulator_args = [
-            sdk_tool_paths.emulator, "-avd", avd_name,
-            "-memory", "4096",
-            "-timezone", "America/Los_Angeles",
+            sdk_tool_paths.emulator,
+            "-avd",
+            avd_name,
+            "-memory",
+            "4096",
+            "-timezone",
+            "America/Los_Angeles",
             "-no-snapshot",
             "-no-audio",
             "-no-boot-anim",
-            "-no-window"]
+            "-no-window",
+        ]
         if extra_args is not None:
             emulator_args += extra_args
 
-        emulator_process = emulator_stack.enter_context(
-            _start_process(*emulator_args))
+        emulator_process = emulator_stack.enter_context(_start_process(*emulator_args))
         emulator_stack.callback(_stop_process, emulator_process)
 
         waiter_process = waiter_stack.enter_context(
             _start_process(
-                sdk_tool_paths.adb, "wait-for-device", "shell",
-                "while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82"))
+                sdk_tool_paths.adb,
+                "wait-for-device",
+                "shell",
+                "while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82",
+            )
+        )
         waiter_stack.callback(_stop_process, waiter_process)
 
         # poll subprocesses
@@ -133,12 +135,12 @@ def start_emulator(
 
             if emulator_ret is not None:
                 # emulator exited early
-                raise RuntimeError("Emulator exited early with return code: {}".format(emulator_ret))
+                raise RuntimeError(f"Emulator exited early with return code: {emulator_ret}")
 
             if waiter_ret is not None:
                 if waiter_ret == 0:
                     break
-                raise RuntimeError("Waiter process exited with return code: {}".format(waiter_ret))
+                raise RuntimeError(f"Waiter process exited with return code: {waiter_ret}")
 
             time.sleep(sleep_interval_seconds)
 

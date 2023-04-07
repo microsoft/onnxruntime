@@ -40,14 +40,25 @@ struct OP_Relu : public CtxRelu {
 template <typename T>
 struct OP_Selu : public CtxSelu {
   __device__ __inline__ T operator()(const T& a) const {
-    return (T)gamma * (_Max(a, (T)0) + _Min((T)alpha * (_Exp(a) - (T)1), (T)0));
+    return a > (T)0 ? (T)gamma * a : (T)gamma * (T)alpha * (_Exp(a) - (T)1);
   }
 };
 
 template <typename T>
 struct OP_Sigmoid : public CtxSigmoid {
   __device__ __inline__ T operator()(const T& a) const {
-    return a > T(0) ? (T)1 / ((T)1. + _Exp(-_Abs(a))) : (T)1 - (T)1 / ((T)1 + _Exp(-_Abs(a)));
+    return a > T(0) ? (T)1 / ((T)1. + _Exp(-a)) : (T)1 - (T)1 / ((T)1 + _Exp(a));
+  }
+};
+
+template <>
+struct OP_Sigmoid<half> : public CtxSigmoid {
+  __device__ __inline__ half operator()(const half& a) const {
+    // For some small negative values, it will loss precision if using half for compute.
+    // The cast between half and float below won't cause perf issue since there is cast inside _Exp if input is half.
+    float af = static_cast<float>(a);
+    float res = af > 0.0f ? 1.0f / (1.0f + _Exp(-af)) : 1.0f - 1.0f / (1.0f + _Exp(af));
+    return static_cast<half>(res);
   }
 };
 
@@ -91,20 +102,15 @@ struct OP_ThresholdedRelu : public CtxThresholdedRelu {
                          count);                                           \
   }
 
-#define SPECIALIZED_UNARY_ACTIVATION_IMPL(name, T) \
-  template void Impl_##name<T>(cudaStream_t stream, const T* input_data, T* output_data, const Ctx##name* func_ctx, size_t count);
-
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-#define SPECIALIZED_UNARY_ACTIVATION_IMPL_BF16(name) SPECIALIZED_UNARY_ACTIVATION_IMPL(name, nv_bfloat16)
-#else
-#define SPECIALIZED_UNARY_ACTIVATION_IMPL_BF16(name)
-#endif
+#define SPECIALIZED_UNARY_ACTIVATION_IMPL(name, T)                                                                  \
+  template void Impl_##name<T>(cudaStream_t stream, const T* input_data, T* output_data, const Ctx##name* func_ctx, \
+                               size_t count);
 
 #define SPECIALIZED_UNARY_ACTIVATIONL_HFD(name)   \
   SPECIALIZED_UNARY_ACTIVATION_IMPL(name, half)   \
-  SPECIALIZED_UNARY_ACTIVATION_IMPL_BF16(name)    \
   SPECIALIZED_UNARY_ACTIVATION_IMPL(name, float)  \
-  SPECIALIZED_UNARY_ACTIVATION_IMPL(name, double)
+  SPECIALIZED_UNARY_ACTIVATION_IMPL(name, double) \
+  SPECIALIZED_UNARY_ACTIVATION_IMPL(name, BFloat16)
 
 #define UNARY_ACTIVATION_OP_NAME(name) \
   UNARY_ACTIVATION_IMPL(name);         \

@@ -5,17 +5,21 @@
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
+from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue  # noqa: F401
 
 
-class ExecutionAgentOutput(object):
+class ExecutionAgentOutput:  # pylint: disable=R0903
+    "Wraps an OrtValue and adds an ID."
+
     def __init__(self, ortvalues, run_id=None):
+        if isinstance(ortvalues, list):
+            raise TypeError("ortvalues must be of type 'OrtValueVector'.")
         self.ortvalues = ortvalues
         self.run_id = run_id
 
 
-class InferenceAgent(object):
+class InferenceAgent:
     """
     This is the main class used to run an ORTModule model inferencing.
     """
@@ -52,8 +56,9 @@ class InferenceAgent(object):
         self.create_inference_agent(path_or_bytes, session_options, providers, provider_options)
 
     def create_inference_agent(self, path_or_bytes, session_options, providers, provider_options):
-        self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
-                                                               providers, provider_options)
+        self._inference_session = onnxruntime.InferenceSession(
+            path_or_bytes, session_options, providers, provider_options
+        )
 
     def io_binding(self):
         """Return an onnxruntime.IOBinding object`."""
@@ -62,24 +67,37 @@ class InferenceAgent(object):
 
     def run_forward(self, iobinding, run_options):
         """
-         Compute the forward graph.
-         :param iobinding: the iobinding object that has graph inputs/outputs bind.
-         :param run_options: See :class:`onnxruntime.RunOptions`.
+        Compute the forward graph.
+        :param iobinding: the iobinding object that has graph inputs/outputs bind.
+        :param run_options: See :class:`onnxruntime.RunOptions`.
         """
 
         self._inference_session.run_with_iobinding(iobinding, run_options)
-        ortvalues = iobinding.get_outputs()
+        # iobinding.get_outputs() wraps every C OrtValue into Python OrtValue
+        # but ExecutionAgentOutput only accepts OrtValueVector.
+        ortvalues = iobinding._iobinding.get_outputs()  # pylint: disable=W0212
+        if not isinstance(ortvalues, C.OrtValueVector):
+            raise TypeError("ortvalues must be an instance of type 'OrtValueVector'.")
         return ExecutionAgentOutput(ortvalues)
 
 
-class TrainingAgent(object):
+class TrainingAgent:
     """
     This is the main class used to run an ORTModule model training.
     """
 
-    def __init__(self, path_or_bytes, fw_feed_names, fw_outputs_device_info,
-                 bw_fetches_names, bw_outputs_device_info, session_options=None,
-                 providers=None, provider_options=None):
+    def __init__(
+        self,
+        path_or_bytes,
+        fw_feed_names,
+        fw_outputs_device_info,
+        bw_fetches_names,
+        bw_outputs_device_info,
+        session_options=None,
+        providers=None,
+        provider_options=None,
+        local_rank=None,
+    ):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
         :param fw_feed_names: Feed names for foward pass.
@@ -93,6 +111,8 @@ class TrainingAgent(object):
             providers are used with the default precedence.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
+        :param local_rank: Optional rank of current device, used for memory profiling only.
+            Default rank is 0 if not specified.
 
         The model type will be inferred unless explicitly set in the SessionOptions.
         To explicitly set:
@@ -110,27 +130,34 @@ class TrainingAgent(object):
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
 
-        self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
-                                                               providers, provider_options)
+        self._inference_session = onnxruntime.InferenceSession(
+            path_or_bytes, session_options, providers, provider_options
+        )
 
-        self._training_agent = C_TrainingAgent(self._inference_session._sess, fw_feed_names, fw_outputs_device_info,
-                                               bw_fetches_names, bw_outputs_device_info)
+        self._training_agent = C_TrainingAgent(
+            self._inference_session._sess,
+            fw_feed_names,
+            fw_outputs_device_info,
+            bw_fetches_names,
+            bw_outputs_device_info,
+            local_rank,
+        )
 
     def run_forward(self, feeds, fetches, state, cache=None):
         """
-         Compute the forward subgraph for given feeds and fetches.
-         :param feeds: Inputs to the graph run.
-         :param fetches: Outputs of the graph run.
-         :param state: State of the graph that is used for executing partial graph runs.
-         :param cache: Cache to store stashed OrtValues for intermediate activations.
+        Compute the forward subgraph for given feeds and fetches.
+        :param feeds: Inputs to the graph run.
+        :param fetches: Outputs of the graph run.
+        :param state: State of the graph that is used for executing partial graph runs.
+        :param cache: Cache to store stashed OrtValues for intermediate activations.
         """
         self._training_agent.run_forward(feeds, fetches, state, cache)
 
     def run_backward(self, feeds, fetches, state):
         """
-         Compute the backward subgraph for given feeds and fetches.
-         :param feeds: Inputs to the graph run.
-         :param fetches: Outputs of the graph run.
-         :param state: State of the graph that is used for executing partial graph runs.
+        Compute the backward subgraph for given feeds and fetches.
+        :param feeds: Inputs to the graph run.
+        :param fetches: Outputs of the graph run.
+        :param state: State of the graph that is used for executing partial graph runs.
         """
         self._training_agent.run_backward(feeds, fetches, state)

@@ -179,7 +179,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.LogisticKernelRoutine(Input, Output, N);
+    GetMlasPlatform().LogisticKernelRoutine(Input, Output, N);
 #else
     MlasLogisticKernel(Input, Output, N);
 #endif

@@ -7,10 +7,11 @@
 
 #include "core/providers/providers.h"
 
-#include "core/providers/rocm/rocm_execution_provider_info.h"
+struct OrtROCMProviderOptions;
 
 namespace onnxruntime {
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(const ROCMExecutionProviderInfo& info);
-
+// defined in provider_bridge_ort.cc
+struct RocmProviderFactoryCreator {
+  static std::shared_ptr<IExecutionProviderFactory> Create(const OrtROCMProviderOptions* provider_options);
+};
 }  // namespace onnxruntime

@@ -1,0 +1,59 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4dd56b6e..018da488 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -397,6 +397,7 @@ if (MSVC)
+   endif()
+ else()
+   # On non-Windows, hide all symbols we don't need
++  set(EXTRA_FLAGS "-Wno-unused-parameter")
+   set(ONNX_API_DEFINE "-DONNX_API=__attribute__\(\(__visibility__\(\"default\"\)\)\)")
+   set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
+   set_target_properties(onnx_proto PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
+@@ -548,20 +549,9 @@ endif()
+ if(MSVC)
+   target_compile_options(onnx_proto
+                          PRIVATE /MP
+-                                 /wd4244 #'argument': conversion from 'google::
+-                                         #protobuf::uint64' to 'int', possible
+-                                         # loss of data
+-                                 /wd4267 # Conversion from 'size_t' to 'int',
+-                                         # possible loss of data
+                                  ${EXTRA_FLAGS})
+   target_compile_options(onnx
+                          PRIVATE /MP
+-                                 /wd4244 # 'argument': conversion from 'google::
+-                                         # protobuf::uint64' to 'int', possible
+-                                         # loss of data
+-                                 /wd4267 # Conversion from 'size_t' to 'int',
+-                                         # possible loss of data
+-                                 /wd4996 # The second parameter is ignored.
+                                  ${EXTRA_FLAGS})
+   if(ONNX_USE_PROTOBUF_SHARED_LIBS)
+       target_compile_options(onnx_proto
+diff --git a/onnx/onnx_pb.h b/onnx/onnx_pb.h
+index 0aab3e26..0f859267 100644
+--- a/onnx/onnx_pb.h
++++ b/onnx/onnx_pb.h
+@@ -47,10 +47,21 @@
+ #define ONNX_API ONNX_IMPORT
+ #endif
+ 
++//  onnx/onnx-operators-ml.pb.h:1178:25:   required from here
++//  protobuf/src/google/protobuf/repeated_ptr_field.h:752:66: error: unused parameter ‘prototype’ [-Werror=unused-parameter]
++#if defined(__GNUC__)
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wunused-parameter"
++#endif
++
+ #ifdef ONNX_ML
+ #include "onnx/onnx-ml.pb.h"
+ #else
+ #include "onnx/onnx.pb.h"
+ #endif
+ 
++#if defined(__GNUC__)
++#pragma GCC diagnostic pop
++#endif
++
+ #endif // ! ONNX_ONNX_PB_H

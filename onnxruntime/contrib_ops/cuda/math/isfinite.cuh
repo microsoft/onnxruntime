@@ -1,13 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/math/isfinite.h"
-
-#if CUDA_VERSION >= 11000
-#include "cuda_bf16.h"
-#endif
 
 namespace onnxruntime {
 namespace cuda {
@@ -54,22 +52,20 @@ __device__ __forceinline__ bool IsNaNScalar(const half value) {
 #endif
 }
 
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 template <>
-__device__ __forceinline__ bool IsFiniteScalar(const nv_bfloat16 value) {
-  return !__hisinf(value) && !__hisnan(value);
+__device__ __forceinline__ bool IsFiniteScalar(const BFloat16 value) {
+  return isfinite(static_cast<float>(value));
 }
 
 template <>
-__device__ __forceinline__ bool IsInfScalar(const nv_bfloat16 value) {
-  return __hisinf(value);
+__device__ __forceinline__ bool IsInfScalar(const BFloat16 value) {
+  return isinf(static_cast<float>(value));
 }
 
 template <>
-__device__ __forceinline__ bool IsNaNScalar(const nv_bfloat16 value) {
-  return __hisnan(value);
+__device__ __forceinline__ bool IsNaNScalar(const BFloat16 value) {
+  return isnan(static_cast<float>(value));
 }
-#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

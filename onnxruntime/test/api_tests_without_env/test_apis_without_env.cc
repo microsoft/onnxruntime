@@ -21,11 +21,7 @@ TEST(TestSessionOptions, SetIntraOpNumThreadsWithoutEnv) {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(48);
   const auto* ort_session_options = (const OrtSessionOptions*)session_options;
-#ifdef _OPENMP
-  ASSERT_EQ(ort_session_options->value.intra_op_param.thread_pool_size, 0);
-#else
   ASSERT_EQ(ort_session_options->value.intra_op_param.thread_pool_size, 48);
-#endif
 }
 
 int main(int argc, char** argv) {

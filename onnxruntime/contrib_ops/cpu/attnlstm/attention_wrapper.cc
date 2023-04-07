@@ -8,7 +8,10 @@
 #include <memory>
 
 using onnxruntime::rnn::detail::Allocate;
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace contrib {
 
@@ -48,7 +51,7 @@ void AttentionWrapper<T>::ProcessOutput(const gsl::span<const T>& rnn_cell_outpu
   // Get the context which is calculated within attention mechanism.
   attention_mechanism_.Compute(rnn_cell_output, prev_alignments_, attn_context_, alignments_);
   if (attention_mechanism_.NeedPrevAlignment()) {
-    std::copy(alignments_.cbegin(), alignments_.cend(), prev_alignments_.begin());
+    std::copy(alignments_.begin(), alignments_.end(), prev_alignments_.begin());
   }
 
   if (has_attn_layer_) {

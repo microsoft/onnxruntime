@@ -1,33 +1,40 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 from logging import getLogger
-from typing import List
-from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
-from onnx_model import OnnxModel
+from typing import List, Optional
+
+from convert_to_packing_mode import PackingMode
+from fusion_attention import AttentionMask, FusionAttention
+from fusion_biasgelu import FusionBiasGelu
+from fusion_embedlayer import FusionEmbedLayerNormalization
+from fusion_fastgelu import FusionFastGelu
+from fusion_gelu import FusionGelu
+from fusion_gelu_approximation import FusionGeluApproximation
+from fusion_gemmfastgelu import FusionGemmFastGelu
+from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
+from fusion_options import AttentionMaskFormat, FusionOptions
+from fusion_qordered_attention import FusionQOrderedAttention
+from fusion_qordered_gelu import FusionQOrderedGelu
+from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
+from fusion_qordered_matmul import FusionQOrderedMatMul
 from fusion_reshape import FusionReshape
 from fusion_shape import FusionShape
-from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
-from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
-from fusion_embedlayer import FusionEmbedLayerNormalization
-from fusion_attention import FusionAttention, AttentionMask
-from fusion_gelu import FusionGelu
-from fusion_fastgelu import FusionFastGelu
-from fusion_biasgelu import FusionBiasGelu
-from fusion_gelu_approximation import FusionGeluApproximation
+from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
 from fusion_utils import FusionUtils
-from fusion_options import FusionOptions
+from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 
 
 class BertOptimizationOptions(FusionOptions):
-    """ This class is deprecated
-    """
+    """This class is deprecated"""
+
     def __init__(self, model_type):
-        logger.warning(f"BertOptimizationOptions is depreciated. Please use FusionOptions instead.")
+        logger.warning("BertOptimizationOptions is depreciated. Please use FusionOptions instead.")
         super().__init__(model_type)
 
 
@@ -37,8 +44,8 @@ class BertOnnxModel(OnnxModel):
 
         Args:
             model (ModelProto): the ONNX model
-            num_heads (int, optional): number of attentioin heads. Defaults to 0, and we will detect the parameter automatically.
-            hidden_size (int, optional): hidden dimension. Defaults to 0, and we will detect the parameter automatically.
+            num_heads (int, optional): number of attention heads. Defaults to 0 (detect the parameter automatically).
+            hidden_size (int, optional): hidden dimension. Defaults to 0 (detect the parameter automatically).
         """
         assert (num_heads == 0 and hidden_size == 0) or (num_heads > 0 and hidden_size % num_heads == 0)
 
@@ -48,15 +55,23 @@ class BertOnnxModel(OnnxModel):
 
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        self.qordered_attention_fusion = FusionQOrderedAttention(
+            self, self.hidden_size, self.num_heads, self.attention_mask
+        )
         self.utils = FusionUtils(self)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
+        # Only relevant in models with Q-DQ nodes
+        self.qordered_attention_fusion.apply()
 
     def fuse_gelu(self):
         fusion = FusionGelu(self)
         fusion.apply()
         fusion = FusionFastGelu(self)
+        fusion.apply()
+        # Only relevant in models with Q-DQ nodes
+        fusion = FusionQOrderedGelu(self)
         fusion.apply()
 
     def fuse_bias_gelu(self, is_fastgelu):
@@ -65,6 +80,10 @@ class BertOnnxModel(OnnxModel):
 
     def gelu_approximation(self):
         fusion = FusionGeluApproximation(self)
+        fusion.apply()
+
+    def fuse_gemm_fast_gelu(self):
+        fusion = FusionGemmFastGelu(self)
         fusion.apply()
 
     def fuse_add_bias_skip_layer_norm(self):
@@ -79,8 +98,8 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionShape(self)
         fusion.apply()
 
-    def fuse_embed_layer(self):
-        fusion = FusionEmbedLayerNormalization(self)
+    def fuse_embed_layer(self, use_mask_index):
+        fusion = FusionEmbedLayerNormalization(self, use_mask_index)
         fusion.apply()
 
     def fuse_layer_norm(self):
@@ -90,8 +109,17 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionLayerNormalizationTF(self)
         fusion.apply()
 
+        # Only relevant in models with Q-DQ nodes
+        fusion = FusionQOrderedLayerNormalization(self)
+        fusion.apply()
+
     def fuse_skip_layer_norm(self):
         fusion = FusionSkipLayerNormalization(self)
+        fusion.apply()
+
+    # Only relevant in models with Q-DQ nodes
+    def fuse_qordered_mamtul(self):
+        fusion = FusionQOrderedMatMul(self)
         fusion.apply()
 
     def get_graph_inputs_from_node_type(self, op_type: str, input_indices: List[int], casted: bool):
@@ -111,20 +139,22 @@ class BertOnnxModel(OnnxModel):
                         graph_inputs.append(bert_input)
                 elif bert_input in output_name_to_node:
                     parent = output_name_to_node[bert_input]
-                    if parent.op_type == 'Cast' and self.find_graph_input(parent.input[0]) is not None:
+                    if parent.op_type == "Cast" and self.find_graph_input(parent.input[0]) is not None:
                         if casted:
                             graph_inputs.append(parent.input[0])
         return graph_inputs
 
     def get_graph_inputs_from_fused_nodes(self, casted: bool):
-        inputs = self.get_graph_inputs_from_node_type('EmbedLayerNormalization', [0, 1, 7], casted)
-        inputs += self.get_graph_inputs_from_node_type('Attention', [3], casted)
+        inputs = self.get_graph_inputs_from_node_type("EmbedLayerNormalization", [0, 1, 7], casted)
+        inputs += self.get_graph_inputs_from_node_type("Attention", [3], casted)
         return inputs
 
-    def change_graph_input_type(self,
-                                graph: GraphProto,
-                                graph_input: ValueInfoProto,
-                                new_type: int = TensorProto.INT32):
+    def change_graph_input_type(
+        self,
+        graph: GraphProto,
+        graph_input: ValueInfoProto,
+        new_type: int = TensorProto.INT32,
+    ):
         """Change graph input type, and add Cast node if needed.
 
         Args:
@@ -151,16 +181,20 @@ class BertOnnxModel(OnnxModel):
             nodes = input_name_to_nodes[graph_input.name]
 
             # For children that is not Cast node, insert a Cast node to convert int32 to original data type.
-            nodes_not_cast = [node for node in nodes if node.op_type != 'Cast']
+            nodes_not_cast = [node for node in nodes if node.op_type != "Cast"]
             if nodes_not_cast:
-                node_name = self.create_node_name('Cast')
-                output_name = node_name + '_' + graph_input.name
+                node_name = self.create_node_name("Cast")
+                output_name = node_name + "_" + graph_input.name
                 new_value_info = graph.value_info.add()
                 new_value_info.CopyFrom(graph_input)
                 new_value_info.name = output_name
-                new_cast_node = helper.make_node('Cast', [graph_input.name], [output_name],
-                                                 to=int(graph_input.type.tensor_type.elem_type),
-                                                 name=node_name)
+                new_cast_node = helper.make_node(
+                    "Cast",
+                    [graph_input.name],
+                    [output_name],
+                    to=int(graph_input.type.tensor_type.elem_type),
+                    name=node_name,
+                )
                 graph.node.extend([new_cast_node])
 
                 for node in nodes_not_cast:
@@ -168,7 +202,7 @@ class BertOnnxModel(OnnxModel):
 
             # For children that is Cast node, no need to insert Cast.
             # When the children is Cast to int32, we can remove that Cast node since input type is int32 now.
-            nodes_cast = [node for node in nodes if node.op_type == 'Cast']
+            nodes_cast = [node for node in nodes if node.op_type == "Cast"]
             for node in nodes_cast:
                 if OnnxModel.get_node_attribute(node, "to") == int(new_type):
                     self.replace_input_of_all_nodes(node.output[0], graph_input.name)
@@ -181,8 +215,7 @@ class BertOnnxModel(OnnxModel):
         return new_cast_node, nodes_to_remove
 
     def change_graph_inputs_to_int32(self):
-        """Change data type of all graph inputs to int32 type, and add Cast node if needed.
-        """
+        """Change data type of all graph inputs to int32 type, and add Cast node if needed."""
         graph = self.graph()
         add_cast_count = 0
         remove_cast_count = 0
@@ -195,14 +228,14 @@ class BertOnnxModel(OnnxModel):
             f"Graph inputs are changed to int32. Added {add_cast_count} Cast nodes, and removed {remove_cast_count} Cast nodes."
         )
 
-    def use_dynamic_axes(self, dynamic_batch_dim='batch_size', dynamic_seq_len='max_seq_len'):
+    def use_dynamic_axes(self, dynamic_batch_dim="batch_size", dynamic_seq_len="max_seq_len"):
         """
         Update input and output shape to use dynamic axes.
         """
         bert_graph_inputs = self.get_graph_inputs_from_fused_nodes(
-            casted=True) + self.get_graph_inputs_from_fused_nodes(casted=False)
+            casted=True
+        ) + self.get_graph_inputs_from_fused_nodes(casted=False)
 
-        dynamic_batch_inputs = {}
         for input in self.model.graph.input:
             if input.name in bert_graph_inputs:
                 dim_proto = input.type.tensor_type.shape.dim[0]
@@ -222,8 +255,8 @@ class BertOnnxModel(OnnxModel):
     def adjust_reshape_and_expand(self):
         nodes_to_remove = []
         for node in self.nodes():
-            if node.op_type == 'Reshape':
-                # Clean up unneccessary reshape nodes.
+            if node.op_type == "Reshape":
+                # Clean up unnecessary reshape nodes.
                 # Find reshape nodes with no actually data in "shape" attribute and remove.
                 reshape_shape = self.get_constant_value(node.input[1])
                 if reshape_shape is not None and reshape_shape.size == 0:
@@ -233,8 +266,12 @@ class BertOnnxModel(OnnxModel):
 
                 # Find path "Slice" -> "Reshape" -> "Expand" -> "Expand" -> current "Reshape", simplify the graph by
                 # changing current reshape's input to output of slice.
-                reshape_path = self.match_parent_path(node, ['Expand', 'Expand', 'Reshape', 'Slice'], [0, 0, 0, 0],
-                                                      self.output_name_to_node())
+                reshape_path = self.match_parent_path(
+                    node,
+                    ["Expand", "Expand", "Reshape", "Slice"],
+                    [0, 0, 0, 0],
+                    self.output_name_to_node(),
+                )
                 if reshape_path is not None:
                     expand_node = reshape_path[-3]
                     expand_shape_value = self.get_constant_value(expand_node.input[1])
@@ -243,9 +280,13 @@ class BertOnnxModel(OnnxModel):
                     shape_value = self.get_constant_value(reshape_before_expand.input[1])
 
                     slice_node = reshape_path[-1]
-                    if expand_shape_value is not None and shape_value is not None and len(
-                            expand_shape_value) == 2 and len(
-                                shape_value) == 1 and expand_shape_value[1] == shape_value[0]:
+                    if (
+                        expand_shape_value is not None
+                        and shape_value is not None
+                        and len(expand_shape_value) == 2
+                        and len(shape_value) == 1
+                        and expand_shape_value[1] == shape_value[0]
+                    ):
                         node.input[0] = slice_node.output[0]
 
         if nodes_to_remove:
@@ -268,27 +309,50 @@ class BertOnnxModel(OnnxModel):
             if node.op_type in op_input_id:
                 i = op_input_id[node.op_type]
                 parent_nodes = self.match_parent_path(
-                    node, ['Cast', 'ConstantOfShape', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [i, 0, 0, 0, 0, 0],
-                    output_name_to_node)
+                    node,
+                    [
+                        "Cast",
+                        "ConstantOfShape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                    ],
+                    [i, 0, 0, 0, 0, 0],
+                    output_name_to_node,
+                )
                 if parent_nodes is not None:
-                    cast, constantOfShape, concat, unsqueeze, gather, shape = parent_nodes
+                    (
+                        cast,
+                        constantOfShape,  # noqa: N806
+                        concat,
+                        unsqueeze,
+                        gather,
+                        shape,
+                    ) = parent_nodes
                     if shape.input[0] == self.graph().input[0].name:
                         constantOfShape.input[0] = shape.output[0]
                         output_name_to_node = self.output_name_to_node()
 
-            if node.op_type == 'Attention':
+            if node.op_type == "Attention":
                 # Before:
                 #   input_ids --> Shape -->ConstantOfShape -->Cast --> ReduceSum --> Attention
                 # After:
                 #   remove this path, and remove the optional mask_index input of Attention node.
-                parent_nodes = self.match_parent_path(node, ['ReduceSum', 'Cast', 'ConstantOfShape', 'Shape'],
-                                                      [3, 0, 0, 0], output_name_to_node)
+                parent_nodes = self.match_parent_path(
+                    node,
+                    ["ReduceSum", "Cast", "ConstantOfShape", "Shape"],
+                    [3, 0, 0, 0],
+                    output_name_to_node,
+                )
                 if parent_nodes is not None:
                     if parent_nodes[-1].input[0] == self.graph().input[0].name:
-                        attention_node = helper.make_node('Attention',
-                                                          inputs=node.input[0:len(node.input) - 1],
-                                                          outputs=node.output,
-                                                          name=node.name + "_remove_mask")
+                        attention_node = helper.make_node(
+                            "Attention",
+                            inputs=node.input[0 : len(node.input) - 1],
+                            outputs=node.output,
+                            name=node.name + "_remove_mask",
+                        )
                         attention_node.domain = "com.microsoft"
                         attention_node.attribute.extend([helper.make_attribute("num_heads", self.num_heads)])
                         self.add_node(attention_node, self.get_graph_by_node(attention_node).name)
@@ -299,7 +363,12 @@ class BertOnnxModel(OnnxModel):
         self.clean_graph()
         self.prune_graph()
 
-    def optimize(self, options: FusionOptions = None, add_dynamic_axes=False):
+    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+        if (options is not None) and not options.enable_shape_inference:
+            self.disable_shape_inference()
+
+        self.utils.remove_identity_nodes()
+
         # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
         self.utils.remove_useless_cast_nodes()
 
@@ -316,15 +385,26 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
 
+        if options is not None:
+            self.attention_mask.set_mask_format(options.attention_mask_format)
+            if options.use_multi_head_attention:
+                self.attention_fusion = FusionAttention(
+                    self, self.hidden_size, self.num_heads, self.attention_mask, options.use_multi_head_attention
+                )
+
         if (options is None) or options.enable_attention:
-            if options is not None:
-                self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
+
+        # Perform the MatMul fusion after the Attention fusion as we do not
+        # want to fuse the MatMuls inside the Attention subgraphs
+        if (options is None) or options.enable_qordered_matmul:
+            self.fuse_qordered_mamtul()
 
         self.fuse_shape()
 
         if (options is None) or options.enable_embed_layer_norm:
-            self.fuse_embed_layer()
+            use_mask_index = options.attention_mask_format == AttentionMaskFormat.MaskIndexEnd
+            self.fuse_embed_layer(use_mask_index)
 
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
         self.utils.remove_useless_reshape_nodes()
@@ -341,8 +421,11 @@ class BertOnnxModel(OnnxModel):
             # Fuse SkipLayerNormalization and Add Bias before it.
             self.fuse_add_bias_skip_layer_norm()
 
-        if (options is not None and options.enable_gelu_approximation):
+        if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()
+
+        if options is not None and options.enable_gemm_fast_gelu:
+            self.fuse_gemm_fast_gelu()
 
         self.remove_unused_constant()
 
@@ -350,7 +433,7 @@ class BertOnnxModel(OnnxModel):
         if add_dynamic_axes:
             self.use_dynamic_axes()
 
-        logger.info(f"opset verion: {self.get_opset_version()}")
+        logger.info(f"opset version: {self.get_opset_version()}")
 
     def get_fused_operator_statistics(self):
         """
@@ -358,12 +441,21 @@ class BertOnnxModel(OnnxModel):
         """
         op_count = {}
         ops = [
-            'EmbedLayerNormalization', 'Attention', 'Gelu', 'FastGelu', 'BiasGelu', 'LayerNormalization',
-            'SkipLayerNormalization'
+            "EmbedLayerNormalization",
+            "Attention",
+            "MultiHeadAttention",
+            "Gelu",
+            "FastGelu",
+            "BiasGelu",
+            "GemmFastGelu",
+            "LayerNormalization",
+            "SkipLayerNormalization",
         ]
-        for op in ops:
+        q_ops = ["QOrderedAttention", "QOrderedGelu", "QOrderedLayerNormalization", "QOrderedMatMul"]
+        for op in ops + q_ops:
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
+
         logger.info(f"Optimized operators:{op_count}")
         return op_count
 
@@ -372,10 +464,10 @@ class BertOnnxModel(OnnxModel):
         Returns True when the model is fully optimized.
         """
         op_count = self.get_fused_operator_statistics()
-        embed = op_count['EmbedLayerNormalization']
-        attention = op_count['Attention']
-        gelu = op_count['Gelu'] + op_count['BiasGelu'] + op_count['FastGelu']
-        layer_norm = op_count['LayerNormalization'] + op_count['SkipLayerNormalization']
+        embed = op_count["EmbedLayerNormalization"]
+        attention = op_count["Attention"] + op_count["MultiHeadAttention"] + op_count["QOrderedAttention"]
+        gelu = op_count["Gelu"] + op_count["BiasGelu"] + op_count["FastGelu"]
+        layer_norm = op_count["LayerNormalization"] + op_count["SkipLayerNormalization"]
         is_perfect = (embed > 0) and (attention > 0) and (attention == gelu) and (layer_norm >= 2 * attention)
 
         if layer_norm == 0:
@@ -391,3 +483,7 @@ class BertOnnxModel(OnnxModel):
             logger.warning("Attention not fused")
 
         return is_perfect
+
+    def convert_to_packing_mode(self, use_symbolic_shape_infer: bool = False):
+        packing_mode = PackingMode(self)
+        packing_mode.convert(use_symbolic_shape_infer)

@@ -10,15 +10,15 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#include "core/graph/contrib_ops/internal_nhwc_onnx_opset.h"
+#include "core/graph/contrib_ops/ms_opset.h"
+#include "core/graph/contrib_ops/onnx_deprecated_opset.h"
+#if defined(ENABLE_TRAINING_OPS)
 #include "onnx/defs/operator_sets_training.h"
 #endif
 #endif
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
-#endif
-#ifdef ML_FEATURIZERS
-#include "core/graph/featurizers_ops/featurizers_defs.h"
 #endif
 #ifdef USE_DML
 #include "core/graph/dml_ops/dml_defs.h"
@@ -31,14 +31,15 @@
 #include "core/platform/tracing.h"
 #endif
 
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#if defined(ENABLE_TRAINING_OPS)
 #include "orttraining/core/graph/training_op_defs.h"
 #endif
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/graph/gradient_builder_registry.h"
-#include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
+#include "orttraining/core/graph/loss_function_registry.h"
+#include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
 namespace onnxruntime {
@@ -51,7 +52,7 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
                            std::unique_ptr<Environment>& environment,
                            const OrtThreadingOptions* tp_options,
                            bool create_global_thread_pools) {
-  environment = std::unique_ptr<Environment>(new Environment());
+  environment = std::make_unique<Environment>();
   auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
   return status;
 }
@@ -69,6 +70,7 @@ static bool AreOrtMemoryInfosEquivalent(
   } else {
     return left.mem_type == right.mem_type &&
            left.id == right.id &&
+           left.device == right.device &&
            strcmp(left.name, right.name) == 0;
   }
 }
@@ -116,14 +118,11 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   // determine if arena should be used
   bool create_arena = mem_info.alloc_type == OrtArenaAllocator;
 
-#ifdef USE_JEMALLOC
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR) || defined(USE_MIMALLOC_STL_ALLOCATOR)
-#error jemalloc and mimalloc should not both be enabled
-#endif
-  //JEMalloc already has memory pool, so just use device allocator.
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+  // We use these allocators instead of the arena
   create_arena = false;
 #elif !(defined(__amd64__) || defined(_M_AMD64))
-  //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
   create_arena = false;
 #endif
 
@@ -157,13 +156,13 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
                             initial_growth_chunk_size_bytes};
     AllocatorCreationInfo alloc_creation_info{
-        [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+        [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
         0,
         create_arena,
         l_arena_cfg};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   } else {
-    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<TAllocator>(); },
+    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<CPUAllocator>(); },
                                               0, create_arena};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   }
@@ -216,21 +215,37 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #if !defined(ORT_MINIMAL_BUILD)
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSFeaturizersDomain, 1, 1);
+      auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+      if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end()) {
+        // External shared providers may have already added kMSDomain
+        domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
+      }
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
+
+      // we have static registrations for NHWC versions of ONNX operators so this domain needs to extend to the
+      // latest ONNX version
+      auto onnx_version = domainToVersionRangeInstance.LastReleaseVersionMap()
+                              .find(ONNX_NAMESPACE::ONNX_DOMAIN)
+                              ->second;
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, onnx_version);
+
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kPytorchAtenDomain, 1, 1);
 #ifdef USE_DML
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
 // Register contributed schemas.
 // The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
+#ifndef ORT_MINIMAL_BUILD
+      RegisterOpSetSchema<contrib::OpSet_Microsoft_ver1>();
+      RegisterOpSetSchema<contrib::OpSet_ONNX_Deprecated>();
+      // internal opset that has NHWC versions of ONNX operators
+      RegisterOpSetSchema<internal_nhwc_onnx::OpSet_Internal_NHWC_ONNX>();
+#endif
       contrib::RegisterContribSchemas();
 #endif
-#ifdef ML_FEATURIZERS
-      featurizers::RegisterMSFeaturizersSchemas();
-#endif
+
 #ifdef USE_DML
       dml::RegisterDmlSchemas();
 #endif
@@ -240,11 +255,11 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       RegisterOnnxMLOperatorSetSchema();
 #endif
 
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#if defined(ENABLE_TRAINING_OPS)
       RegisterOnnxTrainingOperatorSetSchema();
 #endif
 
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#if defined(ENABLE_TRAINING_OPS)
       // preserve this order until <training schemas>: this depends on operatorsetschema registration.
       training::RegisterTrainingOpSchemas();
 #endif
@@ -254,6 +269,9 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
       // <training schemas>
+      // This was added for a partner team and is most probably no longer in use.
+      // Can be removed once we have the confirmation.
+      training::GraphTransformerRegistry::GetInstance().RegisterExternalGraphTransformers();
 #endif
     });
 
@@ -267,7 +285,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
       all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());
       all_types.emplace_back("seq(tensor(bfloat16))");
-      all_types.erase(std::remove_if(all_types.begin(), all_types.end(), 
+      all_types.erase(std::remove_if(all_types.begin(), all_types.end(),
                       [](const std::string& s) { return s.find("string") != std::string::npos; }), all_types.end());
       return all_types; }();
 

@@ -8,7 +8,6 @@
 #include "core/common/common.h"
 #include "core/platform/env_time.h"
 
-
 class ITestCase;
 struct OrtAllocator;
 
@@ -40,7 +39,7 @@ class DataTaskRequestContext {
   /// <param name="task_id">this task id</param>
   /// <returns>execution result and elapsed time</returns>
   static std::pair<EXECUTE_RESULT, TIME_SPEC> Run(const ITestCase& c, ::Ort::Session& session,
-                            OrtAllocator* allocator, size_t task_id);
+                                                  OrtAllocator* allocator, size_t task_id);
 
   /// <summary>
   /// Schedules a data task to run on a threadpool. The function
@@ -68,7 +67,6 @@ class DataTaskRequestContext {
     return spent_time_;
   }
 
- private:
   DataTaskRequestContext(const Callback& cb,
                          const ITestCase& test_case, ::Ort::Session& session,
                          OrtAllocator* allocator, size_t task_id)
@@ -80,6 +78,7 @@ class DataTaskRequestContext {
     SetTimeSpecToZero(&spent_time_);
   }
 
+ private:
   void RunAsync();
   std::pair<EXECUTE_RESULT, TIME_SPEC> RunImpl();
 

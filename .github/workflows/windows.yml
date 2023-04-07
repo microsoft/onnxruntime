@@ -1,0 +1,37 @@
+name: Windows_CI
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+jobs:
+  Onnxruntime-TVM:
+    runs-on: windows-2019
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - uses: actions/setup-python@v3
+        with:
+          python-version: '3.8.x'
+          architecture: 'x64'
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          activate-environment: ""
+      - name: 'Install LLVM-Dev'
+        shell: pwsh
+        run: |
+          conda install llvmdev=12.0.0
+          conda info
+          conda list
+      - name: 'Add LLVM-Dev binaries to the PATH'
+        run: |
+          echo "C:/Miniconda/Library/bin" >> $GITHUB_PATH
+      - name: 'Setup TVM EP Python requirements'
+        run: |
+          python3 -m pip install -r ${{ github.workspace }}/tools/ci_build/github/linux/tvm/requirements.txt
+      - name: 'Build and Test'
+        run: |
+          python3 ${{ github.workspace }}/tools/ci_build/build.py --build_dir build --config Release --skip_submodule_sync --parallel --enable_pybind --disable_contrib_ops --disable_ml_ops --skip_onnx_tests --use_tvm

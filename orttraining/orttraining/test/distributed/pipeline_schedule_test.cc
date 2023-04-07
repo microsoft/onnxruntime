@@ -26,8 +26,8 @@ void TestPipelineScheduler(const int num_batches, const int num_stages, std::vec
       const auto backward_send_wait = schedule.GetBackwardSendWaitedEvent(b, s);
       const auto backward_send_record = schedule.GetBackwardSendRecordedEvent(b, s);
 
-      const auto batch_stride = 6;
-      const auto stage_stride = 2;
+      constexpr auto batch_stride = 6;
+      constexpr auto stage_stride = 2;
       EXPECT_EQ(forward_recv_wait, baseline_events.at(stage_stride * s + 0).at(batch_stride * b + 0)) << " batch " << b << " stage " << s;
       EXPECT_EQ(forward_recv_record, baseline_events.at(stage_stride * s + 0).at(batch_stride * b + 1)) << " batch " << b << " stage " << s;
       EXPECT_EQ(forward_compute_wait, baseline_events.at(stage_stride * s + 0).at(batch_stride * b + 2)) << " batch " << b << " stage " << s;
@@ -46,8 +46,8 @@ void TestPipelineScheduler(const int num_batches, const int num_stages, std::vec
 }
 
 TEST(Pipeline, ScheduleB5S3) {
-  const int num_batches = 5;
-  const int num_stages = 3;
+  constexpr int num_batches = 5;
+  constexpr int num_stages = 3;
 
   // The event baselines at different stages are the same.
   // The first 4 events are for the first computation on that stage.

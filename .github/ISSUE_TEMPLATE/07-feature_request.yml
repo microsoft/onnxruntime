@@ -1,0 +1,23 @@
+name: Feature Request
+description: requests for new ONNX Runtime features
+title: "[Feature Request] "
+labels: ["feature request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting your request, please review past submissions to ensure that it is not a duplicate of a known feature request.
+  - type: textarea
+    id: fr-descrip
+    attributes:
+      label: Describe the feature request
+      placeholder: A clear and concise description of the feature you would like, why it should be added, and any alternative solutions or features you've considered.
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Describe scenario use case
+      placeholder: The capability and/or customer usage scenario this request supports.
+    validations:
+      required: true

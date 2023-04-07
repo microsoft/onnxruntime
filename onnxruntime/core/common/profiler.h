@@ -67,7 +67,8 @@ class Profiler {
   */
   uint64_t GetStartTimeNs() const {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
-      profiling_start_time_.time_since_epoch()).count();
+               profiling_start_time_.time_since_epoch())
+        .count();
   }
   /*
   Record a single event. Time is measured till the call of this function from
@@ -108,12 +109,12 @@ class Profiler {
   static void SetGlobalMaxNumEvents(size_t new_max_num_events) {
     global_max_num_events_.store(new_max_num_events);
   }
-  
+
   void AddEpProfilers(std::unique_ptr<EpProfiler> ep_profiler) {
     if (ep_profiler) {
       ep_profilers_.push_back(std::move(ep_profiler));
       if (enabled_) {
-        ep_profilers_.back()->StartProfiling();
+        ep_profilers_.back()->StartProfiling(profiling_start_time_);
       }
     }
   }

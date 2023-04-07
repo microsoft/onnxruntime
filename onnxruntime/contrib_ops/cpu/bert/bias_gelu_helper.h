@@ -12,6 +12,6 @@ namespace bias_gelu_helper {
 
 Status CheckInputs(const OpKernelContext* context);
 
-}
+}  // namespace bias_gelu_helper
 }  // namespace contrib
 }  // namespace onnxruntime

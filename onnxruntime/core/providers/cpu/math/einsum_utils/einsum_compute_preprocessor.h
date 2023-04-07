@@ -30,11 +30,11 @@ constexpr size_t num_of_letters = 52;
  */
 inline int64_t LetterToIndex(char ch) {
   if (ch >= 'a' && ch <= 'z') {
-    return static_cast<int64_t>(ch - 'a');
+    return static_cast<int64_t>(ch) - 'a';
   }
 
   if (ch >= 'A' && ch <= 'Z') {
-    return 26 + static_cast<int64_t>(ch - 'A');
+    return 26 + static_cast<int64_t>(ch) - 'A';
   }
 
   // invalid character - return error value
@@ -117,7 +117,7 @@ class EinsumComputePreprocessor final {
   Status Run();
 
   // Get the output dims of the op's output
-  const std::vector<int64_t>& GetOutputDims() const;
+  const TensorShapeVector& GetOutputDims() const;
 
   // Pre-process inputs if needed - preprocessing includes -
   // 1) Parsing diagonals from raw inputs
@@ -204,7 +204,7 @@ class EinsumComputePreprocessor final {
   std::vector<int64_t> subscript_indices_to_dim_value_;
 
   // Holds the final calculated output dimensions
-  std::vector<int64_t> output_dims_;
+  TensorShapeVector output_dims_;
 
   // All subscript indices in the equation for each input
   std::vector<std::vector<int64_t>> input_subscript_indices_;

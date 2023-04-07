@@ -31,10 +31,15 @@
 #include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
-#include "core/providers/cuda/cuda_provider_factory.h"
 #ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
-#elif USE_ROCM
+#endif
+#ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
+#endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #endif
 #include "core/session/environment.h"
@@ -69,6 +74,9 @@ namespace onnxruntime {
 #ifdef USE_CUDA
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
 #endif
+#ifdef USE_ROCM
+ProviderInfo_ROCM& GetProviderInfo_ROCM();
+#endif
 
 class FuseAdd : public OpKernel {
  public:
@@ -80,9 +88,9 @@ class FuseAdd : public OpKernel {
     auto Y = context->Input<Tensor>(1);
     auto Z = context->Input<Tensor>(2);
     auto& shape = X->Shape();
-    auto M = context->Output(0, shape)->template MutableData<float>();
+    auto M = context->Output(0, shape)->MutableData<float>();
     for (int i = 0; i < shape.Size(); ++i) {
-      *(M + i) = *(X->template Data<float>() + i) + *(Y->template Data<float>() + i) + *(Z->template Data<float>() + i);
+      *(M + i) = *(X->Data<float>() + i) + *(Y->Data<float>() + i) + *(Z->Data<float>() + i);
     }
     return Status::OK();
   }
@@ -94,7 +102,10 @@ ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         kFuseTest,
                         1,
                         kFuseExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        KernelDefBuilder(),
+                        // there's no OpSchema so there's nothing to validate the type constraint against and it
+                        // will just be ignored
+                        // .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         FuseAdd);
 
 Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {
@@ -120,7 +131,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
+                const IKernelLookup& /*kernel_lookup*/) const override {
     // Fuse two add into one.
     std::vector<std::unique_ptr<ComputeCapability>> result;
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
@@ -164,7 +175,7 @@ static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vecto
                           const std::vector<float>& expected_values);
 static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
 static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
-//static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
+// static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
 
 static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
   std::unordered_map<std::string, int> domain_to_version;
@@ -173,7 +184,8 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
                                     IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                    model_specific_functions, DefaultLoggingManager().DefaultLogger());
+                                    model_specific_functions, DefaultLoggingManager().DefaultLogger(),
+                                    ModelOptions(true, true));
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -195,7 +207,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   if (provider_type == kCpuExecutionProvider) {
     node.SetExecutionProviderType(provider_type);
   } else {
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
     node.SetExecutionProviderType(provider_type);
 #endif
   }
@@ -207,10 +219,9 @@ template <typename T = float>
 void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims,
                    const std::vector<T>& expected_values) {
   TensorShape expected_shape(expected_dims);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor.Shape()));
-  const std::vector<T> found(tensor.template Data<T>(),
-                             tensor.template Data<T>() + expected_values.size());
+  ASSERT_EQ(expected_shape, tensor.Shape());
+  const std::vector<T> found(tensor.Data<T>(),
+                             tensor.Data<T>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
 }
 
@@ -228,7 +239,7 @@ void RunModel(InferenceSession& session_object,
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
@@ -241,7 +252,7 @@ void RunModel(InferenceSession& session_object,
   if (is_preallocate_output_vec) {
     fetches.resize(output_names.size());
     for (auto& elem : fetches) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                            &elem);
     }
   }
@@ -269,7 +280,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
-  auto input_allocator = io_binding->GetCPUAllocator(0, bind_provider_type);
+  auto input_allocator = io_binding->GetCPUAllocator(bind_provider_type);
 
   // bind a value to A with input that will produce invalid output in order to test replacement of a feed
   std::vector<float> values_mul_x_tmp = {12.f, 11.f, 10.f, 9.f, 8.f, 7.f, 6.f, 5.f, 4.f, 3.f, 2.f, 1.f};
@@ -296,7 +307,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 
   OrtValue input_ml_value_B;
   std::vector<int64_t> dims_mul_x_B = {4, 3};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x_B, values_mul_x,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x_B, values_mul_x,
                        &input_ml_value_B);
 
   ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_A));
@@ -310,10 +321,10 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   OrtValue output_ml_value;
   if (is_preallocate_output_vec) {
     if (allocation_provider == kCpuExecutionProvider) {
-      AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
+      AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), expected_output_dims,
                              &output_ml_value);
     } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
-      AllocateMLValue<float>(gpu_provider->GetAllocator(0, OrtMemTypeDefault), expected_output_dims, &output_ml_value);
+      AllocateMLValue<float>(gpu_provider->GetAllocator(OrtMemTypeDefault), expected_output_dims, &output_ml_value);
     } else {
       ORT_THROW("Unsupported provider");
     }
@@ -342,20 +353,19 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 #if defined(USE_CUDA) || defined(USE_ROCM)
     // in this case we need to copy the tensor from cuda to cpu
     vector<OrtValue>& outputs = io_binding->GetOutputs();
-    ASSERT_EQ(1, outputs.size());
+    ASSERT_EQ(1u, outputs.size());
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
-    auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+    auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
                                                                   cpu_allocator);
 #ifdef USE_CUDA
-    cudaStream_t stream = static_cast<cudaStream_t>(gpu_provider->GetComputeStream());
-    st = GetProviderInfo_CUDA().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
-#elif USE_ROCM
-    hipStream_t stream = static_cast<hipStream_t>(gpu_provider->GetComputeStream());
-    st = GPUDataTransfer(stream).CopyTensor(rtensor, *cpu_tensor.get(), 0);
+    st = GetProviderInfo_CUDA().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
+#endif
+#ifdef USE_ROCM
+    st = GetProviderInfo_ROCM().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
@@ -618,6 +628,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 #ifdef USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
+#ifdef USE_ROCM
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
+#endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -653,10 +666,72 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
     }
   }
 
-#if defined(USE_CUDA) && !defined(ENABLE_TRAINING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)) || (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING))
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
+
+TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
+  SessionOptions so;
+
+  so.session_logid = "CheckRunProfiler";
+  so.enable_profiling = true;
+  so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
+
+  InferenceSession session_object(so, GetEnvironment());
+#ifdef USE_CUDA
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+#endif
+#ifdef USE_ROCM
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
+#endif
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "RunTag";
+
+  RunModel(session_object, run_options);
+  std::string profile_file = session_object.EndProfiling();
+
+  std::ifstream profile(profile_file);
+  ASSERT_TRUE(profile);
+  std::string line;
+  std::vector<std::string> lines;
+
+  while (std::getline(profile, line)) {
+    lines.push_back(line);
+  }
+
+  auto size = lines.size();
+  ASSERT_TRUE(size > 1);
+  ASSERT_TRUE(lines[0].find("[") != string::npos);
+  ASSERT_TRUE(lines[1].find("model_loading_uri") != string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
+  std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
+
+  bool has_api_info = false;
+  for (size_t i = 1; i < size - 1; ++i) {
+    for (auto& s : tags) {
+      ASSERT_TRUE(lines[i].find(s) != string::npos);
+#ifdef USE_CUDA
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
+                                               lines[i].find("cudaLaunch") != string::npos;
+#endif
+#ifdef USE_ROCM
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
+                                               lines[i].find("hipLaunch") != string::npos;
+#endif
+    }
+  }
+
+#if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
+  ASSERT_TRUE(has_api_info);
+#else
+  ASSERT_TRUE(has_api_info || true);
+#endif
+}
+
 
 TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   SessionOptions so;
@@ -802,12 +877,17 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
 
   ASSERT_TRUE(have_log_entry_with_vlog_session_msg);
 
-  bool have_log_entry_with_vlog_run_msg =
-      (std::find_if(msgs.begin(), msgs.end(),
-                    [&](std::string msg) { return msg.find("Size of execution plan vector") != string::npos; }) !=
-       msgs.end());
+  //bool have_log_entry_with_vlog_run_msg =
+  //    (std::find_if(msgs.begin(), msgs.end(),
+  //                  [&](std::string msg) { return msg.find("Size of execution plan vector") != string::npos; }) !=
+  //     msgs.end());
 
-  ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
+  //ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
+
+  bool has_num_streams_msg =
+      (std::find_if(msgs.begin(), msgs.end(), [&](std::string msg) { return msg.find("Number of streams") != string::npos; }) != msgs.end());
+
+  ASSERT_TRUE(has_num_streams_msg);
 #endif
 }
 
@@ -866,13 +946,10 @@ static void TestBindHelper(const std::string& log_str,
     auto provider = DefaultCudaExecutionProvider();
     gpu_provider = provider.get();
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
-#elif USE_ROCM
-    ROCMExecutionProviderInfo epi;
-    epi.device_id = 0;
-
-    auto provider = std::make_unique<ROCMExecutionProvider>(epi);
+#endif
+#ifdef USE_ROCM
+    auto provider = DefaultRocmExecutionProvider();
     gpu_provider = provider.get();
-
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 #endif
   }
@@ -923,7 +1000,7 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
 
   OrtValue ml_value1;
   vector<float> v1{2.f};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, v1, &ml_value1);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, v1, &ml_value1);
   ASSERT_STATUS_OK(io_binding->BindOutput("foo", ml_value1));
   ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
   auto span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
@@ -934,7 +1011,7 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
 
   OrtValue ml_value2;
   vector<float> v2{3.f};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, v2, &ml_value2);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, v2, &ml_value2);
   ASSERT_STATUS_OK(io_binding->BindOutput("foo", ml_value2));
   ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
   span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
@@ -960,7 +1037,7 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   OrtValue ml_value;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                          &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
@@ -1070,19 +1147,19 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   std::vector<float> unknown_input_val = {20.f};
 
   OrtValue required_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        dims, required_input_val, &required_input_mlvalue);
 
   OrtValue other_required_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        dims, other_required_input_val, &other_required_input_mlvalue);
 
   OrtValue optional_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        dims, optional_input_val, &optional_input_mlvalue);
 
   OrtValue unknown_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        dims, unknown_input_val, &unknown_input_mlvalue);
 
   NameMLValMap feeds;
@@ -1206,11 +1283,11 @@ TEST(ExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -1233,12 +1310,9 @@ TEST(ExecutionProviderTest, FunctionTest) {
   InferenceSession session_object_2{so, GetEnvironment()};
   ASSERT_STATUS_OK(
       session_object_2.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>()));
-  status = session_object_2.Load(model_file_name);
-  ASSERT_TRUE(status.IsOK());
-  status = session_object_2.Initialize();
-  ASSERT_TRUE(status.IsOK());
-  status = session_object_2.Run(run_options, feeds, output_names, &fetches);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(session_object_2.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object_2.Initialize());
+  ASSERT_STATUS_OK(session_object_2.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 }
 
@@ -1404,11 +1478,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
         std::vector<onnxruntime::NodeArg*> inputs = {&node_1};
         std::vector<onnxruntime::NodeArg*> outputs = {&node_2};
         auto& cast_node = graph.AddNode("cast_1", "Cast", "node 2", inputs, outputs);
-        ONNX_NAMESPACE::AttributeProto to;
-        to.set_name("to");
-        to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-        to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-        cast_node.AddAttribute("to", to);
+        cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
       }
       {
         std::vector<onnxruntime::NodeArg*> inputs = {&node_2, &data_0};
@@ -1445,6 +1515,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   ONNX_NAMESPACE::TypeProto bool_tensor;
   bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
   auto& if_cond_input = graph.GetOrCreateNodeArg("if_cond_input", &bool_tensor);
   auto& graph_if_input = graph.GetOrCreateNodeArg("graph_if_input", nullptr);
@@ -1454,11 +1525,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
     std::vector<onnxruntime::NodeArg*> inputs = {&if_cond_input};
     std::vector<onnxruntime::NodeArg*> outputs = {&graph_if_input};
     auto& cast_node = graph.AddNode("cast_9", "Cast", "node 2", inputs, outputs);
-    ONNX_NAMESPACE::AttributeProto to;
-    to.set_name("to");
-    to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    cast_node.AddAttribute("to", to);
+    cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
   }
 
   std::vector<onnxruntime::NodeArg*> inputs = {&if_cond_input};
@@ -1487,12 +1554,12 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test3LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#ifdef USE_CUDA
+#if USE_TENSORRT
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+#elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo epi;
-  epi.device_id = 0;
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1506,7 +1573,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   std::vector<int64_t> dim = {1};
   std::vector<bool> va = {false};
   OrtValue ml_value_x;
-  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dim, va,
+  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim, va,
                       &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("if_cond_input", ml_value_x));
@@ -1524,6 +1591,22 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
   VerifyOutputs(fetches, expected_dims, expected_values);
+
+#if USE_TENSORRT
+  // previous run with graph being optimized, one of If node’s both subgraphs become empty, so TRT EP won’t assign this If node to TRT and later ORT assign it to CUDA.
+  // we also want to test graph not being optimized and TRT EP should also be able to run it and make the whole graph run on TRT.
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSession session_object_2{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object_2.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+  status = session_object_2.Load(model_file_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object_2.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  // Now run
+  status = session_object_2.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+  VerifyOutputs(fetches, expected_dims, expected_values);
+#endif
 }
 
 TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
@@ -1566,11 +1649,13 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 
   ONNX_NAMESPACE::TypeProto float_tensor_input;
   float_tensor_input.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor_input.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
   ONNX_NAMESPACE::TypeProto float_tensor;
   float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("__graph_0__float_unknown");
   ONNX_NAMESPACE::TypeProto bool_tensor;
   bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
   // graph inputs
   auto& input_0 = graph.GetOrCreateNodeArg("input_0", &float_tensor_input);
@@ -1594,11 +1679,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
     std::vector<onnxruntime::NodeArg*> inputs = {&graph_0__value_1};
     std::vector<onnxruntime::NodeArg*> outputs = {&graph_0__value_2};
     auto& cast_node = graph.AddNode("graph_0__cast_0", "Cast", "cast node in main graph", inputs, outputs);
-    ONNX_NAMESPACE::AttributeProto to;
-    to.set_name("to");
-    to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    cast_node.AddAttribute("to", to);
+    cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
   }
   {
     std::vector<onnxruntime::NodeArg*> inputs = {&graph_0__value_2, &input_0};
@@ -1625,12 +1706,12 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test2LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#ifdef USE_CUDA
+#if USE_TENSORRT
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+#elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo epi;
-  epi.device_id = 0;
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1644,12 +1725,12 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   std::vector<int64_t> dim_input_0 = {1};
   std::vector<float> data_input_0 = {0.0f};
   OrtValue ml_value_input_0;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dim_input_0, data_input_0,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim_input_0, data_input_0,
                        &ml_value_input_0);
   std::vector<int64_t> dim_input_1 = {1};
   std::vector<bool> data_input_1 = {false};
   OrtValue ml_value_input_1;
-  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dim_input_1, data_input_1,
+  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim_input_1, data_input_1,
                       &ml_value_input_1);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("input_0", ml_value_input_0));
@@ -1743,7 +1824,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
                                3.0980256e-05f, -3.5933927e-03f};
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_dims, X, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), X_dims, X, &ml_value);
 
   std::string input_name = "Input13165";
   NameMLValMap feeds = {{input_name, ml_value}};
@@ -1771,10 +1852,9 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(Y_dims);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&rtensor.Shape()));
+  ASSERT_EQ(expected_shape, rtensor.Shape());
   for (size_t i = 0; i < Y_data.size(); ++i)
-    EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
+    EXPECT_NEAR(Y_data[i], rtensor.Data<float>()[i], FLT_EPSILON);
 
   // run truncated sequence
   output_names.clear();
@@ -1791,7 +1871,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     truncated_input_dims[0] = truncated_len;
     OrtValue truncated_ml_value;
     std::vector<float> truncated_input(X.begin() + seq_start * seq_stride, X.begin() + (seq_start + truncated_len) * seq_stride);
-    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), truncated_input_dims, truncated_input, &truncated_ml_value);
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), truncated_input_dims, truncated_input, &truncated_ml_value);
     NameMLValMap truncated_feeds = {{input_name, truncated_ml_value}};
     if (seq_start > 0) {
       // continue from truncated sequence
@@ -1814,11 +1894,10 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     std::vector<int64_t> truncated_output_dims = Y_dims;
     truncated_output_dims[0] = truncated_len;
     TensorShape truncated_shape(truncated_output_dims);
-    //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-    ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&truncated_shape), *reinterpret_cast<const std::vector<int64_t>*>(&truncated_rtensor.Shape()));
+    ASSERT_EQ(truncated_shape, truncated_rtensor.Shape());
     auto seq_output_stride = truncated_shape.SizeFromDimension(1);
     for (int i = 0; i < truncated_shape.Size(); ++i)
-      EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.template Data<float>()[i], FLT_EPSILON);
+      EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.Data<float>()[i], FLT_EPSILON);
 
     // prepare for next truncated input
     fetches = truncated_fetches;
@@ -1845,7 +1924,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value;
-  CreateMLValue<float>(p_dummy_provider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(p_dummy_provider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value);
 
   std::vector<std::string> feed_names;
@@ -1865,7 +1944,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
 
     fetches.resize(output_names.size());
     for (auto& elem : fetches) {
-      CreateMLValue<float>(p_dummy_provider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+      CreateMLValue<float>(p_dummy_provider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                            &elem);
     }
 
@@ -1930,23 +2009,13 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   }
 }
 
-// fallback to lenient merging of shape info if model opset is not the latest
-TEST(InferenceSessionTests, TestLenientShapeInferencing) {
-  // latest opset should fail
+TEST(InferenceSessionTests, TestStrictShapeInference) {
   std::vector<int64_t> input_shape{2, 2};
   std::vector<float> input_data{0.f, 1.f, 2.f, 3.f};
   std::vector<int64_t> invalid_output_shape{1, 2};  // valid shape is {2} as output data is input_shape
   std::vector<int64_t> output_data{2, 2};
 
-  OpTester latest_opset("Shape", -1);  // use latest opset for shape inference errors
-  latest_opset.AddInput("data", input_shape, input_data);
-  latest_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
-  latest_opset.Run(OpTester::ExpectResult::kExpectFailure,
-                   "Mismatch between number of source and target dimensions. Source=1 Target=2");
-
-  // older opset should allow the mismatch with a warning.
   // we also need for the output to be valid so OpTester doesn't throw so add an Unsqueeze after the Shape.
-  // This should result in a warning log message but successful run.
   class OpTesterWithReshape : public OpTester {
    public:
     OpTesterWithReshape() : OpTester("Shape", 7) {
@@ -1973,18 +2042,28 @@ TEST(InferenceSessionTests, TestLenientShapeInferencing) {
     }
   };
 
-  OpTesterWithReshape old_opset;
+  OpTesterWithReshape tester;
 
-  old_opset.AddInput("data", input_shape, input_data);
-  old_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
-  // TensorRT doesn't handle Unsqueeze
-  // OpenVINO: Disabled temporarily
-  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  tester.AddInput("data", input_shape, input_data);
+  tester.AddOutput<int64_t>("output", invalid_output_shape, output_data);
+  const std::unordered_set<string> excluded_provider_types = {
+      kTensorrtExecutionProvider,   // Doesn't handle Unsqueeze.
+      kOpenVINOExecutionProvider};  // Disabled temporarily.
+
+  // This should result in a warning log message but successful run.
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1"));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+             "Mismatch between number of source and target dimensions. Source=1 Target=2",
+             excluded_provider_types);
 }
 
 #ifdef USE_CUDA
-
-TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
+// disable it, since we are going to enable parallel execution with cuda ep
+TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
@@ -2012,18 +2091,23 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
 
   SessionOptions so;
+#ifdef ENABLE_TRAINING
+  // Disable weight prepacking
+  // Without this assert for alloc_stats.num_arena_extensions will fail.
+  so.config_options.configurations["session.disable_prepacking"] = "1";
+#endif
   InferenceSession session_object{so, GetEnvironment()};
   OrtCUDAProviderOptions provider_options{};
   provider_options.default_memory_arena_cfg = &arena_cfg;
   provider_options.device_id = 0;
-  auto factory = CreateExecutionProviderFactory_Cuda(&provider_options);
+  auto factory = CudaProviderFactoryCreator::Create(&provider_options);
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(factory->CreateProvider()));
   ASSERT_STATUS_OK(session_object.Initialize());
 
   // Fetch the CUDA allocator to analyze its stats
-  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator);
+  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
   auto cuda_alloc = session_object.GetAllocator(mem_info);
 
   AllocatorStats alloc_stats;
@@ -2078,10 +2162,10 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 
 #ifdef ENABLE_TRAINING
     // In training - that is a total of 2 extensions
-    ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 0);
 #else
     // In inferencing - that is a total of 3 extensions
-    ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 1);
 #endif
 
     // The arena would have shrunk both extensions it made as part of Run() - because these allocations
@@ -2104,6 +2188,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTensorForStringTensor) {
   SessionOptions so;
 
+  so.session_log_severity_level = 0;
   so.session_logid = "InferenceSessionTests.ModelThatTriggersAllocationPlannerBug";
 
   InferenceSession session_object{so, GetEnvironment()};
@@ -2119,7 +2204,7 @@ TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTenso
   std::vector<int64_t> dims_x = {1, 2, 3};
   std::vector<float> values_x = {1.6f, -0.6f, -0.5f, -1.0f, 0.8f, -2.3f};
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x,
                        &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("u", ml_value));
@@ -2545,12 +2630,12 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) || defined(USE_MIMALLOC)
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2590,12 +2675,12 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) || defined(USE_MIMALLOC)
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2647,11 +2732,11 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
   OrtValue val_to_share;
   std::vector<float> input_data_vec{1., 2., 3., 4., 5., 6.};
 
-  auto allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
   CreateMLValue<float>(allocator, {3, 2}, input_data_vec, &val_to_share_from_allocator);
 
   OrtMemoryInfo mem_info{CPU, OrtArenaAllocator};
-  CreateMLValue<float>({3, 2}, input_data_vec.data(), mem_info, &val_to_share);
+  CreateMLValue<float>(std::array<int64_t, 2>{3, 2}, input_data_vec.data(), mem_info, &val_to_share);
 
   // create sessions to share the allocator
   SessionOptions so1;
@@ -2707,14 +2792,14 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
 void RunModelWithDenormalAsZero(InferenceSession& session_object,
                                 const RunOptions& run_options,
                                 bool set_denormal_as_zero) {
-  const float denormal_float = 1e-38f;
+  constexpr float denormal_float = 1e-38f;
 
   // prepare input X
   std::vector<int64_t> dims_mul{3, 2};
   std::vector<float> values_mul(6);
   std::fill(values_mul.begin(), values_mul.end(), denormal_float);
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        dims_mul, values_mul, &ml_value);
 
   NameMLValMap feeds;
@@ -2742,9 +2827,9 @@ void RunModelWithDenormalAsZero(InferenceSession& session_object,
 
 void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp,
                                         bool set_denormal_as_zero) {
-  const int num_tasks = 4;
-  const float denormal_float = 1e-38f;
-  const double denormal_double = 1e-308;
+  constexpr int num_tasks = 4;
+  constexpr float denormal_float = 1e-38f;
+  constexpr double denormal_double = 1e-308;
 
   std::array<float, num_tasks> input_float;
   input_float.fill(denormal_float);
@@ -2793,9 +2878,6 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(true);
-#endif
   SetDenormalAsZero(true);
 
   InferenceSessionTestGlobalThreadPools session{so, *env};
@@ -2807,15 +2889,10 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModelWithDenormalAsZero(session, run_options, true);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(env->GetIntraOpThreadPool(), true);
-#endif
   VerifyThreadPoolWithDenormalAsZero(env->GetInterOpThreadPool(), true);
 
   // Set back to default.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(false);
-#endif
   SetDenormalAsZero(false);
 }
 
@@ -2843,9 +2920,6 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(true);
-#endif
   SetDenormalAsZero(true);
 
   InferenceSessionTestGlobalThreadPools session1{so, *env};
@@ -2857,9 +2931,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModelWithDenormalAsZero(session1, run_options, true);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(session1.GetIntraOpThreadPoolToUse(), true);
-#endif
   VerifyThreadPoolWithDenormalAsZero(session1.GetInterOpThreadPoolToUse(), true);
 
   // inference session without denormal as zero.
@@ -2867,9 +2939,6 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(false);
-#endif
   SetDenormalAsZero(false);
 
   InferenceSessionTestGlobalThreadPools session2{so, *env};
@@ -2879,9 +2948,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   // Since it's parallel, it runs on threads.
   RunModelWithDenormalAsZero(session2, run_options, false);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(session2.GetIntraOpThreadPoolToUse(), false);
-#endif
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 

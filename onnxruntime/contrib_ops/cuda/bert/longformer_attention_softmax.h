@@ -13,27 +13,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
-// This is fast cuda kernels for longformer attention softmax.
-// It uses two temporary matrix of BxNxSxS, and consumes more memory when sequence length is large.
+#pragma once
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// Launch the softmax kernel for non compact memory.
-bool launchSoftmaxFastKernel(
+// Launch the softmax kernels that does not use compact memory.
+Status LaunchLongformerSoftmaxSimpleKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,              // softmax space
     const void* q,                // transposed Q with shape (B, N, S, H)
     const void* k,                // transposed K with shape (B, N, S, H)
     const void* v,                // transposed V with shape (B, N, S, H)
-    const void* attention_mask,   // attention mask with shape (B, S), with value 0.0 not masked, and -10000.0 masked.
+    const void* attention_mask,   // attention mask with shape (B, S), with value 0.0 not masked, and -10000.0 or torch.finfo(dtype).min masked.
     const void* global_q,         // Q for global tokens with shape (B, N, S, H)
     const void* global_k,         // K for global tokens with shape (B, N, S, H)
     const void* global_v,         // V for global tokens with shape (B, N, S, H)
-    const int* global_attention,  // global attention with shape (B, S), with value 0 for local attention and 1 for global attention.
+    const int* global_attention,  // global attention flags with shape (B, S), with value 0 for local and 1 for global.
     const int* global_index,      // Global index with shape (B, S)
     const int* batch_global_num,  // Number of global tokens per batch with shape (B, 1)
     void* pinned_buffer,          // Pinned memory in CPU. Number of global tokens per batch with shape (B, 1)

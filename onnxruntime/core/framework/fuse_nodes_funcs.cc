@@ -22,7 +22,7 @@ Status FuncManager::AddFuncInfo(const std::string& name, NodeComputeInfo&& compu
   return Status::OK();
 }
 
-Status FuncManager::GetFuncs(const std::string& name, NodeComputeInfo*& compute_info) const {
+Status FuncManager::GetFuncs(const std::string& name, const NodeComputeInfo*& compute_info) {
   auto it = fused_funcs_->find(name);
   if (it == fused_funcs_->end())
     return Status(common::ONNXRUNTIME, common::FAIL, "func info for node: " + name + " not found.");
@@ -30,7 +30,7 @@ Status FuncManager::GetFuncs(const std::string& name, NodeComputeInfo*& compute_
   if (!it->second.compute_info.compute_func) {
     //load from path
     void* handle = nullptr;
-    ORT_RETURN_IF_ERROR(lib_loader_->LoadExternalLib(it->second.dso_path, &handle));
+    ORT_RETURN_IF_ERROR(lib_loader_.LoadExternalLib(it->second.dso_path, &handle));
     void* create_func_symbol_handle = nullptr;
     ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle,
                                                             kCreateStateFuncSymbol + name,

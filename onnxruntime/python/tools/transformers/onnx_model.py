@@ -1,16 +1,17 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
-from typing import List, Tuple, Dict
 import logging
 import os
 import sys
-from pathlib import Path
-import numpy as np
 from collections import deque
-from onnx import onnx_pb, AttributeProto, ModelProto, TensorProto, NodeProto, numpy_helper, helper, external_data_helper, save_model
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+from float16 import convert_float_to_float16
+from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, helper, numpy_helper, save_model
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
@@ -21,20 +22,26 @@ class OnnxModel:
         self.initialize(model)
 
     def initialize(self, model):
-        self.model = model
+        self.model: ModelProto = model
         self._node_name_suffix: Dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
-        self.shape_infer_helper = None
-        self.all_graphs = None
+        self.shape_infer_helper: SymbolicShapeInferenceHelper = None
+        self.enable_shape_infer: bool = True
+        self.all_graphs: Optional[List[GraphProto]] = None
 
-    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):
-        if self.shape_infer_helper is None or update:
-            self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+    def disable_shape_inference(self):
+        self.enable_shape_infer = False
 
-        try:
-            if self.shape_infer_helper.infer(dynamic_axis_mapping):
-                return self.shape_infer_helper
-        except:
-            print("failed in shape inference", sys.exc_info()[0])
+    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):  # noqa: B006
+        if self.enable_shape_infer:
+            if self.shape_infer_helper is None or update:
+                self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+
+            try:
+                if self.shape_infer_helper.infer(dynamic_axis_mapping):
+                    return self.shape_infer_helper
+            except Exception:
+                self.enable_shape_infer = False  # disable shape inference to suppress same error message.
+                print("failed in shape inference", sys.exc_info()[0])
 
         return None
 
@@ -42,17 +49,19 @@ class OnnxModel:
         input_name_to_nodes = {}
         for node in self.nodes():
             for input_name in node.input:
-                if input_name not in input_name_to_nodes:
-                    input_name_to_nodes[input_name] = [node]
-                else:
-                    input_name_to_nodes[input_name].append(node)
+                if input_name:  # could be empty when it is optional
+                    if input_name not in input_name_to_nodes:
+                        input_name_to_nodes[input_name] = [node]
+                    else:
+                        input_name_to_nodes[input_name].append(node)
         return input_name_to_nodes
 
     def output_name_to_node(self):
         output_name_to_node = {}
         for node in self.nodes():
             for output_name in node.output:
-                output_name_to_node[output_name] = node
+                if output_name:  # could be empty when it is optional
+                    output_name_to_node[output_name] = node
         return output_name_to_node
 
     def nodes(self):
@@ -76,11 +85,11 @@ class OnnxModel:
             for node in graph.node:
                 for attr in node.attribute:
                     if attr.type == AttributeProto.AttributeType.GRAPH:
-                        assert (isinstance(attr.g, onnx_pb.GraphProto))
+                        assert isinstance(attr.g, GraphProto)
                         graph_queue.append(attr.g)
                     if attr.type == AttributeProto.AttributeType.GRAPHS:
                         for g in attr.graphs:
-                            assert (isinstance(g, onnx_pb.GraphProto))
+                            assert isinstance(g, GraphProto)
                             graph_queue.append(g)
         return self.all_graphs
 
@@ -121,6 +130,8 @@ class OnnxModel:
         for graph in self.graphs():
             if node in graph.node:
                 graph.node.remove(node)
+                return
+        logger.warning("Failed to remove node %s", node)  # It might be a bug to hit this line.
 
     def remove_nodes(self, nodes_to_remove):
         for node in nodes_to_remove:
@@ -163,7 +174,6 @@ class OnnxModel:
             if node.input[j] == old_input_name:
                 node.input[j] = new_input_name
 
-    # This function is deprecated since we use onnxconverter-common
     def replace_input_of_all_nodes(self, old_input_name, new_input_name):
         for node in self.model.graph.node:
             OnnxModel.replace_node_input(node, old_input_name, new_input_name)
@@ -175,8 +185,13 @@ class OnnxModel:
             if node.output[j] == old_output_name:
                 node.output[j] = new_output_name
 
-    # This function is deprecated since we use onnxconverter-common
     def replace_output_of_all_nodes(self, old_output_name, new_output_name):
+        # This function shall be used carefully. For example:
+        #       Add --[old_name]--> Cast ---> [new_name]
+        #        |
+        #        +----[old_name]--> Transpose -->
+        # If we want to remove the Cast node: replace output of Add to new_name is not enough;
+        # The input of Transpose shall also be updated to new_name.
         for node in self.model.graph.node:
             OnnxModel.replace_node_output(node, old_output_name, new_output_name)
 
@@ -195,7 +210,7 @@ class OnnxModel:
         return nodes
 
     def get_children(self, node, input_name_to_nodes=None):
-        if (input_name_to_nodes is None):
+        if input_name_to_nodes is None:
             input_name_to_nodes = self.input_name_to_nodes()
 
         children = []
@@ -228,8 +243,8 @@ class OnnxModel:
 
         return output_name_to_node[input]
 
-    def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=[]):
-        '''
+    def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=[]):  # noqa: B006
+        """
         Find parent node based on constraints on op_type.
 
         Args:
@@ -241,7 +256,7 @@ class OnnxModel:
         Returns:
             parent: The matched parent node. None if not found.
             index: The input index of matched parent node. None if not found.
-        '''
+        """
         for i, input in enumerate(node.input):
             if input in output_name_to_node:
                 parent = output_name_to_node[input]
@@ -251,16 +266,19 @@ class OnnxModel:
                     logger.debug(f"To find first {parent_op_type}, current {parent.op_type}")
         return None, None
 
-    def match_parent(self,
-                     node,
-                     parent_op_type,
-                     input_index=None,
-                     output_name_to_node=None,
-                     exclude=[],
-                     return_indice=None):
-        '''
+    def match_parent(
+        self,
+        node,
+        parent_op_type,
+        input_index=None,
+        output_name_to_node=None,
+        exclude=[],  # noqa: B006
+        return_indice=None,
+    ):
+        """
         Find parent node based on constraints on op_type and index.
-        When input_index is None, we will find the first parent node based on constraints, and return_indice will be appended the corresponding input index.
+        When input_index is None, we will find the first parent node based on constraints,
+        and return_indice will be appended the corresponding input index.
 
         Args:
             node (str): current node name.
@@ -272,7 +290,7 @@ class OnnxModel:
 
         Returns:
             parent: The matched parent node.
-        '''
+        """
         assert node is not None
         assert input_index is None or input_index >= 0
 
@@ -300,34 +318,39 @@ class OnnxModel:
 
     def match_parent_paths(self, node, paths, output_name_to_node):
         for i, path in enumerate(paths):
-            assert isinstance(path, List) or isinstance(path, Tuple)
+            assert isinstance(path, (List, Tuple))
             return_indice = []
             matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
             if matched:
                 return i, matched, return_indice
         return -1, None, None
 
-    def match_parent_path(self,
-                          node,
-                          parent_op_types,
-                          parent_input_index,
-                          output_name_to_node=None,
-                          return_indice=None):
-        '''
+    def match_parent_path(
+        self,
+        node,
+        parent_op_types,
+        parent_input_index=None,
+        output_name_to_node=None,
+        return_indice=None,
+    ):
+        """
         Find a sequence of input edges based on constraints on parent op_type and index.
-        When input_index is None, we will find the first parent node based on constraints, and return_indice will be appended the corresponding input index.
+        When input_index is None, we will find the first parent node based on constraints,
+        and return_indice will be appended the corresponding input index.
 
         Args:
             node (str): current node name.
             parent_op_types (str): constraint of parent node op_type of each input edge.
             parent_input_index (list): constraint of input index of each input edge. None means no constraint.
             output_name_to_node (dict): dictionary with output name as key, and node as value.
-            return_indice (list): a list to append the input index when there is no constraint on input index of an edge.
+            return_indice (list): a list to append the input index
+                                  When there is no constraint on input index of an edge.
 
         Returns:
             parents: a list of matched parent node.
-        '''
-        assert (len(parent_input_index) == len(parent_op_types))
+        """
+        if parent_input_index is not None:
+            assert len(parent_input_index) == len(parent_op_types)
 
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
@@ -335,15 +358,22 @@ class OnnxModel:
         current_node = node
         matched_parents = []
         for i, op_type in enumerate(parent_op_types):
-            matched_parent = self.match_parent(current_node,
-                                               op_type,
-                                               parent_input_index[i],
-                                               output_name_to_node,
-                                               exclude=[],
-                                               return_indice=return_indice)
+            matched_parent = self.match_parent(
+                current_node,
+                op_type,
+                parent_input_index[i] if parent_input_index is not None else None,
+                output_name_to_node,
+                exclude=[],
+                return_indice=return_indice,
+            )
             if matched_parent is None:
-                logger.debug(f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
-                             stack_info=True)
+                if parent_input_index is not None:
+                    logger.debug(
+                        f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
+                        stack_info=True,
+                    )
+                else:
+                    logger.debug(f"Failed to match index={i} op_type={op_type}", stack_info=True)
                 return None
 
             matched_parents.append(matched_parent)
@@ -385,14 +415,13 @@ class OnnxModel:
         return None
 
     def get_constant_value(self, output_name):
-        for node in self.get_nodes_by_op_type('Constant'):
+        for node in self.get_nodes_by_op_type("Constant"):
             if node.output[0] == output_name:
                 for att in node.attribute:
-                    if att.name == 'value':
+                    if att.name == "value":
                         return numpy_helper.to_array(att.t)
 
-        # Fall back to intializer since constant folding might have been
-        # applied.
+        # Fall back to intializer since constant folding might have been applied.
         initializer = self.get_initializer(output_name)
         if initializer is not None:
             return numpy_helper.to_array(initializer)
@@ -455,13 +484,12 @@ class OnnxModel:
         return unique_nodes
 
     def tensor_shape_to_list(self, tensor_type):
-        """ Convert tensor shape to list
-        """
+        """Convert tensor shape to list"""
         shape_list = []
         for d in tensor_type.shape.dim:
-            if (d.HasField("dim_value")):
+            if d.HasField("dim_value"):
                 shape_list.append(d.dim_value)  # known dimension
-            elif (d.HasField("dim_param")):
+            elif d.HasField("dim_param"):
                 shape_list.append(d.dim_param)  # unknown dimension with symbolic name
             else:
                 shape_list.append("?")  # shall not happen
@@ -492,94 +520,128 @@ class OnnxModel:
                 return value
         return None
 
+    def remove_cascaded_cast_nodes(self):
+        """Remove Cast node that are followed by another Cast node like  --> Cast --> Cast -->
+        Note that this shall be used carefully since it might introduce semantic change.
+        For example, float -> int -> float could get different value than the original float value.
+        So, it is recommended to used only in post-processing of mixed precision conversion.
+        """
+        output_name_to_node = self.output_name_to_node()
+        removed_count = 0
+        for node in self.nodes():
+            if node.op_type == "Cast":
+                parent = self.get_parent(node, 0, output_name_to_node=output_name_to_node)
+                if parent and parent.op_type == "Cast":
+                    node.input[0] = parent.input[0]
+                    removed_count += 1
+
+        if removed_count > 0:
+            logger.info("Removed %d cascaded Cast nodes", removed_count)
+            self.prune_graph()
+
+    def remove_useless_cast_nodes(self):
+        """Remove cast nodes that are not needed: input and output has same data type."""
+        shape_infer = self.infer_runtime_shape(update=True)
+        if shape_infer is None:
+            logger.info("Skip removing useless cast nodes since shape inference failed.")
+            return
+
+        def get_data_type(input_or_output_name):
+            dtype = self.get_dtype(input_or_output_name)
+            if dtype:
+                return dtype
+            if shape_infer.known_vi_[input_or_output_name].type.tensor_type.HasField("elem_type"):
+                return shape_infer.known_vi_[input_or_output_name].type.tensor_type.elem_type
+            return None
+
+        nodes_to_remove = []
+        for node in self.nodes():
+            if node.op_type == "Cast":
+                input_dtype = get_data_type(node.input[0])
+                output_dtype = get_data_type(node.output[0])
+                if input_dtype and input_dtype == output_dtype:
+                    nodes_to_remove.append(node)
+
+        if nodes_to_remove:
+            graph_input_names = set(self.get_graphs_input_names())
+            graph_output_names = set(self.get_graphs_output_names())
+            for node in nodes_to_remove:
+                if bool(set(node.output) & graph_output_names):
+                    if (not bool(set(node.input) & graph_input_names)) and len(
+                        self.input_name_to_nodes()[node.input[0]]
+                    ) == 1:
+                        self.replace_output_of_all_nodes(node.input[0], node.output[0])
+                    else:
+                        continue
+                else:
+                    self.replace_input_of_all_nodes(node.output[0], node.input[0])
+                self.remove_node(node)
+
+            logger.info("Removed %d Cast nodes with output type same as input", len(nodes_to_remove))
+
     def convert_model_float32_to_float16(self, cast_input_output=True):
         logger.warning(
-            'The function convert_model_float32_to_float16 is deprecated. Use convert_float_to_float16 instead!')
+            "The function convert_model_float32_to_float16 is deprecated. Use convert_float_to_float16 instead!"
+        )
         self.convert_float_to_float16(use_symbolic_shape_infer=True, keep_io_types=cast_input_output)
 
     def convert_float_to_float16(self, use_symbolic_shape_infer=True, **kwargs):
         """Convert a model to half (default) or mixed precision.
-           To use mixed precision, user need specify which graph inputs, outputs, operator type or list of nodes shall keep in float32.
-           By default, we use symbolic shape inference to get shape and type information. If not, ONNX shape inference will be used.
-           Note that symbolic/ONNX shape inference might fail, and the conversion might not proceed without shape and type information.
+           To use mixed precision, user need specify which graph inputs, outputs, operator type
+           or list of nodes shall keep in float32.
+
+           By default, we use symbolic shape inference to get shape and type information.
+           If not, ONNX shape inference will be used.
+
+           Note that symbolic/ONNX shape inference might fail, and the conversion might not proceed
+           without shape and type information.
 
         Args:
-            use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference. Defaults to True.
-            keep_io_types (Union[bool, List[str]], optional): It could be boolean or a list of float32 input/output names. 
-                                                              If True, model inputs/outputs should be left as float32. Defaults to False.
+            use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference.
+                                                       Defaults to True.
+            keep_io_types (Union[bool, List[str]], optional): boolean or a list of float32 input/output names.
+                                                              If True, model inputs/outputs should be left as float32.
+                                                              Defaults to True.
             op_block_list (List[str], optional): List of operator types to leave as float32.
-                                                 Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST` as default.
+                                                 Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST`.
             node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
             force_fp16_initializers(bool): force converting all float initializers to float16.
-                                           Default to false, which will convert only the one needed to avoid precision loss.
+                                           Default to false.
             min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
             max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
         """
         if "keep_io_types" not in kwargs:
             kwargs["keep_io_types"] = True
 
-        def float_to_float16_func():
-            # TODO: import from onnxconverter_common when it is stable
-            #try:
-            #    import onnxconverter_common as oc
-            #    from packaging.version import Version
-            #    if Version(oc.__version__) > Version("1.9.0"):
-            #        from onnxconverter_common.float16 import convert_float_to_float16
-            #        return convert_float_to_float16
-            #except ImportError:
-            #    pass
-
-            from float16 import convert_float_to_float16
-            return convert_float_to_float16
-
-        convert_float_to_float16 = float_to_float16_func()
-
         model = self.model
         if use_symbolic_shape_infer:
-            # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc) are not recognized by onnx shape inference.
-            shape_infer_helper = SymbolicShapeInferenceHelper(model)
+            # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
+            # are not recognized by onnx shape inference.
+            shape_infer_helper = SymbolicShapeInferenceHelper(model, verbose=0)
             model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
 
-        parameters = {'disable_shape_infer': use_symbolic_shape_infer}
-        parameters.update({
-            key: kwargs[key]
-            for key in [
-                'keep_io_types', 'min_positive_val', 'max_finite_val', 'op_block_list', 'node_block_list',
-                'force_fp16_initializers'
-            ] if key in kwargs
-        })
+        parameters = {"disable_shape_infer": use_symbolic_shape_infer}
+        parameters.update(
+            {
+                key: kwargs[key]
+                for key in [
+                    "keep_io_types",
+                    "min_positive_val",
+                    "max_finite_val",
+                    "op_block_list",
+                    "node_block_list",
+                    "force_fp16_initializers",
+                ]
+                if key in kwargs
+            }
+        )
 
         fp16_model = convert_float_to_float16(model, **parameters)
         self.initialize(fp16_model)
 
-        # Convert_float_to_float16 might add Cast(to=10) --> Cast(to=1) when two consequent nodes are computed in FP32.
-        # Below are post-processing that removes those Cast nodes.
-        # Remove first Cast nodes in path like  --> Cast --> Cast -->
-        nodes_to_remove = []
-        for node in self.nodes():
-            if node.op_type == "Cast":
-                parent = self.get_parent(node, 0)
-                if parent and parent.op_type == "Cast":
-                    if self.get_children(parent) == 1:  # cannot be removed if its output is used by multiple nodes
-                        self.replace_input_of_all_nodes(parent.output[0], parent.input[0])
-                        nodes_to_remove.append(parent)
+        self.remove_cascaded_cast_nodes()
 
-        # Remove the second cast node.
-        for node in self.nodes():
-            if node.op_type == "Cast" and OnnxModel.get_node_attribute(node, "to") == int(TensorProto.FLOAT) and \
-                self.get_dtype(node.input[0])  == int(TensorProto.FLOAT):
-
-                if self.find_graph_output(node.output[0]):
-                    self.replace_output_of_all_nodes(node.input[0], node.output[0])
-                else:
-                    self.replace_input_of_all_nodes(node.output[0], node.input[0])
-                nodes_to_remove.append(node)
-
-        self.remove_nodes(nodes_to_remove)
-
-        if nodes_to_remove:
-            self.prune_graph()
-            print(f"removed {len(nodes_to_remove)} Cast nodes from float16 model")
+        self.remove_useless_cast_nodes()
 
     def create_node_name(self, op_type, name_prefix=None):
         """Create a unique node name that starts with a prefix (default is operator type).
@@ -601,11 +663,12 @@ class OnnxModel:
         if prefix in self._node_name_suffix:
             suffix = self._node_name_suffix[prefix] + 1
         else:
-            # Check existed node name only once for a prefix as we assume create_node_name is called for every new node in fusion.
+            # Check existed node name only once for a prefix
+            # as we assume create_node_name is called for every new node in fusion.
             for node in self.nodes():
                 if node.name and node.name.startswith(prefix):
                     try:
-                        index = int(node.name[len(prefix):])
+                        index = int(node.name[len(prefix) :])
                         suffix = max(index + 1, suffix)
                     except ValueError:
                         continue
@@ -678,7 +741,7 @@ class OnnxModel:
     def remove_unused_constant(self):
         input_name_to_nodes = self.input_name_to_nodes()
 
-        #remove unused constant
+        # remove unused constant
         unused_nodes = []
         nodes = self.nodes()
         for node in nodes:
@@ -690,16 +753,20 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")
 
-    def prune_graph(self, outputs=None):
+    def prune_graph(self, outputs=None, allow_remove_graph_inputs=True):
         """
-        Prune graph to keep only required outputs. It removes unnecessary inputs and nodes.
-        Nodes are not linked (directly or indirectly) to any required output will be removed.
+        Prune graph to keep only required outputs. It removes unnecessary nodes that are not linked
+        (directly or indirectly) to any required output.
+
+        There is also an option to remove graph inputs that are not used to generate any required output.
 
         Args:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
+            allow_remove_graph_inputs (bool): allow remove graph inputs.
         """
+
         if len(self.graphs()) > 1:
-            logger.debug(f"Skip prune_graph since graph has subgraph")
+            logger.debug("Skip prune_graph since graph has subgraph")
             return
 
         if outputs is None:
@@ -732,26 +799,33 @@ class OnnxModel:
             self.model.graph.output.remove(output)
 
         # remove inputs not used by any node.
-        input_name_to_nodes = self.input_name_to_nodes()
         input_to_remove = []
-        for input in self.model.graph.input:
-            if input.name not in input_name_to_nodes:
-                input_to_remove.append(input)
-        for input in input_to_remove:
-            self.model.graph.input.remove(input)
+        if allow_remove_graph_inputs:
+            input_name_to_nodes = self.input_name_to_nodes()
+            for input in self.model.graph.input:
+                if input.name not in input_name_to_nodes:
+                    input_to_remove.append(input)
+            for input in input_to_remove:
+                self.model.graph.input.remove(input)
 
         if input_to_remove or output_to_remove or nodes_to_remove:
-            logger.info("Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
-                len(input_to_remove), len(output_to_remove), len(nodes_to_remove)))
+            removed = []
+            if input_to_remove:
+                removed.append(f"{len(input_to_remove)} inputs")
+            if output_to_remove:
+                removed.append(f"{len(output_to_remove)} outputs")
+            if nodes_to_remove:
+                removed.append(f"{len(nodes_to_remove)} nodes")
+            logger.info("Removed %s", ", ".join(removed))
 
         self.update_graph()
 
-    def update_graph(self, verbose=False):
+    def update_graph(self, verbose=False, allow_remove_graph_inputs=False):
         graph = self.model.graph
 
         remaining_input_names = []
         for node in graph.node:
-            if node.op_type in ['Loop', 'Scan', 'If']:
+            if node.op_type in ["Loop", "Scan", "If"]:
                 # TODO: handle inner graph
                 logger.debug(f"Skip update_graph since graph has operator: {node.op_type}")
                 return
@@ -764,11 +838,12 @@ class OnnxModel:
 
         # remove graph input that is not used
         inputs_to_remove = []
-        for input in graph.input:
-            if input.name not in remaining_input_names:
-                inputs_to_remove.append(input)
-        for input in inputs_to_remove:
-            graph.input.remove(input)
+        if allow_remove_graph_inputs:
+            for input in graph.input:
+                if input.name not in remaining_input_names:
+                    inputs_to_remove.append(input)
+            for input in inputs_to_remove:
+                graph.input.remove(input)
 
         names_to_remove = [input.name for input in inputs_to_remove]
         logger.debug(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")
@@ -801,102 +876,135 @@ class OnnxModel:
                     for impacted_node in input_name_to_nodes[output_to_remove]:
                         if impacted_node not in nodes_to_remove:
                             logger.debug(
-                                f"it is not safe to remove nodes since output {output_to_remove} is used by {impacted_node}"
+                                "it is not safe to remove nodes since output %s is used by %s",
+                                output_to_remove,
+                                impacted_node,
                             )
                             return False
         return True
 
     @staticmethod
-    def graph_topological_sort(graph):
-        deps_count = [0] * len(graph.node)  # dependency count of each node
-        deps_to_nodes = {}  # input to node indice
+    def graph_topological_sort(graph, is_deterministic=False):
+        deps_set = set()  # dependency set of all node
+        sorted_node_set = set()  # sorted node set
         sorted_nodes = []  # initialize sorted_nodes
-        for node_idx, node in enumerate(graph.node):
-            # CANNOT use len(node.input) directly because input can be optional
-            deps_count[node_idx] = sum(1 for _ in node.input if _)
-            if deps_count[node_idx] == 0:  # Constant doesn't depend on any inputs
-                sorted_nodes.append(graph.node[node_idx])
-                continue
 
-            for input_name in node.input:
-                if input_name not in deps_to_nodes:
-                    deps_to_nodes[input_name] = [node_idx]
-                else:
-                    deps_to_nodes[input_name].append(node_idx)
-
-        # Note: this logic only applies to top level graph since a sub graph could use intializer from parent graph
         initializer_names = [init.name for init in graph.initializer]
         graph_input_names = [input.name for input in graph.input]
         input_names = initializer_names + graph_input_names
-        input_names.sort()
-        prev_input_name = None
+
+        if is_deterministic:
+            input_names.sort()
+
         for input_name in input_names:
-            if prev_input_name == input_name:
-                continue
+            deps_set.add(input_name)
 
-            prev_input_name = input_name
-            if input_name in deps_to_nodes:
-                for node_idx in deps_to_nodes[input_name]:
-                    deps_count[node_idx] = deps_count[node_idx] - 1
-                    if deps_count[node_idx] == 0:
-                        sorted_nodes.append(graph.node[node_idx])
+        sorted_node_set_len = -1
+        graph_nodes = graph.node if not is_deterministic else sorted(graph.node, key=lambda x: x.name)
+        last_node_name = None
+        while len(sorted_node_set) != len(graph_nodes):
+            if len(sorted_node_set) == sorted_node_set_len:
+                break
+            sorted_node_set_len = len(sorted_node_set)
+            for node_idx, node in enumerate(graph_nodes):
+                if node_idx in sorted_node_set:
+                    continue
+                input_count = sum(1 for _ in node.input if _)
+                if input_count == 0:
+                    sorted_nodes.append(node)
+                    sorted_node_set.add(node_idx)
+                    for output in node.output:
+                        deps_set.add(output)
+                    continue
+                failed = False
+                for input_name in node.input:
+                    if input_name != "" and input_name not in deps_set:
+                        failed = True
+                        last_node_name = node.name
+                if not failed:
+                    sorted_nodes.append(node)
+                    sorted_node_set.add(node_idx)
+                    for output in node.output:
+                        deps_set.add(output)
+                else:
+                    continue
 
-        start = 0
-        end = len(sorted_nodes)
+        if len(sorted_node_set) != len(graph.node):
+            raise RuntimeError(
+                f"Graph is not a DAG: len(sorted_node_set)={len(sorted_node_set)}, len(graph.node)={len(graph.node)}, failed at node {last_node_name}"
+            )
 
-        while start < end:
-            for output in sorted_nodes[start].output:
-                if output in deps_to_nodes:
-                    for node_idx in deps_to_nodes[output]:
-                        deps_count[node_idx] = deps_count[node_idx] - 1
-                        if deps_count[node_idx] == 0:
-                            sorted_nodes.append(graph.node[node_idx])
-                            end = end + 1
-            start = start + 1
-
-        assert (end == len(graph.node)), "Graph is not a DAG"
-        graph.ClearField('node')
+        graph.ClearField("node")
         graph.node.extend(sorted_nodes)
 
-    def topological_sort(self):
-        #TODO: support graph_topological_sort() in subgraphs
-        #for graph in self.graphs():
+    def topological_sort(self, is_deterministic=False):
+        # TODO: support graph_topological_sort() in subgraphs
+        # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
-        OnnxModel.graph_topological_sort(self.model.graph)
+        OnnxModel.graph_topological_sort(self.model.graph, is_deterministic)
 
-    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
-        logger.info(f"Sort graphs in topological order")
-        self.topological_sort()
-
+    @staticmethod
+    def save(
+        model,
+        output_path,
+        save_as_external_data=False,
+        all_tensors_to_one_file=True,
+        size_threshold=1024,
+        convert_attribute=False,
+    ):
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-        if output_path.endswith(".json"):  # Output text for testing small model.
-            assert isinstance(self.model, ModelProto)
-            with open(output_path, "w") as out:
-                out.write(str(self.model))
-        else:
+        # Add ms domain if needed
+        ms_opset = [opset for opset in model.opset_import if opset.domain == "com.microsoft"]
+        # Check whether there is custom op in top level graph (our fusion is on top level right now).
+        # May need to extend to subgraph if our fusion are extended to subgraphs.
+        ms_node = [node for node in model.graph.node if node.domain == "com.microsoft"]
+        if ms_node and not ms_opset:
+            opset = model.opset_import.add()
+            opset.version = 1
+            opset.domain = "com.microsoft"
+
+        if save_as_external_data:
             # Save model to external data, which is needed for model size > 2GB
-            if use_external_data_format:
-                output_dir = Path(output_path).parent
-                output_dir.mkdir(parents=True, exist_ok=True)
-                location = Path(output_path).name + ".data" if all_tensors_to_one_file else None
+            output_dir = Path(output_path).parent
+            output_dir.mkdir(parents=True, exist_ok=True)
+            external_data_path = output_path + ".data"
+            location = Path(external_data_path).name if all_tensors_to_one_file else None
 
-                # Show warnings of potential confliction of existing external data file.
-                if all_tensors_to_one_file:
-                    if os.path.exists(location):
-                        logger.warning(
-                            f"External data file ({location}) existed. Please remove the file and try again.")
-                else:
-                    if os.listdir(output_dir):
-                        logger.warning(
-                            f"Output directory ({output_dir}) for external data is not empty. Please try again with a new directory."
-                        )
+            if os.path.exists(output_path):
+                logger.info(f"Delete the existed onnx file: {output_path}")
+                os.remove(output_path)
 
-                external_data_helper.convert_model_to_external_data(self.model,
-                                                                    all_tensors_to_one_file=all_tensors_to_one_file,
-                                                                    location=location)
-            save_model(self.model, output_path)
+            if all_tensors_to_one_file:
+                if os.path.exists(external_data_path):
+                    # Delete the external data file. Otherwise, data will be appended to existing file.
+                    logger.info(f"Delete the existed external data file: {external_data_path}")
+                    os.remove(external_data_path)
+            else:
+                if os.listdir(output_dir):
+                    raise RuntimeError(f"Output directory ({output_dir}) for external data is not empty.")
 
+            save_model(
+                model,
+                output_path,
+                save_as_external_data=True,
+                all_tensors_to_one_file=all_tensors_to_one_file,
+                location=location,
+                size_threshold=size_threshold,
+                convert_attribute=convert_attribute,
+            )
+        else:
+            save_model(model, output_path)
+
+    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
+        logger.info("Sort graphs in topological order")
+        self.topological_sort()
+
+        # Note: After the model is saved to another directory with external data,
+        #       You need reload the onnx model if you want to read tensor from self.model object.
+        #       It is because the base directory is not updated for self.model object so attempt to read tensor data
+        #       might encounter error since external data cannot be located.
+        OnnxModel.save(self.model, output_path, use_external_data_format, all_tensors_to_one_file)
         logger.info(f"Model saved to {output_path}")
 
     def get_graph_inputs_excluding_initializers(self):
@@ -922,3 +1030,100 @@ class OnnxModel:
             if opset.domain in ["", "ai.onnx"]:
                 return opset.version
         raise RuntimeError("ONNX model has no opset for default domain")
+
+    def get_operator_statistics(self, include_domain=False):
+        """
+        Returns node count of operators.
+        """
+        op_count = {}
+        for node in self.nodes():
+            op = (node.domain + ":" if include_domain and node.domain else "") + node.op_type
+            op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
+
+        logger.info(f"Operators:{op_count}")
+        return op_count
+
+    @staticmethod
+    def has_same_value(tensor1: TensorProto, tensor2: TensorProto) -> bool:
+        """Returns True when two tensors have same value.
+           Note that name can be different.
+
+        Args:
+            tensor1 (TensorProto): initializer 1
+            tensor2 (TensorProto): initializer 2
+
+        Returns:
+            bool: True when two intializers has same value.
+        """
+        if tensor1.data_type != tensor2.data_type or tensor1.dims != tensor2.dims:
+            return False
+        if tensor1.HasField("raw_data") and tensor2.HasField("raw_data"):
+            return tensor1.raw_data == tensor2.raw_data
+        return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
+
+    def remove_duplicated_initializer(self):
+        """Remove initializers with duplicated values, and only keep the first one.
+        It could help reduce size of models (like ALBert) with shared weights.
+        Note: this function does not process subgraph.
+        """
+        if len(self.graphs()) > 1:
+            logger.warning("remove_duplicated_initializer does not process subgraphs.")
+
+        initializer_count = len(self.model.graph.initializer)
+
+        same = [-1] * initializer_count
+        for i in range(initializer_count - 1):
+            if same[i] >= 0:
+                continue
+            for j in range(i + 1, initializer_count):
+                if OnnxModel.has_same_value(self.model.graph.initializer[i], self.model.graph.initializer[j]):
+                    same[j] = i
+
+        count = 0
+        for i in range(initializer_count):
+            if same[i] >= 0:
+                count += 1
+                self.replace_input_of_all_nodes(
+                    self.model.graph.initializer[i].name, self.model.graph.initializer[same[i]].name
+                )
+
+        if count > 0:
+            self.update_graph()
+            print(f"Removed {count} initializers with duplicated value")
+
+    def add_prefix_to_names(self, prefix: str):
+        """Add prefix to initializer or intermediate outputs in graph. Main graph inputs and outputs are excluded.
+        It could help avoid conflicting in name of node_args when merging two graphs.
+        Note: this function does not process subgraph.
+        """
+        if len(self.graphs()) > 1:
+            logger.warning("add_prefix_to_names does not process subgraphs.")
+
+        # Exclude the names of inputs and outputs of main graph (but not subgraphs)
+        # and empty names ("") as they have special meaning to denote missing optional inputs
+        excluded = [i.name for i in self.model.graph.input] + [o.name for o in self.model.graph.output] + [""]
+
+        for initializer in self.model.graph.initializer:
+            if initializer.name not in excluded:
+                if prefix + initializer.name not in excluded:
+                    initializer.name = prefix + initializer.name
+
+        for node in self.model.graph.node:
+            # update name of node inputs
+            for j in range(len(node.input)):
+                if node.input[j] not in excluded:
+                    if prefix + node.input[j] not in excluded:
+                        node.input[j] = prefix + node.input[j]
+
+            # update name of node outputs
+            for j in range(len(node.output)):
+                if node.output[j] not in excluded:
+                    if prefix + node.output[j] not in excluded:
+                        node.output[j] = prefix + node.output[j]
+
+        for value_info in self.model.graph.value_info:
+            if value_info.name not in excluded:
+                value_info.name = prefix + value_info.name
+
+    def clean_shape_infer(self):
+        self.model.graph.ClearField("value_info")

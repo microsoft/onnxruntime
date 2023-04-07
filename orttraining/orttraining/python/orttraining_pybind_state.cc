@@ -8,23 +8,38 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
+#ifdef ENABLE_TRAINING_APIS
+#include <google/protobuf/io/zero_copy_stream_impl.h>
+#endif
+
 #include "core/common/parse_string.h"
+#include "core/graph/model.h"
 #include "core/session/environment.h"
+#include "core/dlpack/dlpack_converter.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/agent/training_agent.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "orttraining/core/graph/gradient_definition_registry.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
+#include "orttraining/python/orttraining_pybind_common.h"
+#include "orttraining/core/optimizer/graph_transformer_utils.h"
 
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+#include "core/framework/stream_execution_context.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
-PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
+#ifdef ENABLE_TRAINING_APIS
+#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/lr_scheduler.h"
+
+#endif
+
 PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
 
 namespace onnxruntime {
@@ -34,8 +49,60 @@ using namespace onnxruntime;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 
-Environment& GetTrainingORTEnv();
+ORTTrainingPythonEnv& GetTrainingEnv();
 
+void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
+                                 const ProviderOptionsVector& original_provider_options_vector,
+                                 ProviderOptionsVector& merged_options) {
+  auto& training_env = GetTrainingEnv();
+  std::size_t j = 0;  // index for provider_options_vector
+  for (const std::string& type : provider_types) {
+    auto it = training_env.ext_execution_provider_info_map_.find(type);
+    if (it == training_env.ext_execution_provider_info_map_.end()) {
+      if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
+        merged_options.push_back(original_provider_options_vector[j]);
+      }
+    } else {
+      ProviderOptions options = it->second.second;
+      options.insert({kExecutionProviderSharedLibraryPath, it->second.first});
+      if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
+        for (auto [k, v] : original_provider_options_vector[j]) {
+          options.insert({k, v});
+        }
+      }
+      merged_options.push_back(options);
+    }
+
+    j += 1;
+  }
+}
+#ifdef ENABLE_TRAINING_APIS
+namespace {
+// This function is used to create an execution provider to be passed to Module and Optimizer.
+std::vector<std::shared_ptr<IExecutionProvider>>
+GetExecutionProvidersForTrainingApis(OrtDevice device) {
+  std::vector<std::shared_ptr<IExecutionProvider>> provider;
+
+#ifdef USE_CUDA
+  if (device.Type() == OrtDevice::GPU) {
+    OrtCUDAProviderOptions provider_options{};
+    provider_options.device_id = device.Id();
+
+    if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
+      provider.push_back(factory->CreateProvider());
+
+    return provider;
+  }
+#endif
+  if (device.Type() == OrtDevice::CPU) {
+    provider = std::vector<std::shared_ptr<IExecutionProvider>>();
+  } else {
+    ORT_THROW("Unsupported device type: ", device.Type());
+  }
+  return provider;
+}
+}  // namespace
+#endif
 struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
@@ -84,8 +151,7 @@ struct TrainingParameters {
   int propagate_cast_ops_level = 1;
   std::vector<std::string> propagate_cast_ops_allow;
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
-      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None;
-  bool allow_layer_norm_mod_precision = false;
+      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill;
 
   // graph dumping
   std::string model_after_graph_transforms_path;
@@ -97,10 +163,36 @@ struct TrainingConfigurationResult {
   optional<std::string> loss_scale_input_name;
 };
 
+#ifdef ENABLE_TRAINING_APIS
+// Thin wrapper over internal C++ Optimizer
+struct PyOptimizer {
+  PyOptimizer(const std::string optimizer_model_uri,
+              onnxruntime::training::api::Module* model, std::vector<std::shared_ptr<IExecutionProvider>> provider)
+      : optimizer_() {
+    auto env = GetTrainingEnv().GetORTEnv();
+    // XXX: We hope that env will be around when optimizer needs it.
+    optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
+                                                                         model->NamedParameters(), onnxruntime::SessionOptions(),
+                                                                         *env, provider);
+  }
+
+  std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
+};
+#endif
+
+struct PyGradientGraphBuilder {
+  std::unique_ptr<GradientGraphBuilder> builder;
+  std::shared_ptr<Model> model;
+  std::unique_ptr<logging::Logger> logger;
+  std::unique_ptr<GradientGraphConfiguration> gradient_graph_config;
+  PyGradientGraphBuilder(std::unique_ptr<GradientGraphBuilder> builder_, std::shared_ptr<Model> model_, std::unique_ptr<logging::Logger> logger_, std::unique_ptr<GradientGraphConfiguration> gradient_graph_config_)
+      : builder(std::move(builder_)), model(std::move(model_)), logger(std::move(logger_)), gradient_graph_config(std::move(gradient_graph_config_)) {}
+};
+
 // TODO: this method does not handle parallel optimization.
 TrainingConfigurationResult ConfigureSessionForTraining(
     training::PipelineTrainingSession* sess, TrainingParameters& parameters) {
-  //TODO tix, refactor the mpi related code to populate all fields correctly by default.
+  // TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size, "data_parallel_size: ", parameters.data_parallel_size, ", world_size: ", parameters.world_size);
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size, "horizontal_parallel_size: ", parameters.horizontal_parallel_size, ", world_size: ", parameters.world_size);
   ORT_ENFORCE(parameters.pipeline_parallel_size <= parameters.world_size, "pipeline_parallel_size: ", parameters.pipeline_parallel_size, ", world_size: ", parameters.world_size);
@@ -252,7 +344,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.propagate_cast_ops_config.strategy = parameters.propagate_cast_ops_strategy;
   config.graph_transformer_config.propagate_cast_ops_config.level = parameters.propagate_cast_ops_level;
   config.graph_transformer_config.propagate_cast_ops_config.allow = parameters.propagate_cast_ops_allow;
-  config.graph_transformer_config.allow_layer_norm_mod_precision = parameters.allow_layer_norm_mod_precision;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
     config.model_after_graph_transforms_path = ToPathString(parameters.model_after_graph_transforms_path);
@@ -317,28 +408,6 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
 }
 
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
-  py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
-      .def(py::init<>())
-      .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
-        v->push_back(ortvalue);
-      })
-      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
-        v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
-      })
-      .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
-      .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
-      .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
-      .def("__iter__", [](const std::vector<OrtValue>& v) {
-        return py::make_iterator(v.cbegin(), v.cend());
-      },
-           py::keep_alive<0, 1>())
-      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
-        return v.at(idx);
-      })
-      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
-        return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
-      });
-
   py::class_<OrtValueCache, OrtValueCachePtr>(m, "OrtValueCache")
       .def(py::init<>())
       .def("insert", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name, OrtValue& value) {
@@ -346,7 +415,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       })
       .def("keys", [](const OrtValueCachePtr& cache_ptr) {
         py::list keys;
-        for(auto kv : *cache_ptr.get()) {
+        for (auto kv : *cache_ptr.get()) {
           keys.append(kv.first);
         }
         return keys;
@@ -422,8 +491,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
       .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum)
       .def_readwrite("propagate_cast_ops_level", &TrainingParameters::propagate_cast_ops_level)
-      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingParameters::allow_layer_norm_mod_precision);
+      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
@@ -432,16 +500,6 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   m.def("get_mpi_context_world_size", []() -> int { return MPIContext::GetInstance().GetWorldSize(); });
 #endif
 
-  m.def("register_aten_op_executor",
-        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
-          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
-          ORT_THROW_IF_ERROR(
-              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
-          ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
-          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
-          void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-          contrib::aten_ops::ATenOperatorExecutor::Initialize(p_is_tensor_argument, p_aten_op_executor);
-        });
   m.def("register_forward_runner", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
@@ -467,11 +525,26 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         ORT_UNUSED_PARAMETER(obj);
 #endif
   });
+  m.def("register_miscellaneous_const_input", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterMiscellaneousConstInput(obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
   m.def("unregister_python_functions", []() -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     // Release all custom python functions registered.
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.UnRegisterFunctions();
+#endif
+  });
+  m.def("is_torch_interop_default_on", []() -> bool {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    return true;
+#else
+        return false;
 #endif
   });
 
@@ -486,20 +559,21 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
-    PyTrainingSession(Environment& env, const PySessionOptions& so)
-        : PyInferenceSession(std::make_unique<PipelineTrainingSession>(so, env)) {
+    PyTrainingSession(std::shared_ptr<Environment> env, const PySessionOptions& so)
+        : PyInferenceSession(env, std::make_unique<PipelineTrainingSession>(so.value, *env)) {
     }
+    ~PyTrainingSession() = default;
   };
 
   py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
   training_session
       .def(py::init([](const PySessionOptions& so) {
-        Environment& env = GetTrainingORTEnv();
-        return std::make_unique<PyTrainingSession>(env, so);
+        auto& training_env = GetTrainingEnv();
+        return std::make_unique<PyTrainingSession>(training_env.GetORTEnv(), so);
       }))
       .def(py::init([]() {
-        Environment& env = GetTrainingORTEnv();
-        return std::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
+        auto& training_env = GetTrainingEnv();
+        return std::make_unique<PyTrainingSession>(training_env.GetORTEnv(), GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
 #if defined(USE_MPI)
@@ -521,7 +595,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, provider_options);
+        ProviderOptionsVector merged_options;
+        ResolveExtraProviderOptions(provider_types, provider_options, merged_options);
+
+        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, merged_options);
 
         return config_result;
       })
@@ -535,8 +612,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
+        ProviderOptionsVector merged_options;
+        ResolveExtraProviderOptions(provider_types, provider_options, merged_options);
 
-        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, provider_options);
+        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, merged_options);
 
         return config_result;
       })
@@ -544,7 +623,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         NameMLValMap state_tensors;
         ORT_THROW_IF_ERROR(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
         auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
-        //convert to numpy array
+        // convert to numpy array
         std::map<std::string, py::object> rmap;
         for (auto& kv : state_tensors) {
           if (kv.second.IsTensor()) {
@@ -602,9 +681,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def(py::init([](PyInferenceSession* session, const std::vector<std::string>& fw_feed_names,
                        const std::vector<OrtDevice>& fw_outputs_device_info,
                        const std::vector<std::string>& bw_fetches_names,
-                       const std::vector<OrtDevice>& bw_outputs_device_info) {
+                       const std::vector<OrtDevice>& bw_outputs_device_info,
+                       int local_rank) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
-                                               bw_fetches_names, bw_outputs_device_info);
+                                               bw_fetches_names, bw_outputs_device_info, local_rank);
       }))
       .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
         Status status = agent->RunForward(feeds, fetches, *state, cache);
@@ -656,7 +736,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("gelu_recompute", &TrainingGraphTransformerConfiguration::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingGraphTransformerConfiguration::allow_layer_norm_mod_precision)
+      .def_readwrite("enable_compute_optimizer", &TrainingGraphTransformerConfiguration::enable_compute_optimizer)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
@@ -714,16 +794,59 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
               const std::vector<std::vector<int64_t>>& input_shapes) {
              ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(&input_shapes));
            })
-      .def("get_model",
+      .def("get_gradient_model",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
-             return py::bytes(ortmodule_graph_builder->GetModel());
+             return py::bytes(ortmodule_graph_builder->GetGradientModel());
            })
-      .def("get_inference_optimized_model",
+      .def("get_forward_model",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
-             return py::bytes(ortmodule_graph_builder->GetInferenceOptimizedModel());
+             return py::bytes(ortmodule_graph_builder->GetForwardModel());
            })
       .def("get_graph_info", [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
         return ortmodule_graph_builder->GetGraphInfo();
+      });
+
+  // Provide a convenient and well-documented way to make a gradient graph.
+  // It's possible to get the gradient graph through ORTModule by leveraging some "private" fields and not-so-well-documented APIs, so we provide this explicit and tested way to get the gradient graph.
+  py::class_<PyGradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder", R"pbdoc(A utility for making a gradient graph that can be used to help train a model.)pbdoc");
+  // Set up methods to match the C++ `GradientGraphBuilder` interface.
+  gradient_graph_builder.def(py::init([](
+                                          const py::bytes& serialized_model,
+                                          const std::unordered_set<std::string>& y_node_arg_names,
+                                          const std::unordered_set<std::string>& x_node_arg_names,
+                                          const std::string loss_node_arg_name) {
+                          std::shared_ptr<Model> model;
+                          auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+                          logger_ptr->SetSeverity(logging::Severity::kINFO);
+                          ONNX_NAMESPACE::ModelProto model_proto;
+                          std::istringstream model_istream(serialized_model);
+                          ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
+                          ORT_THROW_IF_ERROR(Model::Load(model_proto, model, nullptr, *logger_ptr));
+                          GradientGraphConfiguration gradient_graph_config{};
+                          gradient_graph_config.set_gradients_as_graph_outputs = true;
+                          // Save some objects, otherwise they get lost.
+                          auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
+
+                          auto builder = std::make_unique<GradientGraphBuilder>(
+                              &model->MainGraph(),
+                              y_node_arg_names,
+                              x_node_arg_names,
+                              loss_node_arg_name,
+                              *gradient_graph_config_ptr,
+                              *logger_ptr);
+
+                          return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr), std::move(gradient_graph_config_ptr));
+                        }))
+      .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
+        ORT_THROW_IF_ERROR(gradient_graph_builder->builder->Build());
+      })
+      .def("save", [](PyGradientGraphBuilder* gradient_graph_builder, const std::string& path) {
+        ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model), path));
+      })
+      .def("get_model", [](PyGradientGraphBuilder* gradient_graph_builder) {
+        std::string model_str;
+        gradient_graph_builder->model->ToProto().SerializeToString(&model_str);
+        return py::bytes(model_str);
       });
 
   py::class_<GradientNodeAttributeDefinition> gradient_node_attribute_definition(
@@ -749,11 +872,208 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         [](const std::string& key, const std::vector<GradientNodeDefinition>& gradient_def) -> void {
           GradientDefinitionRegistry::Instance().Register(key, gradient_def);
         });
-  
+
   m.def("register_custom_stop_gradient_edges",
         [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
+#ifdef ENABLE_TRAINING_APIS
+  py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
+  training_module
+      .def(py::init([](const std::string& model_uri,
+                       onnxruntime::training::api::CheckpointState& state,
+                       std::optional<std::string> eval_model_uri,
+                       OrtDevice device) {
+        onnxruntime::SessionOptions session_option;
+        std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
+
+        auto env = GetTrainingEnv().GetORTEnv();
+        return std::make_unique<onnxruntime::training::api::Module>(
+            model_uri,
+            state.module_checkpoint_state.named_parameters, session_option,
+            *env, provider, eval_model_uri);
+      }))
+      .def("train_step",
+           [](onnxruntime::training::api::Module* model,
+              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+             ORT_THROW_IF_ERROR(model->TrainStep(user_inputs, user_outputs));
+           })
+      .def("eval_step",
+           [](onnxruntime::training::api::Module* model,
+              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+             ORT_THROW_IF_ERROR(model->EvalStep(user_inputs, user_outputs));
+           })
+      .def("lazy_reset_grad",
+           [](onnxruntime::training::api::Module* model) -> void {
+             ORT_THROW_IF_ERROR(model->LazyResetGrad());
+           })
+      .def("copy_parameters_to_buffer",
+           [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
+             ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
+           })
+      .def("copy_buffer_to_parameters",
+           [](onnxruntime::training::api::Module* model, OrtValue& input) -> void {
+             ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input));
+           })
+      .def("get_parameters_size",
+           [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
+             return model->GetParametersSize(trainable_only);
+           })
+      .def("save_checkpoint",
+           [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
+             onnxruntime::training::api::CheckpointState state;
+             ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
+             ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(state,
+                                                                           ToPathString(checkpoint_path)));
+           })
+      .def("export_model_for_inferencing",
+           [](onnxruntime::training::api::Module* model, const std::string& inference_model_path,
+              const std::vector<std::string>& graph_output_names) -> void {
+             ORT_ENFORCE(model, "Received a nullptr for expected pointer to class training::api::Module");
+             ORT_THROW_IF_ERROR(model->ExportModelForInferencing(inference_model_path,
+                                                                 graph_output_names));
+           });
+
+  py::class_<onnxruntime::training::api::CheckpointState>
+      checkpoint_state(m, "CheckpointState", R"pbdoc(CheckpointState.)pbdoc");
+  checkpoint_state.def(py::init([](
+                                    const std::string& ckpt_uri) {
+    onnxruntime::training::api::CheckpointState state;
+    ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(ToPathString(ckpt_uri), state));
+    return state;
+  }));
+
+  py::class_<PyOptimizer>
+      training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
+  training_optimizer.def(py::init([](
+                                      const std::string optimizer_model_uri,
+                                      onnxruntime::training::api::Module* model,
+                                      OrtDevice device) {
+                      onnxruntime::SessionOptions session_option;
+                      std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
+
+                      return std::make_unique<PyOptimizer>(
+                          optimizer_model_uri,
+                          model, provider);
+                    }))
+      .def("optimizer_step", [](PyOptimizer* optimizer) -> void {
+        ORT_THROW_IF_ERROR(optimizer->optimizer_->Step());
+      })
+      .def("set_learning_rate", [](PyOptimizer* optimizer, float lr) -> void {
+        ORT_THROW_IF_ERROR(optimizer->optimizer_->SetLearningRate(lr));
+      })
+      .def("get_learning_rate", [](PyOptimizer* optimizer) -> float {
+        return optimizer->optimizer_->GetLearningRate();
+      });
+  py::class_<onnxruntime::training::api::LinearLRScheduler>
+      lr_scheduler(m, "LinearLRScheduler", R"pbdoc(Learning Rate Scheduler.)pbdoc");
+  lr_scheduler.def(py::init([](PyOptimizer* optimizer,
+                               int64_t total_step_count,
+                               int64_t warmup_step_count,
+                               float initial_lr) {
+                ORT_THROW_IF_ERROR(optimizer->optimizer_->SetInitialLearningRate(initial_lr));
+
+                return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
+                    optimizer->optimizer_, warmup_step_count, total_step_count);
+              }))
+      .def("scheduler_step", [](onnxruntime::training::api::LinearLRScheduler* scheduler) -> void {
+        ORT_THROW_IF_ERROR(scheduler->Step());
+      });
+  m.def("save_checkpoint",
+        [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
+           const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
+           const std::string& checkpoint_path) {
+          std::vector<TensorProto> trainable_tensor_protos(trainable_tensor_protos_pybytes.size());
+          std::vector<TensorProto> non_trainable_tensor_protos(non_trainable_tensor_protos_pybytes.size());
+
+          auto parse_pybytes_to_tensor_proto =
+              [](const std::vector<py::bytes>& tensor_protos_pybytes, std::vector<TensorProto>& tensor_protos) {
+                for (size_t i = 0; i < tensor_protos_pybytes.size(); ++i) {
+                  std::istringstream tensor_proto_istream(tensor_protos_pybytes[i]);
+                  ORT_ENFORCE(tensor_proto_istream.good(), "Broken tensor proto istream to read.");
+                  google::protobuf::io::IstreamInputStream zero_copy_input(&tensor_proto_istream);
+                  const bool result =
+                      tensor_protos[i].ParseFromZeroCopyStream(&zero_copy_input) && tensor_proto_istream.eof();
+                  ORT_ENFORCE(result, "Parse tensor proto failed.");
+                }
+              };
+
+          parse_pybytes_to_tensor_proto(trainable_tensor_protos_pybytes, trainable_tensor_protos);
+          parse_pybytes_to_tensor_proto(non_trainable_tensor_protos_pybytes, non_trainable_tensor_protos);
+
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos,
+                                                                        non_trainable_tensor_protos,
+                                                                        ToPathString(checkpoint_path)));
+        });
+  m.def("get_model_after_loading_checkpoint",
+        [](const std::string& checkpoint_path, const py::bytes& serialized_model) {
+          ONNX_NAMESPACE::ModelProto model_proto;
+
+          std::istringstream buffer(serialized_model);
+          ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
+          ORT_THROW_IF_ERROR(
+              onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto));
+
+          std::string model_proto_str;
+          ORT_ENFORCE(model_proto.SerializeToString(&model_proto_str), "Serializing Model failed.");
+
+          return py::bytes(model_proto_str);
+        });
+
+  m.def("get_optimized_model",
+        [](const py::bytes& serialized_model,
+           const std::unordered_set<std::string>& graph_entities_that_require_gradients) {
+          // Load the serialized model
+          std::istringstream buffer(serialized_model);
+          ONNX_NAMESPACE::ModelProto model_proto;
+          ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
+
+          // Get the ort model from ModelProto model
+          auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+          logger_ptr->SetSeverity(logging::Severity::kINFO);
+          std::shared_ptr<onnxruntime::Model> ort_model;
+          ORT_THROW_IF_ERROR(Model::Load(model_proto, ort_model, nullptr, *logger_ptr));
+
+          Graph& graph = ort_model->MainGraph();
+          ORT_THROW_IF_ERROR(graph.Resolve());
+
+          // Register the pretraining graph transformations so that they are run twice
+          constexpr size_t NumSteps = 2;
+          GraphTransformerManager graph_transformation_mgr{NumSteps};
+          std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+              std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+          const auto add_transformers = [&cpu_execution_provider,
+                                         &graph_transformation_mgr,
+                                         &graph_entities_that_require_gradients](TransformerLevel level) {
+            auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
+                level, graph_entities_that_require_gradients, TrainingGraphTransformerConfiguration(),
+                *cpu_execution_provider);
+            for (auto& entry : transformers_to_register) {
+              ORT_THROW_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), level));
+            }
+            return Status::OK();
+          };
+
+          for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+            TransformerLevel level = static_cast<TransformerLevel>(i);
+            if (TransformerLevel::MaxLevel >= level) {
+              ORT_THROW_IF_ERROR(add_transformers(level));
+            }
+          }
+
+          // Run the graph transformations
+          for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+            ORT_THROW_IF_ERROR(
+                graph_transformation_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *logger_ptr));
+          }
+
+          // Return the optimized model.
+          std::string model_str;
+          ort_model->ToProto().SerializeToString(&model_str);
+          return py::bytes(model_str);
+        });
+#endif
 }
 
 }  // namespace python

@@ -1,8 +1,11 @@
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -310,6 +313,83 @@ const NnApi LoadNnApi() {
                          ANeuralNetworksExecution_enableInputAndOutputPadding);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksExecution_setReusable);
+
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_areDynamicTensorsUsed);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed);
+
 #ifndef __ANDROID__
   // If libneuralnetworks.so is loaded, but android_sdk_version is not set,
   // then determine android_sdk_version by testing which functions are

@@ -5,9 +5,10 @@ import {onnx} from 'onnx-proto';
 
 import {Attribute} from './attribute';
 import {onnxruntime} from './ort-schema/ort-generated';
-import ortFbs = onnxruntime.experimental.fbs;
 import {Tensor} from './tensor';
-import {LongUtil, ProtoUtil} from './util';
+import {LongUtil, MAX_CLIP, MIN_CLIP, ProtoUtil} from './util';
+
+import ortFbs = onnxruntime.experimental.fbs;
 
 export declare namespace Graph {
   export interface Shape {
@@ -332,6 +333,10 @@ class GraphImpl implements Graph, Graph.Transformer {
       for (const input of nodeProto.input) {
         const dataIndex = dataIndices.get(input);
         if (typeof dataIndex === 'undefined') {
+          // handle exception when opset > 9 and roi not given
+          if (input === '' && nodeProto.input.length === 3 && nodeProto.opType === 'Resize') {
+            continue;
+          }
           throw new Error(`unrecognized input '${input}' for node: ${nodeProto.name}`);
         }
         node.inputs.push(dataIndex);
@@ -580,33 +585,49 @@ class GraphImpl implements Graph, Graph.Transformer {
   finalizeGraph() {
     let offset = 0;
     // delete all nodes that are not being executed
+    // The graph is represented using these two arrays
+    // this._nodes - Array holding the kernels to execute - each entry is a kernel pointing to this._allData
+    // this._allData - hold 2 fields - to [] & from - these feileds hold the graph map for inputs and outputs per node
+    // newIndices - remapping the graph after reading the flag 'executeNode'
+    const newIndices = new Array<number>(this._nodes.length, 0);
+    let nodePossition = 0;
+
     for (let i = 0; i < this._nodes.length; i++) {
-      if (!this._nodes[i].executeNode) {
-        // delete this node and shift all subsequent nodes up
-        offset++;
+      // giving new indexes to the nodes based on execution flag
+      newIndices[i] = nodePossition;
+      if (this._nodes[i].executeNode) {
+        if (nodePossition !== i) {
+          this._nodes[nodePossition] = this._nodes[i];
+        }
+        nodePossition++;
+
+      } else {
         // delete all output values
         this._nodes[i].outputs.forEach(ind => {
           this._allData[ind]._from = -2;
         });
-        this._nodes.splice(i, 1);
-        i--;
-        continue;
-      }
-      if (offset > 0) {
-        // update the value table
-        this._nodes[i].inputs.forEach(value => {
-          const ind = this._allData[value]._to.indexOf(i + offset);
-          if (ind !== -1) {
-            this._allData[value]._to[ind] = i;
-          }
-        });
-        this._nodes[i].outputs.forEach(value => {
-          if (this._allData[value]._from && this._allData[value]._from! === i + offset) {
-            this._allData[value]._from! = i;
-          }
-        });
       }
     }
+
+    // removing the unused nodes
+    this._nodes.splice(nodePossition, this._nodes.length - nodePossition);
+
+    // Updating this._allData according to the new this._nodes
+    for (let i = 0; i < this._allData.length; i++) {
+      const currentData = this._allData[i];
+      if (currentData._from !== undefined && currentData._from !== -1 && currentData._from !== -2) {
+        currentData._from = newIndices[currentData._from];
+      }
+
+      for (let j = 0; j < currentData._to.length; j++) {
+        if (currentData._to[j] >= 0) {
+          currentData._to[j] = newIndices[currentData._to[j]];
+        } else {
+          throw new Error('Trying to update a removed node');
+        }
+      }
+    }
+
     offset = 0;
     // delete all values that are not being referenced
     for (let i = 0; i < this._allData.length; i++) {
@@ -653,14 +674,12 @@ class GraphImpl implements Graph, Graph.Transformer {
   }
 
   /**
-   * Delete the specifed node. Assume the node has only one input and the first output connected to other nodes
+   * Delete the specifed node. Assume the node has one incoming input and the first output connected to other nodes.
+   * An input validation must be done before calling this function.
    * @param nodeIndex The index of node to be deleted
    */
   private deleteNode(nodeIndex: number) {
     const node = this._nodes[nodeIndex];
-    if (node.inputs.length > 1) {
-      throw new Error('Node deletion with multiple inputs is not supported. ');
-    }
     if (node.outputs.length > 1) {
       for (let i = 1; i < node.outputs.length; i++) {
         if (this._allData[node.outputs[i]].to.length > 0) {
@@ -676,12 +695,14 @@ class GraphImpl implements Graph, Graph.Transformer {
     const nodesConsumingOutput = this._allData[outputValueIndex].to;
 
     // remove this node from the to property of the input Value
-    const delIndex = this._allData[inputValueIndex].to.indexOf(nodeIndex);
-    // should not happen
-    if (delIndex === -1) {
-      throw new Error('The Value object doesn\'t have the current Node in it\'s \'to\' property ');
+    for (let i = 0; i < node.inputs.length; i++) {
+      const delIndex = this._allData[node.inputs[i]].to.indexOf(nodeIndex);
+      // should not happen
+      if (delIndex === -1) {
+        throw new Error('The Value object doesn\'t have the current Node in it\'s \'to\' property ');
+      }
+      this._allData[node.inputs[i]].to.splice(delIndex, 1);
     }
-    this._allData[inputValueIndex].to.splice(delIndex, 1);
 
     // clear node indices consuming this output Value
     this._allData[outputValueIndex]._to = [];
@@ -757,12 +778,27 @@ class GraphImpl implements Graph, Graph.Transformer {
         const next = this._allData[node.outputs[0]]._to;
         if (next.length === 1 && this.isActivation(this._nodes[next[0]])) {
           const child = this._nodes[next[0]];
-          node.attributes.set('__internal_activation', 'string', (child.opType));
-          // TODO: need add support for Clip after opset 11, which has min/max as inputs
           if (child.opType === 'Clip') {
-            node.attributes.set('__clip_min', 'float', child.attributes.getFloat('min'));
-            node.attributes.set('__clip_max', 'float', child.attributes.getFloat('max'));
+            if (child.inputs.length === 1) {
+              try {
+                node.attributes.set(
+                    'activation_params', 'floats',
+                    [child.attributes.getFloat('min'), child.attributes.getFloat('max')]);
+              } catch (e) {
+                node.attributes.set('activation_params', 'floats', [MIN_CLIP, MAX_CLIP]);
+              }
+            } else if (
+                child.inputs.length >= 3 && this._allData[child.inputs[1]].tensor !== undefined &&
+                this._allData[child.inputs[2]].tensor !== undefined) {
+              node.attributes.set('activation_params', 'floats', [
+                this._allData[child.inputs[1]].tensor!.floatData[0], this._allData[child.inputs[2]].tensor!.floatData[0]
+              ]);
+            } else {
+              // Skip fusion with clip node since clip min and clip max are not coming from initializer
+              continue;
+            }
           }
+          node.attributes.set('activation', 'string', (child.opType));
           this.deleteNode(next[0]);
         }
       }

@@ -1,0 +1,81 @@
+parameters:
+
+- name: QnnSdk
+  displayName: QNN SDK version
+  type: string
+  default: qnn-v2.8.0.230223123141_52150
+  values:
+  - qnn-v2.6.0.221227110525_42395
+  - qnn-v2.8.0.230223123141_52150
+
+jobs:
+  - job: Build_QNN_EP
+    pool: onnxruntime-qnn-ubuntu-2004-cpu
+    timeoutInMinutes: 60
+    workspace:
+      clean: all
+
+    variables:
+      - name: QNN_SDK_ROOT
+        value: /data/qnnsdk/${{parameters.QnnSdk}}
+
+    steps:
+      - script: |
+          ls /data/qnnsdk
+          ls -R /data/qnn_test_data
+        displayName: Check QNN test data
+
+      - task: UsePythonVersion@0
+        displayName: Use Python $(pythonVersion)
+        inputs:
+          versionSpec: $(pythonVersion)
+
+      - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
+        displayName: Install coreutils and ninja
+
+      - script: |
+          python3 tools/ci_build/build.py \
+            --build_dir build \
+            --config Release \
+            --parallel \
+            --use_qnn \
+            --qnn_home $(QNN_SDK_ROOT) \
+            --cmake_generator=Ninja \
+            --skip_tests
+        displayName: Build QNN EP
+
+      - script: |
+          python3 tools/ci_build/build.py \
+            --build_dir build \
+            --config Release \
+            --test \
+            --qnn_home $(QNN_SDK_ROOT) \
+            --cmake_generator=Ninja \
+            --skip_submodule_sync \
+            --ctest_path ""
+        displayName: Run unit tests
+
+      - task: CmdLine@2
+        displayName: Run ONNX tests
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              cmake/external/onnx/onnx/backend/test/data/node
+
+      - task: CmdLine@2
+        displayName: Run float32 model tests
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              /data/float32_models
+
+      - task: CmdLine@2
+        displayName: Run QDQ model tests
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/target/x86_64-linux-clang/lib/libQnnHtp.so" \
+              /data/qdq_models
+

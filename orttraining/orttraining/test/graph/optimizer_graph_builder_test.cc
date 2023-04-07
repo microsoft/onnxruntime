@@ -11,6 +11,7 @@
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
+#include "core/common/span_utils.h"
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
@@ -173,15 +174,15 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
     OrtValue ml_value;
 
     for (const auto& key : MOMENTS_PREFIXES) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, values, &ml_value);
+      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, values, &ml_value);
       per_weight_states.insert(std::make_pair(key, std::move(ml_value)));
     }
     if (optimizer_op_name == k_adam_optimizer_op_name) {
-      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, uc_value, &ml_value);
       per_weight_states.insert(std::make_pair(ADAM_UC_PREFIX, std::move(ml_value)));
     } else if (optimizer_op_name == k_lamb_optimizer_op_name) {
       // add "Step" for lamb
-      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, uc_value, &ml_value);
       shared_states.insert(std::make_pair(LAMB_STEP_TENSOR_NAME, std::move(ml_value)));
       config.shared_optimizer_states = std::move(shared_states);
     }
@@ -196,10 +197,10 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
   std::unordered_map<std::string, std::unordered_map<std::string, std::string>> opt_initializer_names_map;
   ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names_map, opt_graph_outputs));
 
-  const ONNX_NAMESPACE::TensorProto* tensor;
+  const ONNX_NAMESPACE::TensorProto* tensor{};
   for (auto& weight_item : opt_initializer_names_map) {
     for (auto& opt_item : weight_item.second) {
-      ASSERT_TRUE(graph.GetInitializedTensor(opt_item.second, tensor));
+      ORT_ENFORCE(graph.GetInitializedTensor(opt_item.second, tensor));
       ASSERT_TRUE(tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT || tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64);
       if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
         VerifyTensorValue(tensor, values[0]);
@@ -243,12 +244,12 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   PartitionOptimizerState(partition_offset, partition_size, initial_states);
 
   std::vector<float> expected_vec(init_value.begin() + partition_offset, init_value.begin() + partition_offset + partition_size);
-  std::vector<int64_t> expected_shape = {partition_size};
+  std::array<int64_t, 1> expected_shape = {partition_size};
 
   for (const auto& state : initial_states) {
     const auto& init_tensor = state.second.Get<Tensor>();
     const auto& shape = init_tensor.Shape().GetDims();
-    ASSERT_EQ(shape, expected_shape);
+    ASSERT_TRUE(SpanEq(shape, gsl::make_span(expected_shape)));
     const std::vector<float> found(init_tensor.Data<float>(),
                                    init_tensor.Data<float>() + partition_size);
     ASSERT_EQ(expected_vec, found);

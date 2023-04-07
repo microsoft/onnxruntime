@@ -11,15 +11,14 @@ namespace onnxruntime {
 @Class NoopElimination
 
 Rewrite rule that eliminates the no op node.
-So far only Add node with 0 as one of its inputs is eliminated.
-But this class could be the placeholder for other no op nodes in future.  
+Support x+0, 0+x, x-0, x*1, 1*x and x/1 for now.
 */
 class NoopElimination : public RewriteRule {
  public:
   NoopElimination() noexcept : RewriteRule("NoopElimination") {}
 
   std::vector<std::string> TargetOpTypes() const noexcept override {
-    return {"Add"};
+    return {"Add", "Sub", "Mul", "Div"};
   }
 
  private:

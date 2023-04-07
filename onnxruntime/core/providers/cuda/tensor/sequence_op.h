@@ -41,7 +41,7 @@ class SequenceAt final : public CudaKernel {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_addr,
                                            source_addr,
                                            source_tensor.SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream()));
+                                           cudaMemcpyDeviceToDevice, Stream(context)));
     }
     return Status::OK();
   }
@@ -73,7 +73,7 @@ class SequenceConstruct final : public CudaKernel {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor->DataRaw(),
                                            source_tensor->SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream()));
+                                           cudaMemcpyDeviceToDevice, Stream(context)));
 
       Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
@@ -121,7 +121,7 @@ class ConcatFromSequence final : public CudaKernel, public ConcatBase {
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
     int64_t input_count = static_cast<int64_t>(X->Size());
-    std::vector<const Tensor*> input_tensors;
+    InlinedTensorsVector input_tensors;
     for (int64_t i = 0; i < input_count; ++i) {
       input_tensors.push_back(&X->Get(i));
     }
@@ -149,7 +149,7 @@ class ConcatFromSequence final : public CudaKernel, public ConcatBase {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
             output + (initial_output_offset + cur_out_offset) * element_bytes,
             input + cur_in_offset * element_bytes, input_axis_pitch * element_bytes,
-            cudaMemcpyHostToDevice, Stream()));
+            cudaMemcpyDeviceToDevice, Stream(context)));
         cur_out_offset += p.output_axis_pitch;
         cur_in_offset += input_axis_pitch;
       }
@@ -200,7 +200,7 @@ class SequenceErase final : public CudaKernel {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream()));
+                                           cudaMemcpyDeviceToDevice, Stream(context)));
       Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
 
@@ -239,7 +239,7 @@ class SequenceInsert final : public CudaKernel {
                                                                    X->Shape(), alloc);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(tensor_to_be_inserted->MutableDataRaw(),
                                          X->DataRaw(), X->SizeInBytes(),
-                                         cudaMemcpyDeviceToDevice, Stream()));
+                                         cudaMemcpyDeviceToDevice, Stream(context)));
 
     TensorSeq* Y = context->Output<TensorSeq>(0);
     Y->SetType(S->DataType());
@@ -255,7 +255,7 @@ class SequenceInsert final : public CudaKernel {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream()));
+                                           cudaMemcpyDeviceToDevice, Stream(context)));
       Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
 

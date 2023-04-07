@@ -20,10 +20,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 
 namespace {
 
-using OutputTypes =
-    ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-        kCpuExecutionProvider, kOnnxDomain, ConstantOfShape, Output, 0);
-
 using EnabledOutputTypes =
     ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
         kCpuExecutionProvider, kOnnxDomain, ConstantOfShape, Output, 0);
@@ -50,16 +46,16 @@ Status ConstantOfShape::Compute(OpKernelContext* ctx) const {
   const auto element_size = output_tensor->DataType()->Size();
   switch (element_size) {
     case sizeof(int8_t):
-      FilloutOutput(*(reinterpret_cast<const int8_t*>(value_ptr)), output_data, size);
+      FilloutOutput(*(reinterpret_cast<const int8_t*>(value_ptr)), output_data, onnxruntime::narrow<size_t>(size)) ;
       break;
     case sizeof(int16_t):
-      FilloutOutput(*(reinterpret_cast<const int16_t*>(value_ptr)), output_data, size);
+      FilloutOutput(*(reinterpret_cast<const int16_t*>(value_ptr)), output_data, onnxruntime::narrow<size_t>(size)) ;
       break;
     case sizeof(int32_t):
-      FilloutOutput(*(reinterpret_cast<const int32_t*>(value_ptr)), output_data, size);
+      FilloutOutput(*(reinterpret_cast<const int32_t*>(value_ptr)), output_data, onnxruntime::narrow<size_t>(size)) ;
       break;
     case sizeof(int64_t):
-      FilloutOutput(*(reinterpret_cast<const int64_t*>(value_ptr)), output_data, size);
+      FilloutOutput(*(reinterpret_cast<const int64_t*>(value_ptr)), output_data, onnxruntime::narrow<size_t>(size)) ;
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported output datatype with size: ", element_size);
@@ -76,7 +72,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2",
-                        BuildKernelDefConstraintsFromTypeList<OutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledOutputTypes>()),
     ConstantOfShape);
 

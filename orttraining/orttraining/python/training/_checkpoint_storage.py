@@ -3,9 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import h5py
-from collections.abc import Mapping
 import pickle
+from collections.abc import Mapping
+
+import h5py
+
 
 def _dfs_save(group, save_obj):
     """Recursively go over each level in the save_obj dictionary and save values to a hdf5 group"""
@@ -16,6 +18,7 @@ def _dfs_save(group, save_obj):
             _dfs_save(subgroup, value)
         else:
             group[key] = value
+
 
 def save(save_obj: dict, path):
     """Persists the input dictionary to a file specified by path.
@@ -35,8 +38,9 @@ def save(save_obj: dict, path):
     if not isinstance(save_obj, Mapping):
         raise ValueError("Object to be saved must be a dictionary")
 
-    with h5py.File(path, 'w-') as f:
+    with h5py.File(path, "w-") as f:
         _dfs_save(f, save_obj)
+
 
 def _dfs_load(group, load_obj):
     """Recursively go over each level in the hdf5 group and load the values into the given dictionary"""
@@ -47,6 +51,7 @@ def _dfs_load(group, load_obj):
             _dfs_load(group[key], load_obj[key])
         else:
             load_obj[key] = group[key][()]
+
 
 def load(path, key=None):
     """Loads the data stored in the binary file specified at the given path into a dictionary and returns it.
@@ -72,9 +77,9 @@ def load(path, key=None):
         raise ValueError(f"{path} is not an hdf5 file or a python file-like object.")
 
     load_obj = {}
-    with h5py.File(path, 'r') as f:
+    with h5py.File(path, "r") as f:
         if key:
-            f = f[key]
+            f = f[key]  # noqa: PLW2901
         if isinstance(f, h5py.Dataset):
             return f[()]
 
@@ -82,10 +87,12 @@ def load(path, key=None):
 
     return load_obj
 
+
 def to_serialized_hex(user_dict):
     """Serialize the user_dict and convert the serialized bytes to a hex string and return"""
 
     return pickle.dumps(user_dict).hex()
+
 
 def from_serialized_hex(serialized_hex):
     """Convert serialized_hex to bytes and deserialize it and return"""
@@ -93,7 +100,7 @@ def from_serialized_hex(serialized_hex):
     # serialized_hex can be either a regular string or a byte string.
     # if it is a byte string, convert to regular string using decode()
     # if it is a regular string, do nothing to it
-    try:
+    try:  # noqa: SIM105
         serialized_hex = serialized_hex.decode()
     except AttributeError:
         pass

@@ -23,16 +23,16 @@ Abstract:
 // threads.
 //
 
-struct MLAS_GEMM_U8X8_WORK_BLOCK {
+struct MLAS_GEMM_QUANT_WORK_BLOCK {
     ptrdiff_t ThreadCountM;
     ptrdiff_t ThreadCountN;
 };
 
 void
-MlasGemmU8X8Threaded(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+MlasGemmQuantThreaded(
+    const MLAS_GEMM_QUANT_WORK_BLOCK* WorkBlock,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     ptrdiff_t ThreadId
     )
 /*++
@@ -96,55 +96,40 @@ Return Value:
     // Dispatch the partitioned operation.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape->BIsSigned);
-    MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
+    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(Shape->AIsSigned, Shape->BIsSigned);
+    MLAS_GEMM_QUANT_OPERATION* GemmQuantOperation;
 
     if (Data->BIsPacked) {
-        GemmU8X8Operation = GemmU8X8Dispatch->PackedOperation;
+        GemmQuantOperation = GemmQuantDispatch->PackedOperation;
     } else {
-        GemmU8X8Operation = GemmU8X8Dispatch->Operation;
+        GemmQuantOperation = GemmQuantDispatch->Operation;
     }
 
-    GemmU8X8Operation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+    GemmQuantOperation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
 }
 
 
-void
-MLASCALL
-MlasGemm(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS &Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS &DataParams,
-    MLAS_THREADPOOL *ThreadPool)
-/*++
-
-Routine Description:
-
-    This routine implements the quantized integer matrix/matrix multiply
-    operation (QGEMM).
-
-Arguments:
-
-    Shape - Supplies the structure containing the GEMM input and output shapes.
-
-    Data  - Supplies the structure containing the GEMM input and output data layout
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    None.
-
---*/
+int32_t
+MlasQgemmGetKernelOutputCnt(
+    bool AIsSigned,
+    bool BIsSigned
+    )
 {
-    MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
+    const auto* dispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
+    return int32_t(dispatch->StrideM);
 }
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
+#pragma warning(disable : 26451)
+#endif
 
 void
 MLASCALL
 MlasGemmBatch(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool)
 {
@@ -161,10 +146,10 @@ MlasGemmBatch(
 
     ptrdiff_t TargetThreadCount;
 
-    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
+    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * GetMlasPlatform().MaximumThreadCount)) {
         TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
     } else {
-        TargetThreadCount = MlasPlatform.MaximumThreadCount;
+        TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
     }
 
     ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
@@ -185,7 +170,7 @@ MlasGemmBatch(
     // works okay for operations involving skinny matrices.
     //
 
-    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
+    MLAS_GEMM_QUANT_WORK_BLOCK WorkBlock;
 
     if (N > M) {
 
@@ -213,16 +198,118 @@ MlasGemmBatch(
     MlasTrySimpleParallel(ThreadPool, TargetThreadCount, [&](ptrdiff_t tid) {
         const auto gemm_i = tid / ThreadsPerGemm;
         const auto blk_i = tid % ThreadsPerGemm;
-        MlasGemmU8X8Threaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
+        MlasGemmQuantThreaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
     });
 }
 
+
+int32_t
+MlasSymmQgemmGetKernelOutputCnt()
+{
+    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = GetMlasPlatform().SymmQgemmDispatch;
+    return int32_t(dispatch->StrideM);
+}
+
+
+void
+MLASCALL
+MlasSymmQgemmBatch(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_SYMM_QGEMM_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+    const size_t M = Shape.M;
+    const size_t N = Shape.N;
+    const size_t K = Shape.K;
+    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = GetMlasPlatform().SymmQgemmDispatch;
+
+    if (ThreadPool == nullptr) {
+        // So our caller handles threaded job partition.
+        // Call single threaded operation directly
+        auto uarch = MLAS_CPUIDINFO::GetCPUIDInfo().IsCurrentCoreArmv8NarrowLd();
+        MLAS_SYMM_QGEMM_OPERATION* operation =
+            uarch ? dispatch->LitOperation : dispatch->BigOperation;
+
+        for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
+            auto Data = &DataParams[gemm_i];
+            operation(&Shape, Data, 0, M, 0, N);
+        }
+        return;
+    }
+
+    //
+    // Compute the number of target threads given the complexity of the SGEMM
+    // operation. Small requests should run using the single threaded path.
+    //
+
+    const double Complexity = double(M) * double(N) * double(K) * double(BatchN);
+
+    ptrdiff_t TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
+
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (TargetThreadCount >= MaximumThreadCount) {
+        TargetThreadCount = MaximumThreadCount;
+    }
+
+    ptrdiff_t ThreadsPerGemm = TargetThreadCount / BatchN;
+    if (ThreadsPerGemm < 1) {
+        ThreadsPerGemm = 1;
+    }
+
+    const size_t StrideM = dispatch->StrideM;
+
+    size_t nc = N;
+    if ((size_t)MlasGetMaximumThreadCount(ThreadPool) > BatchN) {
+        // more than one thread per GEMM
+
+        const size_t BlockedM = MlasDivRoundup(M, StrideM);
+        const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
+        if (max_nc < nc) {
+            nc = std::min(nc, MlasDivRoundup(nc, max_nc * MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
+                                  MLAS_QGEMM_STRIDEN_THREAD_ALIGN);
+        }
+    }
+    const size_t StrideN = nc;
+
+    const size_t ThreadCountM = MlasDivRoundup(M, StrideM);
+    const size_t ThreadCountN = MlasDivRoundup(N, StrideN);
+    ThreadsPerGemm = ThreadCountM * ThreadCountN;
+
+    MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * BatchN, [&](ptrdiff_t tid) {
+        auto uarch = MLAS_CPUIDINFO::GetCPUIDInfo().IsCurrentCoreArmv8NarrowLd();
+        MLAS_SYMM_QGEMM_OPERATION* operation =
+            uarch ? dispatch->LitOperation : dispatch->BigOperation;
+
+        const auto gemm_i = tid / ThreadsPerGemm;
+        const auto blk_i = tid % ThreadsPerGemm;
+        auto Data = &DataParams[gemm_i];
+
+        const ptrdiff_t ThreadIdN = blk_i / ThreadCountM;
+        const ptrdiff_t ThreadIdM = blk_i % ThreadCountM;
+
+        const size_t RangeStartM = ThreadIdM * StrideM;
+        const size_t RangeCountM = std::min(Shape.M - RangeStartM, (size_t)StrideM);
+
+        const size_t RangeStartN = ThreadIdN * StrideN;
+        const size_t RangeCountN = std::min(Shape.N - RangeStartN, (size_t)StrideN);
+
+        operation(&Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+    });
+}
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 size_t
 MLASCALL
 MlasGemmPackBSize(
     size_t N,
-    size_t K,
+    size_t K, 
+    bool AIsSigned,
     bool BIsSigned
     )
 /*++
@@ -252,10 +339,10 @@ Return Value:
     // Retrieve the packing parameters.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
+    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
 
-    size_t PackedK = GemmU8X8Dispatch->PackedK;
-    size_t PackedStrideK = GemmU8X8Dispatch->PackedStrideK;
+    size_t PackedK = GemmQuantDispatch->PackedK;
+    size_t PackedStrideK = GemmQuantDispatch->PackedStrideK;
 
     if (PackedStrideK == 0) {
         return 0;
@@ -285,6 +372,7 @@ MlasGemmPackB(
     size_t K,
     const uint8_t* B,
     size_t ldb,
+    bool AIsSigned,
     bool BIsSigned,
     void* PackedB
     )
@@ -320,10 +408,10 @@ Return Value:
     // Retrieve the packing parameters.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
+    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
 
-    size_t PackedK = GemmU8X8Dispatch->PackedK;
-    size_t PackedStrideK = GemmU8X8Dispatch->PackedStrideK;
+    size_t PackedK = GemmQuantDispatch->PackedK;
+    size_t PackedStrideK = GemmQuantDispatch->PackedStrideK;
 
     //
     // Reserve and initialize storage for the column sum buffer to hold the sums
@@ -362,7 +450,7 @@ Return Value:
 
             CountN = std::min(N - n, BatchedN);
 
-            GemmU8X8Dispatch->CopyPackBRoutine(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
+            GemmQuantDispatch->CopyPackBRoutine(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
 
             //
             // Accumulate this batch of the column sum buffer into the packed
@@ -378,5 +466,87 @@ Return Value:
 
         PackedB = (uint8_t*)PackedB + AlignedN * AlignedK;
         B += ldb * CountK;
+    }
+}
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// We can not make this function constexpr across different platforms
+#pragma warning(disable : 26497)
+#endif
+
+size_t
+MLASCALL
+MlasSymmQgemmPackBSize(
+    size_t N,
+    size_t K, 
+    bool AIsSigned
+    )
+{
+#ifndef MLAS_TARGET_ARM64
+
+    // Only have arm64 impl for now
+    MLAS_UNREFERENCED_PARAMETER(N);
+    MLAS_UNREFERENCED_PARAMETER(K);
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
+    return 0;
+#else
+
+    // Only support s8s8 for now
+    if (!AIsSigned) {
+        return 0;
+    }
+
+    const auto* Dispatch = GetMlasPlatform().SymmQgemmDispatch;
+
+    size_t PackedK = Dispatch->PackedK;
+
+    //
+    // Compute the number of bytes required to hold the packed buffer.
+    //
+
+    const size_t AlignedN =
+        (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+    const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
+
+    const size_t BytesRequired =
+        (AlignedN * sizeof(int32_t)) + (AlignedN * AlignedK * sizeof(uint8_t));
+    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
+    const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
+        ~(BufferAlignment - 1);
+
+    return AlignedBytesRequired;
+#endif  // !MLAS_TARGET_ARM64
+}
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
+
+
+void
+MLASCALL
+MlasSymmQgemmPackB(
+    size_t N,
+    size_t K,
+    const int8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    int32_t ZeroPointA,
+    void* PackedB
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
+
+    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch = GetMlasPlatform().SymmQgemmDispatch;
+
+    const size_t AlignedN =
+        (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+    int32_t* PackedColumnSumBuffer = (int32_t*)PackedB;
+    PackedB = PackedColumnSumBuffer + AlignedN;
+
+    SymmQgemmDispatch->CopyPackBRoutine((uint8_t*)PackedB, (const uint8_t*)B, ldb, N, K,
+                                        PackedColumnSumBuffer, true);
+    for (size_t n = 0; n < AlignedN; n++) {
+        PackedColumnSumBuffer[n] *= -ZeroPointA;
     }
 }

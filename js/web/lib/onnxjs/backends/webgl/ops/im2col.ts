@@ -4,6 +4,7 @@
 import {Tensor} from '../../../tensor';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+
 import {ConvAttributes} from './conv';
 
 const createIm2ColProgramMetadata = (cacheHint: string) => ({

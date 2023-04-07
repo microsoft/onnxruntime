@@ -7,6 +7,8 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/optimizer/initializer.h"
+
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #include "builder_utils.h"
@@ -24,8 +26,8 @@ class GemmOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
@@ -52,9 +54,8 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 // TODO, add support of other data types
 static Status GetTensorFloatDataTransposed(const ONNX_NAMESPACE::TensorProto& tensor,
                                            std::vector<float>& transposed_data) {
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
-  const float* src_data = reinterpret_cast<const float*>(unpacked_tensor.data());
+  Initializer unpacked_tensor(tensor);
+  auto src_data = unpacked_tensor.DataAsSpan<float>();
   const auto& tensor_shape = tensor.dims();
   auto x_t = SafeInt<size_t>(tensor_shape[0]);
   auto y_t = SafeInt<size_t>(tensor_shape[1]);

@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-class ScatterND final : public CudaKernel, protected ScatterNDBase {
+class ScatterND final : public CudaKernel {
  public:
   explicit ScatterND(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;

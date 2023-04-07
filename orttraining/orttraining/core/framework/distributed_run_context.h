@@ -58,7 +58,7 @@ struct DistributedRunConfig {
 };
 
 // This function returns the corresponding pipeline stage id for the given world rank.
-inline int32_t GetPipelineStageId(const int32_t world_rank,
+constexpr inline int32_t GetPipelineStageId(const int32_t world_rank,
                                   const int32_t horizontal_parallel_size,
                                   const int32_t data_parallel_size) {
   return world_rank / (data_parallel_size * horizontal_parallel_size);

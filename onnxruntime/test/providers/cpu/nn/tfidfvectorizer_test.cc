@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace test {
 namespace tfidfvectorizer_test {
 
-const int opset_ver = 9;
+constexpr int opset_ver = 9;
 
 void InitTestAttr(OpTester& test, const std::string& mode,
                   int64_t min_gram_length, int64_t max_gram_length, int64_t max_skip_count,

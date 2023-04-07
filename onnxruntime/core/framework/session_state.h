@@ -8,15 +8,17 @@
 #include <unordered_map>
 #include <vector>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/prepacked_weights_container.h"
@@ -36,6 +38,11 @@
 #include "core/framework/memory_info.h"
 #endif
 
+#include "core/framework/stream_handles.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/program_region.h"
+#endif
+
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>
@@ -44,11 +51,9 @@ struct Offset;
 
 namespace onnxruntime {
 
-namespace experimental {
 namespace fbs {
 struct SessionState;
 }  // namespace fbs
-}  // namespace experimental
 
 class ExecutionProviders;
 class KernelDef;
@@ -56,6 +61,7 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+class DeviceStreamCollection;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 class MemoryInfo;
 #endif
@@ -87,50 +93,32 @@ class SessionState {
  public:
   SessionState(Graph& graph,
                const ExecutionProviders& execution_providers,
-               bool enable_mem_pattern,
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
-               bool use_deterministic_compute = false,
-               bool enable_mem_reuse = true,
-               PrepackedWeightsContainer* prepacked_weights_container = nullptr)
-      : graph_(graph),
-        execution_providers_(execution_providers),
-        logger_(logger),
-        profiler_(profiler),
-        enable_mem_pattern_(enable_mem_pattern),
-        thread_pool_(thread_pool),
-        inter_op_thread_pool_(inter_op_thread_pool),
-        data_transfer_mgr_(data_transfer_mgr),
-        use_deterministic_compute_(use_deterministic_compute),
-        enable_mem_reuse_(enable_mem_reuse),
-        prepacked_weights_container_(prepacked_weights_container) {
-    SetupAllocators();
-  }
+               const SessionOptions& sess_options,
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr);
 
   ~SessionState() {
-    for (auto* p : session_kernels_) {
-      delete p;
-    }
     for (auto& kvp : deleter_for_initialized_tensors_) {
       kvp.second.f(kvp.second.param);
     }
   }
 
   // Graph viewer. CreateGraphInfo must have been called previously.
-  const GraphViewer& GetGraphViewer() const noexcept { return *graph_viewer_.get(); };
+  const GraphViewer& GetGraphViewer() const noexcept { return *graph_viewer_; };
 
   // kernels
   // Get kernel for specified node.
   // It should called right before graph execution only.
   const OpKernel* GetKernel(size_t node_id) const {
-    return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
+    return (node_id < session_kernels_.size()) ? session_kernels_[node_id].get() : nullptr;
   }
 
   OpKernel* GetMutableKernel(size_t node_id) {
-    return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
+    return (node_id < session_kernels_.size()) ? session_kernels_[node_id].get() : nullptr;
   }
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
@@ -146,27 +134,27 @@ class SessionState {
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
   /**
-     * Adds an initialized tensor (weight) so that it can be used by the
-     * execution frame to setup the appropriate OrtValue vectors.
-     * This function will take a shallow copy of d if d is not NULL.
-     * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
-     * If 'sparse' is true the tensor value represents a densified weight that was initially stored in the model
-     * as sparse tensor.
-     */
+   * Adds an initialized tensor (weight) so that it can be used by the
+   * execution frame to setup the appropriate OrtValue vectors.
+   * This function will take a shallow copy of d if d is not NULL.
+   * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
+   * If 'sparse' is true the tensor value represents a densified weight that was initially stored in the model
+   * as sparse tensor.
+   */
   Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d, bool constant, bool sparse);
 
   /**
-     * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
-     * execution frame to setup the appropriate OrtValue vectors.
-     * The lifetime of returned OrtValues are limited by this SessionState object.
-     */
+   * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
+   * execution frame to setup the appropriate OrtValue vectors.
+   * The lifetime of returned OrtValues are limited by this SessionState object.
+   */
   const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
   /**
-     * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
-     * and cannot be overridden at runtime.
-     * The lifetime of returned OrtValues are limited by this SessionState object.
-     */
+   * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
+   * and cannot be overridden at runtime.
+   * The lifetime of returned OrtValues are limited by this SessionState object.
+   */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -174,6 +162,7 @@ class SessionState {
 #endif
 
 #ifdef ENABLE_TRAINING
+// This is referenced in training::TrainingSession. Should be removed when this class is removed.
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
@@ -195,6 +184,9 @@ class SessionState {
 
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
+
+  const std::vector<AllocPlanPerValue>& GetPerValueAllocPlan() const;
+
   /**
   Get the logger for this session.
   Falls back to returning Logging::LoggingManager::DefaultLogger if SetLogger has not been called.
@@ -207,22 +199,37 @@ class SessionState {
   */
   profiling::Profiler& Profiler() const noexcept { return profiler_; }
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryProfiler* GetMemoryProfiler() const noexcept { return memory_profiler_; }
+
+  void SetMemoryProfiler(MemoryProfiler* memory_profiler) noexcept {
+    memory_profiler_ = memory_profiler;
+  }
+#endif
+
   /**
   Get cached memory pattern based on input shapes
+  Must be called only when all values contain tensors
+  In training scenarios, the cache may be updated so
+  the callers would receive a copy of inferred shapes
+  made under mutex being held. In inference scenarios,
+  it is not mutable, we do not obtain a lock and simply get a pointer
+  w/o copying a hashtable
   */
   const MemoryPatternGroup* GetMemoryPatternGroup(
-      const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
-      const std::vector<int>& feed_mlvalue_idxs,
-      std::unordered_map<int, TensorShape>& inferred_shapes) const;
+      gsl::span<const OrtValue> tensor_inputs,
+      gsl::span<const int> feed_mlvalue_idxs,
+      const InlinedHashMap<int, TensorShape>*& inferred_shapes) const;
 
   /**
   Set generated memory pattern with a given input shapes.
   Const as it's an internal cache update only.
+  All inputs must represent Tensors
   */
-  Status UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
-                                       std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
+  Status UpdateMemoryPatternGroupCache(gsl::span<const OrtValue> tensor_inputs,
+                                       MemoryPatternGroup mem_patterns) const;
 
-  bool GetUseDeterministicCompute() const { return use_deterministic_compute_; }
+  bool GetUseDeterministicCompute() const { return sess_options_.use_deterministic_compute; }
 
   /**
   Get enable memory pattern flag
@@ -259,14 +266,14 @@ class SessionState {
     const OrtDevice* device = nullptr;
   };
 
-  using NameNodeInfoMapType = std::unordered_map<std::string, std::vector<NodeInfo>>;
+  using NameNodeInfoMapType = InlinedHashMap<std::string, InlinedVector<NodeInfo>>;
 
   common::Status AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
-  common::Status GetInputNodeInfo(const std::string& input_name, std::vector<NodeInfo>& node_info_vec) const;
+  common::Status GetInputNodeInfo(const std::string& input_name, InlinedVector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetInputNodeInfoMap() const;
 
   void AddOutputNameToNodeInfoMapping(const std::string& output_name, const NodeInfo& node_info);
-  common::Status GetOutputNodeInfo(const std::string& output_name, std::vector<NodeInfo>& node_info_vec) const;
+  common::Status GetOutputNodeInfo(const std::string& output_name, InlinedVector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetOutputNodeInfoMap() const;
 
   // Get the KernelCreateInfo entry for a node. SessionState must be finalized before calling.
@@ -278,44 +285,31 @@ class SessionState {
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
 
-  bool ExportDll() const noexcept { return export_fused_dll_; }
-  void SetExportDllFlag(bool flag) noexcept { export_fused_dll_ = flag; }
-
   const FuncManager& GetFuncMgr() const noexcept { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() noexcept { return fused_funcs_mgr_; }
 
   const DataTransferManager& GetDataTransferMgr() const noexcept { return data_transfer_mgr_; }
 
-  std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
+  InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
-  const std::unordered_set<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
-  Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                         flatbuffers::Offset<onnxruntime::experimental::fbs::SessionState>& fbs_session_state) const;
-#endif
-
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-  void SetCompiledKernelHashes(std::unordered_map<std::string, uint64_t>&& compiled_kernel_hashes) {
-    compiled_kernel_hashes_ = std::move(compiled_kernel_hashes);
-  }
-
-  Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::SessionState& fbs_session_state,
-                           const KernelRegistryManager& kernel_registry_manager);
+#ifdef ENABLE_TRAINING
+  void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
+  const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                              KernelRegistryManager& kernel_registry_manager,
-                              const SessionOptions& session_options = {},
-                              const onnxruntime::experimental::fbs::SessionState* serialized_session_state = nullptr,
+                              const KernelRegistryManager& kernel_registry_manager,
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
 
   SessionState* Parent() {
     return parent_;
   }
+
+  // Clear all removable attributes if they exists.
+  // The function logs the list of removable attributes for every node.
+  void PruneRemovableAttributes();
 
   size_t GetNumberOfPrepacksCounter() const {
     return number_of_prepacks_counter_;
@@ -333,8 +327,19 @@ class SessionState {
     return subgraph_session_states_;
   }
 
+#ifdef ORT_ENABLE_STREAM
+  std::unique_ptr<DeviceStreamCollection> AcquireDeviceStreamCollection() const;
+
+  void RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const;
+
+  IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance() const {
+    return *stream_handles_registry_;
+  }
+#endif
+
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  void IncrementGraphExecutionCounter() {
+  void
+  IncrementGraphExecutionCounter() {
     ++graph_executions_counter_;
   }
 
@@ -342,6 +347,8 @@ class SessionState {
     return graph_executions_counter_;
   }
 #endif
+
+  const SessionOptions& GetSessionOptions() const { return sess_options_; }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -359,10 +366,10 @@ class SessionState {
   void CleanInitializedTensorsFromGraph();
 
   /**
-  * Prepack the constant initialized tensors for better performance.
-  * The original constant initialized tensors will be removed to save memory.
-  */
-  Status PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count,
+   * Prepack the constant initialized tensors for better performance.
+   * The original constant initialized tensors will be removed to save memory.
+   */
+  Status PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                            const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
@@ -372,60 +379,62 @@ class SessionState {
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
                                std::unique_ptr<SessionState> session_state);
 
-#if !defined(ORT_MINIMAL_BUILD)
-  Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager, bool saving_ort_format);
-#endif
+  Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager,
+                                  bool saving_ort_format);
 
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                                  KernelRegistryManager& kernel_registry_manager,
+                                  const KernelRegistryManager& kernel_registry_manager,
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
-                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count,
-                                  const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
+                                  InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+                                  const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
-      const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
-      const std::vector<int>& feed_mlvalue_idxs,
-      MemoryPatternGroup* output,
-      std::unordered_map<int, TensorShape>& inferred_shapes) const;
+      gsl::span<const OrtValue> inputs,
+      gsl::span<const int> feed_mlvalue_idxs,
+      MemoryPatternGroup& output,
+      InlinedHashMap<int, TensorShape>& inferred_shapes) const;
 #endif
-
-  // the SessionState for the main Graph contains the compiled kernel hashes for the entire model
-  const std::unordered_map<std::string, uint64_t>& GetCompiledKernelHashes() const {
-    return parent_ ? parent_->GetCompiledKernelHashes() : compiled_kernel_hashes_;
-  }
 
   // KernelCreateInfo for each node so we do kernel lookup once
   KernelCreateInfoMap kernel_create_info_map_;
 
-  // If we compile kernels in a minimal build we need a way to find the kernel using the hash.
-  // We populate this map when doing the kernel compilation in GraphPartitioner, and use it in LoadFromOrtFormat.
-  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes_;
+  // fused_funcs_mgr_ must live longer than the session_kernels_, becaues a kernel could be created from this manager
+  FuncManager fused_funcs_mgr_;
 
   // cache of the constructed kernels to avoid spending construction time per executor
-  std::vector<OpKernel*> session_kernels_;
+  std::vector<std::unique_ptr<OpKernel>> session_kernels_;
   Graph& graph_;
-  std::unique_ptr<GraphViewer> graph_viewer_;  // GraphViewer for const access to Graph
+  std::optional<GraphViewer> graph_viewer_;  // GraphViewer for const access to Graph
 
   const ExecutionProviders& execution_providers_;
 
-  // currently the allocator type is an implementation detail and we don't make any  behavioral choices based on it,
+  // currently the allocator type is an implementation detail and we don't make any behavioral choices based on it,
   // so exclude it from the key comparison for allocator_idx_map_.
   // we also don't expect to have two allocators with the same name, one using an arena and one not.
-  struct OrtMemoryInfoLessThanIgnoreAllocType {
+  struct OrtMemoryInfoLessThanIgnoreNameAndAllocType {
     bool operator()(const OrtMemoryInfo& lhs, const OrtMemoryInfo& rhs) const {
-      //if (lhs.alloc_type != rhs.alloc_type)
-      //  return lhs.alloc_type < rhs.alloc_type;
+      // if (lhs.alloc_type != rhs.alloc_type)
+      //   return lhs.alloc_type < rhs.alloc_type;
       if (lhs.mem_type != rhs.mem_type)
         return lhs.mem_type < rhs.mem_type;
 
       if (lhs.id != rhs.id)
         return lhs.id < rhs.id;
 
-      return strcmp(lhs.name, rhs.name) < 0;
+      if (lhs.device != rhs.device) {
+        // id should always == device.id so ignore that
+        if (lhs.device.Type() != rhs.device.Type())
+          return lhs.device.Type() < rhs.device.Type();
+
+        // this is the allocator mem type and not the kernel mem type that OrtMemoryInfo.mem_type represents
+        return lhs.device.MemType() < rhs.device.MemType();
+      }
+
+      return false;
     }
   };
 
@@ -442,8 +451,8 @@ class SessionState {
   // for internal allocations by CUDAExecutionProvider::GetScratchBuffer, but could access the per-thread allocator
   // directly instead of going through CUDAExecutionProvider::GetAllocator.
   // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
-  std::map<OrtMemoryInfo, std::function<AllocatorPtr(int id, OrtMemType mem_type)>,
-           OrtMemoryInfoLessThanIgnoreAllocType>
+  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>,
+           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
       allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
@@ -458,27 +467,37 @@ class SessionState {
   // this is needed because we currently convert all sparse initializer into dense Tensors
   // if and when we actually place SparseTensor instances (we should) into OrtValues, we
   // will not need this structure.
-  std::unordered_set<int> sparse_initialized_tensors_;
+  InlinedHashSet<int> sparse_initialized_tensors_;
 #endif
 
   // This data structure is for uninitializing string tensors and
   // munmap memory region and close file descriptor
-  std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
-  std::vector<BufferUniquePtr> weights_buffers_;
-  std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
+  InlinedHashMap<int, OrtCallback> deleter_for_initialized_tensors_;
+  InlinedVector<BufferUniquePtr> weights_buffers_;
+  std::optional<SequentialExecutionPlan> p_seq_exec_plan_;
 
   const logging::Logger& logger_;
   profiling::Profiler& profiler_;
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryProfiler* memory_profiler_;
+#endif
 
   // switch for enable memory pattern optimization or not.
   bool enable_mem_pattern_;
 
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
-
   // cache for the generated mem_patterns. key is calculated based on input shapes.
-  mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;
-  mutable std::map<int64_t, std::unordered_map<int, TensorShape>> shape_patterns_;
+  // must be a node based container as a pointer is cached.
+  mutable NodeHashMap<int64_t, MemoryPatternGroup> mem_patterns_;
+  // This is mutable under mutex in training scenarios so execution frame would make a copy
+  // of the value when created.
+#ifdef ENABLE_TRAINING
+  mutable NodeHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
+#else
+  NodeHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
+#endif
 
   NameNodeInfoMapType input_names_to_nodeinfo_mapping_;
   NameNodeInfoMapType output_names_to_nodeinfo_mapping_;
@@ -489,14 +508,11 @@ class SessionState {
   concurrency::ThreadPool* const thread_pool_{};
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
-  bool export_fused_dll_ = false;
-  FuncManager fused_funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;
 
-  bool use_deterministic_compute_;
-  bool enable_mem_reuse_;
-  std::unique_ptr<NodeIndexInfo> node_index_info_;
-  std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
+  const SessionOptions& sess_options_;
+
+  std::optional<NodeIndexInfo> node_index_info_;
 
   // Container to store pre-packed weights to share between sessions.
   // The life-cycle of the cache itself is maintained by the user and the user will ensure
@@ -504,12 +520,17 @@ class SessionState {
   // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
-#if !defined(ORT_MINIMAL_BUILD)
-  std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
+#ifdef ENABLE_TRAINING
+// Needed for ORTTrainer. Should be removed along with ORTTrainer code
+#ifndef DISABLE_ABSEIL
+  InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
+#else
+  std::map<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
+#endif
 #endif
 
   SessionState* parent_ = nullptr;
-  //Assign each graph in each session an unique id.
+  // Assign each graph in each session an unique id.
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   int graph_id_ = 0;
   int next_graph_id_ = 1;
@@ -532,6 +553,16 @@ class SessionState {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   // Counter for number of times the session graph has been executed
   size_t graph_executions_counter_ = 0;
+#endif
+
+#ifdef ORT_ENABLE_STREAM
+  std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
+
+  // lock for the device stream pool
+  mutable OrtMutex device_stream_pool_mutex_;
+  mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
+  // flag to indicate whether current session using any EP that create device stream dynamically.
+  bool has_device_stream_enabled_ep_ = false;
 #endif
 };
 

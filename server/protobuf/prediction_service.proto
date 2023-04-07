@@ -1,8 +1,0 @@
-syntax = "proto3";
-import "predict.proto";
-
-package onnxruntime.server;
-
-service PredictionService {
-    rpc Predict(PredictRequest) returns (PredictResponse);
-}

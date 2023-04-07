@@ -9,6 +9,7 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
+#include "python/numpy_helper.h"
 
 #include "core/graph/graph.h"
 #include "core/framework/tensor_shape.h"
@@ -34,15 +35,11 @@ const char* PYTHON_ORTVALUE_OBJECT_NAME = "OrtValue";
 const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR = "_ortvalue";
 
 static bool PyObjectCheck_NumpyArray(PyObject* o) {
-  return PyObject_HasAttrString(o, "__array_finalize__");
+  return (PyObject_HasAttrString(o, "__array_finalize__") != 0);
 }
 
 bool IsNumpyArray(py::object& obj) {
   return PyObjectCheck_NumpyArray(obj.ptr());
-}
-
-bool IsNumericNumpyType(int npy_type) {
-  return npy_type < NPY_OBJECT || npy_type == NPY_HALF;
 }
 
 int GetNumpyArrayType(const py::object& obj) {
@@ -78,14 +75,14 @@ static TensorShape GetArrayShape(PyArrayObject* pyObject) {
   const int ndim = PyArray_NDIM(pyObject);
   const npy_intp* npy_dims = PyArray_DIMS(pyObject);
   auto span = gsl::make_span(npy_dims, ndim);
-  std::vector<int64_t> dims(span.cbegin(), span.cend());
+  std::vector<int64_t> dims(span.begin(), span.end());
   TensorShape shape(std::move(dims));
   return shape;
 }
 
 TensorShape GetShape(const py::array& arr) {
   auto span = gsl::make_span(arr.shape(), arr.ndim());
-  std::vector<int64_t> dims(span.cbegin(), span.cend());
+  std::vector<int64_t> dims(span.begin(), span.end());
   TensorShape shape(std::move(dims));
   return shape;
 }
@@ -111,6 +108,20 @@ OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
     ORT_THROW("Unsupported OrtDevice type: ", ort_device.Type());
   }
   return mem_info;
+}
+
+int32_t GetTensorProtoType(const OrtValue& ort_value) {
+  if (ort_value.IsTensor()) {
+    return ort_value.Get<Tensor>().GetElementType();
+#if !defined(DISABLE_SPARSE_TENSORS)
+  } else if (ort_value.IsSparseTensor()) {
+    return ort_value.Get<SparseTensor>().GetElementType();
+#endif
+  } else if (ort_value.IsTensorSequence()) {
+    return ort_value.Get<TensorSeq>().DataType()->AsPrimitiveDataType()->GetDataType();
+  } else {
+    throw std::runtime_error("Tensor proto_type is unavailable for this value.");
+  }
 }
 
 #ifdef USE_CUDA
@@ -149,28 +160,45 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
 
-  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+  // We are leaking this map so we do not accidentally destroy CUDA Allocator instance
+  // after we unloaded CUDA provider library. Appeasing static analysis warning and using make_unique.
+  static auto* id_to_allocator_map = std::make_unique<std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>>().release();
 
-  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+  auto hit = id_to_allocator_map->find(id);
+  if (hit == id_to_allocator_map->end()) {
     // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
-    id_to_allocator_map->insert({id, GetProviderInfo_CUDA().CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
+    auto cuda_allocator = GetProviderInfo_CUDA().CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr);
+    hit = id_to_allocator_map->emplace(id, std::move(cuda_allocator)).first;
   }
 
-  return (*id_to_allocator_map)[id];
+  return hit->second;
 }
 
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   // Using default stream
-  return GetProviderInfo_CUDA().CreateGPUDataTransfer(nullptr);
+  return GetProviderInfo_CUDA().CreateGPUDataTransfer();
 }
 
 #endif
 
 #ifdef USE_ROCM
+void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_ROCM().rocmMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_ROCM().rocmMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, RocmToCpuMemCpy}};
+
+  return &map;
+}
 
 bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
-  int num_devices = 0;
-  HIP_CALL_THROW(hipGetDeviceCount(&num_devices));
+  int num_devices = GetProviderInfo_ROCM().hipGetDeviceCount();
 
   if (0 == num_devices) {
     LOGS(logger, WARNING) << "your system does not have a ROCM capable device.";
@@ -188,28 +216,15 @@ bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
 AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded ROCM allocation work we need to maintain a per-thread ROCM allocator
-  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
-  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map->insert({id, GetProviderInfo_ROCM().CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
   }
 
-  return id_to_allocator_map[id];
-}
-
-void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
-  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyHostToDevice));
-}
-
-void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyDeviceToHost));
-}
-
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, RocmToCpuMemCpy}};
-
-  return &map;
+  return (*id_to_allocator_map)[id];
 }
 
 #endif
@@ -239,31 +254,7 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
   }
 }
 
-MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type) {
-  static std::map<int, MLDataType> type_map{
-      {NPY_BOOL, DataTypeImpl::GetType<bool>()},
-      {NPY_FLOAT, DataTypeImpl::GetType<float>()},
-      {NPY_FLOAT16, DataTypeImpl::GetType<MLFloat16>()},
-      {NPY_DOUBLE, DataTypeImpl::GetType<double>()},
-      {NPY_INT8, DataTypeImpl::GetType<int8_t>()},
-      {NPY_UINT8, DataTypeImpl::GetType<uint8_t>()},
-      {NPY_INT16, DataTypeImpl::GetType<int16_t>()},
-      {NPY_UINT16, DataTypeImpl::GetType<uint16_t>()},
-      {NPY_INT, DataTypeImpl::GetType<int32_t>()},
-      {NPY_UINT, DataTypeImpl::GetType<uint32_t>()},
-      {NPY_LONGLONG, DataTypeImpl::GetType<int64_t>()},
-      {NPY_ULONGLONG, DataTypeImpl::GetType<uint64_t>()},
-      {NPY_OBJECT, DataTypeImpl::GetType<std::string>()}
-  };
-  const auto it = type_map.find(numpy_type);
-  if (it == type_map.end()) {
-    throw std::runtime_error("No corresponding Numpy type for Tensor Type.");
-  } else {
-    return it->second;
-  }
-}
-
-MLDataType NumpyToOnnxRuntimeTensorType(int numpy_type) {
+MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
   static std::map<int, MLDataType> type_map{
       {NPY_BOOL, DataTypeImpl::GetType<bool>()},
       {NPY_FLOAT, DataTypeImpl::GetType<float>()},
@@ -456,7 +447,7 @@ static std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std
 
   const int npy_type = PyArray_TYPE(darray);
   TensorShape shape = GetArrayShape(darray);
-  auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
+  auto element_type = NumpyTypeToOnnxRuntimeTensorType(npy_type);
   if (IsNumericNumpyType(npy_type) && use_numpy_data_memory) {
     if (pyObject == darray) {
       // Use the memory of numpy array directly. The ownership belongs to the calling
@@ -504,26 +495,24 @@ static void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_
     throw std::runtime_error("Input is not of sequence type");
   }
 
+  // set the seq type
+  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
+  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
+
   // populate the seq
-  std::vector<Tensor> tensors;
   auto list_size = PyList_Size(pylist_obj);
   if (list_size > 0) {
-    tensors.resize(list_size);
     for (Py_ssize_t i = 0; i < list_size; ++i) {
       auto* py_obj = PyList_GetItem(pylist_obj, i);
       if (!PyObjectCheck_NumpyArray(py_obj)) {
         throw std::runtime_error("CreateSequenceOfTensors: Input is not a tensor");
       }
       auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
-      tensors[i] = std::move(*p_tensor);
+      p_seq_tensors->Add(std::move(*p_tensor));
     }
   }
 
-  // set the seq type
-  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
-      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
-  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
-  p_seq_tensors->SetElements(std::move(tensors));
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   p_mlvalue->Init(p_seq_tensors.release(),
                   ml_tensor_sequence,
@@ -548,7 +537,7 @@ static void CreateTensorMLValue(const AllocatorPtr& alloc, const std::string& na
 static void CreateTensorMLValueOwned(const OrtPybindSingleUseAllocatorPtr& pybind_alloc, const AllocatorPtr& alloc, OrtValue* p_mlvalue) {
   auto npy_type = PyArray_TYPE(pybind_alloc->GetContiguous());
   TensorShape shape = GetArrayShape(pybind_alloc->GetContiguous());
-  auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
+  auto element_type = NumpyTypeToOnnxRuntimeTensorType(npy_type);
 
   std::unique_ptr<Tensor> p_tensor;
 

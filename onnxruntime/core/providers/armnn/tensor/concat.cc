@@ -104,9 +104,9 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 
     armnn::IConnectableLayer *OutputLayer = myNetwork->AddOutputLayer(0);
     layer->GetOutputSlot(0).Connect(OutputLayer->GetInputSlot(0));
-    layer->GetOutputSlot(0).SetTensorInfo(armnn::TensorInfo(mergeDims, armnn::DataType::Float32)); 
+    layer->GetOutputSlot(0).SetTensorInfo(armnn::TensorInfo(mergeDims, armnn::DataType::Float32));
 
-    // Optimise ArmNN network
+    // Optimize ArmNN network
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Concat::run->GetDeviceSpec());
 
     if (optNet == nullptr) {
@@ -120,7 +120,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     std::pair<ConcatIterator, bool> ret;
     ret = Concat::concatLayers.insert(std::pair<OpKernel*, armnn::NetworkId>((OpKernel*)this, networkId));
     pNetworkId = &ret.first->second;
-    
+
   } else {
     pNetworkId = &it->second;
   }
@@ -128,9 +128,9 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
   armnn::InputTensors inputTensors{};
   for (int index = 0; index < input_count; ++index)
     inputTensors.push_back({index, armnn::ConstTensor(Concat::run->GetInputTensorInfo(*pNetworkId, index),
-                                                       input_tensors[index]->template Data<T>())});
+                                                       input_tensors[index]->Data<T>())});
   armnn::OutputTensors outputTensors{{0, armnn::Tensor(Concat::run->GetOutputTensorInfo(*pNetworkId, 0),
-                                                       Y->template MutableData<T>())}};
+                                                       Y->MutableData<T>())}};
 
   Concat::run->EnqueueWorkload(*pNetworkId, inputTensors, outputTensors);
 

@@ -4,7 +4,6 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "core/providers/cuda/multi_tensor/common.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -29,11 +28,6 @@ class IsAllFiniteOp final : public CudaKernel {
 
  private:
   bool isinf_only_, isnan_only_;
-};
-
-template <typename T>
-struct IsAllFiniteFunctor {
-  void operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, const bool isinf_only, const bool isnan_only);
 };
 
 }  // namespace cuda

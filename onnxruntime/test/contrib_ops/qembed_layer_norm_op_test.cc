@@ -12,6 +12,7 @@ namespace test {
 
 namespace {
 
+template<typename WeightT>
 static void RunTest(const embedlayernorm::OpData& data,
                     float accuracy_threshold = 0.25f) {
   ASSERT_TRUE(data.word_embedding_data.size() % data.hidden_size == 0);
@@ -34,30 +35,30 @@ static void RunTest(const embedlayernorm::OpData& data,
   std::vector<int64_t> output_dims = {data.batch_size, data.sequence_size, data.hidden_size};
   std::vector<int64_t> mask_index_dims = {data.batch_size};
 
-  quantization::Params<uint8_t> word_embedding_params;
-  std::vector<uint8_t> word_embedding_data_quant =
-      QuantizeLinearTestVector<uint8_t>(data.word_embedding_data,
+  quantization::Params<WeightT> word_embedding_params;
+  std::vector<WeightT> word_embedding_data_quant =
+      QuantizeLinearTestVector<WeightT>(data.word_embedding_data,
                                         word_embedding_params);
 
-  quantization::Params<uint8_t> position_embedding_params;
-  std::vector<uint8_t> position_embedding_data_quant =
-      QuantizeLinearTestVector<uint8_t>(data.position_embedding_data,
+  quantization::Params<WeightT> position_embedding_params;
+  std::vector<WeightT> position_embedding_data_quant =
+      QuantizeLinearTestVector<WeightT>(data.position_embedding_data,
                                         position_embedding_params);
 
-  quantization::Params<uint8_t> segment_embedding_params = {};
-  std::vector<uint8_t> segment_embedding_data_quant;
+  quantization::Params<WeightT> segment_embedding_params = {};
+  std::vector<WeightT> segment_embedding_data_quant;
   if (data.has_segment) {
-    segment_embedding_data_quant = QuantizeLinearTestVector<uint8_t>(
+    segment_embedding_data_quant = QuantizeLinearTestVector<WeightT>(
       data.segment_embedding_data, segment_embedding_params);
   }
 
-  quantization::Params<uint8_t> gamma_params;
-  std::vector<uint8_t> gamma_data_quant =
-      QuantizeLinearTestVector<uint8_t>(data.gamma_data, gamma_params);
+  quantization::Params<WeightT> gamma_params;
+  std::vector<WeightT> gamma_data_quant =
+      QuantizeLinearTestVector<WeightT>(data.gamma_data, gamma_params);
 
-  quantization::Params<uint8_t> beta_params;
-  std::vector<uint8_t> beta_data_quant =
-      QuantizeLinearTestVector<uint8_t>(data.beta_data, beta_params);
+  quantization::Params<WeightT> beta_params;
+  std::vector<WeightT> beta_data_quant =
+      QuantizeLinearTestVector<WeightT>(data.beta_data, beta_params);
 
   OpTester tester("QEmbedLayerNormalization", 1, onnxruntime::kMSDomain);
 
@@ -70,27 +71,27 @@ static void RunTest(const embedlayernorm::OpData& data,
   }
 
   // Quantized initializer inputs:
-  tester.AddInput<uint8_t>("word_embedding_data",
+  tester.AddInput<WeightT>("word_embedding_data",
                            word_embedding_dims,
                            word_embedding_data_quant,
                            /*is_initializer=*/true);
-  tester.AddInput<uint8_t>("position_embedding_data",
+  tester.AddInput<WeightT>("position_embedding_data",
                            position_embedding_dims,
                            position_embedding_data_quant,
                            /*is_initializer=*/true);
   if (data.has_segment) {
-    tester.AddInput<uint8_t>("segment_embedding_data",
+    tester.AddInput<WeightT>("segment_embedding_data",
                              segment_embedding_dims,
                              segment_embedding_data_quant,
                              /*is_initializer=*/true);
   } else {
-    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<WeightT>();
   }
-  tester.AddInput<uint8_t>("gamma",
+  tester.AddInput<WeightT>("gamma",
                            gamma_dims,
                            gamma_data_quant,
                            /*is_initializer=*/true);
-  tester.AddInput<uint8_t>("beta",
+  tester.AddInput<WeightT>("beta",
                            beta_dims,
                            beta_data_quant,
                            /*is_initializer=*/true);
@@ -128,27 +129,27 @@ static void RunTest(const embedlayernorm::OpData& data,
                          /*is_initializer=*/true);
 
   // Quantized zero points:
-  tester.AddInput<uint8_t>("word_embedding_zero_point",
+  tester.AddInput<WeightT>("word_embedding_zero_point",
                            /*dims=*/{},
                            {word_embedding_params.zero_point},
                            /*is_initializer=*/true);
-  tester.AddInput<uint8_t>("position_embedding_zero_point",
+  tester.AddInput<WeightT>("position_embedding_zero_point",
                            /*dims=*/{},
                            {position_embedding_params.zero_point},
                            /*is_initializer=*/true);
   if (data.has_segment) {
-    tester.AddInput<uint8_t>("segment_embedding_zero_point",
+    tester.AddInput<WeightT>("segment_embedding_zero_point",
                              /*dims=*/{},
                              {segment_embedding_params.zero_point},
                              /*is_initializer=*/true);
   } else {
-    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<WeightT>();
   }
-  tester.AddInput<uint8_t>("gamma_zero_point",
+  tester.AddInput<WeightT>("gamma_zero_point",
                            /*dims=*/{},
                            {gamma_params.zero_point},
                            /*is_initializer=*/true);
-  tester.AddInput<uint8_t>("beta_zero_point",
+  tester.AddInput<WeightT>("beta_zero_point",
                            /*dims=*/{},
                            {beta_params.zero_point},
                            /*is_initializer=*/true);
@@ -170,28 +171,34 @@ static void RunTest(const embedlayernorm::OpData& data,
 }  // namespace
 
 TEST(QEmbedLayerNormTest, EmbedLayerNormBatch1) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch1());
+  RunTest<int8_t>(embedlayernorm::EmbedLayerNormBatch1());
+  RunTest<uint8_t>(embedlayernorm::EmbedLayerNormBatch1());
 }
 
 TEST(QEmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch1(), /*use_float16=*/true);
+  RunTest<int8_t>(embedlayernorm::EmbedLayerNormBatch1(), /*use_float16=*/true);
+  RunTest<uint8_t>(embedlayernorm::EmbedLayerNormBatch1(), /*use_float16=*/true);
 }
 
 TEST(QEmbedLayerNormTest, EmbedLayerNormBatch2) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch2());
+  RunTest<int8_t>(embedlayernorm::EmbedLayerNormBatch2());
+  RunTest<uint8_t>(embedlayernorm::EmbedLayerNormBatch2());
 }
 
 TEST(QEmbedLayerNormTest, EmbedLayerNormBatch2_NoMask) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch2(/*has_mask=*/false));
+  RunTest<int8_t>(embedlayernorm::EmbedLayerNormBatch2(/*has_mask=*/false));
+  RunTest<uint8_t>(embedlayernorm::EmbedLayerNormBatch2(/*has_mask=*/false));
 }
 
 // BatchSize > HiddenSize to reproduce mask processing bug
 TEST(QEmbedLayerNormTest, EmbedLayerNormLargeBatchSmallHiddenSize) {
-  RunTest(embedlayernorm::EmbedLayerNormLargeBatchSmallHiddenSize());
+  RunTest<int8_t>(embedlayernorm::EmbedLayerNormLargeBatchSmallHiddenSize());
+  RunTest<uint8_t>(embedlayernorm::EmbedLayerNormLargeBatchSmallHiddenSize());
 }
 
 TEST(QEmbedLayerNormTest, EmbedLayerNormBatch_Distill) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch_Distill());
+  RunTest<int8_t>(embedlayernorm::EmbedLayerNormBatch_Distill());
+  RunTest<uint8_t>(embedlayernorm::EmbedLayerNormBatch_Distill());
 }
 
 }  // namespace test

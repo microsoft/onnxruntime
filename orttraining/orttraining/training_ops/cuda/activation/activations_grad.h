@@ -55,5 +55,29 @@ class SigmoidGrad final : public BinaryElementwise<ShouldNotBroadcast> {
   MAKE_FUNC_CTX_NULL()
 };
 
+template <typename T>
+class QuickGeluGrad final : public BinaryElementwise<ShouldNotBroadcast> {
+ public:
+  QuickGeluGrad(const OpKernelInfo& info) : BinaryElementwise(info) {
+    alpha_ = info.GetAttrOrDefault<float>("alpha", 1.702f);
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  MAKE_FUNC_CTX_ALPHA()
+  float alpha_;
+};
+
+template <typename T>
+class TanhGrad final : public BinaryElementwise<ShouldNotBroadcast> {
+ public:
+  TanhGrad(const OpKernelInfo& info) : BinaryElementwise(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  MAKE_FUNC_CTX_NULL()
+};
 }  // namespace cuda
 }  // namespace onnxruntime

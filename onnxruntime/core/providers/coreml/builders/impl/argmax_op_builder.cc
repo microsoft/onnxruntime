@@ -14,14 +14,13 @@ namespace coreml {
 
 class ArgMaxOpBuilder : public BaseOpBuilder {
   // Add operator related
-#ifdef __APPLE__
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#ifdef __APPLE__
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
- private:
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
@@ -52,7 +51,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     auto it = node.OutputEdgesBegin();
     const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
     // If Argmax's successive node is a Cast from int64 to int32 output
-    // The 'cast to' type is checked in operater supported related, omit the check here
+    // The 'cast to' type is checked in operator supported related, omit the check here
     if (succ_node->OpType() == "Cast") {
       // Skip the cast's input/argmax's output
       *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();

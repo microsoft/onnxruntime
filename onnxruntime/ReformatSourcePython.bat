@@ -1,21 +1,14 @@
 :: Copyright (c) Microsoft Corporation. All rights reserved.
 :: Licensed under the MIT License.
 
-:: Before running this, please make sure python.exe is in path, and yapf is installed like the following
-::    pip install --upgrade yapf
+:: Before running this, please make sure python.exe is in path, and black is installed like the following
+::    pip install --upgrade black isort
 
-:: If you use Visual Studio Code, you can configure like the following:
-::    "python.formatting.provider": "yapf"
-::    "python.formatting.yapfArgs": ["--style", "{based_on_style: pep8, column_limit: 120}"]
-:: See https://code.visualstudio.com/docs/python/editing for more info
+:: For more info about black, see https://github.com/psf/black
 
-:: The style configuration file is .style.yapf in current directory.
+python -m isort ./python
+python -m isort ./test
+python -m black ./python
+python -m black ./test
 
-:: You can setup git pre-commit hook following https://github.com/google/yapf/tree/master/plugins.
-
-:: For more info about YAPF, see https://github.com/google/yapf
-
-yapf -ir ./python
-yapf -ir ./test
-
-if errorlevel 1 echo please install python, then pip install yapf
+if errorlevel 1 echo please install python, then pip install --upgrade black isort

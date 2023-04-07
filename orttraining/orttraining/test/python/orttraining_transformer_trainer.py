@@ -4,30 +4,21 @@ import json
 import logging
 import os
 import random
-
-from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Callable, Dict, List, NamedTuple, Optional
 
 import numpy as np
 import torch
-from torch import nn
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data.sampler import RandomSampler, SequentialSampler
+from torch.utils.data.sampler import SequentialSampler
 from tqdm import tqdm, trange
-
-from transformers.data.data_collator import DataCollator, DefaultDataCollator
+from transformers.data.data_collator import DefaultDataCollator
 from transformers.modeling_utils import PreTrainedModel
 from transformers.training_args import TrainingArguments
 
 import onnxruntime
-from orttraining_test_bert_postprocess import postprocess_model
-from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
-
-from onnxruntime.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
-                                      model_desc_validation as md_val,\
-                                      orttrainer_options as orttrainer_options
-from onnxruntime.training.optim import LinearWarmupLRScheduler, _LRScheduler
+from onnxruntime.training import amp, optim, orttrainer
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -35,7 +26,7 @@ try:
     _has_tensorboard = True
 except ImportError:
     try:
-        from tensorboardX import SummaryWriter
+        from tensorboardX import SummaryWriter  # noqa: F401
 
         _has_tensorboard = True
     except ImportError:
@@ -56,6 +47,7 @@ def set_seed(seed: int):
     torch.cuda.manual_seed_all(seed)
     onnxruntime.set_seed(seed)
 
+
 class EvalPrediction(NamedTuple):
     predictions: np.ndarray
     label_ids: np.ndarray
@@ -71,14 +63,12 @@ class TrainOutput(NamedTuple):
     global_step: int
     training_loss: float
 
-def get_linear_schedule_with_warmup(num_warmup_steps, num_training_steps, base_lr):
 
+def get_linear_schedule_with_warmup(num_warmup_steps, num_training_steps, base_lr):
     def lr_lambda_linear(current_step):
         if current_step < num_warmup_steps:
             return float(current_step) / float(max(1, num_warmup_steps))
-        return max(
-            0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
-        )
+        return max(0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps)))
 
     def lambda_lr_get_lr(current_global_step):
         # LambdaLR increment self.last_epoch at evert sept()
@@ -88,8 +78,7 @@ def get_linear_schedule_with_warmup(num_warmup_steps, num_training_steps, base_l
 
 
 class ORTTransformerTrainer:
-    """
-    """
+    """ """
 
     model: PreTrainedModel
     args: TrainingArguments
@@ -105,10 +94,9 @@ class ORTTransformerTrainer:
         train_dataset: Dataset,
         eval_dataset: Dataset,
         compute_metrics: Callable[[EvalPrediction], Dict],
-        world_size: Optional[int] = 1
+        world_size: Optional[int] = 1,
     ):
-        """
-        """
+        """ """
 
         self.model = model
         self.model_desc = model_desc
@@ -127,7 +115,9 @@ class ORTTransformerTrainer:
         if self.train_dataset is None:
             raise ValueError("Trainer: training requires a train_dataset.")
         train_sampler = (
-            SequentialSampler(self.train_dataset) if self.args.local_rank == -1 else DistributedSampler(self.train_dataset)
+            SequentialSampler(self.train_dataset)
+            if self.args.local_rank == -1
+            else DistributedSampler(self.train_dataset)
         )
         return DataLoader(
             self.train_dataset,
@@ -153,7 +143,6 @@ class ORTTransformerTrainer:
             collate_fn=self.data_collator.collate_batch,
         )
 
-
     def train(self):
         """
         Main training entry point.
@@ -169,38 +158,44 @@ class ORTTransformerTrainer:
             t_total = int(len(train_dataloader) // self.args.gradient_accumulation_steps * self.args.num_train_epochs)
             num_train_epochs = self.args.num_train_epochs
 
-        lr_scheduler = orttrainer.optim.LinearWarmupLRScheduler(t_total, self.args.warmup_steps/float(t_total))
+        lr_scheduler = orttrainer.optim.LinearWarmupLRScheduler(t_total, self.args.warmup_steps / float(t_total))
 
         loss_scaler = amp.DynamicLossScaler() if self.args.fp16 else None
         device = self.args.device.type
 
-        device = f'{device}:{self.args.device.index}' if self.args.device.index else f'{device}:0'
-        options = orttrainer.ORTTrainerOptions({'batch' : {
-                                                    'gradient_accumulation_steps' : self.args.gradient_accumulation_steps},
-                                                'device': {'id': device},
-                                                'mixed_precision': {
-                                                    'enabled': self.args.fp16,
-                                                    'loss_scaler': loss_scaler},
-                                                'debug': {'deterministic_compute': True, },
-                                                'utils': {
-                                                    'grad_norm_clip': False},
-                                                'distributed': {
-                                                    # we are running single node multi gpu test. thus world_rank = local_rank
-                                                    # and world_size = self.args.n_gpu
-                                                    'world_rank': max(0, self.args.local_rank),
-                                                    'world_size': int(self.world_size),
-                                                    'local_rank': max(0, self.args.local_rank),
-                                                    'allreduce_post_accumulation': True},
-                                                'lr_scheduler': lr_scheduler
-                                                })
+        device = f"{device}:{self.args.device.index}" if self.args.device.index else f"{device}:0"
+        options = orttrainer.ORTTrainerOptions(
+            {
+                "batch": {"gradient_accumulation_steps": self.args.gradient_accumulation_steps},
+                "device": {"id": device},
+                "mixed_precision": {"enabled": self.args.fp16, "loss_scaler": loss_scaler},
+                "debug": {
+                    "deterministic_compute": True,
+                },
+                "utils": {"grad_norm_clip": False},
+                "distributed": {
+                    # we are running single node multi gpu test. thus world_rank = local_rank
+                    # and world_size = self.args.n_gpu
+                    "world_rank": max(0, self.args.local_rank),
+                    "world_size": int(self.world_size),
+                    "local_rank": max(0, self.args.local_rank),
+                    "allreduce_post_accumulation": True,
+                },
+                "lr_scheduler": lr_scheduler,
+            }
+        )
 
         param_optimizer = list(self.model.named_parameters())
-        params = [{
-            'params': [n for n, p in param_optimizer if "bias" in n or "LayerNorm.weight" in n],
-            "weight_decay_mode": 1, }, {
-            'params': [n for n, p in param_optimizer if not ("bias" in n or "LayerNorm.weight" in n)],
-            "weight_decay_mode": 1, }
-            ]
+        params = [
+            {
+                "params": [n for n, p in param_optimizer if "bias" in n or "LayerNorm.weight" in n],
+                "weight_decay_mode": 1,
+            },
+            {
+                "params": [n for n, p in param_optimizer if not ("bias" in n or "LayerNorm.weight" in n)],
+                "weight_decay_mode": 1,
+            },
+        ]
 
         optim_config = optim.AdamConfig(params=params, lr=2e-5, do_bias_correction=True)
         self.model = orttrainer.ORTTrainer(self.model, self.model_desc, optim_config, options=options)
@@ -226,13 +221,15 @@ class ORTTransformerTrainer:
         tr_loss = 0.0
         logging_loss = 0.0
         train_iterator = trange(
-            epochs_trained, int(num_train_epochs), desc="Epoch", disable=self.args.local_rank not in [-1, 0],
+            epochs_trained,
+            int(num_train_epochs),
+            desc="Epoch",
+            disable=self.args.local_rank not in [-1, 0],
         )
 
-        for epoch in train_iterator:
+        for _epoch in train_iterator:
             epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=self.args.local_rank not in [-1, 0])
             for step, inputs in enumerate(epoch_iterator):
-
                 # Skip past any already trained steps if resuming training
                 if steps_trained_in_current_epoch > 0:
                     steps_trained_in_current_epoch -= 1
@@ -241,8 +238,7 @@ class ORTTransformerTrainer:
                 tr_loss += self._training_step(self.model, inputs)
 
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
-                    len(epoch_iterator) <= self.args.gradient_accumulation_steps
-                    and (step + 1) == len(epoch_iterator)
+                    len(epoch_iterator) <= self.args.gradient_accumulation_steps and (step + 1) == len(epoch_iterator)
                 ):
                     global_step += 1
 
@@ -254,7 +250,7 @@ class ORTTransformerTrainer:
                             if self.args.evaluate_during_training:
                                 results = self.evaluate()
                                 for key, value in results.items():
-                                    eval_key = "eval_{}".format(key)
+                                    eval_key = f"eval_{key}"
                                     logs[eval_key] = value
 
                             loss_scalar = (tr_loss - logging_loss) / self.args.logging_steps
@@ -274,8 +270,7 @@ class ORTTransformerTrainer:
         logger.info("\n\nTraining completed. \n\n")
         return TrainOutput(global_step, tr_loss / global_step)
 
-    def _training_step(
-        self, model, inputs: Dict[str, torch.Tensor]) -> float:
+    def _training_step(self, model, inputs: Dict[str, torch.Tensor]) -> float:
         for k, v in inputs.items():
             inputs[k] = v.to(self.args.device)
 
@@ -313,9 +308,7 @@ class ORTTransformerTrainer:
         test_dataloader = self.get_test_dataloader(test_dataset)
         return self._prediction_loop(test_dataloader, description="Prediction")
 
-    def _prediction_loop(
-        self, dataloader: DataLoader, description: str
-    ) -> PredictionOutput:
+    def _prediction_loop(self, dataloader: DataLoader, description: str) -> PredictionOutput:
         """
         Prediction/evaluation loop, shared by `evaluate()` and `predict()`.
 

@@ -1,8 +1,8 @@
-from pathlib import Path
 import argparse
 import configparser
 import json
 import re
+from pathlib import Path
 
 import pygit2
 
@@ -29,9 +29,9 @@ def lookup_submodule(repo, submodule_path):
         pass
 
     config = configparser.ConfigParser()
-    config.read(Path(repo.workdir, '.gitmodules'))
+    config.read(Path(repo.workdir, ".gitmodules"))
     for section in config.sections():
-        if config[section]['path'] == submodule_path:
+        if config[section]["path"] == submodule_path:
             name = re.fullmatch('submodule "(.*)"', section).group(1)
             submodule = repo.lookup_submodule(name)
             return submodule
@@ -56,7 +56,7 @@ def recursive_process(base_repo):
 def main(repo_path, output_file):
     repo = pygit2.Repository(repo_path)
     registrations = recursive_process(repo)
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         json.dump(registrations, f, indent=4, sort_keys=True)
 
 

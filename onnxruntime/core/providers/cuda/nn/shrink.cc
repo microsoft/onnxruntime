@@ -31,9 +31,9 @@ Status Shrink<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const {
   const size_t x_size = static_cast<size_t>(x_shape.Size());
 
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
-  auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+  auto* y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
-  ShrinkImpl<CudaT>(Stream(), x_data, bias_, lambd_, y_data, x_size);
+  ShrinkImpl<CudaT>(Stream(p_op_kernel_context), x_data, bias_, lambd_, y_data, x_size);
 
   return Status::OK();
 }

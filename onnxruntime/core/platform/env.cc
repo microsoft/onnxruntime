@@ -15,22 +15,23 @@ limitations under the License.
 // Portions Copyright (c) Microsoft Corporation
 
 #include "core/platform/env.h"
-#include "gsl/gsl"
 
 namespace onnxruntime {
+
+std::ostream& operator<<(std::ostream& os, const LogicalProcessors& aff) {
+  os << "{";
+  std::copy(aff.cbegin(), aff.cend(), std::ostream_iterator<int>(os, ", "));
+  return os << "}";
+}
+
+std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors> affs) {
+  os << "{";
+  for (const auto& aff : affs) {
+    os << aff;
+  }
+  return os << "}";
+}
 
 Env::Env() = default;
 
 }  // namespace onnxruntime
-
-// This definition is provided to handle GSL failures in CUDA as
-// not throwing exception but calling a user-defined handler.
-// Otherwise gsl condition checks code does not compile even though
-// gsl may not be used in CUDA specific code.
-namespace gsl {
-gsl_api void fail_fast_assert_handler(
-    char const* const expression, char const* const message,
-    char const* const file, int line) {
-  ORT_ENFORCE(false, expression, file, line, message);
-}
-} // namespace gsl

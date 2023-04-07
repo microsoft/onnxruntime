@@ -8,9 +8,9 @@
 #include "core/framework/utils.h"
 
 namespace onnxruntime {
-common::Status FeedsFetchesInfo::MapNamesToMLValueIdxs(const std::vector<std::string>& names,
+common::Status FeedsFetchesInfo::MapNamesToMLValueIdxs(gsl::span<const std::string> names,
                                                        const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                                       std::vector<int>& ort_value_idxs) {
+                                                       InlinedVector<int>& ort_value_idxs) {
   auto status = Status::OK();
 
   ort_value_idxs.reserve(names.size());
@@ -40,8 +40,8 @@ Status FeedsFetchesInfo::SetMLValueIdxs(const OrtValueNameIdxMap& ort_value_name
   return status;
 }
 
-Status FeedsFetchesManager::Create(const std::vector<std::string>& feed_names,
-                                   const std::vector<std::string>& output_names,
+Status FeedsFetchesManager::Create(gsl::span<const std::string> feed_names,
+                                   gsl::span<const std::string> output_names,
                                    const OrtValueNameIdxMap& ort_value_name_idx_map,
                                    std::unique_ptr<FeedsFetchesManager>& feed_fetch_manager) {
   FeedsFetchesInfo info{feed_names, output_names, ort_value_name_idx_map};
@@ -51,11 +51,22 @@ Status FeedsFetchesManager::Create(const std::vector<std::string>& feed_names,
   return Status::OK();
 }
 
+Status FeedsFetchesManager::Create(gsl::span<const std::string_view> feed_names,
+                                   gsl::span<const std::string> output_names,
+                                   const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                   std::optional<FeedsFetchesManager>& feed_fetch_manager) {
+  FeedsFetchesInfo info{feed_names, output_names, ort_value_name_idx_map};
+
+  feed_fetch_manager.emplace(std::move(info));
+
+  return Status::OK();
+}
+
 FeedsFetchesManager::FeedsFetchesManager(FeedsFetchesInfo&& info)
-    : feeds_fetches_info_{info} {
+    : feeds_fetches_info_(std::move(info)) {
   // init with default values
-  feeds_device_copy_info_.resize(info.feed_names.size());
-  fetches_device_copy_info_.resize(info.output_names.size());
+  feeds_device_copy_info_.resize(feeds_fetches_info_.feed_names.size());
+  fetches_device_copy_info_.resize(feeds_fetches_info_.output_names.size());
 }
 
 void FeedsFetchesManager::SetDeviceCopyChecks(DeviceCopyCheck input_copy_needed, DeviceCopyCheck output_copy_needed) {

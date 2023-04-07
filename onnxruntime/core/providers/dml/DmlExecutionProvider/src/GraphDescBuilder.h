@@ -28,6 +28,7 @@ namespace Dml
         struct NodeInfo
         {
             Microsoft::WRL::ComPtr<IDMLOperator> op;
+            std::string name;
         };
 
         struct GraphDesc
@@ -40,13 +41,11 @@ namespace Dml
         };
 
         GraphDesc BuildGraphDesc(
-            const onnxruntime::OpKernelInfo& kernelInfo,
             const uint8_t* isConstGpuGraphInput,
             const size_t isConstGpuGraphInputCount,
-            std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
+            const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
             const onnxruntime::Graph& graph,
-            const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
-            const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeOutputDefs,
+            const onnxruntime::IndexedSubGraph& indexedSubGraph,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             IDMLDevice* device,
             const void* executionHandle);

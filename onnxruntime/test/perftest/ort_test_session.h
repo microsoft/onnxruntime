@@ -25,13 +25,10 @@ class OnnxRuntimeTestSession : public TestSession {
     test_inputs_[test_data_id][input_id] = std::move(value);
   }
 
-  bool PopulateGeneratedInputTestData();
+  bool PopulateGeneratedInputTestData(int32_t seed);
 
-  ~OnnxRuntimeTestSession() override {
-    for (char* p : input_names_) {
-      free(p);
-    }
-  }
+  ~OnnxRuntimeTestSession() = default;
+
   std::chrono::duration<double> Run() override;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxRuntimeTestSession);
@@ -45,7 +42,8 @@ class OnnxRuntimeTestSession : public TestSession {
   // The same size with output_names_.
   // TODO: implement a customized allocator, then we can remove output_names_ to simplify this code
   std::vector<const char*> output_names_raw_ptr;
-  std::vector<char*> input_names_;
+  std::vector<const char*> input_names_;
+  std::vector<std::string> input_names_str_;
   const int input_length_;
 };
 

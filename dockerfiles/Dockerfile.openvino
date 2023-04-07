@@ -3,44 +3,43 @@
 # SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-ARG OPENVINO_VERSION=2021.4.1
+ARG OPENVINO_VERSION=2022.3.0
 
 
 # Build stage
-FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION} AS builder
+FROM openvino/ubuntu20_runtime:${OPENVINO_VERSION} AS builder
 
 ENV WORKDIR_PATH=/home/openvino
 WORKDIR $WORKDIR_PATH
 ENV DEBIAN_FRONTEND noninteractive
 
-ARG DEVICE=CPU_FP32 
+ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
-ARG ONNXRUNTIME_BRANCH=master
+ARG ONNXRUNTIME_BRANCH=main
 
-ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
-ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
+ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 
 USER root
 RUN apt update; apt install -y git protobuf-compiler libprotobuf-dev
-RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} 
+RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO}
 RUN /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
 RUN ln -s cmake-* cmake-dir
 RUN python3 -m pip install wheel
 ENV PATH=${WORKDIR_PATH}/cmake-dir/bin:$PATH
 RUN pip3 install onnx
-RUN cd onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel 
+RUN cd onnxruntime && ./build.sh --allow_running_as_root --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel
 
 #Steps to download sources
 RUN cat /etc/apt/sources.list | sed 's/^# deb-src/deb-src/g' > ./temp; mv temp /etc/apt/sources.list
 RUN apt update; apt install dpkg-dev
 RUN mkdir /sources
 WORKDIR /sources
-RUN apt-get source cron iso-codes libapt-inst2.0 lsb-release powermgmt-base python-apt-common python3-apt python3-dbus python3-gi unattended-upgrades libapt-pkg5.0 libhogweed4 libnettle6
+RUN apt-get source cron iso-codes lsb-release powermgmt-base python-apt-common python3-apt python3-dbus python3-gi unattended-upgrades libapt-pkg6.0 libhogweed5 libnettle7
 WORKDIR /
 RUN tar cvf GPL_sources.tar.gz /sources
 
 # Deploy stage
-FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION}
+FROM openvino/ubuntu20_runtime:${OPENVINO_VERSION}
 
 ENV DEBIAN_FRONTEND noninteractive
 USER root
@@ -52,10 +51,11 @@ RUN apt update; apt install -y unattended-upgrades && \
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
+RUN usermod -a -G video,users ${BUILD_USER}
 ENV WORKDIR_PATH /home/${BUILD_USER}
 WORKDIR ${WORKDIR_PATH}
 
 USER ${BUILD_USER}
 ENV PATH=${WORKDIR_PATH}/miniconda/bin:${WORKDIR_PATH}/cmake-dir/bin:$PATH
-ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
-ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
+ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/runtime/lib/intel64
+ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}

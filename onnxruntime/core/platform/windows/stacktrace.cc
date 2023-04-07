@@ -10,7 +10,7 @@
 #include <DbgHelp.h>
 
 #include "core/common/logging/logging.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 
@@ -33,7 +33,7 @@ class CaptureStackTrace {
 std::vector<std::string> GetStackTrace() {
 #ifndef NDEBUG
 // TVM need to run with shared CRT, so won't work with debug helper now
-#if !(defined USE_TVM) && !(defined _OPSCHEMA_LIB_)
+#if !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX)
   return detail::CaptureStackTrace().Trace();
 #else
   return {};
@@ -45,7 +45,7 @@ std::vector<std::string> GetStackTrace() {
 
 namespace detail {
 #ifndef NDEBUG
-#if !(defined USE_TVM) && !(defined _OPSCHEMA_LIB_)
+#if !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX)
 class SymbolHelper {
  public:
   SymbolHelper() noexcept {
@@ -104,7 +104,7 @@ std::vector<std::string> CaptureStackTrace::Trace() const {
   stacktrace.reserve(num_frames);
 
   // hide CaptureStackTrace::Trace and GetStackTrace so the output starts with the 'real' location
-  const int frames_to_skip = 2;
+  constexpr int frames_to_skip = 2;
 
   // we generally want to skip the first two frames, but if something weird is going on (e.g. code coverage is
   // running) and we only have 1 or 2 frames, output them so there's at least something that may be meaningful

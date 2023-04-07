@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-
+#include <core/common/safeint.h>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 namespace onnxruntime {
 template <typename T>
 class MeanVarianceNormalization_0 : public OpKernel {
@@ -36,8 +36,8 @@ class MeanVarianceNormalization_0 : public OpKernel {
     const int64_t W = dims[3];
 
     Tensor* Y = context->Output(0, {N, C, H, W});
-    const T* Xdata = X->template Data<T>();
-    T* Ydata = Y->template MutableData<T>();
+    const T* Xdata = X->Data<T>();
+    T* Ydata = Y->MutableData<T>();
 
     const int64_t sample_size = H * W;
     Eigen::Array<float, Eigen::Dynamic, 1> mean(C, 1);
@@ -45,18 +45,18 @@ class MeanVarianceNormalization_0 : public OpKernel {
     mean.setZero();
     var.setZero();
 
-    ConstEigenArrayMap<T> X_arr(Xdata, sample_size, N * C);
+    ConstEigenArrayMap<T> X_arr(Xdata, onnxruntime::narrow<std::ptrdiff_t>(sample_size), SafeInt<ptrdiff_t>(N) * C);
     for (int nc = 0; nc < N * C; ++nc) {
       mean(nc % C) += X_arr.col(nc).sum();
     }
     mean /= gsl::narrow_cast<T>(N * sample_size);
     for (int64_t nc = 0; nc < N * C; ++nc) {
-      var(nc % C) += (X_arr.col(nc) - mean(nc % C)).matrix().squaredNorm();
+      var(onnxruntime::narrow<std::ptrdiff_t>(nc % C)) += (X_arr.col(onnxruntime::narrow<std::ptrdiff_t>(nc)) - mean(onnxruntime::narrow<std::ptrdiff_t>(nc % C))).matrix().squaredNorm();
     }
     var /= gsl::narrow_cast<T>(N * sample_size);
 
     Eigen::Array<T, Eigen::Dynamic, 1> inv_std;
-    EigenArrayMap<T> Y_arr(Ydata, sample_size, N * C);
+    EigenArrayMap<T> Y_arr(Ydata, onnxruntime::narrow<std::ptrdiff_t>(sample_size), SafeInt<ptrdiff_t>(N) * C);
 
     if (across_channels_) {
       // m_c = sum(m_i) / n
@@ -79,13 +79,13 @@ class MeanVarianceNormalization_0 : public OpKernel {
         // inv_std = 1
         for (int64_t nc = 0; nc < N * C; ++nc) {
           // y = (x - mean)
-          Y_arr.col(nc) = (X_arr.col(nc) - mean(nc % C));
+          Y_arr.col(onnxruntime::narrow<std::ptrdiff_t>(nc)) = (X_arr.col(onnxruntime::narrow<std::ptrdiff_t>(nc)) - mean(onnxruntime::narrow<std::ptrdiff_t>(nc % C)));
         }
       } else {
         inv_std = var.sqrt().inverse();
         for (int64_t nc = 0; nc < N * C; ++nc) {
           // y = (x - mean) * (inv_std)
-          Y_arr.col(nc) = (X_arr.col(nc) - mean(nc % C)) * inv_std(nc % C);
+          Y_arr.col(onnxruntime::narrow<std::ptrdiff_t>(nc)) = (X_arr.col(onnxruntime::narrow<std::ptrdiff_t>(nc)) - mean(onnxruntime::narrow<std::ptrdiff_t>(nc % C))) * inv_std(onnxruntime::narrow<std::ptrdiff_t>(nc % C));
         }
       }
     }
@@ -105,10 +105,15 @@ class MeanVarianceNormalization_1 final : public MeanVarianceNormalization_0<T> 
     if (!info.GetAttrs("axes", axes).IsOK()) {
       axes = {0, 2, 3};
     }
-    if (find(axes.begin(), axes.end(), 1) != axes.end()) {
+    constexpr int64_t cross_channel_axes[] = {0, 1, 2, 3};
+    constexpr int64_t batch_spatial_axes[] = {0, 2, 3};
+
+    if (std::equal(std::begin(axes), std::end(axes), std::begin(cross_channel_axes), std::end(cross_channel_axes))) {
       this->across_channels_ = true;
-    } else {
+    } else if (std::equal(std::begin(axes), std::end(axes), std::begin(batch_spatial_axes), std::end(batch_spatial_axes))) {
       this->across_channels_ = false;
+    } else {
+      ORT_THROW("MeanVarianceNormalization CPU EP only supports NHW and NCHW reduction for axes attribute.");
     }
     this->normalize_variance_ = 1;
   }

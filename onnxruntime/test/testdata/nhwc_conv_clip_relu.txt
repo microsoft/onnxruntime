@@ -1,0 +1,2 @@
+Small snippet extracted from a real model.
+Use https://github.com/microsoft/onnxconverter-common/blob/master/onnxconverter_common/onnx2py.py to edit if needed.

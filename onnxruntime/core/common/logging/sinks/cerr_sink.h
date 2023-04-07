@@ -12,10 +12,18 @@ namespace logging {
 /// A std::cerr based ISink
 /// </summary>
 /// <seealso cref="ISink" />
+#ifdef _WIN32
+class CErrSink : public WOStreamSink {
+ public:
+  CErrSink() : WOStreamSink(std::wcerr, /*flush*/ false) {  // std::cerr isn't buffered so no flush required
+  }
+};
+#else
 class CErrSink : public OStreamSink {
  public:
   CErrSink() : OStreamSink(std::cerr, /*flush*/ false) {  // std::cerr isn't buffered so no flush required
   }
 };
+#endif
 }  // namespace logging
 }  // namespace onnxruntime

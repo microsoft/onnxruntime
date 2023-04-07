@@ -12,12 +12,19 @@ DnnlPool::DnnlPool() {}
 
 void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
-
-  auto pool_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+#ifdef ENABLE_TRAINING
+  // When using training the memory needs to be in a format known to pool_forward and the
+  // pool_backward primitives. Since we don't currently have a way to pass the memory format
+ // from pool_forward to pool_backward; we are choosing to use Onnxruntime's memory format
+ // as the common memory format to be used by both forward and the backward primitives.
+ auto pool_src_mem = sp.GetMemoryInOrtFormat(node.Input(IN_X), dnnl_engine);
+#else
+  auto pool_src_mem = sp.GetMemory(node.Input(IN_X));
+#endif  // ENABLE_TRAINING
   auto src_md = pool_src_mem.get_desc();
-  auto src_dims = pool_src_mem.get_desc().dims();
+  auto src_dims = pool_src_mem.get_desc().get_dims();
 
-  #ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING
   auto prop_kind = dnnl::prop_kind::forward;
 #else
   auto prop_kind = dnnl::prop_kind::forward_inference;
@@ -36,23 +43,21 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto strides = GetStrides(node, shape);
 
   auto dst_mem_dims = InferOutputDims(node, src_dims, kernel_shape, strides);
-  dnnl::memory::desc dst_md = dnnl::memory::desc(dst_mem_dims, node.Input(IN_X).Type(), dnnl::memory::format_tag::any);
+  dnnl::memory::desc dst_md = dnnl::memory::desc(dst_mem_dims, node.Input(OUT_Y).Type(), dnnl::memory::format_tag::any);
 
   auto padding = InferPadding(node, src_dims, kernel_shape, strides);
   auto padding_left = GetPaddingLeft(padding);
   auto padding_right = GetPaddingRight(padding);
 
+  auto dilation = dnnl::memory::dims(kernel_shape.size(), 0);
 
+  auto pool_pd = dnnl::pooling_forward::primitive_desc(dnnl_engine, prop_kind, algo, src_md, dst_md, strides,
+                                                       kernel_shape, dilation, padding_left, padding_right);
 
-  auto pool_desc = dnnl::pooling_forward::desc(prop_kind, algo,
-                                               src_md, dst_md,
-                                               strides, kernel_shape,
-                                               padding_left, padding_right);
-
-  auto pool_pd = dnnl::pooling_forward::primitive_desc(pool_desc, dnnl_engine);
-
+#ifndef ENABLE_TRAINING
   // If using GPU this will move the memory from the CPU to the GPU.
   pool_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), pool_pd.src_desc(), dnnl_engine);
+#endif
   dnnl::memory pool_dst_mem = dnnl::memory(pool_pd.dst_desc(), dnnl_engine);
 
   auto pool_op = dnnl::pooling_forward(pool_pd);

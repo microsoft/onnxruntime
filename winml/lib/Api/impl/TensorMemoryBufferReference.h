@@ -44,6 +44,8 @@ struct TensorResources {
     WINML_CATCH_ALL_COM
   }
 
+  virtual ~TensorResources() {}
+
   // Theses are access directly by TensorMemoryBufferReference<T> and TensorBase
   std::shared_ptr<_winml::Tensor<T>> cpu_resource_;
   winrt::com_ptr<ID3D12Resource> gpu_resource_;
@@ -74,9 +76,9 @@ class TensorMemoryBufferReference : public winrt::implements<
   //                  successful creation of IMemoryBufferReferences in the closed state.
   TensorMemoryBufferReference(
       std::vector<int64_t> shape,
-      std::shared_ptr<TensorResources<T>> tensorResources) : m_tensorResources(tensorResources),
-                                                             m_handlers(),
-                                                             m_shape(shape) {}
+      std::shared_ptr<TensorResources<T>> tensorResources) : m_shape(shape),
+                                                             m_tensorResources(tensorResources),
+                                                             m_handlers() {}
 
   uint32_t Capacity() const try {
     uint32_t uCapacity = 0;

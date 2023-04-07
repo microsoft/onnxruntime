@@ -185,7 +185,7 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
   const size_t N = static_cast<size_t>(shape[1]);
   const size_t K = static_cast<size_t>(shape[2]);
 
-  if ((shape[0] != num_directions_) || (N != static_cast<size_t>(hidden_size_ * 4))) {
+  if ((shape[0] != num_directions_) || (N != static_cast<size_t>(hidden_size_) * 4)) {
     return Status::OK();
   }
 
@@ -286,8 +286,8 @@ Status DeepCpuLstmOp::Compute(OpKernelContext* context) const {
     const auto* recurrent_weights = (R != nullptr) ? R->Data<float>() : nullptr;
 
     // spans for first direction
-    const size_t input_weights_size_per_direction = W_shape[1] * W_shape[2];
-    const size_t hidden_weights_size_per_direction = R_shape[1] * R_shape[2];
+    const size_t input_weights_size_per_direction = SafeInt<size_t>(W_shape[1]) * W_shape[2];
+    const size_t hidden_weights_size_per_direction = SafeInt<size_t>(R_shape[1] )* R_shape[2];
 
     GemmWeights<float> W_1(0, input_weights, input_weights_size_per_direction, packed_W_);
     GemmWeights<float> R_1(0, recurrent_weights, hidden_weights_size_per_direction, packed_R_);

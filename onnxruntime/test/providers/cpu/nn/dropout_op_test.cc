@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -33,6 +34,11 @@ TEST(Dropout, WithOptionalOutputOpset10) {
 }
 
 TEST(Dropout, WithOptionalOutputOpset7) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2092): The parameter is incorrect.";
+  }
+
   // Opset 7 differs with Opset 10 in that the type of the 'mask'
   // output is tied with the type of the input in Opset 7 whereas
   // the type of 'mask' in Opset 10 is 'bool' always

@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/training_ops/cuda/optimizer/adam.h"
+#include "orttraining/training_ops/cuda/optimizer/adam_impl.h"
+
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
-#include "orttraining/training_ops/cuda/optimizer/adam.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -46,8 +48,6 @@ REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, MLFl
 REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, float, MLFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, MLFloat16, MLFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, float, MLFloat16)
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float, float, BFloat16)
 REGISTER_ADAM_KERNEL_TYPED(BFloat16, int64_t, float, BFloat16, float, float, BFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, BFloat16, float, float, BFloat16)
@@ -57,7 +57,6 @@ REGISTER_ADAM_KERNEL_TYPED(BFloat16, int64_t, float, BFloat16, BFloat16, BFloat1
 REGISTER_ADAM_KERNEL_TYPED(BFloat16, int64_t, float, BFloat16, BFloat16, float, BFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, BFloat16, BFloat16, BFloat16, BFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, BFloat16, BFloat16, float, BFloat16)
-#endif
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>
 Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>::ComputeInternal(OpKernelContext* ctx) const {
@@ -115,20 +114,20 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>:
   if (do_update_tensor != nullptr) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(Stream(), M1, NM1));
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(Stream(), M2, NM2));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(Stream(ctx), M1, NM1));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(Stream(ctx), M2, NM2));
 
       if (S_in != S_out) {
         *(S_out) = *(S_in);
       }
       if (NW != nullptr) {
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T3>(Stream(), W, *NW));
+        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T3>(Stream(ctx), W, *NW));
       }
       if (NG != nullptr) {
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_GRAD>(Stream(), G, *NG));
+        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_GRAD>(Stream(ctx), G, *NG));
       }
       if (W_MIXED_FP != nullptr && NW_MIXED_FP != nullptr) {
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_MIXED_PRECISION_FP>(Stream(), *W_MIXED_FP, *NW_MIXED_FP));
+        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_MIXED_PRECISION_FP>(Stream(ctx), *W_MIXED_FP, *NW_MIXED_FP));
       }
 
       return Status::OK();
@@ -136,7 +135,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>:
   }
 
   AdamOptimizerImpl(
-      Stream(),
+      Stream(ctx),
       reinterpret_cast<const CudaT1*>(ETA.template Data<T1>()),
       *S_in,
       reinterpret_cast<const CudaT3*>(W.template Data<T3>()),

@@ -24,7 +24,7 @@ constexpr auto MAX_NUM_BLOCKS_IN_GRID_ROW = 256;
 constexpr auto MAX_NUM_GRID_ROWS = 32768;
 
 dim3 compute_block_dim(int num_cols) {
-  const int x = GPU_WARP_SIZE;
+  const int x = GPU_WARP_SIZE_HOST;
   const int y = std::min(MAX_NUM_WARPS_PER_BLOCK, std::max(1, num_cols / (MAX_NUM_ELEMENTS_PER_THREAD * x)));
   return dim3(x, y);
 }
@@ -305,7 +305,7 @@ Status call_reduce_matrix_columns(
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(block_done_counts_buffer, 0, num_rows * sizeof(int), stream));
   }
 
-  const int shared_mem_size = sizeof(TBuf) * block_dim.x * block_dim.y / GPU_WARP_SIZE;
+  const int shared_mem_size = sizeof(TBuf) * block_dim.x * block_dim.y / GPU_WARP_SIZE_HOST;
   reduce_matrix_columns_kernel<TIn, TOut, TBuf, TOp, TFinalOp, DivideResultBySize>
       <<<grid_dim, block_dim, shared_mem_size, stream>>>(
           num_rows, num_cols, input, output, block_reductions_buffer, block_done_counts_buffer);
@@ -348,6 +348,8 @@ INSTANTIATE_REDUCE_SUM(half, half);
 INSTANTIATE_REDUCE_SUM(half, float);
 INSTANTIATE_REDUCE_SUM(float, float);
 INSTANTIATE_REDUCE_SUM(double, double);
+INSTANTIATE_REDUCE_SUM(BFloat16, BFloat16);
+INSTANTIATE_REDUCE_SUM(BFloat16, float);
 #undef INSTANTIATE_REDUCE_SUM
 
 #define INSTANTIATE_REDUCE_SQUARE_SUM(TIn, TOut) \
@@ -355,9 +357,7 @@ INSTANTIATE_REDUCE_SUM(double, double);
 INSTANTIATE_REDUCE_SQUARE_SUM(half, float);
 INSTANTIATE_REDUCE_SQUARE_SUM(float, float);
 INSTANTIATE_REDUCE_SQUARE_SUM(double, double);
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_REDUCE_SQUARE_SUM(nv_bfloat16, float);
-#endif
+INSTANTIATE_REDUCE_SQUARE_SUM(BFloat16, float);
 #undef INSTANTIATE_REDUCE_SQUARE_SUM
 
 #define INSTANTIATE_REDUCE_L2_NORM(TIn, TOut) \
@@ -401,7 +401,7 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
     for (int row = tid_y_in_grid; row < m; row += y_grid_stride) {
       // Thread-level reduction. Each thread loads y_load_count_per_thread values
       // and aggregrate them.
-#pragma unroll(y_load_count_per_thread)
+#pragma unroll y_load_count_per_thread
       for (int row_inner = 0; row_inner < y_load_count_per_thread; ++row_inner) {
         int row_final = row + row_inner * t_count_y_in_grid;
         int col_final = col;
@@ -418,7 +418,7 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
 
 // This loop conducts reduction on elements stored in shared memory.
 // Each block reduces blockDim.y-by-blockDim.x tensor to 1-by-blockDim.x tensor.
-#pragma unroll(4)
+#pragma unroll 4
     for (int stride = blockDim.y / 2; stride > 0; stride /= 2) {
       if (threadIdx.y < stride) {
         shared_memory[tid_in_block] += shared_memory[tid_in_block + stride * blockDim.x];
@@ -444,7 +444,7 @@ Status call_reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* outp
   constexpr int max_num_blocks_in_grid = 512;
   constexpr int load_count_per_thread = 4;
 
-  const int block_x_dim = least_pow2_bound(std::max(1, std::min(n, GPU_WARP_SIZE)));
+  const int block_x_dim = least_pow2_bound(std::max(1, std::min(n, GPU_WARP_SIZE_HOST)));
   const int block_y_dim = least_pow2_bound(std::max(1, std::min(max_num_threads_in_block / block_x_dim, m / load_count_per_thread)));
   const int grid_x_dim = std::max(1, std::min(n / block_x_dim, max_num_blocks_in_grid));
   const int grid_y_dim = std::max(1, std::min(max_num_blocks_in_grid / grid_x_dim, m / block_y_dim / 4));
@@ -480,9 +480,7 @@ void UnaryDiv(cudaStream_t stream, const T* input, T* output, T denominator, siz
 INSTANTIATE_UNARY_DIV(half);
 INSTANTIATE_UNARY_DIV(float);
 INSTANTIATE_UNARY_DIV(double);
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_UNARY_DIV(nv_bfloat16);
-#endif
+INSTANTIATE_UNARY_DIV(BFloat16);
 #undef INSTANTIATE_UNARY_DIV
 
 template <typename TIn, typename TOut>
@@ -496,9 +494,7 @@ Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, i
 INSTANTIATE_REDUCE_MATRIX_ROWS(half);
 INSTANTIATE_REDUCE_MATRIX_ROWS(float);
 INSTANTIATE_REDUCE_MATRIX_ROWS(double);
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_REDUCE_MATRIX_ROWS(nv_bfloat16);
-#endif
+INSTANTIATE_REDUCE_MATRIX_ROWS(BFloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_ROWS
 
 template <typename TIn, typename TOut>
@@ -512,9 +508,7 @@ Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(half);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(float);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_REDUCE_MATRIX_COLUMNS(nv_bfloat16);
-#endif
+INSTANTIATE_REDUCE_MATRIX_COLUMNS(BFloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
 
 }  // namespace cuda

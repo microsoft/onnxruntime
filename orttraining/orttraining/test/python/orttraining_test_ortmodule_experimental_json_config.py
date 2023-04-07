@@ -1,14 +1,15 @@
-
 import os
+
 import torch
-from onnxruntime.training.ortmodule import ORTModule
+
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.training import ortmodule
 from onnxruntime.training.ortmodule.experimental.json_config import load_from_json
 
 
 class Net(torch.nn.Module):
     def __init__(self, input_size=784, hidden_size=500, num_classes=10):
-        super(Net, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -20,16 +21,17 @@ class Net(torch.nn.Module):
         out = self.fc2(out)
         return out
 
+
 def test_load_config_from_json_1():
-    device = 'cuda'
-    model = ORTModule(Net().to(device))
+    device = "cuda"
+    model = ortmodule.ORTModule(Net().to(device))
 
     # load from json once.
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_2.json')
+    path_to_json = os.path.join(os.getcwd(), "orttraining_test_ortmodule_experimental_json_config_2.json")
     load_from_json(model, path_to_json)
 
     # load from json another time
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_1.json')
+    path_to_json = os.path.join(os.getcwd(), "orttraining_test_ortmodule_experimental_json_config_1.json")
     load_from_json(model, path_to_json)
 
     for training_mode in [True, False]:
@@ -41,47 +43,48 @@ def test_load_config_from_json_1():
         assert ort_model_attributes._propagate_cast_ops_allow == ["ABC", "DEF"]
 
         # test use external gpu allocator
-        assert ort_model_attributes._use_external_gpu_allocator == False
+        assert ort_model_attributes._use_external_gpu_allocator is False
 
         # test enable custom autograd function
-        assert ort_model_attributes._enable_custom_autograd_function == True
-
-        # test allow layer norm mod precision
-        assert ort_model_attributes._allow_layer_norm_mod_precision == True
+        assert ort_model_attributes._enable_custom_autograd_function is True
 
         # test use static shape
-        assert ort_model_attributes._use_static_shape == True
+        assert ort_model_attributes._use_static_shape is True
 
         # test run symbolic shape inference
-        assert ort_model_attributes._run_symbolic_shape_infer == False
+        assert ort_model_attributes._run_symbolic_shape_infer is False
 
         # test enable grad acc optimization
-        assert ort_model_attributes._enable_grad_acc_optimization == True
+        assert ort_model_attributes._enable_grad_acc_optimization is True
 
         # test skip check
         assert ort_model_attributes._skip_check.value == 14
 
         # test debug options
-        assert ort_model_attributes._debug_options.save_onnx_models.save == True
-        assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == 'my_model'
+        assert ort_model_attributes._debug_options.save_onnx_models.save is True
+        assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == "my_model"
         assert ort_model_attributes._debug_options.logging.log_level.name == "VERBOSE"
 
         # test use memory aware gradient builder.
-        assert ort_model_attributes._use_memory_efficient_gradient == False
+        assert ort_model_attributes._use_memory_efficient_gradient is False
 
         # test fallback policy
         assert ort_model_attributes._fallback_manager.policy.value == 1
 
+        # assert onnx opset version
+        assert ortmodule.ONNX_OPSET_VERSION == 13
+
+
 def test_load_config_from_json_2():
-    device = 'cuda'
-    model = ORTModule(Net().to(device))
+    device = "cuda"
+    model = ortmodule.ORTModule(Net().to(device))
 
     # load from json once.
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_1.json')
+    path_to_json = os.path.join(os.getcwd(), "orttraining_test_ortmodule_experimental_json_config_1.json")
     load_from_json(model, path_to_json)
 
     # load from json another time
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_2.json')
+    path_to_json = os.path.join(os.getcwd(), "orttraining_test_ortmodule_experimental_json_config_2.json")
     load_from_json(model, path_to_json)
 
     for training_mode in [True, False]:
@@ -93,33 +96,33 @@ def test_load_config_from_json_2():
         assert ort_model_attributes._propagate_cast_ops_allow == ["XYZ", "PQR"]
 
         # test use external gpu allocator
-        assert ort_model_attributes._use_external_gpu_allocator == True
+        assert ort_model_attributes._use_external_gpu_allocator is True
 
         # test enable custom autograd function
-        assert ort_model_attributes._enable_custom_autograd_function == False
-
-        # test allow layer norm mod precision
-        assert ort_model_attributes._allow_layer_norm_mod_precision == False
+        assert ort_model_attributes._enable_custom_autograd_function is False
 
         # test use static shape
-        assert ort_model_attributes._use_static_shape == False
+        assert ort_model_attributes._use_static_shape is False
 
         # test run symbolic shape inference
-        assert ort_model_attributes._run_symbolic_shape_infer == True
+        assert ort_model_attributes._run_symbolic_shape_infer is True
 
         # test enable grad acc optimization
-        assert ort_model_attributes._enable_grad_acc_optimization == False
+        assert ort_model_attributes._enable_grad_acc_optimization is False
 
         # test skip check
         assert ort_model_attributes._skip_check.value == 10
 
         # test debug options
-        assert ort_model_attributes._debug_options.save_onnx_models.save == True
-        assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == 'my_other_model'
+        assert ort_model_attributes._debug_options.save_onnx_models.save is True
+        assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == "my_other_model"
         assert ort_model_attributes._debug_options.logging.log_level.name == "INFO"
 
         # test use memory aware gradient builder.
-        assert ort_model_attributes._use_memory_efficient_gradient == True
+        assert ort_model_attributes._use_memory_efficient_gradient is True
 
         # test fallback policy
         assert ort_model_attributes._fallback_manager.policy.value == 250
+
+        # assert onnx opset version
+        assert ortmodule.ONNX_OPSET_VERSION == 12

@@ -92,3 +92,24 @@ IF (Count1 GE Value1) AND (Count2 GE Value2)
 ENDIF
 
         ENDM
+
+;
+; Macro Description:
+;
+;   This macro emits the statement for each register listed in the register
+;   list. The statement can use RegItem to access the current register.
+;
+; Arguments:
+;
+;   RegList - Supplies the list of registers.
+;
+;   Statement - Supplies the statement to emit.
+;
+
+EmitForEachRegister MACRO RegList, Statement
+
+IRP     RegItem, <RegList>
+        Statement
+ENDM
+
+        ENDM

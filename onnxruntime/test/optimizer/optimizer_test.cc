@@ -30,8 +30,8 @@ TEST(OptimizerTest, Basic) {
   Model model("OptimizerBasic", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
-  const int tensor_dim = 10;
-  const int input_num = 2;
+  constexpr int tensor_dim = 10;
+  constexpr int input_num = 2;
   TensorProto initializer_tensor[input_num];
   std::vector<std::unique_ptr<NodeArg>> inputs(input_num);
   std::vector<std::unique_ptr<NodeArg>> outputs(1);
@@ -78,8 +78,8 @@ TEST(OptimizerTest, Basic) {
   OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set,
                                      graph.ModelPath(),
                                      *cpu_execution_provider.get(),
-                                     [](std::string const& ) { return false; });
-#endif  //!defined(DISABLE_SPARSE_TENSORS)
+                                     [](std::string const&) { return false; });
+#endif  //! defined(DISABLE_SPARSE_TENSORS)
 
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
@@ -91,8 +91,14 @@ TEST(OptimizerTest, Basic) {
     // kernel can only be a nullptr if a CPU kernel implementation has been removed,
     // if that is the case, OpKernelContext instance construction will throw in the next step
     // and fail the test
-
-    OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, logger);
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 6387)
+#endif
+    OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, nullptr, logger);
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
     auto st = kernel->Compute(&op_kernel_context);
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
@@ -100,7 +106,7 @@ TEST(OptimizerTest, Basic) {
     std::vector<OrtValue> fetches;
     ASSERT_STATUS_OK(frame.GetOutputs(fetches));
     auto& tensor = fetches[0].Get<Tensor>();
-    const std::vector<int32_t> found(tensor.template Data<int32_t>(), tensor.template Data<int32_t>() + tensor_dim);
+    const std::vector<int32_t> found(tensor.Data<int32_t>(), tensor.Data<int32_t>() + tensor_dim);
     std::vector<int32_t> expected;
     for (int j = 0; j < tensor_dim; j++) {
       expected.push_back(3 * j);

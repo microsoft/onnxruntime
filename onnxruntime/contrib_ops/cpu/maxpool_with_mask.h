@@ -7,6 +7,7 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/nn/pool_base.h"
@@ -26,18 +27,15 @@ struct MaxpoolWithMask1DTask final {
   int64_t stride_h;
   int64_t height;
   int64_t total_mask_channels;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   TensorOpCost Cost() {
     double loop_count = static_cast<double>(pooled_height * kernel_shape[0]);
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-    for (int64_t c = begin; c < end; ++c) {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -76,18 +74,15 @@ struct MaxpoolWithMask2DTask final {
   int64_t height;
   int64_t width;
   int64_t total_mask_channels;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   TensorOpCost Cost() {
     double loop_count = static_cast<double>(pooled_height * kernel_shape[0]);
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-    for (int64_t c = begin; c < end; ++c) {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -139,18 +134,15 @@ struct MaxpoolWithMask3DTask final {
   int64_t width;
   int64_t depth;
   int64_t total_mask_channels;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   TensorOpCost Cost() {
     double loop_count = static_cast<double>(pooled_height * kernel_shape[0]);
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-    for (int64_t c = begin; c < end; ++c) {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -193,12 +185,7 @@ struct MaxpoolWithMask3DTask final {
 };
 template <typename T>
 inline static void RunMaxpoolLoop(concurrency::ThreadPool* tp, std::ptrdiff_t total_channels, T&& task) {
-#ifdef _OPENMP
-  ORT_UNUSED_PARAMETER(tp);
-  task(0, total_channels);
-#else
   concurrency::ThreadPool::TryParallelFor(tp, total_channels, task.Cost(), task);
-#endif
 }
 class MaxpoolWithMask : public OpKernel, public PoolBase {
  public:
@@ -218,15 +205,15 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
     // ONNXRUNTIME_RETURN_IF_NOT((x_shape[2] == m_shape[2]) && (x_shape[3] == m_shape[3]), " Input shape and mask shape
     // mismatch: ", x_shape, " vs ", m_shape);
 
-    std::vector<int64_t> pads = pool_attrs_.pads;
-    std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
+    TensorShapeVector pads = pool_attrs_.pads;
+    TensorShapeVector kernel_shape = pool_attrs_.kernel_shape;
 
-    std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+    TensorShapeVector output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
     Tensor* Y = context->Output(0, TensorShape(output_dims));
 
-    const float* X_data = X->template Data<float>();
-    const int32_t* M_data = M->template Data<int32_t>();
-    float* Y_data = Y->template MutableData<float>();
+    const float* X_data = X->Data<float>();
+    const int32_t* M_data = M->Data<int32_t>();
+    float* Y_data = Y->MutableData<float>();
 
     // The main loop
     int64_t channels = x_shape[1];
@@ -243,7 +230,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t y_step = pooled_height;
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
-        RunMaxpoolLoop<MaxpoolWithMask1DTask<float>>(tp, total_channels,
+        RunMaxpoolLoop<MaxpoolWithMask1DTask<float>>(tp, narrow<size_t>(total_channels),
                                                      {X_data, M_data, Y_data, x_step, y_step, pooled_height, stride_h(),
                                                       height, total_mask_channels, kernel_shape, pads});
         break;
@@ -255,7 +242,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
         RunMaxpoolLoop<MaxpoolWithMask2DTask<float>>(
-            tp, total_channels,
+            tp, narrow<size_t>(total_channels),
             {X_data, M_data, Y_data, x_step, y_step, pooled_height, pooled_width, stride_h(), stride_w(), height, width,
              total_mask_channels, kernel_shape, pads});
         break;
@@ -266,7 +253,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
         RunMaxpoolLoop<MaxpoolWithMask3DTask<float>>(
-            tp, total_channels,
+            tp, narrow<size_t>(total_channels),
             {X_data, M_data, Y_data, x_step, y_step, pooled_height, pooled_width, pooled_depth, stride_h(), stride_w(),
              stride_d(), height, width, depth, total_mask_channels, kernel_shape, pads});
         break;

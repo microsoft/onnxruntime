@@ -5,18 +5,20 @@
 #include <cmath>
 #include <type_traits>
 #include "gtest/gtest.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
 
-const float FLOAT_INF = std::numeric_limits<float>::infinity();
-const float FLOAT_NINF = -std::numeric_limits<float>::infinity();
-const double DOUBLE_INF = std::numeric_limits<double>::infinity();
-const double DOUBLE_NINF = -std::numeric_limits<double>::infinity();
+constexpr float FLOAT_INF = std::numeric_limits<float>::infinity();
+constexpr float FLOAT_NINF = -std::numeric_limits<float>::infinity();
+constexpr double DOUBLE_INF = std::numeric_limits<double>::infinity();
+constexpr double DOUBLE_NINF = -std::numeric_limits<double>::infinity();
 
 // Disable TensorRT on some of the tests because the limit in its parser: axis >=0 && axis < nbDims
 template <typename OutT>
@@ -94,6 +96,34 @@ TEST(ReductionOpTest, ReduceL1_default_axes_keepdims) {
   test.Run();
 }
 
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceL1_default_axes_keepdims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceL1", 13);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 1, 1}, MakeBFloat16({78.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
+
 TEST(ReductionOpTest, ReduceL1_do_not_keep_dims) {
   OpTester test("ReduceL1");
   test.AddAttribute("axes", std::vector<int64_t>{2});
@@ -111,6 +141,35 @@ TEST(ReductionOpTest, ReduceL1_do_not_keep_dims) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceL1", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {3, 2}, MakeBFloat16({3.0f, 7.0f, 11.0f, 15.0f, 19.0f, 23.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);// TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
+#endif  //  USE_DNNL
+
 TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_2) {
   OpTester test("ReduceL1");
   test.AddAttribute("axes", std::vector<int64_t>{0});
@@ -120,6 +179,28 @@ TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_2) {
   test.AddOutput<float>("reduced", {}, {6.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
+
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceL1", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3},
+                          MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.AddOutput<BFloat16>("reduced", {}, MakeBFloat16({6.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
+#endif  //  USE_DNNL
 
 TEST(ReductionOpTest, ReduceL1_keepdims) {
   OpTester test("ReduceL1");
@@ -137,6 +218,34 @@ TEST(ReductionOpTest, ReduceL1_keepdims) {
   test.AddOutput<float>("reduced", {3, 2, 1}, {3.0f, 7.0f, 11.0f, 15.0f, 19.0f, 23.0f});
   test.Run();
 }
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceL1_keepdims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceL1", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {3, 2, 1}, MakeBFloat16({3.0f, 7.0f, 11.0f, 15.0f, 19.0f, 23.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
 
 TEST(ReductionOpTest, ReduceL1) {
   OpTester test("ReduceL1");
@@ -170,14 +279,56 @@ TEST(ReductionOpTest, ReduceL1_int32) {
   test.Run();
 }
 
-#if !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceL1_int64) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {1, 2, 1}, {33, 45});
+  test.Run();
+}
+
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceL1_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceL1", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({33.0f, 45.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_DNNL
+
 TEST(ReductionOpTest, ReduceL10DTensor) {
   OpTester test("ReduceL1");
   test.AddInput<float>("data", {}, {2});
   test.AddOutput<float>("reduced", {}, {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-#endif  // !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceL2_default_axes_keepdims) {
   OpTester test("ReduceL2");
@@ -272,6 +423,35 @@ TEST(ReductionOpTest, ReduceL2) {
   test.Run();
 }
 
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceL2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceL2", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {2}, MakeBFloat16({15.71623325f, 20.07485962f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
+
 TEST(ReductionOpTest, ReduceL2_int32) {
   OpTester test("ReduceL2");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -286,17 +466,32 @@ TEST(ReductionOpTest, ReduceL2_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {2}, {15, 20});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
 }
 
-#if !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceL2_int64) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {2}, {15, 20});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Int64 not allowed as input to this layer
+}
+
 TEST(ReductionOpTest, ReduceL20DTensor) {
   OpTester test("ReduceL2");
   test.AddInput<float>("data", {}, {2});
   test.AddOutput<float>("reduced", {}, {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-#endif  // !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceLogSum) {
   OpTester test("ReduceLogSum");
@@ -316,6 +511,37 @@ TEST(ReductionOpTest, ReduceLogSum) {
                          2.99573231f, 3.09104252f});
   test.Run();
 }
+
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceLogSum_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceLogSum", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                                   MakeBFloat16({1.0f, 2.0f,
+                                                 3.0f, 4.0f,
+
+                                                 5.0f, 6.0f,
+                                                 7.0f, 8.0f,
+                                                 9.0f, 10.0f,
+                                                 11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {3, 1, 2},
+                        MakeBFloat16({1.38629436f, 1.79175949f,
+                                      2.48490667f, 2.6390574f,
+                                      2.99573231f, 3.09104252f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  // USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_DNNL
 
 TEST(ReductionOpTest, ReduceLogSum_samesize) {
   OpTester test("ReduceLogSum");
@@ -362,14 +588,12 @@ TEST(ReductionOpTest, ReduceLogSumAxes01) {
   test.Run();
 }
 
-#if !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceLogSum0DTensor) {
   OpTester test("ReduceLogSum");
   test.AddInput<float>("data", {}, {2.f});
   test.AddOutput<float>("reduced", {}, {0.693147f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-#endif  // !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceLogSumExp_default_axes_keepdims) {
   OpTester test("ReduceLogSumExp");
@@ -540,6 +764,31 @@ TEST(ReductionOpTest, ReduceLogSumExp) {
   test.Run();
 }
 
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceLogSumExp_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceLogSumExp", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({10.33174133f, 12.33174133f}));
+  test.Run();
+}
+#endif  //  USE_DNNL
+
 TEST(ReductionOpTest, ReduceLogSumExp_double) {
   OpTester test("ReduceLogSumExp");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -554,6 +803,28 @@ TEST(ReductionOpTest, ReduceLogSumExp_double) {
                          9.0, 10.0,
                          11.0, 12.0});
   test.AddOutput<double>("reduced", {1, 2, 1}, {10.33174133, 12.33174133});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_float_no_reduction) {
+  OpTester test("ReduceLogSumExp");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddOutput<float>("reduced", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_float_no_reduction_keepdims) {
+  OpTester test("ReduceLogSumExp");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddOutput<float>("reduced", {1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.Run();
 }
 
@@ -593,7 +864,23 @@ TEST(ReductionOpTest, ReduceLogSumExp_int32) {
   test.Run();
 }
 
-#if !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceLogSumExp_int64) {
+  OpTester test("ReduceLogSumExp");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {1, 2, 1}, {10, 12});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceLogSumExp0DTensor) {
   OpTester test("ReduceLogSumExp");
   test.AddInput<float>("data", {}, {2});
@@ -607,7 +894,6 @@ TEST(ReductionOpTest, ReduceLogSumExp0DTensor_double) {
   test.AddOutput<double>("reduced", {}, {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-#endif  // !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceMax_default_axes_keepdims) {
   OpTester test("ReduceMax");
@@ -638,7 +924,11 @@ TEST(ReductionOpTest, ReduceMax_default_axes_do_not_keep_dims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {60.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled as incorrect dimensions in the output data
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch                         //TensorRT: axis must be 0
+#endif
 }
 
 TEST(ReductionOpTest, ReduceMax_do_not_keepdims) {
@@ -665,7 +955,11 @@ TEST(ReductionOpTest, ReduceMax_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {5.0f, 1.0f, 20.0f});
   test.AddOutput<float>("reduced", {}, {20.0f});
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled as incorrect dimensions in the output data
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+#endif
 }
 
 TEST(ReductionOpTest, ReduceMax_keepdims) {
@@ -701,6 +995,50 @@ TEST(ReductionOpTest, ReduceMax) {
   test.AddOutput<float>("reduced", {3, 1, 1}, {4.0f, 8.0f, 12.0f});
   test.Run();
 }
+
+TEST(ReductionOpTest, ReduceMaxAxesInitializerOpset18) {
+  OpTester test("ReduceMax", 18);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {1, 2}, true);
+  test.AddOutput<float>("reduced", {3, 1, 1}, {4.0f, 8.0f, 12.0f});
+  // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceMax_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMax", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {3, 1, 1}, MakeBFloat16({4.0f, 8.0f, 12.0f}));
+  test.Run();
+}
+#endif
 
 TEST(ReductionOpTest, ReduceMax_double) {
   OpTester test("ReduceMax");
@@ -756,7 +1094,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
 #endif
 }
 
@@ -777,7 +1115,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
 #endif
 }
 
@@ -798,7 +1136,7 @@ TEST(ReductionOpTest, ReduceMax_int8) {
 #if defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
 #endif
 }
 
@@ -819,18 +1157,16 @@ TEST(ReductionOpTest, ReduceMax_uint8) {
 #if defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
 #endif
 }
 
-#if !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceMax0DTensor) {
   OpTester test("ReduceMax");
   test.AddInput<float>("data", {}, {2});
   test.AddOutput<float>("reduced", {}, {2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); //can't access out of range dim in OpenVINO-EP
 }
-#endif  // !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
   OpTester test("ReduceMean");
@@ -847,6 +1183,31 @@ TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
   test.AddOutput<float>("reduced", {1, 1, 1}, {18.25f});
   test.Run();
 }
+
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_default_axes_keepdims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({5.0f, 1.0f,
+                        20.0f, 2.0f,
+
+                        30.0f, 1.0f,
+                        40.0f, 2.0f,
+
+                        55.0f, 1.0f,
+                        60.0f, 2.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 1, 1}, MakeBFloat16({18.25f}));
+  test.Run();
+}
+#endif
 
 TEST(ReductionOpTest, ReduceMean_default_axes_keepdims_double) {
   OpTester test("ReduceMean");
@@ -880,6 +1241,29 @@ TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                               MakeBFloat16({5.0f, 1.0f,
+                                             20.0f, 2.0f,
+
+                                             30.0f, 1.0f,
+                                             40.0f, 2.0f,
+
+                                             55.0f, 1.0f,
+                                             60.0f, 2.0f}));
+  test.AddOutput<BFloat16>("reduced", {}, MakeBFloat16({18.25f}));
+  test.Run();
+}
+#endif
 TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims_double) {
   OpTester test("ReduceMean");
   test.AddAttribute("keepdims", static_cast<int64_t>(0));
@@ -920,6 +1304,31 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims) {
   test.Run();
 }
 
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_do_not_keepdims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                               MakeBFloat16({5.0f, 1.0f,
+                                             20.0f, 2.0f,
+
+                                             30.0f, 1.0f,
+                                             40.0f, 2.0f,
+
+                                             55.0f, 1.0f,
+                                             60.0f, 2.0f}));
+  test.AddOutput<BFloat16>("reduced", {3, 2}, MakeBFloat16({12.5f, 1.5f, 35.0f, 1.5f, 57.5f, 1.5f}));
+  test.Run();
+}
+#endif
+
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims_double) {
   OpTester test("ReduceMean");
   test.AddAttribute("axes", std::vector<int64_t>{1});
@@ -954,6 +1363,23 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2) {
   test.AddOutput<float>("reduced", {}, {2.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3},
+                       MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.AddOutput<BFloat16>("reduced", {}, MakeBFloat16({2.0f}));
+  test.Run();
+}
+#endif //USE_DNNL
 
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2_double) {
   OpTester test("ReduceMean");
@@ -988,6 +1414,31 @@ TEST(ReductionOpTest, ReduceMean_keepdims) {
 #endif
   test.Run();
 }
+
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_keepdims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                        MakeBFloat16({5.0f, 1.0f,
+                        20.0f, 2.0f,
+
+                        30.0f, 1.0f,
+                        40.0f, 2.0f,
+
+                        55.0f, 1.0f,
+                        60.0f, 2.0f}));
+  test.AddOutput<BFloat16>("reduced", {3, 1, 2}, MakeBFloat16({12.5f, 1.5f, 35.0f, 1.5f, 57.5f, 1.5f}));
+  test.Run();
+}
+#endif //USE_DNNL
 
 TEST(ReductionOpTest, ReduceMean_keepdims_double) {
   OpTester test("ReduceMean");
@@ -1027,9 +1478,55 @@ TEST(ReductionOpTest, ReduceMean) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {5.5f, 7.5f});
-  
+
   test.Run();
 }
+
+TEST(ReductionOpTest, ReduceMeanAxesInitializerOpset18) {
+  OpTester test("ReduceMean", 18);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {0, 2}, true);
+  test.AddOutput<float>("reduced", {1, 2, 1}, {5.5f, 7.5f});
+
+  // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                        MakeBFloat16({1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5.5f, 7.5f}));
+
+  test.Run();
+}
+#endif //USE_DNNL
 
 TEST(ReductionOpTest, ReduceMean_double) {
   OpTester test("ReduceMean");
@@ -1066,7 +1563,6 @@ TEST(ReductionOpTest, ReduceMean_int32) {
   test.Run();
 }
 
-#if !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceMean0DTensor) {
   OpTester test("ReduceMean");
   test.AddInput<float>("data", {}, {2});
@@ -1080,7 +1576,58 @@ TEST(ReductionOpTest, ReduceMean0DTensor_double) {
   test.AddOutput<double>("reduced", {}, {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-#endif  // !(defined USE_TVM)
+
+TEST(ReductionOpTest, ReduceMean_keepdims_results_in_noop) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {1, 3}, {1.0, 2.0, 3.0});
+  test.AddOutput<float>("reduced", {1, 3}, {1.0, 2.0, 3.0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_keepdims_results_in_noop_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.Run();
+}
+#endif
+
+TEST(ReductionOpTest, ReduceMean_keepdims_results_in_shape_change) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {1, 3}, {1.0, 2.0, 3.0});
+  test.AddOutput<float>("reduced", {3}, {1.0, 2.0, 3.0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_keepdims_results_in_shape_change_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.AddOutput<BFloat16>("reduced", {3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.Run();
+}
+#endif
 
 TEST(ReductionOpTest, ReduceMin_default_axes_keepdims) {
   OpTester test("ReduceMin");
@@ -1184,6 +1731,54 @@ TEST(ReductionOpTest, ReduceMin) {
   test.AddOutput<float>("reduced", {1, 2, 1}, {1.0f, 3.0f});
   test.Run();
 }
+
+TEST(ReductionOpTest, ReduceMinAxesInitializerOpset18) {
+  OpTester test("ReduceMin", 18);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {0, 2}, true);
+  test.AddOutput<float>("reduced", {1, 2, 1}, {1.0f, 3.0f});
+  // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceMin_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMin", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                       MakeBFloat16({1.0f, 2.0f,
+                                     3.0f, 4.0f,
+
+                                     5.0f, 6.0f,
+                                     7.0f, 8.0f,
+
+                                     9.0f, 10.0f,
+                                     11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({1.0f, 3.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  // USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
 
 TEST(ReductionOpTest, ReduceMin_double) {
   OpTester test("ReduceMin");
@@ -1289,14 +1884,12 @@ TEST(ReductionOpTest, ReduceMin_uint8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-#if !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceMin0DTensor) {
   OpTester test("ReduceMin");
   test.AddInput<float>("data", {}, {2});
   test.AddOutput<float>("reduced", {}, {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-#endif  // !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceSum) {
   OpTester test("ReduceSum");
@@ -1313,6 +1906,25 @@ TEST(ReductionOpTest, ReduceSum) {
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {33.0f, 45.0f});
   test.Run();
+}
+
+// Opset 13
+TEST(ReductionOpTest, ReduceSumAxesInitializerOpset13) {
+  OpTester test("ReduceSum", 13);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {0, 2}, true);
+  test.AddOutput<float>("reduced", {1, 2, 1}, {33.0f, 45.0f});
+  // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_double) {
@@ -1409,6 +2021,31 @@ TEST(ReductionOpTest, ReduceSumHalfHalf) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSumHalfHalf_2) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+
+  std::vector<float> data = {1.0f, 2.0f,
+                             3.0f, 4.0f,
+
+                             5.0f, 6.0f,
+                             7.0f, 8.0f,
+
+                             9.0f, 10.0f,
+                             11.0f, 12.0f};
+  std::vector<MLFloat16> data_half(12);
+  ConvertFloatToMLFloat16(data.data(), data_half.data(), 12);
+
+  std::vector<float> result = {33.0f, 45.0f};
+  std::vector<MLFloat16> result_half(2);
+  ConvertFloatToMLFloat16(result.data(), result_half.data(), 2);
+
+  test.AddInput<MLFloat16>("data", {3, 2, 2}, data_half);
+  test.AddOutput<MLFloat16>("reduced", {2}, result_half);
+  test.Run();
+}
+
 void test_half_reduce_sum(
     int64_t m, int64_t n) {
   OpTester test("ReduceSum");
@@ -1448,6 +2085,53 @@ TEST(ReductionOpTest, ReduceSum_half_bert) {
 }
 
 // Add more UTs for half as needed
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceSum_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceSum", 14);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f}));
+  test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, 1});
+  test.AddOutput<BFloat16>("reduced", {2}, MakeBFloat16({36.0f, 42.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#elif USE_DNNL
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_CUDA USE_ROCM USE_DNNL
+
+// on CUDA - this UT, with axes {0,2}, will go thru cudnn lib only if ATenOp is not initialized
+// on ROCM - miopen call succeeded, but results in data error, thus follow the same logic done in cudnn for now
+//           4.2 doesn't run properly (data error), thus enable the UT only above 4.3
+#if defined(USE_CUDA) || (defined(USE_ROCM)  && ROCM_VERSION >= 40300)
+TEST(ReductionOpTest, ReduceSumBFloat16_2) {
+  OpTester test("ReduceSum", 14);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f}));
+  test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, 2});
+  test.AddOutput<BFloat16>("reduced", {2}, MakeBFloat16({33.0f, 45.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
 #endif
 
 TEST(ReductionOpTest, ReduceSum_apex_reduction) {
@@ -1498,9 +2182,15 @@ void test_apex_reduce_sum(
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_matrix_large) {
+#ifdef USE_TENSORRT
+  // Reduction op takes much longer time for TRT 8.2, so we test smaller range of inputs.
+  int64_t threshold = 4096;
+#else
+  int64_t threshold = 32768;
+#endif
   for (int64_t m = 1; m < 2049; m *= 8) {
     for (int64_t n = 2; n < 2049; n *= 8) {
-      if (m * n > 32768) {
+      if (m * n > threshold) {
         continue;
       }
       test_apex_reduce_sum(m, n);
@@ -1528,7 +2218,13 @@ TEST(ReductionOpTest, ReduceSum_batch_by_two) {
 }
 
 TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
-  for (int i = 1; i < 16; i += 1) {
+#ifdef USE_TENSORRT
+  // Reduction op takes much longer time for TRT 8.2, so we test smaller range of inputs.
+  int i_max = 8;
+#else
+  int i_max = 16;
+#endif
+  for (int i = 1; i < i_max; i += 1) {
     test_apex_reduce_sum(i * 128, 128);
     test_apex_reduce_sum(i * 512, 128);
     test_apex_reduce_sum(i * 128, 768);
@@ -1557,8 +2253,16 @@ TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
 
 TEST(ReductionOpTest, ReduceSum_apex_more) {
   std::srand(0);
-  for (int64_t m = 1; m < 16; ++m) {
-    for (int64_t n = 1; n < 16; ++n) {
+#ifdef USE_TENSORRT
+  // Reduction op takes much longer time for TRT 8.2, so we test smaller range of inputs.
+  int64_t m_max = 8;
+  int64_t n_max = 8;
+#else
+  int64_t m_max = 16;
+  int64_t n_max = 16;
+#endif
+  for (int64_t m = 1; m < m_max; ++m) {
+    for (int64_t n = 1; n < n_max; ++n) {
       const auto m_ = 2 * m;
       const auto n_ = 2 * n;
       test_apex_reduce_sum(m_, n_);
@@ -1708,14 +2412,25 @@ TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-#if !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer) {
+  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddOutput<float>("reduced", {}, {10.0f});
+  // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 TEST(ReductionOpTest, ReduceSum0DTensor) {
   OpTester test("ReduceSum");
   test.AddInput<float>("data", {}, {2});
   test.AddOutput<float>("reduced", {}, {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-#endif  // !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceSumSquare) {
   OpTester test("ReduceSumSquare");
@@ -1733,6 +2448,35 @@ TEST(ReductionOpTest, ReduceSumSquare) {
   test.AddOutput<float>("reduced", {1, 2, 1}, {247.0f, 403.f});
   test.Run();
 }
+
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceSumSquare_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceSumSquare", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({247.0f, 403.f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  // USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif //USE_DNNL
 
 TEST(ReductionOpTest, ReduceSumSquare_double) {
   OpTester test("ReduceSumSquare");
@@ -1765,7 +2509,24 @@ TEST(ReductionOpTest, ReduceSumSquare_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {247, 403});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int64 not allowed as input to this layer
+}
+
+TEST(ReductionOpTest, ReduceSumSquare_int64) {
+  OpTester test("ReduceSumSquare");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {1, 2, 1}, {247, 403});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int64 not allowed as input to this layer
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_default_axes_keepdims) {
@@ -1844,14 +2605,12 @@ TEST(ReductionOpTest, ReduceSumSquare_keepdims) {
   test.Run();
 }
 
-#if !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceSumSquare0DTensor) {
   OpTester test("ReduceSumSquare");
   test.AddInput<float>("data", {}, {2});
   test.AddOutput<float>("reduced", {}, {4});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-#endif  // !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceProd_default_axes_keepdims) {
   OpTester test("ReduceProd");
@@ -1944,6 +2703,52 @@ TEST(ReductionOpTest, ReduceProd) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceProdAxesInitializerOpset18) {
+  OpTester test("ReduceProd", 18);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {0, 2}, true);
+  test.AddOutput<float>("reduced", {1, 2, 1}, {5400.f, 88704.f});
+  // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+#if defined(USE_DNNL)
+TEST(ReductionOpTest, ReduceProd_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceProd", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5400.f, 88704.f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  // USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
+
 TEST(ReductionOpTest, ReduceProd_int32) {
   OpTester test("ReduceProd");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -1976,14 +2781,12 @@ TEST(ReductionOpTest, ReduceProd_int64) {
   test.Run();
 }
 
-#if !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceProd0DTensor) {
   OpTester test("ReduceProd");
   test.AddInput<float>("data", {}, {2});
   test.AddOutput<float>("reduced", {}, {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-#endif  // (!defined USE_TVM)
 
 TEST(ReductionOpTest, ArgMax) {
   OpTester test("ArgMax");
@@ -2138,6 +2941,48 @@ TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
                            1, 1,
                            1, 1});
 
+  test.Run();
+}
+
+TEST(ReductionOpTest, ArgMax_int8) {
+  OpTester test("ArgMax");
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<int8_t>("data", {3, 2, 2},
+                        {1, 2,
+                         3, 4,
+
+                         5, 6,
+                         7, 8,
+
+                         9, 10,
+                         11, 12});
+  test.AddOutput<int64_t>("reduced", {3, 1, 2},
+                          {1, 1,
+                           1, 1,
+                           1, 1});
+  // TensorRT: input/output with DataType Int8 in network without Q/DQ layers
+  //           must have dynamic range set when no calibrator is used
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ArgMax_uint8) {
+  OpTester test("ArgMax");
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<uint8_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {3, 1, 2},
+                          {1, 1,
+                           1, 1,
+                           1, 1});
   test.Run();
 }
 
@@ -2341,16 +3186,16 @@ TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // R - keep_dims=1 - noop=false
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{3, 0, 2}, std::vector<int64_t>(),
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{};
-  expected_fast_axes = std::vector<int64_t>{};
-  expected_fast_output_shape = std::vector<int64_t>{1, 0, 1};
+  expected_fast_shape = {};
+  expected_fast_axes = {};
+  expected_fast_output_shape = {1, 0, 1};
   ASSERT_EQ(fast_kind, FastReduceKind::kEmpty);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_shape, expected_fast_shape);
@@ -2359,16 +3204,16 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1b) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // R - keep_dims=1 - noop=false
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{3, 0, 2}, std::vector<int64_t>{1},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{};
-  expected_fast_axes = std::vector<int64_t>{};
-  expected_fast_output_shape = std::vector<int64_t>{3, 0, 2};
+  expected_fast_shape = {};
+  expected_fast_axes = {};
+  expected_fast_output_shape = {3, 0, 2};
   ASSERT_EQ(fast_kind, FastReduceKind::kEmpty);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_shape, expected_fast_shape);
@@ -2377,12 +3222,17 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1b) {
 
 // test that PrepareForReduce handles this case. Called by all reduction ops so any op can be used in the test
 TEST(ReductionOpTest, ReduceDimWithZero1) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{1,0,1}] did not match run output shape [{1,1,1}] for reduced";
+  }
+
   auto run = [](OpTester& tester, const std::string& error_msg = "") {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
     // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider});
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
   };
 
   // reduce on all axes keeping dims. should allow the 0 to be the reduced value
@@ -2396,16 +3246,16 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // R - keep_dims=0 - noop=false
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{3, 0, 2}, std::vector<int64_t>(),
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{};
-  expected_fast_axes = std::vector<int64_t>{};
-  expected_fast_output_shape = std::vector<int64_t>{};
+  expected_fast_shape = {};
+  expected_fast_axes = {};
+  expected_fast_output_shape = {};
   ASSERT_EQ(fast_kind, FastReduceKind::kEmpty);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_shape, expected_fast_shape);
@@ -2413,12 +3263,17 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
 }
 
 TEST(ReductionOpTest, ReduceDimWithZero2) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Can't reduce on dim with value of 0 if 'keepdims' is false. Invalid output shape would be produced. input_shape:{3,0,2}";
+  }
+
   auto run = [](OpTester& tester, const std::string& error_msg = "") {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
     // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider});
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
   };
 
   // reduction without keeping dims on all axes. can't reduce on an axis with value of 0
@@ -2434,29 +3289,29 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero3) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // R - keep_dims=0 - noop=false
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{3, 0, 2}, std::vector<int64_t>{2},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{0, 2};
-  expected_fast_axes = std::vector<int64_t>{1};
-  expected_fast_output_shape = std::vector<int64_t>{3, 0};
+  expected_fast_shape = {0, 2};
+  expected_fast_axes = {1};
+  expected_fast_output_shape = {3, 0};
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
   ASSERT_EQ(fast_kind, FastReduceKind::kKR);
 }
 
-TEST(ReductionOpTest, ReduceDimWithZero3) {
+TEST(ReductionOpTest, ReduceSum_ReduceDimWithZero3) {
   auto run = [](OpTester& tester, const std::string& error_msg = "") {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
     // exclude OpenVINO and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider});
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
   };
 
   // reduction is possible without keeping dims if we only reduce on non-zero dims
@@ -2599,16 +3454,16 @@ TEST(ReductionOpTest, ReduceInfLogSumExp_double) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_K) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // R - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10}, std::vector<int64_t>{0},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{10};
-  expected_fast_output_shape = std::vector<int64_t>{1};
-  expected_fast_axes = std::vector<int64_t>{0};
+  expected_fast_shape = {10};
+  expected_fast_output_shape = {1};
+  expected_fast_axes = {0};
   ASSERT_EQ(fast_kind, FastReduceKind::kR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2617,9 +3472,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_K) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{0, 1},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{110};
-  expected_fast_output_shape = std::vector<int64_t>{1, 1};
-  expected_fast_axes = std::vector<int64_t>{0};
+  expected_fast_shape = {110};
+  expected_fast_output_shape = {1, 1};
+  expected_fast_axes = {0};
   ASSERT_EQ(fast_kind, FastReduceKind::kR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2629,9 +3484,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_K) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10}, std::vector<int64_t>{0},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{10};
-  expected_fast_output_shape = std::vector<int64_t>();
-  expected_fast_axes = std::vector<int64_t>{0};
+  expected_fast_shape = {10};
+  expected_fast_output_shape = {};
+  expected_fast_axes = {0};
   ASSERT_EQ(fast_kind, FastReduceKind::kR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2640,9 +3495,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_K) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{0, 1},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{110};
-  expected_fast_output_shape = std::vector<int64_t>();
-  expected_fast_axes = std::vector<int64_t>{0};
+  expected_fast_shape = {110};
+  expected_fast_output_shape = {};
+  expected_fast_axes = {0};
   ASSERT_EQ(fast_kind, FastReduceKind::kR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2651,25 +3506,27 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_K) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_empty) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // R - keep_dims=1 - noop=false
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10}, std::vector<int64_t>(),
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_axes = std::vector<int64_t>{0};
+  expected_fast_axes = {0};
+  expected_fast_shape = {10};
+  expected_fast_output_shape = {1};
   ASSERT_EQ(fast_kind, FastReduceKind::kR);
-  ASSERT_EQ(fast_shape, std::vector<int64_t>{10});
-  ASSERT_EQ(fast_output_shape, std::vector<int64_t>{1});
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>(),
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{110};
-  expected_fast_output_shape = std::vector<int64_t>{1, 1};
-  expected_fast_axes = std::vector<int64_t>{0};
+  expected_fast_shape = {110};
+  expected_fast_output_shape = {1, 1};
+  expected_fast_axes = {0};
   ASSERT_EQ(fast_kind, FastReduceKind::kR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2679,9 +3536,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_empty) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10}, std::vector<int64_t>{},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{10};
-  expected_fast_output_shape = std::vector<int64_t>{};
-  expected_fast_axes = std::vector<int64_t>{0};
+  expected_fast_shape = {10};
+  expected_fast_output_shape = {};
+  expected_fast_axes = {0};
   ASSERT_EQ(fast_kind, FastReduceKind::kR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2690,9 +3547,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_empty) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{110};
-  expected_fast_output_shape = std::vector<int64_t>{};
-  expected_fast_axes = std::vector<int64_t>{0};
+  expected_fast_shape = {110};
+  expected_fast_output_shape = {};
+  expected_fast_axes = {0};
   ASSERT_EQ(fast_kind, FastReduceKind::kR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2701,16 +3558,16 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_empty) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_K_empty) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // R - keep_dims=1 - noop=true
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10}, std::vector<int64_t>(),
       fast_shape, fast_output_shape, fast_axes, true, true);
-  expected_fast_shape = std::vector<int64_t>{10};
-  expected_fast_output_shape = std::vector<int64_t>{10};
-  expected_fast_axes = std::vector<int64_t>{};
+  expected_fast_shape = {10};
+  expected_fast_output_shape = {10};
+  expected_fast_axes = {};
   ASSERT_EQ(fast_kind, FastReduceKind::kK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2719,9 +3576,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_K_empty) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>(),
       fast_shape, fast_output_shape, fast_axes, true, true);
-  expected_fast_shape = std::vector<int64_t>{110};
-  expected_fast_output_shape = std::vector<int64_t>{10, 11};
-  expected_fast_axes = std::vector<int64_t>{};
+  expected_fast_shape = {110};
+  expected_fast_output_shape = {10, 11};
+  expected_fast_axes = {};
   ASSERT_EQ(fast_kind, FastReduceKind::kK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2731,9 +3588,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_K_empty) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10}, std::vector<int64_t>{},
       fast_shape, fast_output_shape, fast_axes, false, true);
-  expected_fast_shape = std::vector<int64_t>{10};
-  expected_fast_output_shape = std::vector<int64_t>{10};
-  expected_fast_axes = std::vector<int64_t>{};
+  expected_fast_shape = {10};
+  expected_fast_output_shape = {10};
+  expected_fast_axes = {};
   ASSERT_EQ(fast_kind, FastReduceKind::kK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2742,9 +3599,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_K_empty) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{},
       fast_shape, fast_output_shape, fast_axes, false, true);
-  expected_fast_shape = std::vector<int64_t>{110};
-  expected_fast_output_shape = std::vector<int64_t>{10, 11};
-  expected_fast_axes = std::vector<int64_t>{};
+  expected_fast_shape = {110};
+  expected_fast_output_shape = {10, 11};
+  expected_fast_axes = {};
   ASSERT_EQ(fast_kind, FastReduceKind::kK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2753,36 +3610,36 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_K_empty) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // KR - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{10, 11}, std::vector<int64_t>{1},
+      TensorShapeVector{10, 11}, TensorShapeVector{1},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{10, 1};
-  expected_fast_axes = std::vector<int64_t>{1};
+  expected_fast_shape = {10, 11};
+  expected_fast_output_shape = {10, 1};
+  expected_fast_axes = {1};
   ASSERT_EQ(fast_kind, FastReduceKind::kKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{1, 2},
+      TensorShapeVector{9, 10, 11}, TensorShapeVector{1, 2},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{9, 110};
-  expected_fast_output_shape = std::vector<int64_t>{9, 1, 1};
+  expected_fast_shape = {9, 110};
+  expected_fast_output_shape = {9, 1, 1};
   ASSERT_EQ(fast_kind, FastReduceKind::kKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{2},
+      TensorShapeVector{9, 10, 11}, TensorShapeVector{2},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{90, 11};
-  expected_fast_output_shape = std::vector<int64_t>{9, 10, 1};
+  expected_fast_shape = {90, 11};
+  expected_fast_output_shape = {9, 10, 1};
   ASSERT_EQ(fast_kind, FastReduceKind::kKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2790,20 +3647,20 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR) {
 
   // KR - keep_dims=0
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{10, 11}, std::vector<int64_t>{1},
+      TensorShapeVector{10, 11}, TensorShapeVector{1},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{10};
+  expected_fast_shape = {10, 11};
+  expected_fast_output_shape = {10};
   ASSERT_EQ(fast_kind, FastReduceKind::kKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{1, 2},
+      TensorShapeVector{9, 10, 11}, TensorShapeVector{1, 2},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{9, 110};
-  expected_fast_output_shape = std::vector<int64_t>{9};
+  expected_fast_shape = {9, 110};
+  expected_fast_output_shape = {9};
   ASSERT_EQ(fast_kind, FastReduceKind::kKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2812,8 +3669,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{2},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{90, 11};
-  expected_fast_output_shape = std::vector<int64_t>{9, 10};
+  expected_fast_shape = {90, 11};
+  expected_fast_output_shape = {9, 10};
   ASSERT_EQ(fast_kind, FastReduceKind::kKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2822,16 +3679,16 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR_neg) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // KR - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{10, 11}, std::vector<int64_t>{-1},
+      TensorShapeVector{10, 11}, TensorShapeVector{-1},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{10, 1};
-  expected_fast_axes = std::vector<int64_t>{1};
+  expected_fast_shape = TensorShapeVector{10, 11};
+  expected_fast_output_shape = TensorShapeVector{10, 1};
+  expected_fast_axes = TensorShapeVector{1};
   ASSERT_EQ(fast_kind, FastReduceKind::kKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2840,36 +3697,36 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR_neg) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_RK) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // RK - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{10, 11}, std::vector<int64_t>{0},
+      TensorShapeVector{10, 11}, TensorShapeVector{0},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{1, 11};
-  expected_fast_axes = std::vector<int64_t>{0};
+  expected_fast_shape = {10, 11};
+  expected_fast_output_shape = {1, 11};
+  expected_fast_axes = {0};
   ASSERT_EQ(fast_kind, FastReduceKind::kRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0, 1},
+      TensorShapeVector{9, 10, 11}, TensorShapeVector{0, 1},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{90, 11};
-  expected_fast_output_shape = std::vector<int64_t>{1, 1, 11};
+  expected_fast_shape = {90, 11};
+  expected_fast_output_shape = {1, 1, 11};
   ASSERT_EQ(fast_kind, FastReduceKind::kRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0},
+      TensorShapeVector{9, 10, 11}, TensorShapeVector{0},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{9, 110};
-  expected_fast_output_shape = std::vector<int64_t>{1, 10, 11};
+  expected_fast_shape = {9, 110};
+  expected_fast_output_shape = {1, 10, 11};
   ASSERT_EQ(fast_kind, FastReduceKind::kRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2879,8 +3736,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RK) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{0},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{11};
+  expected_fast_shape = {10, 11};
+  expected_fast_output_shape = {11};
   ASSERT_EQ(fast_kind, FastReduceKind::kRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2889,8 +3746,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RK) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0, 1},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{90, 11};
-  expected_fast_output_shape = std::vector<int64_t>{11};
+  expected_fast_shape = {90, 11};
+  expected_fast_output_shape = {11};
   ASSERT_EQ(fast_kind, FastReduceKind::kRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2898,8 +3755,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RK) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{9, 110};
-  expected_fast_output_shape = std::vector<int64_t>{10, 11};
+  expected_fast_shape = {9, 110};
+  expected_fast_output_shape = {10, 11};
   ASSERT_EQ(fast_kind, FastReduceKind::kRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2908,46 +3765,46 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RK) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_KRK) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // KRK - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{1},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{9, 10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{9, 1, 11};
-  expected_fast_axes = std::vector<int64_t>{1};
+  expected_fast_shape = {9, 10, 11};
+  expected_fast_output_shape = {9, 1, 11};
+  expected_fast_axes = {1};
   ASSERT_EQ(fast_kind, FastReduceKind::kKRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{1, 2},
+      TensorShapeVector{7, 9, 10, 11}, TensorShapeVector{1, 2},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{7, 90, 11};
-  expected_fast_output_shape = std::vector<int64_t>{7, 1, 1, 11};
+  expected_fast_shape = {7, 90, 11};
+  expected_fast_output_shape = {7, 1, 1, 11};
   ASSERT_EQ(fast_kind, FastReduceKind::kKRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{1},
+      TensorShapeVector{7, 9, 10, 11}, TensorShapeVector{1},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{7, 9, 110};
-  expected_fast_output_shape = std::vector<int64_t>{7, 1, 10, 11};
+  expected_fast_shape = {7, 9, 110};
+  expected_fast_output_shape = {7, 1, 10, 11};
   ASSERT_EQ(fast_kind, FastReduceKind::kKRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
-      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{2},
+      TensorShapeVector{7, 9, 10, 11}, TensorShapeVector{2},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{63, 10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{7, 9, 1, 11};
+  expected_fast_shape = {63, 10, 11};
+  expected_fast_output_shape = {7, 9, 1, 11};
   ASSERT_EQ(fast_kind, FastReduceKind::kKRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2957,8 +3814,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KRK) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{1},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{9, 10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{9, 11};
+  expected_fast_shape = {9, 10, 11};
+  expected_fast_output_shape = {9, 11};
   ASSERT_EQ(fast_kind, FastReduceKind::kKRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2967,8 +3824,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KRK) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{1, 2},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{7, 90, 11};
-  expected_fast_output_shape = std::vector<int64_t>{7, 11};
+  expected_fast_shape = {7, 90, 11};
+  expected_fast_output_shape = {7, 11};
   ASSERT_EQ(fast_kind, FastReduceKind::kKRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2977,8 +3834,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KRK) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{1},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{7, 9, 110};
-  expected_fast_output_shape = std::vector<int64_t>{7, 10, 11};
+  expected_fast_shape = {7, 9, 110};
+  expected_fast_output_shape = {7, 10, 11};
   ASSERT_EQ(fast_kind, FastReduceKind::kKRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -2987,9 +3844,99 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KRK) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{2},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{63, 10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{7, 9, 11};
+  expected_fast_shape = {63, 10, 11};
+  expected_fast_output_shape = {7, 9, 11};
   ASSERT_EQ(fast_kind, FastReduceKind::kKRK);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+}
+
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_RKR) {
+  FastReduceKind fast_kind;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+
+  // RKR - keep_dims=1
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0, 2},
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = TensorShapeVector{9, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{1, 10, 1};
+  expected_fast_axes = TensorShapeVector{0, 2};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 3},
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = TensorShapeVector{7, 90, 11};
+  expected_fast_output_shape = TensorShapeVector{1, 9, 10, 1};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 2, 3},
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = TensorShapeVector{7, 9, 110};
+  expected_fast_output_shape = TensorShapeVector{1, 9, 1, 1};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 1, 3},
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = TensorShapeVector{63, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{1, 1, 10, 1};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  // KRK - keep_dims=0
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0, 2},
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = TensorShapeVector{9, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{10};
+  expected_fast_axes = TensorShapeVector{0, 2};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 3},
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = TensorShapeVector{7, 90, 11};
+  expected_fast_output_shape = TensorShapeVector{9, 10};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 2, 3},
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = TensorShapeVector{7, 9, 110};
+  expected_fast_output_shape = TensorShapeVector{9};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 1, 3},
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = TensorShapeVector{63, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{10};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
   ASSERT_EQ(fast_axes, expected_fast_axes);
@@ -2997,16 +3944,16 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KRK) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_NONE) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // RKRK
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 2},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{7, 9, 10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{9, 11};
-  expected_fast_axes = std::vector<int64_t>{0, 2};
+  expected_fast_shape = {7, 9, 10, 11};
+  expected_fast_output_shape = {9, 11};
+  expected_fast_axes = {0, 2};
   ASSERT_EQ(fast_kind, FastReduceKind::kNone);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3015,9 +3962,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_NONE) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{1, 3},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{7, 9, 10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{7, 1, 10, 1};
-  expected_fast_axes = std::vector<int64_t>{1, 3};
+  expected_fast_shape = {7, 9, 10, 11};
+  expected_fast_output_shape = {7, 1, 10, 1};
+  expected_fast_axes = {1, 3};
   ASSERT_EQ(fast_kind, FastReduceKind::kNone);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3027,9 +3974,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_NONE) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11, 2, 3, 4, 6}, std::vector<int64_t>{0, 1, 4, 5},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{63, 110, 6, 24};
-  expected_fast_output_shape = std::vector<int64_t>{10, 11, 4, 6};
-  expected_fast_axes = std::vector<int64_t>{0, 2};
+  expected_fast_shape = {63, 110, 6, 24};
+  expected_fast_output_shape = {10, 11, 4, 6};
+  expected_fast_axes = {0, 2};
   ASSERT_EQ(fast_kind, FastReduceKind::kNone);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3038,9 +3985,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_NONE) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11, 2, 3, 4, 6}, std::vector<int64_t>{0, 1, 4, 5},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{63, 110, 6, 24};
-  expected_fast_output_shape = std::vector<int64_t>{1, 1, 10, 11, 1, 1, 4, 6};
-  expected_fast_axes = std::vector<int64_t>{0, 2};
+  expected_fast_shape = {63, 110, 6, 24};
+  expected_fast_output_shape = {1, 1, 10, 11, 1, 1, 4, 6};
+  expected_fast_axes = {0, 2};
   ASSERT_EQ(fast_kind, FastReduceKind::kNone);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3257,6 +4204,53 @@ TEST(ReductionOpTest, ReduceMax_KRK_keepdims) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceMax_RKR) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {2}, {10.f, 12.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_RKR_parallel) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {2, 16, 2},
+                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0f, 31.0f, 32.0f,
+                        33.0f, 34.0f, 35.0f, 36.0f, 37.0f, 38.0f, 39.0f, 40.0f, 41.0f, 42.0f, 43.0f, 44.0f, 45.0f, 46.0f, 47.0f, 48.0f,
+                        49.0f, 50.0f, 51.0f, 52.0f, 53.0f, 54.0f, 55.0f, 56.0f, 57.0f, 58.0f, 59.0f, 60.0f, 61.0f, 62.0f, 63.0f});
+  test.AddOutput<float>("reduced", {16}, {33.0f, 35.0f, 37.0f, 39.0f, 41.0f, 43.0f, 45.0f, 47.0f, 49.0f, 51.0f, 53.0f, 55.0f, 57.0f, 59.0f, 61.0f, 63.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_RKR_keepdims) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1}, {10.f, 12.f});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceMax_RKRK) {
   OpTester test("ReduceMax");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -3408,6 +4402,53 @@ TEST(ReductionOpTest, ReduceMean_KRK_keepdims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {3, 1, 2}, {2.f, 3.f, 6.f, 7.f, 10.f, 11.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMean_RKR) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {2}, {5.5f, 7.5f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMean_RKR_parallel) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {2, 16, 2},
+                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0f, 31.0f, 32.0f,
+                        33.0f, 34.0f, 35.0f, 36.0f, 37.0f, 38.0f, 39.0f, 40.0f, 41.0f, 42.0f, 43.0f, 44.0f, 45.0f, 46.0f, 47.0f, 48.0f,
+                        49.0f, 50.0f, 51.0f, 52.0f, 53.0f, 54.0f, 55.0f, 56.0f, 57.0f, 58.0f, 59.0f, 60.0f, 61.0f, 62.0f, 63.0f});
+  test.AddOutput<float>("reduced", {16}, {16.5f, 18.5f, 20.5f, 22.5f, 24.5f, 26.5f, 28.5f, 30.5f, 32.5f, 34.5f, 36.5f, 38.5f, 40.5f, 42.5f, 44.5f, 46.5f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMean_RKR_keepdims) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1}, {5.5f, 7.5f});
   test.Run();
 }
 
@@ -3598,6 +4639,53 @@ TEST(ReductionOpTest, ReduceMin_KRK_keepdims) {
                         19.0f, 20.0f,
                         21.0f, 22.0f});
   test.AddOutput<float>("reduced", {3, 1, 2}, {11.f, 12.f, 15.f, 16.f, 19.f, 20.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_RKR) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {11.0f, 12.0f,
+                        13.0f, 14.0f,
+
+                        15.0f, 16.0f,
+                        17.0f, 18.0f,
+
+                        19.0f, 20.0f,
+                        21.0f, 22.0f});
+  test.AddOutput<float>("reduced", {2}, {11.f, 13.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_RKR_parallel) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {2, 16, 2},
+                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0f, 31.0f, 32.0f,
+                        33.0f, 34.0f, 35.0f, 36.0f, 37.0f, 38.0f, 39.0f, 40.0f, 41.0f, 42.0f, 43.0f, 44.0f, 45.0f, 46.0f, 47.0f, 48.0f,
+                        49.0f, 50.0f, 51.0f, 52.0f, 53.0f, 54.0f, 55.0f, 56.0f, 57.0f, 58.0f, 59.0f, 60.0f, 61.0f, 62.0f, 63.0f});
+  test.AddOutput<float>("reduced", {16}, {0.0f, 2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 18.0f, 20.0f, 22.0f, 24.0f, 26.0f, 28.0f, 30.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_RKR_keepdims) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {11.0f, 12.0f,
+                        13.0f, 14.0f,
+
+                        15.0f, 16.0f,
+                        17.0f, 18.0f,
+
+                        19.0f, 20.0f,
+                        21.0f, 22.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1}, {11.f, 13.f});
   test.Run();
 }
 
@@ -3929,6 +5017,126 @@ TEST(ReductionOpTest, ReduceSum_KRK2_keepdims) {
                         21.0f, 22.0f,
                         23.0f, 24.0f});
   test.AddOutput<float>("reduced", {3, 1, 1, 2}, {16.f, 20.f, 48.f, 52.f, 80.f, 84.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {2}, {33.f, 45.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR_parallel) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {2, 16, 2},
+                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0f, 31.0f, 32.0f,
+                        33.0f, 34.0f, 35.0f, 36.0f, 37.0f, 38.0f, 39.0f, 40.0f, 41.0f, 42.0f, 43.0f, 44.0f, 45.0f, 46.0f, 47.0f, 48.0f,
+                        49.0f, 50.0f, 51.0f, 52.0f, 53.0f, 54.0f, 55.0f, 56.0f, 57.0f, 58.0f, 59.0f, 60.0f, 61.0f, 62.0f, 63.0f});
+  test.AddOutput<float>("reduced", {16}, {66.0f, 74.0f, 82.0f, 90.0f, 98.0f, 106.0f, 114.0f, 122.0f, 130.0f, 138.0f, 146.0f, 154.0f, 162.0f, 170.0f, 178.0f, 186.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR_parallel_bigger) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  std::vector<float> in_data(512);
+  for (size_t i = 0; i < in_data.size(); ++i)
+    in_data[i] = (float)i;
+  test.AddInput<float>("data", {2, 128, 2}, in_data);
+  std::vector<float> expected(128);
+  for (size_t j = 0; j < 128; ++j) {
+    expected[j] = 0;
+    for (size_t i = 0; i < 2; ++i) {
+      for (size_t k = 0; k < 2; ++k) {
+        expected[j] += in_data[i * 256 + j * 2 + k];
+      }
+    }
+  }
+  test.AddOutput<float>("reduced", {128}, expected);
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1}, {33.f, 45.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR2) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 3});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {2, 2}, {57.0f, 69.0f, 81.0f, 93.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR2_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 3});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {1, 2, 2, 1}, {57.0f, 69.0f, 81.0f, 93.0f});
   test.Run();
 }
 

@@ -5,6 +5,7 @@
 
 const args = require('minimist')(process.argv.slice(2));
 const SELF_HOST = !!args['self-host'];
+const ORT_MAIN = args['ort-main'];
 const TEST_MAIN = args['test-main'];
 if (typeof TEST_MAIN !== 'string') {
   throw new Error('flag --test-main=<TEST_MAIN_JS_FILE> is required');
@@ -19,7 +20,7 @@ module.exports = function (config) {
   config.set({
     frameworks: ['mocha'],
     files: [
-      { pattern: distPrefix + 'ort.min.js' },
+      { pattern: distPrefix + ORT_MAIN },
       { pattern: './common.js' },
       { pattern: TEST_MAIN },
       { pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true },

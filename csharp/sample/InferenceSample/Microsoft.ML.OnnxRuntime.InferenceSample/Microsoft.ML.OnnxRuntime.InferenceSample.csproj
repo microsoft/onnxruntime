@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AutoGenerateBindingRedirects>True</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\testdata\bench.in">
+      <Link>TestData\bench.in</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\..\testdata\squeezenet.onnx">
+      <Link>TestData\squeezenet.onnx</Link>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

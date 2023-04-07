@@ -2,8 +2,8 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "module": "CommonJS",
+    "downlevelIteration": true,
     "declarationDir": "./types",
-    "lib": ["DOM"]
   },
   "include": ["lib", "script", "test"],
   "exclude": ["lib/wasm/proxy-worker"]

@@ -483,7 +483,8 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   PipelineStateCacheFormat formatFrom = PipelineStateCacheFormat::kBGR8;
   if (tensorDesc.channelType == kImageTensorChannelTypeRGB8) {
     formatFrom = PipelineStateCacheFormat::kRGB8;
-  } else if (inputDesc.Format == kImageTensorChannelTypeGRAY8) {
+  } else if (inputDesc.Format == DXGI_FORMAT_R8_UNORM ||
+             tensorDesc.channelType == kImageTensorChannelTypeGRAY8) {
     formatFrom = PipelineStateCacheFormat::kGRAY8;
   }
 

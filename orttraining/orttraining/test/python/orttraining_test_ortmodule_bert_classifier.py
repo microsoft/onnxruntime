@@ -1,23 +1,29 @@
-import logging
 import argparse
-import torch
-import wget
+import datetime
+import logging
 import os
-import pandas as pd
-import zipfile
-from transformers import BertTokenizer, AutoConfig
-from sklearn.model_selection import train_test_split
-from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
-from transformers import BertForSequenceClassification, AdamW, BertConfig
-from transformers import get_linear_schedule_with_warmup
-import numpy as np
 import random
 import time
-import datetime
+import zipfile
 
+import numpy as np
+import pandas as pd
+import torch
+import wget
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
+from transformers import BertConfig  # noqa: F401
+from transformers import (
+    AdamW,
+    AutoConfig,
+    BertForSequenceClassification,
+    BertTokenizer,
+    get_linear_schedule_with_warmup,
+)
 
 import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule, DebugOptions
+from onnxruntime.training.ortmodule import DebugOptions, ORTModule
+
 
 def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     # ========================================
@@ -27,7 +33,7 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     # https://github.com/huggingface/transformers/blob/5bfcd0485ece086ebcbed2d008813037968a9e58/examples/run_glue.py#L128
 
     # Perform one full pass over the training set.
-    print('\n======== Epoch {:} / {:} with batch size {:} ========'.format(epoch + 1, args.epochs, args.batch_size))
+    print(f"\n======== Epoch {epoch + 1} / {args.epochs} with batch size {args.batch_size} ========")
 
     # Measure how long the training epoch takes.
     t0 = time.time()
@@ -44,7 +50,6 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
 
     # For each batch of training data...
     for step, batch in enumerate(train_dataloader):
-
         if step == args.train_steps:
             break
 
@@ -72,26 +77,27 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
         # The documentation for this `model` function is here:
         #   https://huggingface.co/transformers/v2.2.0/model_doc/bert.html#transformers.BertForSequenceClassification
 
-        outputs = model(b_input_ids,
-                        attention_mask=b_input_mask,
-                        labels=b_labels)
+        outputs = model(b_input_ids, attention_mask=b_input_mask, labels=b_labels)
 
         # The call to `model` always returns a tuple, so we need to pull the
         # loss value out of the tuple.
         loss = outputs[0]
 
         # Progress update every 40 batches.
-        if step % args.log_interval == 0 and not step == 0:
+        if step % args.log_interval == 0 and step != 0:
             # Calculate elapsed time in minutes.
             curr_time = time.time()
             elapsed_time = curr_time - start_time
 
             # Report progress.
-            print(f'Batch {step:4} of {len(train_dataloader):4}. Execution time: {elapsed_time:.4f}. Loss: {loss.item():.4f}')
+            print(
+                f"Batch {step:4} of {len(train_dataloader):4}. Execution time: {elapsed_time:.4f}. Loss: {loss.item():.4f}"
+            )
             start_time = curr_time
 
         if args.view_graphs:
             import torchviz
+
             pytorch_backward_graph = torchviz.make_dot(outputs[0], params=dict(list(model.named_parameters())))
             pytorch_backward_graph.view()
 
@@ -120,9 +126,10 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     avg_train_loss = total_loss / len(train_dataloader)
 
     epoch_time = time.time() - t0
-    print("\n  Average training loss: {0:.2f}".format(avg_train_loss))
-    print("  Training epoch took: {:.4f}s".format(epoch_time))
+    print(f"\n  Average training loss: {avg_train_loss:.2f}")
+    print(f"  Training epoch took: {epoch_time:.4f}s")
     return epoch_time
+
 
 def test(model, validation_dataloader, device, args):
     # ========================================
@@ -130,7 +137,7 @@ def test(model, validation_dataloader, device, args):
     # ========================================
     # After the completion of each training epoch, measure our performance on
     # our validation set.
-    print("\nRunning Validation with batch size {:} ...".format(args.test_batch_size))
+    print(f"\nRunning Validation with batch size {args.test_batch_size} ...")
 
     # Put the model in evaluation mode--the dropout layers behave differently
     # during evaluation.
@@ -139,20 +146,19 @@ def test(model, validation_dataloader, device, args):
     t0 = time.time()
 
     # Tracking variables
-    eval_loss, eval_accuracy = 0, 0
-    nb_eval_steps, nb_eval_examples = 0, 0
+    eval_loss, eval_accuracy = 0, 0  # noqa: F841
+    nb_eval_steps, nb_eval_examples = 0, 0  # noqa: F841
 
     # Evaluate data for one epoch
     for batch in validation_dataloader:
         # Add batch to GPU
-        batch = tuple(t.to(device) for t in batch)
+        batch = tuple(t.to(device) for t in batch)  # noqa: PLW2901
 
         # Unpack the inputs from our dataloader
         b_input_ids, b_input_mask, b_labels = batch
         # Telling the model not to compute or store gradients, saving memory and
         # speeding up validation
         with torch.no_grad():
-
             # Forward pass, calculate logit predictions.
             # This will return the logits rather than the loss because we have
             # not provided labels.
@@ -164,9 +170,7 @@ def test(model, validation_dataloader, device, args):
             # TODO: original sample had the last argument equal to None, but b_labels is because model was
             #       exported using 3 inputs for training, so validation must follow.
             #       Another approach would be checkpoint the trained model, re-export the model for validation with the checkpoint
-            outputs = model(b_input_ids,
-                            attention_mask=b_input_mask,
-                            labels=b_labels)
+            outputs = model(b_input_ids, attention_mask=b_input_mask, labels=b_labels)
 
         # Get the "logits" output by the model. The "logits" are the output
         # values prior to applying an activation function like the softmax.
@@ -174,7 +178,7 @@ def test(model, validation_dataloader, device, args):
 
         # Move logits and labels to CPU
         logits = logits.detach().cpu().numpy()
-        label_ids = b_labels.to('cpu').numpy()
+        label_ids = b_labels.to("cpu").numpy()
 
         # Calculate the accuracy for this batch of test sentences.
         tmp_eval_accuracy = flat_accuracy(logits, label_ids)
@@ -187,10 +191,11 @@ def test(model, validation_dataloader, device, args):
 
     # Report the final accuracy for this validation run.
     epoch_time = time.time() - t0
-    accuracy = eval_accuracy/nb_eval_steps
-    print("  Accuracy: {0:.2f}".format(accuracy))
-    print("  Validation took: {:.4f}s".format(epoch_time))
+    accuracy = eval_accuracy / nb_eval_steps
+    print(f"  Accuracy: {accuracy:.2f}")
+    print(f"  Validation took: {epoch_time:.4f}s")
     return epoch_time, accuracy
+
 
 def load_dataset(args):
     # 2. Loading CoLA Dataset
@@ -198,23 +203,28 @@ def load_dataset(args):
     def _download_dataset(download_dir):
         if not os.path.exists(download_dir):
             # Download the file (if we haven't already)
-            print('Downloading dataset...')
-            url = 'https://nyu-mll.github.io/CoLA/cola_public_1.1.zip'
-            wget.download(url, './cola_public_1.1.zip')
+            print("Downloading dataset...")
+            url = "https://nyu-mll.github.io/CoLA/cola_public_1.1.zip"
+            wget.download(url, "./cola_public_1.1.zip")
         else:
-            print('Reusing cached dataset')
+            print("Reusing cached dataset")
 
     if not os.path.exists(args.data_dir):
-        _download_dataset('./cola_public_1.1.zip')
+        _download_dataset("./cola_public_1.1.zip")
         # Unzip it
-        print('Extracting dataset')
-        with zipfile.ZipFile('./cola_public_1.1.zip', 'r') as zip_ref:
-            zip_ref.extractall('./')
+        print("Extracting dataset")
+        with zipfile.ZipFile("./cola_public_1.1.zip", "r") as zip_ref:
+            zip_ref.extractall("./")
     else:
-        print('Reusing extracted dataset')
+        print("Reusing extracted dataset")
 
     # Load the dataset into a pandas dataframe.
-    df = pd.read_csv(os.path.join(args.data_dir, "in_domain_train.tsv"), delimiter='\t', header=None, names=['sentence_source', 'label', 'label_notes', 'sentence'])
+    df = pd.read_csv(
+        os.path.join(args.data_dir, "in_domain_train.tsv"),
+        delimiter="\t",
+        header=None,
+        names=["sentence_source", "label", "label_notes", "sentence"],
+    )
 
     # Get the lists of sentences and their labels.
     sentences = df.sentence.values
@@ -223,11 +233,11 @@ def load_dataset(args):
     # 3. Tokenization & Input Formatting
 
     # Load the BERT tokenizer.
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
 
     # Set the max length of encoded sentence.
     # 64 is slightly larger than the maximum training sentence length of 47...
-    MAX_LEN = 64
+    MAX_LEN = 64  # noqa: N806
 
     # Tokenize all of the sentences and map the tokens to their word IDs.
     input_ids = []
@@ -238,13 +248,13 @@ def load_dataset(args):
         #   (3) Append the `[SEP]` token to the end.
         #   (4) Map tokens to their IDs.
         encoded_sent = tokenizer.encode(
-                            sent,                      # Sentence to encode.
-                            add_special_tokens = True, # Add '[CLS]' and '[SEP]'
-                    )
+            sent,  # Sentence to encode.
+            add_special_tokens=True,  # Add '[CLS]' and '[SEP]'
+        )
 
         # Pad our input tokens with value 0.
         if len(encoded_sent) < MAX_LEN:
-            encoded_sent.extend([0]*(MAX_LEN-len(encoded_sent)))
+            encoded_sent.extend([0] * (MAX_LEN - len(encoded_sent)))
 
         # Truncate to MAX_LEN
         if len(encoded_sent) > MAX_LEN:
@@ -269,11 +279,11 @@ def load_dataset(args):
         attention_masks.append(att_mask)
 
     # Use 90% for training and 10% for validation.
-    train_inputs, validation_inputs, train_labels, validation_labels = train_test_split(input_ids, labels,
-                                                                random_state=2018, test_size=0.1)
+    train_inputs, validation_inputs, train_labels, validation_labels = train_test_split(
+        input_ids, labels, random_state=2018, test_size=0.1
+    )
     # Do the same for the masks.
-    train_masks, validation_masks, _, _ = train_test_split(attention_masks, labels,
-                                                random_state=2018, test_size=0.1)
+    train_masks, validation_masks, _, _ = train_test_split(attention_masks, labels, random_state=2018, test_size=0.1)
 
     # Convert all inputs and labels into torch tensors, the required datatype
     # for our model.
@@ -298,63 +308,84 @@ def load_dataset(args):
 
     return train_dataloader, validation_dataloader
 
+
 # Function to calculate the accuracy of our predictions vs labels
 def flat_accuracy(preds, labels):
     pred_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
     return np.sum(pred_flat == labels_flat) / len(labels_flat)
 
+
 def format_time(elapsed):
-    '''Takes a time in seconds and returns a string hh:mm:ss'''
+    """Takes a time in seconds and returns a string hh:mm:ss"""
     # Round to the nearest second.
-    elapsed_rounded = int(round((elapsed)))
+    elapsed_rounded = int(round(elapsed))
 
     # Format as hh:mm:ss
     return str(datetime.timedelta(seconds=elapsed_rounded))
 
+
 def main():
     # 1. Basic setup
-    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--pytorch-only', action='store_true', default=False,
-                        help='disables ONNX Runtime training')
-    parser.add_argument('--batch-size', type=int, default=32, metavar='N',
-                        help='input batch size for training (default: 32)')
-    parser.add_argument('--test-batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for testing (default: 64)')
-    parser.add_argument('--view-graphs', action='store_true', default=False,
-                        help='views forward and backward graphs')
-    parser.add_argument('--no-cuda', action='store_true', default=False,
-                        help='disables CUDA training')
-    parser.add_argument('--epochs', type=int, default=4, metavar='N',
-                        help='number of epochs to train (default: 4)')
-    parser.add_argument('--seed', type=int, default=42, metavar='S',
-                        help='random seed (default: 42)')
-    parser.add_argument('--log-interval', type=int, default=40, metavar='N',
-                        help='how many batches to wait before logging training status (default: 40)')
-    parser.add_argument('--train-steps', type=int, default=-1, metavar='N',
-                        help='number of steps to train. Set -1 to run through whole dataset (default: -1)')
-    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
-                        help='Log level (default: WARNING)')
-    parser.add_argument('--num-hidden-layers', type=int, default=1, metavar='H',
-                        help='Number of hidden layers for the BERT model. A vanila BERT has 12 hidden layers (default: 1)')
-    parser.add_argument('--data-dir', type=str, default='./cola_public/raw',
-                        help='Path to the bert data directory')
+    parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
+    parser.add_argument("--pytorch-only", action="store_true", default=False, help="disables ONNX Runtime training")
+    parser.add_argument(
+        "--batch-size", type=int, default=32, metavar="N", help="input batch size for training (default: 32)"
+    )
+    parser.add_argument(
+        "--test-batch-size", type=int, default=64, metavar="N", help="input batch size for testing (default: 64)"
+    )
+    parser.add_argument("--view-graphs", action="store_true", default=False, help="views forward and backward graphs")
+    parser.add_argument(
+        "--export-onnx-graphs", action="store_true", default=False, help="export ONNX graphs to current directory"
+    )
+    parser.add_argument("--no-cuda", action="store_true", default=False, help="disables CUDA training")
+    parser.add_argument("--epochs", type=int, default=4, metavar="N", help="number of epochs to train (default: 4)")
+    parser.add_argument("--seed", type=int, default=42, metavar="S", help="random seed (default: 42)")
+    parser.add_argument(
+        "--log-interval",
+        type=int,
+        default=40,
+        metavar="N",
+        help="how many batches to wait before logging training status (default: 40)",
+    )
+    parser.add_argument(
+        "--train-steps",
+        type=int,
+        default=-1,
+        metavar="N",
+        help="number of steps to train. Set -1 to run through whole dataset (default: -1)",
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default="WARNING",
+        help="Log level (default: WARNING)",
+    )
+    parser.add_argument(
+        "--num-hidden-layers",
+        type=int,
+        default=1,
+        metavar="H",
+        help="Number of hidden layers for the BERT model. A vanila BERT has 12 hidden layers (default: 1)",
+    )
+    parser.add_argument("--data-dir", type=str, default="./cola_public/raw", help="Path to the bert data directory")
 
     args = parser.parse_args()
 
     # Device (CPU vs CUDA)
     if torch.cuda.is_available() and not args.no_cuda:
         device = torch.device("cuda")
-        print('There are %d GPU(s) available.' % torch.cuda.device_count())
-        print('We will use the GPU:', torch.cuda.get_device_name(0))
+        print("There are %d GPU(s) available." % torch.cuda.device_count())
+        print("We will use the GPU:", torch.cuda.get_device_name(0))
     else:
-        print('No GPU available, using the CPU instead.')
+        print("No GPU available, using the CPU instead.")
         device = torch.device("cpu")
 
     # Set log level
     numeric_level = getattr(logging, args.log_level.upper(), None)
     if not isinstance(numeric_level, int):
-        raise ValueError('Invalid log level: %s' % args.log_level)
+        raise ValueError("Invalid log level: %s" % args.log_level)
     logging.basicConfig(level=numeric_level)
 
     # 2. Dataloader
@@ -364,20 +395,20 @@ def main():
     # Load BertForSequenceClassification, the pretrained BERT model with a single
     # linear classification layer on top.
     config = AutoConfig.from_pretrained(
-            "bert-base-uncased",
-            num_labels=2,
-            num_hidden_layers=args.num_hidden_layers,
-            output_attentions = False, # Whether the model returns attentions weights.
-            output_hidden_states = False, # Whether the model returns all hidden-states.
+        "bert-base-uncased",
+        num_labels=2,
+        num_hidden_layers=args.num_hidden_layers,
+        output_attentions=False,  # Whether the model returns attentions weights.
+        output_hidden_states=False,  # Whether the model returns all hidden-states.
     )
     model = BertForSequenceClassification.from_pretrained(
-        "bert-base-uncased", # Use the 12-layer BERT model, with an uncased vocab.
+        "bert-base-uncased",  # Use the 12-layer BERT model, with an uncased vocab.
         config=config,
     )
 
     if not args.pytorch_only:
         # Just for future debugging
-        debug_options = DebugOptions(save_onnx=False, onnx_prefix='BertForSequenceClassification')
+        debug_options = DebugOptions(save_onnx=args.export_onnx_graphs, onnx_prefix="BertForSequenceClassification")
 
         model = ORTModule(model, debug_options)
 
@@ -386,19 +417,20 @@ def main():
         model.cuda()
 
     # Note: AdamW is a class from the huggingface library (as opposed to pytorch)
-    optimizer = AdamW(model.parameters(),
-                    lr = 2e-5, # args.learning_rate - default is 5e-5, our notebook had 2e-5
-                    eps = 1e-8 # args.adam_epsilon  - default is 1e-8.
-                    )
+    optimizer = AdamW(
+        model.parameters(),
+        lr=2e-5,  # args.learning_rate - default is 5e-5, our notebook had 2e-5
+        eps=1e-8,  # args.adam_epsilon  - default is 1e-8.
+    )
 
     # Authors recommend between 2 and 4 epochs
     # Total number of training steps is number of batches * number of epochs.
     total_steps = len(train_dataloader) * args.epochs
 
     # Create the learning rate scheduler.
-    scheduler = get_linear_schedule_with_warmup(optimizer,
-                                                num_warmup_steps = 0, # Default value in run_glue.py
-                                                num_training_steps = total_steps)
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=0, num_training_steps=total_steps  # Default value in run_glue.py
+    )
     # Seed
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -418,17 +450,18 @@ def main():
 
     assert validation_accuracy > 0.5
 
-    print('\n======== Global stats ========')
+    print("\n======== Global stats ========")
     if not args.pytorch_only:
         estimated_export = 0
         if args.epochs > 1:
-            estimated_export = epoch_0_training - (total_training_time - epoch_0_training)/(args.epochs-1)
-            print("  Estimated ONNX export took:               {:.4f}s".format(estimated_export))
+            estimated_export = epoch_0_training - (total_training_time - epoch_0_training) / (args.epochs - 1)
+            print(f"  Estimated ONNX export took:               {estimated_export:.4f}s")
         else:
             print("  Estimated ONNX export took:               Estimate available when epochs > 1 only")
-        print("  Accumulated training without export took: {:.4f}s".format(total_training_time - estimated_export))
-    print("  Accumulated training took:                {:.4f}s".format(total_training_time))
-    print("  Accumulated validation took:              {:.4f}s".format(total_test_time))
+        print(f"  Accumulated training without export took: {total_training_time - estimated_export:.4f}s")
+    print(f"  Accumulated training took:                {total_training_time:.4f}s")
+    print(f"  Accumulated validation took:              {total_test_time:.4f}s")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

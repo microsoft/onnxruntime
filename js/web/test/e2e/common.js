@@ -7,8 +7,12 @@ function assert(cond) {
   if (!cond) throw new Error();
 }
 
+var createSession = function(ort, options) {
+  return ort.InferenceSession.create('./model.onnx', options || {});
+}
+
 var testFunction = async function (ort, options) {
-  const session = await ort.InferenceSession.create('./model.onnx', options || {});
+  const session = await createSession(ort, options);
 
   const dataA = Float32Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   const dataB = Float32Array.from([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]);

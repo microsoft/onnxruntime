@@ -28,8 +28,8 @@ struct ConvParams {
 
 struct ConvArgs {
   // Update needed if x or w's dims changed.
-  std::vector<int64_t> last_x_dims;
-  std::vector<int64_t> last_w_dims;
+  TensorShapeVector last_x_dims;
+  TensorShapeVector last_w_dims;
 
   cudnnHandle_t handle;
   ConvParams params;
@@ -60,13 +60,13 @@ class ConvGrad final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  Status PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW) const;
+  Status PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW, cudnnHandle_t cudnn_handle) const;
   mutable ConvArgs args_;
   ConvAttributes conv_attrs_;
 
  private:
-  Status ComputeWeightGradient() const;
-  Status ComputeInputGradient() const;
+  Status ComputeWeightGradient(onnxruntime::Stream* stream) const;
+  Status ComputeInputGradient(onnxruntime::Stream* stream) const;
   Status ComputeBiasGradient() const;
 };
 

@@ -25,7 +25,7 @@ namespace Dml
             MLOperatorTensorDataType dataType,
             gsl::span<const uint32_t> dimensions, // Desired dimensions of tensor (after any broadcasting).
             gsl::span<const uint32_t> nonBroadcastDimensions, // Original dimensions (before any broadcasting). Usually same as 'dimensions'.
-            uint32_t coerceAxis,
+            int32_t coerceAxis,
             int32_t placement, // Adjustment offset of the passed dimensions within the minDimensionCount.
             int32_t leftAlignedDimensionCount, // Number of dimensions that remain left aligned when expanded to minimum count (INT32_MAX means all, 0 means all right aligned).
             uint32_t minDimensionCount,
@@ -37,19 +37,51 @@ namespace Dml
         inline DML_TENSOR_DATA_TYPE GetDmlDataType() const { return m_bufferTensorDesc.DataType; }
         inline MLOperatorTensorDataType GetMlOperatorDataType() const { return m_mlOperatorTensorDataType; }
         void ForceUnsignedDataType();
-        void Remap64bitDmlDataTypeTo32bit();
-        bool WasRemapped64bitTo32bit() const;
 
         inline bool IsValid() const { return m_tensorType != DML_TENSOR_TYPE_INVALID; }
         inline uint32_t GetDimensionCount() const { return m_bufferTensorDesc.DimensionCount; }
         void SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
         gsl::span<const uint32_t> GetSizes() const { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
         gsl::span<const uint32_t> GetStrides() const;
-  
+        void SetStrides(gsl::span<const uint32_t> strides);
+
         inline uint64_t GetBufferSizeInBytes() const
-        { 
+        {
             assert(m_tensorType == DML_TENSOR_TYPE_BUFFER);
             return m_bufferTensorDesc.TotalTensorSizeInBytes;
+        }
+
+        static TensorDesc ConstructDefaultTensorDesc(
+            const MLOperatorTensorDataType dataType,
+            gsl::span<const uint32_t> tensorShape)
+        {
+            return TensorDesc(
+                        dataType,
+                        tensorShape, // desired
+                        tensorShape, // actual
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        1, // minDimensionCount
+                        0
+                    );
+        }
+
+        static TensorDesc ConstructBroadcastedTensorDesc(
+            const MLOperatorTensorDataType dataType,
+            gsl::span<const uint32_t> desiredTensorShape,
+            gsl::span<const uint32_t> actualTensorShape)
+        {
+            return TensorDesc(
+                        dataType,
+                        desiredTensorShape,
+                        actualTensorShape,
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        1, // minDimensionCount
+                        0
+                    );
         }
 
     private:
@@ -135,4 +167,6 @@ namespace Dml
         uint32_t m_minDimensionCount = NchwDimensionCount;
         uint32_t m_guaranteedBaseOffsetAlignment = 0;
     };
+
+    using TensorSequenceDesc = std::vector<TensorDesc>;
 }

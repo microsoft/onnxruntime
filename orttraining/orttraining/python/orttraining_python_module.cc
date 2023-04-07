@@ -1,18 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/onnxruntime_pybind_exceptions.h"
+#include "orttraining/python/orttraining_pybind_common.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
-#include "python/onnxruntime_pybind_state_common.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/common/path_string.h"
 #include "core/providers/get_execution_providers.h"
-
-#include "core/platform/env.h"
 #include "core/session/provider_bridge_ort.h"
-#include <unordered_map>
-#include <cstdlib>
+#include "onnxruntime_config.h"
+
+#ifdef ENABLE_EAGER_MODE
+#include "orttraining/python/orttraining_python_module_eager.h"
+#endif
 
 namespace onnxruntime {
 namespace python {
@@ -21,10 +22,9 @@ namespace py = pybind11;
 using namespace onnxruntime::logging;
 
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
-  const SessionOptions& session_options,
-  const std::string& type,
-  const ProviderOptionsMap& provider_options_map);
-
+    const SessionOptions& session_options,
+    const std::string& type,
+    const ProviderOptionsMap& provider_options_map);
 
 #ifdef USE_CUDA
 const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* cuda_provider_info,
@@ -32,17 +32,18 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
 #endif
 
 #ifdef USE_ROCM
-const ROCMExecutionProviderInfo GetROCMExecutionProviderInfo(const ProviderOptionsMap& provider_options_map);
+const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* rocm_provider_info,
+                                                             const ProviderOptionsMap& provider_options_map);
 #endif
 
-void addGlobalMethods(py::module& m, Environment& env);
-void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistrationFn ep_registration_fn);
+void addGlobalMethods(py::module& m);
+void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForEager(py::module& m);
+#ifdef ENABLE_LAZY_TENSOR
+void addObjectMethodsForLazyTensor(py::module& m);
+#endif
 void InitArray();
-
-using ExecutionProviderMap = std::unordered_map<std::string, std::shared_ptr<IExecutionProvider> >;
-using ExecutionProviderLibInfoMap = std::unordered_map<std::string, std::pair<std::string, ProviderOptions> > ;
 
 bool GetDyanmicExecutionProviderHash(
     const std::string& ep_shared_lib_path,
@@ -50,64 +51,66 @@ bool GetDyanmicExecutionProviderHash(
     size_t& hash,
     const std::string& entry_symbol_name = "ProviderHashFunc") {
   void* handle;
-  auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, false, &handle);
+  const auto path_str = ToPathString(ep_shared_lib_path);
+  auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
   if (!error.IsOK()) {
     throw std::runtime_error(error.ErrorMessage());
   }
 
-  try{
+  try {
     size_t (*PGetProviderHash)(const void*) = nullptr;
     OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProviderHash));
 
-    if (PGetProviderHash){
+    if (PGetProviderHash) {
       hash = PGetProviderHash(&provider_options);
       return true;
     }
     return false;
-  }
-  catch(...){
+  } catch (...) {
     // there is no ProvideHashFunc provide in the shared lib, which means it doesn't support cache
     return false;
   }
 }
 
 bool GetProviderInstanceHash(const std::string& type,
-                            const ProviderOptionsMap& provider_options_map,
-                            size_t& hash){
+                             const ProviderOptionsMap& provider_options_map,
+                             size_t& hash) {
   // for built-in execution provider, currently only cpu / cuda / rocm support hash.
-  if (type == kCpuExecutionProvider){
+  if (type == kCpuExecutionProvider) {
     // for CPU, only 1 instance
     hash = 0;
     return true;
-  }
-  else if (type == kCudaExecutionProvider){
+  } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-  if(auto* cuda_provider_info = TryGetProviderInfo_CUDA()){
-    const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
-                                                                        provider_options_map);
-    hash = static_cast<size_t>(info.device_id) ^
-           info. gpu_mem_limit ^
-           (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
-           (static_cast<size_t>(info.cudnn_conv_algo_search) << 18) ^
-           (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
-           (static_cast<size_t>(info.has_user_compute_stream) << 22);
-    return true;
-  }
+    if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
+      const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
+                                                                          provider_options_map);
+      hash = static_cast<size_t>(info.device_id) ^
+             info.gpu_mem_limit ^
+             (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
+             (static_cast<size_t>(info.cudnn_conv_algo_search) << 18) ^
+             (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
+             (static_cast<size_t>(info.has_user_compute_stream) << 22) ^
+             std::hash<cuda::TunableOpInfo>{}(info.tunable_op);
+      return true;
+    }
 #endif
-  }
-  else if (type == kRocmExecutionProvider){
+  } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
-    const ROCMExecutionProviderInfo info = GetROCMExecutionProviderInfo(provider_options_map);
-    hash = static_cast<size_t>(info.device_id) ^
-           info.gpu_mem_limit ^
-           (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
-           (static_cast<size_t>(info.miopen_conv_exhaustive_search) << 18) ^
-           (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
-           (static_cast<size_t>(info.has_user_compute_stream) << 22);
-    return true;
+    if (auto* rocm_provider_info = TryGetProviderInfo_ROCM()) {
+      const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
+                                                                          provider_options_map);
+      hash = static_cast<size_t>(info.device_id) ^
+             info.gpu_mem_limit ^
+             (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
+             (static_cast<size_t>(info.miopen_conv_exhaustive_search) << 18) ^
+             (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
+             (static_cast<size_t>(info.has_user_compute_stream) << 22) ^
+             std::hash<rocm::TunableOpInfo>{}(info.tunable_op);
+      return true;
+    }
 #endif
-  }
-  else{
+  } else {
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
@@ -117,10 +120,9 @@ bool GetProviderInstanceHash(const std::string& type,
         ProviderOptions provider_options;
         std::string entry_symbol = kDefaultExecutionProviderEntry;
         for (auto option : it->second) {
-          if (option.first == kExecutionProviderSharedLibraryEntry){
+          if (option.first == kExecutionProviderSharedLibraryEntry) {
             entry_symbol = option.second;
-          }
-          else if (option.first != kExecutionProviderSharedLibraryPath){
+          } else if (option.first != kExecutionProviderSharedLibraryPath) {
             provider_options.insert(option);
           }
         }
@@ -131,156 +133,222 @@ bool GetProviderInstanceHash(const std::string& type,
   return false;
 }
 
-class ORTTrainingPythonEnv{
-public:
-  ORTTrainingPythonEnv(){
-    OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
-                                                  std::unique_ptr<ISink>{new CLogSink{}},
-                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-                                                  &SessionObjectInitializer::default_logger_id),
-                                              ort_env_));
-    auto& builtinEPs = GetAvailableExecutionProviderNames();
-    available_training_eps_.assign(builtinEPs.begin(), builtinEPs.end());
+ORTTrainingPythonEnv::ORTTrainingPythonEnv() : ort_env_(GetEnv()) {
+  const auto& builtinEPs = GetAvailableExecutionProviderNames();
+  available_training_eps_.assign(builtinEPs.begin(), builtinEPs.end());
+}
+
+std::shared_ptr<Environment> ORTTrainingPythonEnv::GetORTEnv() const {
+  return ort_env_;
+}
+
+std::shared_ptr<IExecutionProvider> ORTTrainingPythonEnv::GetExecutionProviderInstance(const std::string& provider_type,
+                                                                                       size_t hash) {
+  auto it = execution_provider_instances_map_.find(GetExecutionProviderMapKey(provider_type, hash));
+  return it == execution_provider_instances_map_.end() ? nullptr : it->second;
+}
+
+void ORTTrainingPythonEnv::AddExecutionProvider(const std::string& provider_type,
+                                                size_t hash,
+                                                std::unique_ptr<IExecutionProvider> execution_provider) {
+  execution_provider_instances_map_.insert({GetExecutionProviderMapKey(provider_type, hash),
+                                            std::move(execution_provider)});
+}
+
+void ORTTrainingPythonEnv::RegisterExtExecutionProviderInfo(const std::string& provider_type,
+                                                            const std::string& provider_lib_path,
+                                                            const ProviderOptions& default_options) {
+  ext_execution_provider_info_map_.insert({provider_type, {provider_lib_path, default_options}});
+  if (std::find(available_training_eps_.begin(), available_training_eps_.end(), provider_type) == available_training_eps_.end())
+    available_training_eps_.push_back(provider_type);
+}
+
+const std::vector<std::string>& ORTTrainingPythonEnv::GetAvailableTrainingExecutionProviderTypes() {
+  return available_training_eps_;
+}
+
+std::string ORTTrainingPythonEnv::GetExecutionProviderMapKey(const std::string& provider_type,
+                                                             size_t hash) {
+  std::string key(provider_type);
+  key.append(std::to_string(hash));
+  return key;
+}
+
+void ORTTrainingPythonEnv::ClearExecutionProviderInstances() {
+  execution_provider_instances_map_.clear();
+}
+
+namespace {
+
+// This class provides a static shell for on-demand and thread-safe construction
+// of ORTTrainingPythonEnv object for both Inference and Training python layers.
+// ORTTrainingPythonEnv class contains instances of execution providers that have been
+// instantiated for training purposes. It depends on the Environment singleton to which it
+// holds a shared_ptr instance.
+//
+// 1) we make this class a singleton that is a function local static. The function local statics
+//    are constructed when the function is called the very first time. This fact has several important
+//    properties. 
+//    - First, it is constructed before it is first needed possibly by another static object
+//      and destroyed after that object is destroyed.
+//    - Second, it is constructed in a thread safe manner.
+//    - Last, this order of construction/destruction is enforced across the compilation units, as opposed
+//      to the static objects that are simply declared in order in a single unit, but their lifespan is 
+//      unconnected to that of in other compilation units. This is achieved automatically by run-time
+//      by execution atexit() to build a chain.
+// 2) This ORTTrainingPythonEnv is currently owned by a unique_ptr unlike the Environment singleton. This is
+//    because we currently do not see a need to refer to it by any of the Python objects or by other singletons.
+//    With this change this singleton is properly destroyed after python module is unloaded, but before the Environment.
+//    HOWEVER, because it holds instances of execution providers, we want to make sure that those instances are destroyed
+//    before those depended EP DLLs are unloaded so EP destructor can run.
+//    This static is destroyed when this compilation unit is unloaded and it generally happens
+//    AFTER EP dlls are unloaded. To mitigate that, we clear EP instances using python `atexit` (different from C atexit())
+//    mechanism which takes place after all python objects are GCed but before any DLLs are unloaded or
+//    runtime starts destroying globals.
+// 3) We guard against singleton resurrection attempts to detect code that runs when it should not
+//    and make necessary adjustments.
+//    For all the related details and why it is needed see "Modern C++ design" by A. Alexandrescu Chapter 6.
+class TrainingEnvInitialzer {
+ public:
+
+  static ORTTrainingPythonEnv& Instance() {
+    // Guard against attempts to resurrect the singleton
+    if (TrainingEnvInitialzer::destroyed) {
+      ORT_THROW("Detected an attempt to resurrect destroyed Training Environment");
+    }
+
+    static TrainingEnvInitialzer training_env_holder;
+
+    return training_env_holder.Get();
   }
 
-  Environment& GetORTEnv(){
-    return *ort_env_;
+ private:
+
+  TrainingEnvInitialzer() {
+    InitArray();
+    Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
+    ort_training_env_ = std::make_unique<ORTTrainingPythonEnv>();
   }
 
-  std::shared_ptr<IExecutionProvider> GetExecutionProviderInstance(const std::string& provider_type,
-                                                                   size_t hash){
-    auto it = execution_provider_instances_map_.find(GetExecutionProviderMapKey(provider_type, hash));
-    return it == execution_provider_instances_map_.end() ? nullptr : it->second;
+  ~TrainingEnvInitialzer() {
+    destroyed = true;
   }
 
-  void AddExecutionProvider(const std::string& provider_type,
-                            size_t hash,
-                            std::unique_ptr<IExecutionProvider> execution_provider){
-    execution_provider_instances_map_.insert({GetExecutionProviderMapKey(provider_type, hash),
-                                          std::move(execution_provider)});
+  ORTTrainingPythonEnv& Get() noexcept {
+    return *ort_training_env_;
   }
 
-  void RegisterExtExecutionProviderInfo(const std::string& provider_type, 
-                                        const std::string& provider_lib_path,
-                                        const ProviderOptions& default_options){
-    ext_execution_provider_info_map_.insert({provider_type, {provider_lib_path, default_options}});
-    if (std::find(available_training_eps_.begin(), available_training_eps_.end(), provider_type) == available_training_eps_.end())
-      available_training_eps_.push_back(provider_type);
-  }
+  std::unique_ptr<ORTTrainingPythonEnv> ort_training_env_;
 
-  const std::vector<std::string>& GetAvailableTrainingExecutionProviderTypes(){
-    return available_training_eps_;
-  }
-
-  ExecutionProviderLibInfoMap ext_execution_provider_info_map_;
-
-private:
-  std::string GetExecutionProviderMapKey(const std::string& provider_type,
-                                         size_t hash){
-    std::string key(provider_type);
-    key.append(std::to_string(hash));
-    return key;
-  }
-
-  std::unique_ptr<Environment> ort_env_;
-  ExecutionProviderMap execution_provider_instances_map_;
-  std::vector<std::string> available_training_eps_;
+  static bool destroyed;
 };
 
-static std::unique_ptr<ORTTrainingPythonEnv> ort_training_env;
+bool TrainingEnvInitialzer::destroyed = false;
 
-void InitializeTrainingEnv() {
+}  // namespace
+
+ORTTrainingPythonEnv& GetTrainingEnv() {
+  return TrainingEnvInitialzer::Instance();
+}
+
+// TODO: If this global has a conflicting lifespan with other globals
+// such as Environment, follow the global objects management pattern for
+// Environment and ORTTrainingPythonEnv
+#ifdef ENABLE_EAGER_MODE
+using namespace torch_ort::eager;
+static std::unique_ptr<ORTBackendsManager> ort_backends_manager_instance;
+
+void InitializeBackendsManager() {
   auto initialize = [&]() {
     static bool initialized = false;
     if (initialized) {
       return;
     }
     // Initialization of the module
-    InitArray();
-    Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-    ort_training_env = std::make_unique<ORTTrainingPythonEnv>();
+    auto& training_env = onnxruntime::python::GetTrainingEnv();
+    auto env = training_env.GetORTEnv();
+    ort_backends_manager_instance = std::make_unique<ORTBackendsManager>(env->GetLoggingManager()->DefaultLogger());
     initialized = true;
   };
   initialize();
 }
 
-ORTTrainingPythonEnv& GetTrainingEnv() {
-  if (!ort_training_env) {
-    InitializeTrainingEnv();
+ORTBackendsManager& GetORTBackendsManager() {
+  if (!ort_backends_manager_instance) {
+    InitializeBackendsManager();
   }
-  return *ort_training_env;
+  return *ort_backends_manager_instance;
 }
+#endif
 
-Environment& GetTrainingORTEnv() {
-  if (!ort_training_env) {
-    InitializeTrainingEnv();
-  }
-  return ort_training_env->GetORTEnv();
-}
-
-void ResolveExtraProviderOptions(const std::string& provider_type,
+void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
                                  const ProviderOptionsMap& original_provider_options_map,
-                                 ProviderOptionsMap& merged_options){
+                                 ProviderOptionsMap& merged_options) {
   auto& training_env = GetTrainingEnv();
-  auto it = training_env.ext_execution_provider_info_map_.find(provider_type);
-  if (it == training_env.ext_execution_provider_info_map_.end()){
-    //nothing changed.
-    merged_options = original_provider_options_map;
-  }else{
-    ProviderOptions options = it->second.second;
-    options.insert({kExecutionProviderSharedLibraryPath, it->second.first});
-    auto original_map_it = original_provider_options_map.find(provider_type);
-    if (original_map_it != original_provider_options_map.end()){
-      for (auto [k, v] : original_map_it->second){
-        options.insert({k, v});
+  for (auto& provider_type : provider_types) {
+    auto it = training_env.ext_execution_provider_info_map_.find(provider_type);
+    if (it == training_env.ext_execution_provider_info_map_.end()) {
+      // nothing changed.
+      if (original_provider_options_map.find(provider_type) != original_provider_options_map.end())
+        merged_options.insert({provider_type, original_provider_options_map.at(provider_type)});
+    } else {
+      ProviderOptions options = it->second.second;
+      options.insert({kExecutionProviderSharedLibraryPath, it->second.first});
+      auto original_map_it = original_provider_options_map.find(provider_type);
+      if (original_map_it != original_provider_options_map.end()) {
+        for (auto [k, v] : original_map_it->second) {
+          options.insert({k, v});
+        }
       }
+      merged_options[provider_type] = options;
     }
-    merged_options[provider_type] = options;
   }
 }
 
 std::unique_ptr<IExecutionProvider> CreateTrainingEP(
-  const SessionOptions& session_options,
-  const std::string& provider_type,
-  const ProviderOptionsMap& provider_options_map){
-  ORTTrainingPythonEnv& training_env = GetTrainingEnv();
-  if (training_env.ext_execution_provider_info_map_.find(provider_type) != 
-      training_env.ext_execution_provider_info_map_.end()){
-    ProviderOptionsMap merged_options;
-    ResolveExtraProviderOptions(provider_type, provider_options_map, merged_options);
-    return CreateExecutionProviderInstance(session_options, provider_type, merged_options);
-  }else{
-    return CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
+    const SessionOptions& session_options,
+    const std::string& provider_type,
+    const ProviderOptionsMap& provider_options_map) {
+  auto provider = CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
+  // The CPU provider instance created by the factory doesn't create allocators by default. The session registers
+  // the allocators to allow sharing. However, in some training scenarios (particularly eager mode), no session is
+  // created but it (eager mode) relies on the allocator in the CPU provider. Hence the need to call RegisterAllocator.
+  if (provider_type == kCpuExecutionProvider) {
+    AllocatorManager mgr;  // temporary only to call RegisterAllocator
+    provider->RegisterAllocator(mgr);
   }
+  return provider;
 }
 
 std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::string& provider_type,
                                                                  const ProviderOptionsMap& provider_options_map,
-                                                                 const SessionOptions& session_options){
+                                                                 const SessionOptions& session_options) {
   ORTTrainingPythonEnv& training_env = GetTrainingEnv();
+  // resolve provider options, because the hash key of ep depends on provider options.
+  ProviderOptionsMap merged_options;
+  ResolveExtraProviderOptions({provider_type}, provider_options_map, merged_options);
   // search in environment
   size_t hash;
-  if (GetProviderInstanceHash(provider_type, provider_options_map, hash)){
+  if (GetProviderInstanceHash(provider_type, merged_options, hash)) {
     auto cached_provider_instance = training_env.GetExecutionProviderInstance(provider_type, hash);
-    if (!cached_provider_instance){
-      auto ep = CreateTrainingEP(session_options, provider_type, provider_options_map);
-      if (ep){
+    if (!cached_provider_instance) {
+      auto ep = CreateTrainingEP(session_options, provider_type, merged_options);
+      if (ep) {
         training_env.AddExecutionProvider(provider_type, hash, std::move(ep));
         cached_provider_instance = training_env.GetExecutionProviderInstance(provider_type, hash);
       }
     }
     return cached_provider_instance;
-  }
-  else{
+  } else {
     // the EP doesn't support cache, register the instance to session
-    auto ep = CreateTrainingEP(session_options, provider_type, provider_options_map);
+    auto ep = CreateTrainingEP(session_options, provider_type, merged_options);
     return ep;
   }
 }
 
 void ORTTrainingRegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                                       const ProviderOptionsMap& provider_options_map) {
-  for (auto provider_type : provider_types){
+                                           const ProviderOptionsMap& provider_options_map) {
+  for (auto provider_type : provider_types) {
     auto ep = GetOrCreateExecutionProvider(provider_type, provider_options_map, sess->GetSessionOptions());
     if (ep)
       OrtPybindThrowIfError(sess->RegisterExecutionProvider(ep));
@@ -290,10 +358,11 @@ void ORTTrainingRegisterExecutionProviders(InferenceSession* sess, const std::ve
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ORTTraining";
   RegisterExceptions(m);
-  
-  Environment& env = GetTrainingORTEnv();
-  addGlobalMethods(m, env);
-  addObjectMethods(m, env, ORTTrainingRegisterExecutionProviders);
+
+  // Instantiate singletons
+  GetTrainingEnv();
+  addGlobalMethods(m);
+  addObjectMethods(m, ORTTrainingRegisterExecutionProviders);
   addOrtValueMethods(m);
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
@@ -306,34 +375,48 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
 #endif
-  
+
   addObjectMethodsForTraining(m, ORTTrainingRegisterExecutionProviders);
 #ifdef ENABLE_EAGER_MODE
   addObjectMethodsForEager(m);
 #endif
-  
-  m.def("_register_provider_lib", [](const std::string& name, 
+
+#ifdef ENABLE_LAZY_TENSOR
+  addObjectMethodsForLazyTensor(m);
+#endif
+
+  m.def("_register_provider_lib", [](const std::string& name,
                                      const std::string& provider_shared_lib_path,
                                      const ProviderOptions& default_options) {
     GetTrainingEnv().RegisterExtExecutionProviderInfo(name, provider_shared_lib_path, default_options);
   });
 
   m.def(
-      "get_available_providers", []() -> const std::vector<std::string>& { 
-        return GetTrainingEnv().GetAvailableTrainingExecutionProviderTypes(); },
+      "get_available_providers", []() -> const std::vector<std::string>& { return GetTrainingEnv().GetAvailableTrainingExecutionProviderTypes(); },
       "Return list of available Execution Providers in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
 
-  // clean the ort training environment when python interpreter exit
-  // otherwise the global var will be de-constrcut after user main.
-  // the order of ort training environment deconstruction and cudart
-  // deconstruction is not stable, which will lead to crash.
+  m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
+
+  m.def(
+      "clear_training_ep_instances", []() -> void {
+        GetTrainingEnv().ClearExecutionProviderInstances();
+      },
+      "Clean the execution provider instances used in ort training module.");
+
+  // See documentation for class TrainingEnvInitialzer earlier in this module
+  // for an explanation as to why this is needed.
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
-    ort_training_env = nullptr;
+    GetTrainingEnv().ClearExecutionProviderInstances();
+#ifdef ENABLE_EAGER_MODE
+    // This singleton should also be re-factored into a function local static
+    // so its lifetime is properly managed.
+    ort_backends_manager_instance = nullptr;
+#endif
   }));
 }
 
-}
-}
+}  // namespace python
+}  // namespace onnxruntime

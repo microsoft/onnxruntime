@@ -1,0 +1,45 @@
+parameters:
+- name: BuildAndroidBinaries
+  type: boolean
+  default: true
+- name: BuildPythonPackages
+  type: boolean
+  default: true
+
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
+
+stages:
+
+# build binaries for Android
+- ${{ if parameters.BuildAndroidBinaries }}:
+  - stage: BuildAndroidBinaries
+    dependsOn: []
+    jobs:
+    - template: templates/android-java-api-aar.yml
+      parameters:
+        buildConfig: 'Release'
+        buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
+        artifactName: 'onnxruntime-android-full-aar'
+        job_name_suffix: 'Full'
+        publish_executables: '1'
+        pool_name: 'Linux-CPU'
+
+# build Python packages
+# Linux GPU only
+- ${{ if parameters.BuildPythonPackages }}:
+  - template: templates/py-packaging-stage.yml
+    parameters:
+      enable_linux_gpu: true
+      enable_ubuntu_cpu: false
+      enable_linux_cpu: false
+      enable_windows_cpu: false
+      enable_windows_gpu: false
+      enable_mac_cpu: false
+      enable_mac_silicon: false
+      enable_linux_arm: false

@@ -1,15 +1,16 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
+import argparse  # noqa: F401
 import logging
+import sys  # noqa: F401
+from collections import deque  # noqa: F401
+
+import numpy as np  # noqa: F401
 import onnx
-import sys
-import argparse
-import numpy as np
-from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper
+from onnx import ModelProto, TensorProto, numpy_helper  # noqa: F401
 from onnx_model_bert_tf import BertOnnxModelTF
 
 logger = logging.getLogger(__name__)
@@ -20,18 +21,27 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         super().__init__(model, num_heads, hidden_size)
 
     def match_mask_path(self, add_or_sub_before_softmax):
-        mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Reshape', 'Cast'],
-                                            [1, None, 1, 0])
+        mask_nodes = self.match_parent_path(
+            add_or_sub_before_softmax,
+            ["Mul", "Sub", "Reshape", "Cast"],
+            [1, None, 1, 0],
+        )
         if mask_nodes is not None:
             return mask_nodes
 
-        mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Cast', 'Slice', 'Unsqueeze'],
-                                            [1, 1, 1, 0, 0])
+        mask_nodes = self.match_parent_path(
+            add_or_sub_before_softmax,
+            ["Mul", "Sub", "Cast", "Slice", "Unsqueeze"],
+            [1, 1, 1, 0, 0],
+        )
         if mask_nodes is not None:
             return mask_nodes
 
-        mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'],
-                                            [1, None, 1, 0, 0])
+        mask_nodes = self.match_parent_path(
+            add_or_sub_before_softmax,
+            ["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
+            [1, None, 1, 0, 0],
+        )
         return mask_nodes
 
     def check_attention_input(self, matmul_q, matmul_k, matmul_v, parent, output_name_to_node):
@@ -42,7 +52,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             root_node = output_name_to_node[root_input]
             if root_node == parent:
                 continue
-            if root_node.op_type == 'Reshape' and root_node.input[0] == parent.output[0]:
+            if root_node.op_type == "Reshape" and root_node.input[0] == parent.output[0]:
                 reshape_nodes.append(root_node)
                 continue
             logger.debug(f"Check attention input failed:{root_input}, {parent.output[0]}")
@@ -51,7 +61,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         return True, reshape_nodes
 
     def fuse_attention(self):
-        input_name_to_nodes = self.input_name_to_nodes()
+        self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
         nodes_to_remove = []
@@ -61,56 +71,85 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         for normalize_node in skip_layer_norm_nodes:
             # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
             parent = self.get_parent(normalize_node, 0)
-            if parent is None or parent.op_type not in ["SkipLayerNormalization", "EmbedLayerNormalization"]:
-                if parent.op_type == 'Add':
+            if parent is None or parent.op_type not in [
+                "SkipLayerNormalization",
+                "EmbedLayerNormalization",
+            ]:
+                if parent.op_type == "Add":
                     parent = self.get_parent(normalize_node, 1)
-                    if parent is None or parent.op_type not in ["SkipLayerNormalization", "EmbedLayerNormalization"]:
-                        logger.debug(
-                            "First input for skiplayernorm: {}".format(parent.op_type if parent is not None else None))
+                    if parent is None or parent.op_type not in [
+                        "SkipLayerNormalization",
+                        "EmbedLayerNormalization",
+                    ]:
+                        logger.debug(f"First input for skiplayernorm: {parent.op_type if parent is not None else None}")
                         continue
                 else:
-                    logger.debug(
-                        "First input for skiplayernorm: {}".format(parent.op_type if parent is not None else None))
+                    logger.debug(f"First input for skiplayernorm: {parent.op_type if parent is not None else None}")
                     continue
             else:
                 # TODO: shall we add back the checking of children op types.
                 pass
 
-            qkv_nodes = self.match_parent_path(normalize_node,
-                                               ['Add', 'Reshape', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
-                                               [None, 0, 0, 0, 0, 0])
+            qkv_nodes = self.match_parent_path(
+                normalize_node,
+                ["Add", "Reshape", "MatMul", "Reshape", "Transpose", "MatMul"],
+                [None, 0, 0, 0, 0, 0],
+            )
             if qkv_nodes is None:
                 logger.debug("Failed to match qkv nodes")
                 continue
-            (add, extra_reshape_0, matmul, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+            (
+                add,
+                extra_reshape_0,
+                matmul,
+                reshape_qkv,
+                transpose_qkv,
+                matmul_qkv,
+            ) = qkv_nodes
             logger.debug("Matched qkv nodes")
 
-            v_nodes = self.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'Reshape', 'MatMul'],
-                                             [1, 0, 0, 0, 0])
+            v_nodes = self.match_parent_path(
+                matmul_qkv,
+                ["Transpose", "Reshape", "Add", "Reshape", "MatMul"],
+                [1, 0, 0, 0, 0],
+            )
             if v_nodes is None:
                 logger.debug("Failed to match v path")
                 continue
             (transpose_v, reshape_v, add_v, extra_reshape_1, matmul_v) = v_nodes
 
-            qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Sub', 'MatMul'], [0, 0, 0])
+            qk_nodes = self.match_parent_path(matmul_qkv, ["Softmax", "Sub", "MatMul"], [0, 0, 0])
             if qk_nodes is not None:
                 (softmax_qk, sub_qk, matmul_qk) = qk_nodes
-                q_nodes = self.match_parent_path(matmul_qk, ['Mul', 'Transpose', 'Reshape', 'Add', 'Reshape', 'MatMul'],
-                                                 [0, None, 0, 0, 0, 0])
+                q_nodes = self.match_parent_path(
+                    matmul_qk,
+                    ["Mul", "Transpose", "Reshape", "Add", "Reshape", "MatMul"],
+                    [0, None, 0, 0, 0, 0],
+                )
                 if q_nodes is not None:
-                    (mul_q, transpose_q, reshape_q, add_q, extra_reshape_2, matmul_q) = q_nodes
+                    (
+                        mul_q,
+                        transpose_q,
+                        reshape_q,
+                        add_q,
+                        extra_reshape_2,
+                        matmul_q,
+                    ) = q_nodes
 
             else:
-                qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, 0, None])
+                qk_nodes = self.match_parent_path(matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, None])
                 if qk_nodes is None:
-                    qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, 0, None])
+                    qk_nodes = self.match_parent_path(matmul_qkv, ["Softmax", "Add", "Div", "MatMul"], [0, 0, 0, None])
                     if qk_nodes is None:
                         logger.debug("Failed to match qk path")
                         continue
                 (softmax_qk, add_qk, mul_qk, matmul_qk) = qk_nodes
 
-                q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'Reshape', 'MatMul'],
-                                                 [0, 0, 0, 0, 0])
+                q_nodes = self.match_parent_path(
+                    matmul_qk,
+                    ["Transpose", "Reshape", "Add", "Reshape", "MatMul"],
+                    [0, 0, 0, 0, 0],
+                )
                 if q_nodes is not None:
                     (transpose_q, reshape_q, add_q, extra_reshape_2, matmul_q) = q_nodes
 
@@ -118,8 +157,11 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 logger.debug("Failed to match q path")
                 continue
 
-            k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'Reshape', 'MatMul'],
-                                             [1, 0, 0, 0, 0])
+            k_nodes = self.match_parent_path(
+                matmul_qk,
+                ["Transpose", "Reshape", "Add", "Reshape", "MatMul"],
+                [1, 0, 0, 0, 0],
+            )
             if k_nodes is None:
                 logger.debug("Failed to match k path")
                 continue
@@ -133,15 +175,26 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 logger.debug("Sub node expected to have an input with constant value 1.0.")
                 continue
 
-            is_same_root, reshape_nodes = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent,
-                                                                     output_name_to_node)
+            is_same_root, reshape_nodes = self.check_attention_input(
+                matmul_q, matmul_k, matmul_v, parent, output_name_to_node
+            )
             if is_same_root:
                 mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
                 logger.debug("Create an Attention node.")
-                attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v,
-                                                                             add_q, add_k, add_v, self.num_heads,
-                                                                             self.hidden_size, parent.output[0],
-                                                                             reshape_qkv.output[0], None)
+                attention_node = self.attention_fusion.create_attention_node(
+                    mask_index,
+                    matmul_q,
+                    matmul_k,
+                    matmul_v,
+                    add_q,
+                    add_k,
+                    add_v,
+                    self.num_heads,
+                    self.hidden_size,
+                    parent.output[0],
+                    reshape_qkv.output[0],
+                    None,
+                )
                 if attention_node is None:
                     continue
 
@@ -170,11 +223,8 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         self.skip_reshape()
 
     def skip_reshape(self):
-        input_name_to_nodes = self.input_name_to_nodes()
-        output_name_to_node = self.output_name_to_node()
-
-        nodes_to_remove = []
-        attention_count = 0
+        self.input_name_to_nodes()
+        self.output_name_to_node()
 
         count = 0
         reshape_nodes = self.get_nodes_by_op_type("Reshape")
@@ -188,9 +238,9 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             logger.info(f"Skip consequent Reshape count: {count}")
 
     def fuse_embedding(self, node, output_name_to_node):
-        assert node.op_type == 'LayerNormalization'
+        assert node.op_type == "LayerNormalization"
         logger.debug(f"start fusing embedding from node with output={node.output[0]}...")
-        word_embed_path = self.match_parent_path(node, ['Add', 'Add', 'Gather'], [0, 0, 0], output_name_to_node)
+        word_embed_path = self.match_parent_path(node, ["Add", "Add", "Gather"], [0, 0, 0], output_name_to_node)
         if word_embed_path is None:
             logger.debug("failed to match word_embed_path")
             return False
@@ -204,10 +254,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
         temp = numpy_helper.to_array(word_initializer)
         if len(temp.shape) == 2:
-            logger.info("Found word embedding. name:{}, shape:{}".format(word_initializer.name, temp.shape))
+            logger.info(f"Found word embedding. name:{word_initializer.name}, shape:{temp.shape}")
             word_embedding = word_initializer.name
         else:
-            logger.info("Failed to find word embedding. name:{}, shape:{}".format(word_initializer.name, temp.shape))
+            logger.info(f"Failed to find word embedding. name:{word_initializer.name}, shape:{temp.shape}")
             return False
 
         pos_initializer = self.get_initializer(add_node.input[1])
@@ -216,14 +266,13 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             if len(temp.shape) == 3 and temp.shape[0] == 1:
                 tensor = numpy_helper.from_array(temp.reshape((temp.shape[1], temp.shape[2])), "position_embedding")
                 self.add_initializer(tensor)
-                logger.info("Found position embedding. name:{}, shape:{}".format(pos_initializer.name, temp.shape[1:]))
+                logger.info(f"Found position embedding. name:{pos_initializer.name}, shape:{temp.shape[1:]}")
                 position_embedding = "position_embedding"
             else:
-                logger.info("Failed to find position embedding. name:{}, shape:{}".format(
-                    pos_initializer.name, temp.shape))
+                logger.info(f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}")
                 return False
         else:
-            pos_embed_path = self.match_parent_path(add_node, ['Gather', 'Slice'], [1, 1], output_name_to_node)
+            pos_embed_path = self.match_parent_path(add_node, ["Gather", "Slice"], [1, 1], output_name_to_node)
             if pos_embed_path is None:
                 logger.debug("failed to match pos_embed_path")
                 return False
@@ -236,11 +285,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
             temp = numpy_helper.to_array(pos_initializer)
             if len(temp.shape) == 2:
-                logger.info("Found word embedding. name:{}, shape:{}".format(pos_initializer.name, temp.shape))
+                logger.info(f"Found word embedding. name:{pos_initializer.name}, shape:{temp.shape}")
                 position_embedding = pos_initializer.name
             else:
-                logger.info("Failed to find position embedding. name:{}, shape:{}".format(
-                    pos_initializer.name, temp.shape))
+                logger.info(f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}")
                 return False
 
         gather = self.get_parent(skip_node, 1, output_name_to_node)
@@ -255,11 +303,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
         temp = numpy_helper.to_array(segment_initializer)
         if len(temp.shape) == 2:
-            logger.info("Found segment embedding. name:{}, shape:{}".format(segment_initializer.name, temp.shape))
+            logger.info(f"Found segment embedding. name:{segment_initializer.name}, shape:{temp.shape}")
             segment_embedding = segment_initializer.name
         else:
-            logger.info("Failed to find segment embedding. name:{}, shape:{}".format(
-                segment_initializer.name, temp.shape))
+            logger.info(f"Failed to find segment embedding. name:{segment_initializer.name}, shape:{temp.shape}")
             return False
 
         logger.info("Create Embedding node")
@@ -273,7 +320,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         logger.info("start processing embedding layer...")
         output_name_to_node = self.output_name_to_node()
         for node in self.nodes():
-            if node.op_type == 'LayerNormalization':
+            if node.op_type == "LayerNormalization":
                 if self.fuse_embedding(node, output_name_to_node):
                     return
                 break
@@ -281,35 +328,41 @@ class BertOnnxModelKeras(BertOnnxModelTF):
     def fuse_mask(self):
         nodes_to_remove = []
         for node in self.nodes():
-            if node.op_type == 'Mul' and self.has_constant_input(node, -10000):
-                mask_path = self.match_parent_path(node, ['Sub', 'Cast', 'Slice', 'Unsqueeze'], [0, 1, 0, 0])
+            if node.op_type == "Mul" and self.has_constant_input(node, -10000):
+                mask_path = self.match_parent_path(node, ["Sub", "Cast", "Slice", "Unsqueeze"], [0, 1, 0, 0])
                 if mask_path is None:
                     continue
                 sub_node, cast_node, slice_node, unsqueeze_node = mask_path
 
                 mask_input_name = self.attention_mask.get_first_mask()
                 if unsqueeze_node.input[0] != mask_input_name:
-                    print("Cast input {} is not mask input {}".format(unsqueeze_node.input[0], mask_input_name))
+                    print(f"Cast input {unsqueeze_node.input[0]} is not mask input {mask_input_name}")
                     continue
 
-                unsqueeze_added_1 = onnx.helper.make_node('Unsqueeze',
-                                                          inputs=[mask_input_name],
-                                                          outputs=['mask_fuse_unsqueeze1_output'],
-                                                          name='Mask_UnSqueeze_1',
-                                                          axes=[1])
+                unsqueeze_added_1 = onnx.helper.make_node(
+                    "Unsqueeze",
+                    inputs=[mask_input_name],
+                    outputs=["mask_fuse_unsqueeze1_output"],
+                    name="Mask_UnSqueeze_1",
+                    axes=[1],
+                )
 
-                unsqueeze_added_2 = onnx.helper.make_node('Unsqueeze',
-                                                          inputs=['mask_fuse_unsqueeze1_output'],
-                                                          outputs=['mask_fuse_unsqueeze2_output'],
-                                                          name='Mask_UnSqueeze_2',
-                                                          axes=[2])
+                unsqueeze_added_2 = onnx.helper.make_node(
+                    "Unsqueeze",
+                    inputs=["mask_fuse_unsqueeze1_output"],
+                    outputs=["mask_fuse_unsqueeze2_output"],
+                    name="Mask_UnSqueeze_2",
+                    axes=[2],
+                )
 
-                #self.replace_node_input(cast_node, cast_node.input[0], 'mask_fuse_unsqueeze2_output')
-                cast_node_2 = onnx.helper.make_node('Cast',
-                                                    inputs=['mask_fuse_unsqueeze2_output'],
-                                                    outputs=['mask_fuse_cast_output'])
+                # self.replace_node_input(cast_node, cast_node.input[0], 'mask_fuse_unsqueeze2_output')
+                cast_node_2 = onnx.helper.make_node(
+                    "Cast",
+                    inputs=["mask_fuse_unsqueeze2_output"],
+                    outputs=["mask_fuse_cast_output"],
+                )
                 cast_node_2.attribute.extend([onnx.helper.make_attribute("to", 1)])
-                self.replace_node_input(sub_node, sub_node.input[1], 'mask_fuse_cast_output')
+                self.replace_node_input(sub_node, sub_node.input[1], "mask_fuse_cast_output")
 
                 nodes_to_remove.extend([slice_node, unsqueeze_node, cast_node])
                 self.add_node(unsqueeze_added_1)
@@ -330,12 +383,33 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         for skiplayernorm_node in skiplayernorm_nodes:
             path = self.match_parent_path(
                 skiplayernorm_node,
-                ['Add', 'Reshape', 'MatMul', 'Reshape', 'Gelu', 'Add', 'Reshape', 'MatMul', 'SkipLayerNormalization'],
-                [0, 0, 0, 0, 0, 0, 0, 0, 0])
+                [
+                    "Add",
+                    "Reshape",
+                    "MatMul",
+                    "Reshape",
+                    "Gelu",
+                    "Add",
+                    "Reshape",
+                    "MatMul",
+                    "SkipLayerNormalization",
+                ],
+                [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            )
             if path is None:
                 continue
 
-            add_1, reshape_1, matmul_1, reshape_2, gelu, add_2, reshape_3, matmul_2, skiplayernorm = path
+            (
+                add_1,
+                reshape_1,
+                matmul_1,
+                reshape_2,
+                gelu,
+                add_2,
+                reshape_3,
+                matmul_2,
+                skiplayernorm,
+            ) = path
             add_2.input[0] = matmul_2.output[0]
             self.remove_node(reshape_3)
             matmul_1.input[0] = gelu.output[0]
@@ -352,12 +426,35 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         for skiplayernorm_node in skiplayernorm_nodes:
             path = self.match_parent_path(
                 skiplayernorm_node,
-                ['Add', 'Reshape', 'MatMul', 'Reshape', 'Gelu', 'Add', 'Reshape', 'MatMul', 'Reshape', 'SkipLayerNormalization'],
-                [None, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # yapf: disable
+                [
+                    "Add",
+                    "Reshape",
+                    "MatMul",
+                    "Reshape",
+                    "Gelu",
+                    "Add",
+                    "Reshape",
+                    "MatMul",
+                    "Reshape",
+                    "SkipLayerNormalization",
+                ],
+                [None, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            )  # yapf: disable
             if path is None:
                 continue
 
-            add_1, reshape_1, matmul_1, reshape_2, gelu, add_2, reshape_3, matmul_2, reshape_4, skiplayernorm = path
+            (
+                add_1,
+                reshape_1,
+                matmul_1,
+                reshape_2,
+                gelu,
+                add_2,
+                reshape_3,
+                matmul_2,
+                reshape_4,
+                skiplayernorm,
+            ) = path
 
             matmul_2.input[0] = skiplayernorm.output[0]
             self.remove_node(reshape_4)

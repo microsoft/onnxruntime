@@ -30,8 +30,8 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   std::vector<size_t> permutation(rank);
 
   // The "semantic" meaning of axis has changed in opset-13.
-  // Please compare: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Hardmax
-  // with https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Hardmax-11 for detailed explanations
+  // Please compare: https://github.com/onnx/onnx/blob/main/docs/Operators.md#Hardmax
+  // with https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Hardmax-11 for detailed explanations
   // To account for the opset-13 behavior, our plan will be to transpose the "axis" dim to the innermost dim
   // and perform softmax and then reverse the transpose. We can skip the transposing aspect if the axis is already
   // the innermost dim
@@ -68,8 +68,8 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
     intermediate_output = std::move(temp_output);
   }
 
-  size_t tmp_N = is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(axis);
-  size_t tmp_D = is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(axis);
+  size_t tmp_N = onnxruntime::narrow<size_t>(is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(axis));
+  size_t tmp_D = onnxruntime::narrow<size_t>(is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(axis));
 
   // Math::RowwiseMax expects int N and D.
   if (tmp_N * tmp_D > INT32_MAX || tmp_N > INT32_MAX || tmp_D > INT32_MAX) {
@@ -90,11 +90,11 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   float* Y_data = nullptr;
 
   if (is_transpose_required) {  // use intermediate buffers to compute the hardmax values
-    X_data = transposed_input.template Data<float>();
-    Y_data = intermediate_output.template MutableData<float>();
+    X_data = transposed_input.Data<float>();
+    Y_data = intermediate_output.MutableData<float>();
   } else {  // use the node input/output directly
-    X_data = X->template Data<float>();
-    Y_data = Y->template MutableData<float>();
+    X_data = X->Data<float>();
+    Y_data = Y->MutableData<float>();
   }
 
   math::RowwiseMax<float, CPUMathUtil>(N, D, X_data, rowmax_data, nullptr);
@@ -102,7 +102,7 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   // Even if we had to transpose the input, it is safe to go with X_shape.Size() which computes
   // the size of the buffer from the original input's shape as even if we do transpose, the size
   // of the transposed buffer will be the same as the original input's buffer
-  math::Set<float, CPUMathUtil>(X_shape.Size(), 0.f, Y_data, &CPUMathUtil::Instance());
+  math::Set<float, CPUMathUtil>(onnxruntime::narrow<ptrdiff_t>(X_shape.Size()), 0.f, Y_data, &CPUMathUtil::Instance());
 
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < D; ++j) {
@@ -114,12 +114,8 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   }
 
   if (is_transpose_required) {
-    std::vector<size_t> reverse_permutation(rank);
-    for (size_t i = 0, end = permutation.size(); i < end; ++i) {
-      reverse_permutation[permutation[i]] = i;
-    }
     // Perform the transpose to get the axes back to the original ordering
-    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(reverse_permutation, intermediate_output, *Y));
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutation, intermediate_output, *Y));
   }
 
   return Status::OK();

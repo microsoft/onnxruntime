@@ -46,4 +46,20 @@ class MaxPoolV8 : public OpKernel, public PoolBase {
   template <typename T>
   Status ComputeImpl(OpKernelContext* context) const;
 };
+
+// For lppool v18 and beyond
+// version 18: Added ceil_mode and dilations
+template <typename T>
+class LpPoolV18 : public OpKernel, public PoolBase {
+ public:
+  LpPoolV18(const OpKernelInfo& info) : OpKernel(info), PoolBase(info) {
+    ORT_ENFORCE(info.GetAttr<int64_t>("p", &p_).IsOK());
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+private:
+  int64_t p_;
+};
+
 }  // namespace onnxruntime

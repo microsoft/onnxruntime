@@ -8,13 +8,14 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_viewer.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 
-class OrtValueNameIdxMap;
-class FuncManager;
 class DataTransferManager;
+class FuncManager;
+class OrtValueNameIdxMap;
+struct AllocPlanPerValue;
 
 // A very light-weight class, which works as an aggregated
 // view of all data needed for constructing a Kernel instance.
@@ -26,14 +27,13 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
-                        const FuncManager& funcs_mgr,
                         const DataTransferManager& data_transfer_mgr);
 
   OpKernelInfo(const OpKernelInfo& other);
 
-  const OrtMemoryInfo& GetMemoryInfo(int device_id, OrtMemType mem_type) const;
+  const OrtMemoryInfo& GetMemoryInfo(OrtMemType mem_type) const;
 
-  AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const;
 
   const KernelDef& GetKernelDef() const;
 
@@ -45,7 +45,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
-  common::Status GetFusedFuncs(NodeComputeInfo*& compute_info) const;
+  bool TryGetConstantInput(int input_index, const OrtValue** constant_input_value) const;
 
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
@@ -58,7 +58,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   gsl::not_null<const ::onnxruntime::IExecutionProvider*> execution_provider_;
   const std::unordered_map<int, OrtValue>& constant_initialized_tensors_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
-  const FuncManager& funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
 };

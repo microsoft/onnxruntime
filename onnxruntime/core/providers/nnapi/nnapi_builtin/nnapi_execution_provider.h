@@ -3,10 +3,13 @@
 
 #pragma once
 
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/optional.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 
+struct NnApi;
 namespace onnxruntime {
 namespace nnapi {
 class Model;
@@ -21,10 +24,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_view,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
-
-  // we implement the Compile that takes FusedNodeAndGraph instances
-  FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
+                const IKernelLookup& /*kernel_lookup*/) const override;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
@@ -33,6 +33,8 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   uint32_t GetNNAPIFlags() const { return nnapi_flags_; }
 
+  DataLayout GetPreferredLayout() const override;
+
  private:
   // The bit flags which define bool options for NNAPI EP, bits are defined as
   // NNAPIFlags in include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h
@@ -40,8 +42,11 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   const std::unordered_set<std::string> partitioning_stop_ops_;
 
-#ifdef __ANDROID__
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
-#endif
+
+  // For Android NNAPI and stub implementation.
+  const NnApi* nnapi_handle_ = nullptr;
+  nnapi::DeviceWrapperVector nnapi_target_devices_;
+  nnapi::TargetDeviceOption target_device_option_;
 };
 }  // namespace onnxruntime

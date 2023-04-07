@@ -571,7 +571,7 @@ Return Value:
         //
 
         size_t CountK;
-        float beta = 0.0f;
+        float beta = Parameters->Beta;
         float* SegmentOutput = Output + SegmentStartN + n;
 
         for (size_t k = 0; k < K; k += CountK) {
@@ -676,6 +676,7 @@ Return Value:
 
     const size_t GroupCount = Parameters->GroupCount;
     const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
+    const float Beta = Parameters->Beta;
 
     size_t BatchGroupStart;
     size_t BatchGroupRemaining;
@@ -709,9 +710,9 @@ Return Value:
         // Invoke the non-threaded GEMM directly with the input tensor.
         //
 
-        MlasSgemmOperation(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount,
-            OutputSize, K, 1.0f, filter, K, input, Parameters->u.GemmDirect.ldb, 0.0f,
-            output, OutputSize);
+        MlasSgemmOperation(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
+                           K, 1.0f, filter, K, input, Parameters->u.GemmDirect.ldb, Beta, output,
+                           OutputSize);
 
         //
         // Apply the activation with optional bias.
@@ -934,9 +935,9 @@ Return Value:
                     // Invoke the threaded GEMM directly with the input tensor.
                     //
 
-                    MlasGemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount,
-                        OutputSize, K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb, 0.0f,
-                        Output, OutputSize, ThreadPool);
+                    MlasGemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
+                             K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb,
+                             Parameters->Beta, Output, OutputSize, ThreadPool);
 
                     //
                     // Apply the activation with optional bias.
@@ -962,7 +963,8 @@ Return Value:
                     }
 
                     MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
-                        K, WorkingBuffer, OutputSize, 0.0f, Output, OutputSize, ThreadPool);
+                             K, WorkingBuffer, OutputSize, Parameters->Beta, Output, OutputSize,
+                             ThreadPool);
 
                     //
                     // Apply the activation with optional bias.
@@ -1016,7 +1018,11 @@ Return Value:
         }
     }
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 void
 MLASCALL
 MlasConvPrepare(
@@ -1034,6 +1040,7 @@ MlasConvPrepare(
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
+    float Beta,
     MLAS_THREADPOOL* ThreadPool
     )
 /*++
@@ -1096,6 +1103,7 @@ Return Value:
     Parameters->GroupCount = GroupCount;
     Parameters->InputChannels = InputChannels;
     Parameters->FilterCount = FilterCount;
+    Parameters->Beta = Beta;
 
     size_t InputSize = 1;
     size_t OutputSize = 1;
@@ -1289,3 +1297,6 @@ Return Value:
         *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
     }
 }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif

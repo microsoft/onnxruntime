@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor_shape.h"
@@ -21,7 +21,7 @@ struct OrtValue;
 
 namespace onnxruntime {
 
-//TODO:ensure dtype_!=nullptr
+// TODO:ensure dtype_!=nullptr
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #ifdef HAS_NULL_DEREFERENCE
@@ -34,14 +34,12 @@ namespace onnxruntime {
   Memory is owned and managed by Executor / Workspace, so Tensor just uses
   it, and won't do any allocation / release.
 */
+
 class Tensor final {
  public:
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) {
-    return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
-  }
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset = 0) {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
-  }
+  // NB! Removing Create() methods returning unique_ptr<Tensor>. Still available in other EPs that are dynamically linked.
+  // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
+  // Use InitOrtValue() methods to allocate for OrtValue.
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
@@ -53,10 +51,11 @@ class Tensor final {
    * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
    *              Tensor does not own the data and will not delete it
    * \param alloc Where the buffer('p_data') was allocated from
-   * \param offset Offset in bytes to start of Tensor within p_data. 
+   * \param offset Offset in bytes to start of Tensor within p_data.
+   * \param strides Strides span. Can be empty if the tensor is contiguous.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
-         ptrdiff_t offset = 0);
+         ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -67,15 +66,36 @@ class Tensor final {
   /// <param name="p_data"></param>
   /// <param name="info"></param>
   /// <param name="offset"></param>
+  /// <param name="strides"></param>
   static void InitOrtValue(MLDataType p_type, const TensorShape& shape,
                            void* p_data, const OrtMemoryInfo& location,
-                           OrtValue& ort_value);
+                           OrtValue& ort_value, ptrdiff_t offset = 0,
+                           gsl::span<const int64_t> strides = {});
+
+  /// <summary>
+  /// Creates an instance of Tensor who own the pre-allocated buffer.
+  /// </summary>
+  /// <param name="p_type"></param>
+  /// <param name="shape"></param>
+  /// <param name="p_data"></param>
+  /// <param name="allocator"></param>
+  /// <param name="offset"></param>
+  /// <param name="strides"></param>
+  static void InitOrtValue(MLDataType p_type, const TensorShape& shape,
+                           void* p_data, std::shared_ptr<IAllocator> allocator,
+                           OrtValue& ort_value, ptrdiff_t offset = 0,
+                           gsl::span<const int64_t> strides = {});
+
+  static size_t CalculateTensorStorageSize(MLDataType p_type,
+                                           const TensorShape& shape,
+                                           gsl::span<const int64_t> strides = {});
 
   /**
-   * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
+   * Deprecated. The original design is this Tensor class won't do any allocation / release.
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator);
+  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
+         gsl::span<const int64_t> strides = {});
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -85,10 +105,20 @@ class Tensor final {
   /// <param name="shape"></param>
   /// <param name="allocator"></param>
   /// <param name="ort_value"></param>
+  /// <param name="strides"></param>
   static void InitOrtValue(MLDataType elt_type,
                            const TensorShape& shape,
                            std::shared_ptr<IAllocator> allocator,
-                           OrtValue& ort_value);
+                           OrtValue& ort_value,
+                           gsl::span<const int64_t> strides = {});
+
+  /// <summary>
+  /// Creates an instance of Tensor on the heap using the appropriate __ctor and
+  /// initializes OrtValue with it.
+  /// </summary>
+  /// <param name="tensor"></param>
+  /// <param name="ort_value"></param>
+  static void InitOrtValue(Tensor&& tensor, OrtValue& ort_value);
 
   /**
    * Create tensor with given type, shape, pre-allocated memory and allocator which will be used to free the pre-allocated memory.
@@ -99,14 +129,15 @@ class Tensor final {
    * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
    *              Tensor will own the memory and will delete it when the tensor instance is destructed.
    * \param deleter Allocator used to free the pre-allocated memory
-   * \param offset Offset in bytes to start of Tensor within p_data. 
+   * \param offset Offset in bytes to start of Tensor within p_data.
+   * \param strides Strides span. Can be empty if the tensor is contiguous.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
-         ptrdiff_t offset = 0);
+         ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
   ~Tensor();
 
-  //Move is allowed
+  // Move is allowed
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
 
   Tensor(Tensor&& other) noexcept;
@@ -185,7 +216,7 @@ class Tensor final {
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     const T* data = reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
-    return gsl::make_span(data, static_cast<typename gsl::span<T>::index_type>(shape_.Size()));
+    return gsl::make_span(data, static_cast<typename gsl::span<T>::size_type>(shape_.Size()));
   }
 
   void* MutableDataRaw(MLDataType type) {
@@ -244,15 +275,37 @@ class Tensor final {
   */
   size_t SizeInBytes() const;
 
+#ifdef ENABLE_STRIDED_TENSORS
+  /**
+   * Get the strides of the tensor.
+   */
+  gsl::span<const int64_t> Strides() const;
+
+  /**
+   * Return if the tensor is contiguous.
+   */
+  bool IsContiguous() const noexcept { return is_contiguous_; }
+
+  /**
+   * Set strides.
+   */
+  void SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides);
+#endif
+
   // More API methods.
  private:
   void Init(MLDataType p_type,
             const TensorShape& shape,
             void* p_raw_data,
             AllocatorPtr deleter,
-            ptrdiff_t offset = 0);
+            ptrdiff_t offset = 0,
+            gsl::span<const int64_t> strides = {});
 
   void ReleaseBuffer();
+
+#ifdef ENABLE_STRIDED_TENSORS
+  bool CheckIsContiguous() const;
+#endif
 
   void* p_data_;
   /**
@@ -263,6 +316,11 @@ class Tensor final {
   AllocatorPtr buffer_deleter_;
 
   TensorShape shape_;
+#ifdef ENABLE_STRIDED_TENSORS
+  mutable TensorShapeVector strides_;
+  bool is_contiguous_ = true;
+#endif
+
   const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;
   ptrdiff_t byte_offset_;

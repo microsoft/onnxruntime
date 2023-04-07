@@ -23,10 +23,10 @@ Status ConcatFromSequence::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(X != nullptr, "Got nullptr for sequence input.");
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
-  std::vector<const Tensor*> input_tensor_pointers;
+  InlinedTensorsVector input_tensor_pointers;
   input_tensor_pointers.reserve(X->Size());
   for (const auto& t : *X) {
-    input_tensor_pointers.push_back(&t);
+    input_tensor_pointers.push_back(&t.Get<Tensor>());
   }
 
   // Validate inputs and prepare some metadata used during actual compute

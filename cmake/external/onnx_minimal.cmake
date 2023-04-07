@@ -12,7 +12,12 @@ endif()
 
 #TODO: if protobuf is a shared lib and onnxruntime_USE_FULL_PROTOBUF is ON, then onnx_proto should be built as a shared lib instead of a static lib. Otherwise any code outside onnxruntime.dll can't use onnx protobuf definitions if they share the protobuf.dll with onnxruntime. For example, if protobuf is a shared lib and onnx_proto is a static lib then onnxruntime_perf_test won't work.
 
-set(ONNX_SOURCE_ROOT ${PROJECT_SOURCE_DIR}/external/onnx)
+
+
+FetchContent_Populate(onnx)
+set(ONNX_SOURCE_ROOT ${onnx_SOURCE_DIR})
+
+
 
 add_library(onnx_proto ${ONNX_SOURCE_ROOT}/onnx/onnx-ml.proto ${ONNX_SOURCE_ROOT}/onnx/onnx-operators-ml.proto ${ONNX_SOURCE_ROOT}/onnx/onnx-data.proto)
 
@@ -31,10 +36,10 @@ else()
 
   if(HAS_UNUSED_BUT_SET_VARIABLE)
     target_compile_options(onnx_proto PRIVATE "-Wno-unused-but-set-variable")
-  endif()   
+  endif()
 endif()
 
-# For reference, this would be the full ONNX source include. We only need data_type_utils.* in this build.
+# For reference, this would be the full ONNX source include. We only need data_type_utils in this build.
 # file(GLOB_RECURSE onnx_src CONFIGURE_DEPENDS
 #     "${ONNX_SOURCE_ROOT}/onnx/*.h"
 #     "${ONNX_SOURCE_ROOT}/onnx/*.cc"
@@ -46,10 +51,11 @@ endif()
 #     "${ONNX_SOURCE_ROOT}/onnx/test/*"
 #     "${ONNX_SOURCE_ROOT}/onnx/cpp2py_export.cc"
 # )
-# list(REMOVE_ITEM onnx_src ${onnx_exclude_src})  
-file(GLOB onnx_src CONFIGURE_DEPENDS
-"${ONNX_SOURCE_ROOT}/onnx/common/common.h"
-"${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.*"
+# list(REMOVE_ITEM onnx_src ${onnx_exclude_src})
+set(onnx_src
+  "${ONNX_SOURCE_ROOT}/onnx/common/common.h"
+  "${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.h"
+  "${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.cc"
 )
 
 add_library(onnx ${onnx_src})
@@ -75,7 +81,7 @@ if (WIN32)
           /EHsc   # exception handling - C++ may throw, extern "C" will not
       )
     endif()
-    
+
     target_compile_options(onnx_proto PRIVATE
         /wd4244 # 'argument' conversion from 'google::protobuf::int64' to 'int', possible loss of data
     )

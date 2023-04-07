@@ -26,14 +26,10 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Read commit SHA and checkout'
     condition: eq('${{ parameters.CommitOverride }}', 'true')
-  - script: |
-     git submodule sync -- cmake/external/onnx
-     git submodule update --init -- cmake/external/onnx
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Checkout submodule onnx'
+
   - task: NodeTool@0
     inputs:
-      versionSpec: '14.x'
+      versionSpec: '16.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: 'Release_*/**/*'

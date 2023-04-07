@@ -20,10 +20,7 @@
 #include "cuda.h"
 #include "cuda_fp16.h"
 #include "cuda_runtime.h"
-
-#if CUDA_VERSION >= 11000
-#include "cuda_bf16.h"
-#endif
+#include "core/framework/float16.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -72,22 +69,58 @@ __device__ __forceinline__ void atomic_add(half *address, half value) {
 #endif
 }
 
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-__device__ __forceinline__ void atomic_add(nv_bfloat16 *address, nv_bfloat16 value) {
-  unsigned int * base_address = reinterpret_cast<unsigned int*>(reinterpret_cast<char*>(address) - (reinterpret_cast<size_t>(address) & 2));
+__device__ __forceinline__ void atomic_add(BFloat16* address, BFloat16 value) {
+  unsigned int* base_address =
+      reinterpret_cast<unsigned int*>(reinterpret_cast<char*>(address) - (reinterpret_cast<size_t>(address) & 2));
   unsigned int old = *base_address;
   unsigned int assumed;
-  unsigned short x;
-
+  BFloat16 bsum;
   do {
     assumed = old;
-    x = reinterpret_cast<size_t>(address) & 2 ? (old >> 16) : (old & 0xffff);
-    x = __bfloat16_as_short(__float2bfloat16(__bfloat162float(*reinterpret_cast<const __nv_bfloat16*>(&x)) + __bfloat162float(value)));
-    old = reinterpret_cast<size_t>(address) & 2 ? (old & 0xffff) | (x << 16) : (old & 0xffff0000) | x;
+    bsum.val = reinterpret_cast<size_t>(address) & 2 ? (old >> 16) : (old & 0xffff);
+    bsum = bsum + value;
+    old = reinterpret_cast<size_t>(address) & 2 ? (old & 0xffff) | (bsum.val << 16) : (old & 0xffff0000) | bsum.val;
     old = atomicCAS(base_address, assumed, old);
   } while (assumed != old);
 }
+
+// CUDA's atomic_add for half type is too slow. Using half2 will be much faster. To avoid address out of bound,
+// we need to pass in the numel so that the element at the edge can be handled separately.
+// Ideally we need to deprecate above atomic_add function and use below one for better performance.
+// But since the signature is different, we can change it for specific Op kernel once we find it is slow.
+// TODO: need to add same logic for BF16.
+template <typename T>
+__device__ __forceinline__ void AtomicAdd(T *start_addr, size_t index, const size_t numel, T value) {
+  ORT_UNUSED_PARAMETER(numel);
+  atomic_add(start_addr + index, value);
+}
+
+template <>
+__device__ __forceinline__ void AtomicAdd<half>(half* start_addr, size_t index, const size_t numel, half value) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 700
+  atomic_add(start_addr + index, value);
+#else
+  // Accounts for the chance tensor falls on an odd 16 bit alignment (ie, not 32 bit aligned)
+  half* target_addr = reinterpret_cast<half*>(start_addr + index);
+  bool low_byte = (reinterpret_cast<std::uintptr_t>(target_addr) % sizeof(__half2) == 0);
+
+  if (low_byte && index < (numel - 1)) {
+    __half2 value2;
+    value2.x = value;
+    value2.y = __int2half_rz(0);
+    atomicAdd(reinterpret_cast<__half2*>(target_addr), value2);
+
+  } else if (!low_byte && index > 0) {
+    __half2 value2;
+    value2.x = __int2half_rz(0);
+    value2.y = value;
+    atomicAdd(reinterpret_cast<__half2*>(target_addr - 1), value2);
+
+  } else {
+    atomicAdd(start_addr + index, value);
+  }
 #endif
+}
 
 }  // namespace cuda
 }  // namespace onnxruntime

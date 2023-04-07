@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_allocator.h"
+#include "sg.h"
+#include "sg_impl.h"
+
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
-#include "sg.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -30,7 +31,7 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   ORT_ENFORCE(W.Shape() == G.Shape());
 
   SGDOptimizerImpl(
-      Stream(),
+      Stream(ctx),
       ETA.template Data<float>(),
       W.template Data<float>(),
       G.template Data<float>(),

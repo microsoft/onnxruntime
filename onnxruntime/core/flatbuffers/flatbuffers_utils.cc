@@ -1,21 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "flatbuffers_utils.h"
-#include "schema/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
 
 #include "core/common/common.h"
+#include "core/common/gsl.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
-#include "gsl/gsl"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
-using namespace ::onnxruntime::experimental;
 
-namespace onnxruntime {
-namespace experimental {
-namespace utils {
+namespace onnxruntime::fbs::utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -165,8 +162,6 @@ Status SaveValueInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_string) {
   if (fbs_string)
     dst = fbs_string->c_str();
@@ -307,13 +302,18 @@ Status LoadOpsetImportOrtFormat(const flatbuffers::Vector<flatbuffers::Offset<fb
   return Status::OK();
 }
 
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
+bool IsOrtFormatModel(const PathString& filename) {
+  const auto len = filename.size();
+  return len > 4 &&
+         filename[len - 4] == ORT_TSTR('.') &&
+         ToLowerPathChar(filename[len - 3]) == ORT_TSTR('o') &&
+         ToLowerPathChar(filename[len - 2]) == ORT_TSTR('r') &&
+         ToLowerPathChar(filename[len - 1]) == ORT_TSTR('t');
+}
 
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {
   return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory
          fbs::InferenceSessionBufferHasIdentifier(bytes);
 }
 
-}  // namespace utils
-}  // namespace experimental
-}  // namespace onnxruntime
+}  // namespace onnxruntime::fbs::utils

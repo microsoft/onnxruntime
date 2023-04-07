@@ -22,7 +22,7 @@ IsAllFinite --> Not
 Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     nodes_to_remove.clear();
     auto* node_ptr = graph.GetNode(node_index);
@@ -39,7 +39,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    std::vector<NodeArg*> input_defs = isinf_node.MutableInputDefs();
+    auto input_defs = isinf_node.MutableInputDefs();
     // see if there is a Cast before IsInf
     // This will happen if input type is FP16 but IsInf doesnt support fp16, so it will be cast to float/double
     // This Cast can be skipped as we are replacing the subgraph with IsAllFinite, which supports FP16

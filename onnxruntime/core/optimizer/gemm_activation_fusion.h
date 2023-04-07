@@ -9,7 +9,7 @@ namespace onnxruntime {
 
 class GemmActivationFusion : public GraphTransformer {
  public:
-  GemmActivationFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  GemmActivationFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("GemmActivationFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

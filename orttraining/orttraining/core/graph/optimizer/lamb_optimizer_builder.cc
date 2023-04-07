@@ -45,7 +45,7 @@ Status LambOptimizerBuilder::Build(
 
   // Loss scale ArgDef.
   if (!opt_configs[0].loss_scale_input_name.empty()) {
-    input_argdefs.emplace_back(ArgDef(opt_configs[0].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
+    input_argdefs.emplace_back(ArgDef(opt_configs[0].loss_scale_input_name, graph_defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
   } else {
     input_argdefs.emplace_back(ArgDef());
   }
@@ -71,7 +71,7 @@ Status LambOptimizerBuilder::Build(
   const auto step_state_it = shared_optim_state.find(LAMB_STEP_TENSOR_NAME);
   if (step_state_it != shared_optim_state.end()) {
     const auto& init_tensor = step_state_it->second.Get<Tensor>();
-    ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
+    ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, TensorShapeVector{1}));
     step_tensor_proto = utils::TensorToTensorProto(init_tensor, LAMB_STEP_TENSOR_NAME);
   } else {
     step_tensor_proto = CreateTensorProto<int64_t>(LAMB_STEP_TENSOR_NAME, 1);

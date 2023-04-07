@@ -1,4 +1,8 @@
 # Sets version number from VERSION.txt into a variable. As well as the git commit hash.
+parameters:
+  versionFileDirectory: "$(Build.SourcesDirectory)"
+  workingDirectory: "$(Build.SourcesDirectory)"
+
 
 steps:
 - task: CmdLine@2
@@ -6,7 +10,7 @@ steps:
   inputs:
     script: |
         SETLOCAL EnableDelayedExpansion
-        set /p _OnnxRuntimeVersion=<$(Build.SourcesDirectory)\VERSION_NUMBER 
+        set /p _OnnxRuntimeVersion=<${{parameters.versionFileDirectory}}\VERSION_NUMBER 
         @echo ##vso[task.setvariable variable=OnnxRuntimeVersion;]%_OnnxRuntimeVersion%
         
         FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse HEAD`) DO (
@@ -17,14 +21,14 @@ steps:
             @echo ##vso[task.setvariable variable=OnnxRuntimeGitCommitHashShort;]%%F
         )
         
-    workingDirectory: '$(Build.SourcesDirectory)'
+    workingDirectory: ${{parameters.workingDirectory}} 
   condition: eq(variables['Agent.OS'], 'Windows_NT') 
 
 - task: CmdLine@2
   displayName: 'Set version number variables for Unix'
   inputs:
     script: |
-        _OnnxRuntimeVersion=$(head -1 $(Build.SourcesDirectory)/VERSION_NUMBER) 
+        _OnnxRuntimeVersion=$(head -1 ${{parameters.versionFileDirectory}}/VERSION_NUMBER) 
         echo "##vso[task.setvariable variable=OnnxRuntimeVersion;]$_OnnxRuntimeVersion"
         
         _OnnxRuntimeGitCommitHash=$(git rev-parse HEAD)
@@ -33,5 +37,5 @@ steps:
         _OnnxRuntimeGitCommitHash=$(git rev-parse --short=8 HEAD)
         echo "##vso[task.setvariable variable=OnnxRuntimeGitCommitHashShort;]$_OnnxRuntimeGitCommitHash"
 
-    workingDirectory: '$(Build.SourcesDirectory)'
+    workingDirectory: ${{parameters.workingDirectory}} 
   condition: not(eq(variables['Agent.OS'], 'Windows_NT'))

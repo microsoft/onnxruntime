@@ -28,6 +28,14 @@ void DeleteFile(const std::string& filename) {
 }
 }  // namespace
 
+#ifdef _WIN32
+#define ONNXRUNTIME_CLOG_STREAM std::wclog
+#define ONNXRUNTIME_CERR_STREAM std::wcerr
+#else
+#define ONNXRUNTIME_CLOG_STREAM std::clog
+#define ONNXRUNTIME_CERR_STREAM std::cerr
+#endif
+
 /// <summary>
 /// Tests that the std::clog sink produces the expected output.
 /// </summary>
@@ -38,10 +46,14 @@ TEST(LoggingTests, TestCLogSink) {
   const Severity min_log_level = Severity::kWARNING;
 
   // redirect clog to a file so we can check the output
+#ifdef _WIN32
+  std::wofstream ofs(filename);
+#else
   std::ofstream ofs(filename);
+#endif
 
-  auto old_rdbuf = std::clog.rdbuf();
-  std::clog.rdbuf(ofs.rdbuf());
+  auto old_rdbuf = ONNXRUNTIME_CLOG_STREAM.rdbuf();
+  ONNXRUNTIME_CLOG_STREAM.rdbuf(ofs.rdbuf());
 
   // create scoped manager so sink gets destroyed once done
   {
@@ -57,7 +69,7 @@ TEST(LoggingTests, TestCLogSink) {
   CheckStringInFile(filename, message);
 
   // revert redirection
-  std::clog.rdbuf(old_rdbuf);
+  ONNXRUNTIME_CLOG_STREAM.rdbuf(old_rdbuf);
   ofs.close();
 
   DeleteFile(filename);
@@ -73,11 +85,15 @@ TEST(LoggingTests, TestCErrSink) {
   const Severity min_log_level = Severity::kWARNING;
 
   // redirect clog to a file so we can check the output
+#ifdef _WIN32
+  std::wofstream ofs(filename);
+#else
   std::ofstream ofs(filename);
+#endif
   ofs << std::unitbuf;  // turn off buffering so we replicate how std::cerr behaves.
 
-  auto old_rdbuf = std::cerr.rdbuf();
-  std::cerr.rdbuf(ofs.rdbuf());
+  auto old_rdbuf = ONNXRUNTIME_CERR_STREAM.rdbuf();
+  ONNXRUNTIME_CERR_STREAM.rdbuf(ofs.rdbuf());
 
   // create scoped manager so sink gets destroyed once done
   {
@@ -93,7 +109,7 @@ TEST(LoggingTests, TestCErrSink) {
   CheckStringInFile(filename, message);
 
   // revert redirection
-  std::cerr.rdbuf(old_rdbuf);
+  ONNXRUNTIME_CERR_STREAM.rdbuf(old_rdbuf);
   ofs.close();
 
   DeleteFile(filename);
@@ -121,7 +137,10 @@ TEST(LoggingTests, TestFileSink) {
   CheckStringInFile(filename, message);
   DeleteFile(filename);
 }
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26400)
+#endif
 /// <summary>
 /// Tests that a composite_sink works correctly.
 /// </summary>

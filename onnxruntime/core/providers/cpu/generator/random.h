@@ -4,13 +4,23 @@
 #pragma once
 
 #include <random>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/random_seed.h"
 #include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
+
+template <typename OutputType>
+Status MultinomialComputeShared(AllocatorPtr& alloc,
+                                const Tensor& X,
+                                const int64_t batch_size,
+                                const int64_t num_classes,
+                                const int64_t num_samples,
+                                std::default_random_engine& generator,
+                                Tensor& Y);
 
 class RandomNormal final : public OpKernel {
  public:
@@ -22,11 +32,9 @@ class RandomNormal final : public OpKernel {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
-    }
-    else {
-      generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-      };
+    } else {
+      // node index is added to the global seed to avoid two nodes generating the same sequence of random data
+      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
     int64_t dtype;
@@ -35,8 +43,8 @@ class RandomNormal final : public OpKernel {
     ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
                 "Invalid dtype of ", dtype_);
 
-    std::vector<int64_t> shape;
-    ORT_ENFORCE(info.GetAttrs<int64_t>("shape", shape).IsOK());
+    TensorShapeVector shape;
+    ORT_ENFORCE(info.GetAttrs("shape", shape).IsOK());
     shape_ = TensorShape(shape);
   }
 
@@ -45,8 +53,8 @@ class RandomNormal final : public OpKernel {
  private:
   float mean_;
   float scale_;
-  
-  // generator_ is updated with every call to Compute(). 
+
+  // generator_ is updated with every call to Compute().
   // use generator_mutex_ to ensure Compute() can be called concurrently.
   // this is to ensure that a model with random generators is deterministic and still can be executed in parallel.
   mutable std::default_random_engine generator_;
@@ -65,11 +73,9 @@ class RandomNormalLike final : public OpKernel {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
-    }
-    else {
-      generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-      };
+    } else {
+      // node index is added to the global seed to avoid two nodes generating the same sequence of random data
+      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
     int64_t dtype;
@@ -85,7 +91,7 @@ class RandomNormalLike final : public OpKernel {
  private:
   float mean_;
   float scale_;
-  
+
   // see comments for generator_ and generator_mutex_ in RandomNormal class.
   mutable std::default_random_engine generator_;
   mutable onnxruntime::OrtMutex generator_mutex_;
@@ -102,11 +108,9 @@ class RandomUniform final : public OpKernel {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
-    }
-    else {
-      generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-      };
+    } else {
+      // node index is added to the global seed to avoid two nodes generating the same sequence of random data
+      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
     int64_t dtype;
@@ -115,8 +119,8 @@ class RandomUniform final : public OpKernel {
     ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
                 "Invalid dtype of ", dtype_);
 
-    std::vector<int64_t> shape;
-    ORT_ENFORCE(info.GetAttrs<int64_t>("shape", shape).IsOK());
+    TensorShapeVector shape;
+    ORT_ENFORCE(info.GetAttrs("shape", shape).IsOK());
     shape_ = TensorShape(shape);
   }
 
@@ -142,11 +146,9 @@ class RandomUniformLike final : public OpKernel {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
-    }
-    else {
-      generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-      };
+    } else {
+      // node index is added to the global seed to avoid two nodes generating the same sequence of random data
+      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
     int64_t dtype;
@@ -162,7 +164,7 @@ class RandomUniformLike final : public OpKernel {
  private:
   float high_;
   float low_;
-  
+
   // see comments for generator_ and generator_mutex_ in RandomNormal class.
   mutable std::default_random_engine generator_;
   mutable onnxruntime::OrtMutex generator_mutex_;
@@ -177,11 +179,9 @@ class Multinomial final : public OpKernel {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
-    }
-    else {
-      generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-      };
+    } else {
+      // node index is added to the global seed to avoid two nodes generating the same sequence of random data
+      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
     int64_t output_dtype_tmp;

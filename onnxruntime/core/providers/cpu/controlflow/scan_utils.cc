@@ -11,11 +11,10 @@
 
 #include "core/providers/cpu/controlflow/scan_utils.h"
 
-#include "gsl/gsl"
-
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -61,8 +60,8 @@ Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs
 }
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
-                    std::vector<int64_t>& directions, size_t num_entries) {
-  if (info.GetAttrs<int64_t>(attr_name, directions).IsOK()) {
+                    TensorShapeVector& directions, size_t num_entries) {
+  if (info.GetAttrs(attr_name, directions).IsOK()) {
     ORT_ENFORCE(directions.size() == num_entries,
                 "Number of entries in '", attr_name, "' was ", directions.size(),
                 " but expected ", num_entries);
@@ -73,7 +72,7 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
     ORT_ENFORCE(valid, "Invalid values in '", attr_name, "'. 0 == forward. 1 == reverse.");
   } else {
     // default to forward if we know how many entries there should be
-    directions = std::vector<int64_t>(num_entries, static_cast<int64_t>(ScanDirection::kForward));
+    directions = TensorShapeVector(num_entries, static_cast<int64_t>(ScanDirection::kForward));
   }
 }
 
@@ -95,9 +94,9 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   }
 
   TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-  auto& graph_output_dims(output_shape.GetDims());
+  auto graph_output_dims(output_shape.GetDims());
 
-  std::vector<int64_t> scan_output_dims;
+  TensorShapeVector scan_output_dims;
   scan_output_dims.reserve(graph_output_dims.size() + 2);
 
   // v8 has batch size. v9 and later do not.
@@ -111,7 +110,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
     scan_output_dims.push_back(sequence_len);
   }
 
-  std::copy(graph_output_dims.cbegin(), graph_output_dims.cend(), std::back_inserter(scan_output_dims));
+  std::copy(graph_output_dims.begin(), graph_output_dims.end(), std::back_inserter(scan_output_dims));
 
   if (!temporary) {
     ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,
@@ -142,7 +141,7 @@ Status CreateFeedsFetchesManager(const Node& node,
   // we need the names of the Scan inputs to determine what device they are available on,
   // so first create a list using those value
   std::vector<std::string> feed_names;
-  feed_names.reserve(info.num_variadic_inputs + info.num_implicit_inputs);
+  feed_names.reserve(static_cast<size_t>(info.num_variadic_inputs) + info.num_implicit_inputs);
 
   const auto& scan_inputs = node.InputDefs();
   int start = is_v8 ? 1 : 0;  // skip sequence_lens for v8
@@ -217,7 +216,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
         feeds[input] = loop_state_variables[input].Input();
       } else {
         // add sliced input
-        auto& iterator = scan_input_stream_iterators[input - num_loop_state_variables];
+        auto& iterator = scan_input_stream_iterators[static_cast<ptrdiff_t>(input) - num_loop_state_variables];
         feeds[input] = *iterator;
 
         ++iterator;
@@ -272,7 +271,8 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
     // Create Executor and run graph.
     status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger());
+                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger(),
+                                    context.GetComputeStream());
 
     ORT_RETURN_IF_ERROR(status);
 
@@ -300,43 +300,43 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
 };
 
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
-                                      std::vector<size_t>& permutations, std::vector<int64_t>& transposed_shape) {
+                                      InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
-  permutations.reserve(rank);
-  permutations.push_back(axis);
+  permutations.reserve(onnxruntime::narrow<size_t>(rank));
+  permutations.push_back(onnxruntime::narrow<size_t>(axis));
 
-  transposed_shape.reserve(rank);
-  transposed_shape.push_back(dims[axis]);
+  transposed_shape.reserve(onnxruntime::narrow<size_t>(rank));
+  transposed_shape.push_back(dims[onnxruntime::narrow<size_t>(axis)]);
 
   for (int64_t i = 0; i < rank; ++i) {
     if (i != axis) {
-      permutations.push_back(i);
-      transposed_shape.push_back(dims[i]);
+      permutations.push_back(onnxruntime::narrow<size_t>(i));
+      transposed_shape.push_back(dims[onnxruntime::narrow<size_t>(i)]);
     }
   }
 }
 
 void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
-                                       std::vector<size_t>& permutations, std::vector<int64_t>& transposed_shape) {
+                                       InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
-  permutations.reserve(rank);
-  transposed_shape.reserve(rank);
+  permutations.reserve(onnxruntime::narrow<size_t>(rank));
+  transposed_shape.reserve(onnxruntime::narrow<size_t>(rank));
 
   for (int64_t i = 1; i <= axis; ++i) {
-    permutations.push_back(i);
-    transposed_shape.push_back(dims[i]);
+    permutations.push_back(onnxruntime::narrow<size_t>(i));
+    transposed_shape.push_back(dims[onnxruntime::narrow<size_t>(i)]);
   }
 
   permutations.push_back(0);
   transposed_shape.push_back(dims[0]);
 
   for (int64_t i = axis + 1; i < rank; ++i) {
-    permutations.push_back(i);
-    transposed_shape.push_back(dims[i]);
+    permutations.push_back(onnxruntime::narrow<size_t>(i));
+    transposed_shape.push_back(dims[onnxruntime::narrow<size_t>(i)]);
   }
 }
 

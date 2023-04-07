@@ -8,6 +8,9 @@
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/providers/provider_factory_creators.h"
+#include "core/session/onnxruntime_c_api.h"
+
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
@@ -15,11 +18,6 @@
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
-
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
-}
 
 #include <condition_variable>
 #include <mutex>
@@ -75,7 +73,7 @@ int main(int argc, char* argv[]) {
                                                   -1};
 
   std::unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Enviroment creation fails.");
+  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Environment creation fails.");
   ORT_ENFORCE(parse_arguments(argc, argv, params) == Status::OK(), "Parsing command-line argument fails");
 
   // Set up MPI.
@@ -88,27 +86,36 @@ int main(int argc, char* argv[]) {
   // setup onnxruntime env
   std::vector<FreeDimensionOverride> overrides = {};
   SessionOptions so = {
-      ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
-      ExecutionOrder::DEFAULT,           //execution_order
-      false,                             //enable_profiling
-      ORT_TSTR(""),                      //optimized_model_filepath
-      true,                              //enable_mem_pattern
-      true,                              //enable_mem_reuse
-      true,                              //enable_cpu_mem_arena
-      ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
-      "",                                //session_logid
-      -1,                                //session_log_severity_level
-      0,                                 //session_log_verbosity_level
-      5,                                 //max_num_graph_transformation_steps
-      TransformerLevel::Level1,          //graph_optimization_level
-      {},                                //intra_op_param
-      {},                                //inter_op_param
-      overrides,                         //free_dimension_overrides
-      true,                              //use_per_session_threads
-      true,                              //thread_pool_allow_spinning
-      false,                             //use_deterministic_compute
-      {},                                //session_configurations
-      {}                                 //initializers_to_share_map
+      ExecutionMode::ORT_SEQUENTIAL,     // execution_mode
+      ExecutionOrder::DEFAULT,           // execution_order
+      false,                             // enable_profiling
+      ORT_TSTR(""),                      // optimized_model_filepath
+      true,                              // enable_mem_pattern
+      true,                              // enable_mem_reuse
+      true,                              // enable_cpu_mem_arena
+      ORT_TSTR("onnxruntime_profile_"),  // profile_file_prefix
+      "",                                // session_logid
+      -1,                                // session_log_severity_level
+      0,                                 // session_log_verbosity_level
+      5,                                 // max_num_graph_transformation_steps
+      TransformerLevel::Level1,          // graph_optimization_level
+      {},                                // intra_op_param
+      {},                                // inter_op_param
+      overrides,                         // free_dimension_overrides
+      true,                              // use_per_session_threads
+      true,                              // thread_pool_allow_spinning
+      false,                             // use_deterministic_compute
+      {},                                // session_configurations
+      {},                                // initializers_to_share_map
+#if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    {},                                  // external_initializers
+#endif
+    nullptr,                             // custom_create_thread_fn
+    nullptr,                             // custom_thread_creation_options
+    nullptr,                             // custom_join_thread_fn
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+    {},                                  // custom_op_libs
+#endif
   };
 
   InferenceSession session_object{so, *env};
@@ -116,7 +123,7 @@ int main(int argc, char* argv[]) {
   Status st;
   OrtCUDAProviderOptions xp_info{};
   xp_info.device_id = static_cast<OrtDevice::DeviceId>(world_rank);
-  auto cuda_factory = CreateExecutionProviderFactory_Cuda(&xp_info);
+  auto cuda_factory = CudaProviderFactoryCreator::Create(&xp_info);
   st = session_object.RegisterExecutionProvider(cuda_factory->CreateProvider());
   ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
 

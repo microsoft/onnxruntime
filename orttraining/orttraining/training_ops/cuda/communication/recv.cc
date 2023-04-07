@@ -6,12 +6,12 @@
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/communication_common.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
-#include "core/providers/cuda/nvtx_profile.h" 
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
-#include <mpi.h>
 
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {
@@ -22,6 +22,7 @@ void Recv::ReceiveData(
     std::vector<Tensor*> received_tensors,
     const int src,
     const size_t aggregated_aligned_tensor_bytes,
+    OpKernelContext* context,
     IAllocatorUniquePtr<char>& buffer) const {
 #ifdef ENABLE_NVTX_PROFILE
   auto& profile_context = profile::Context::GetInstance();
@@ -38,7 +39,7 @@ void Recv::ReceiveData(
 #endif
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
+  buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes, context->GetComputeStream());
 #else
   buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
 #endif
@@ -89,11 +90,11 @@ void Recv::ReceiveData(
     assert(tensor_offset_in_bytes + tensor->SizeInBytes() <= aggregated_aligned_tensor_bytes);
     // Copy data out from buffer.
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                              tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+    CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                                    tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
 #else
-    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                              tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream()));
+    CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                                    tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream(context)));
 #endif
 
 #ifndef NDEBUG
@@ -107,7 +108,7 @@ void Recv::ReceiveData(
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #else
-  AddDeferredReleaseCPUPtr(buffer.release());
+  AddDeferredReleaseCPUPtr(buffer.release(), context->GetComputeStream());
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -231,8 +232,8 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
     // we need to create outputs after receiving shapes.
     size_t begin = 0;
     for (int i = 0; i < num_tensors; ++i) {
-      std::vector<int64_t> tensor_shape(aggregated_tensor_shapes.begin() + begin,
-                                        aggregated_tensor_shapes.begin() + prefix_tensor_shape_sizes[i]);
+      TensorShapeVector tensor_shape(aggregated_tensor_shapes.begin() + begin,
+                                     aggregated_tensor_shapes.begin() + prefix_tensor_shape_sizes[i]);
       received_tensors[i] = ctx->Output(i + 1, tensor_shape);
       // Move the "begin" to the beginning dimension of the next received tensor.
       begin = prefix_tensor_shape_sizes[i];
@@ -249,7 +250,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   // required to receive tensors are ready.
   // Create buffer and receive data.
   IAllocatorUniquePtr<char> buffer;
-  ReceiveData(num_tensors, received_tensors, src, aggregated_aligned_tensor_bytes, buffer);
+  ReceiveData(num_tensors, received_tensors, src, aggregated_aligned_tensor_bytes, ctx, buffer);
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator postRange(

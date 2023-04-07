@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/fallback_cpu_capability.h"
+#include "core/common/inlined_containers.h"
 
 #include <queue>
 
@@ -14,7 +15,7 @@ using namespace ONNX_NAMESPACE::Utils;
 namespace onnxruntime {
 
 namespace {
-const int64_t kSmallInitializerThreshold = 100;
+constexpr int64_t kSmallInitializerThreshold = 100;
 
 static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
   // 'true' in the function call is to let the searching for the initializer
@@ -38,12 +39,12 @@ static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const Node
 }  // namespace
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const std::string& provider_type,
-                                                   const std::vector<const KernelRegistry*>& kernel_registries,
-                                                   const std::vector<NodeIndex>& tentative_nodes) {
-  const std::vector<NodeIndex>& ordered_nodes = graph.GetNodesInTopologicalOrder();
-  std::vector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
-  for (size_t id = 0; id < ordered_nodes.size(); ++id) {
+                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
+                                                   gsl::span<const NodeIndex> tentative_nodes) {
+  // automatic conversion from const std::vector&
+  const auto& ordered_nodes = graph.GetNodesInTopologicalOrder();
+  InlinedVector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
+  for (size_t id = 0, limit = ordered_nodes.size(); id < limit; ++id) {
     const NodeIndex& node_id = ordered_nodes[id];
     node_id_to_order_map[node_id] = id;
   }
@@ -54,22 +55,20 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   };
 
   std::priority_queue<NodeIndex, std::vector<NodeIndex>, decltype(greater_order_comp)> candidates(greater_order_comp);
-  std::unordered_set<NodeIndex> visited;
 
-  std::unordered_set<const NodeArg*> cpu_output_args;
-  std::unordered_set<NodeIndex> provider_nodes;
-  std::unordered_map<NodeIndex, const KernelCreateInfo*> node_to_kernel;
+  InlinedHashSet<const NodeArg*> cpu_output_args;
+
+  InlinedHashSet<NodeIndex> provider_nodes;
+  provider_nodes.reserve(tentative_nodes.size());
+
+  InlinedHashMap<NodeIndex, const KernelCreateInfo*> node_to_kernel;
+  node_to_kernel.reserve(tentative_nodes.size());
 
   for (auto& node_id : tentative_nodes) {
     provider_nodes.insert(node_id);
     const Node* node = graph.GetNode(node_id);
 
-    const KernelCreateInfo* kernel_info = nullptr;
-    for (auto registry : kernel_registries) {
-      auto st = registry->TryFindKernel(*node, provider_type, &kernel_info);
-      if (st.IsOK())
-        break;
-    }
+    const KernelCreateInfo* kernel_info = kernel_lookup.LookUpKernel(*node);
     // at least one registry has a target provider's kernel for this node
     ORT_ENFORCE(kernel_info != nullptr);
     node_to_kernel.insert({node_id, kernel_info});
@@ -90,8 +89,11 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
         }));
   }
 
-  const std::vector<const NodeArg*>& graph_inputs = graph.GetInputs();
+  const auto& graph_inputs = graph.GetInputs();
+  InlinedHashSet<NodeIndex> visited;
+  visited.reserve(candidates.size());
   std::unordered_set<NodeIndex> cpu_nodes;
+  cpu_nodes.reserve(candidates.size());
   // The algo below is trying to identity a subgraph that only depends on cpu tensors.
   // Usually it is a subgraph that doing shape calculation based on a GPU tensor, then reshape it back.
   // The detail:
@@ -100,14 +102,26 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   while (!candidates.empty()) {
     NodeIndex cur = candidates.top();
     candidates.pop();
-    if (visited.count(cur) != 0)
-      continue;
-    visited.insert(cur);
 
-    if (provider_nodes.find(cur) == provider_nodes.end())
+    auto p = visited.insert(cur);
+    if (!p.second)
       continue;
 
     auto* node = graph.GetNode(cur);
+    if (provider_nodes.find(cur) == provider_nodes.end()) {
+      // Nodes not in provider_nodes are either have EP assigned or no kernel found on target EP.
+      // we assume these nodes will fallback to CPU, so add all direct consumers of all outputs to candidates.
+      if (node->GetExecutionProviderType().empty() || node->GetExecutionProviderType() == kCpuExecutionProvider) {
+        for (auto* output : node->OutputDefs()) {
+          cpu_output_args.insert(output);
+        }
+        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+          candidates.push((*it).Index());
+        }
+      }
+      continue;
+    }
+
     bool place_in_cpu = true;
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];

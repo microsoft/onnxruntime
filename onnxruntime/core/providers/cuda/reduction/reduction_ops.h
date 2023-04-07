@@ -16,10 +16,10 @@ namespace ReductionOps {
 // `input_shape_override` is the input shape for compute purposes (if provided)
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
-std::unique_ptr<Tensor> ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
-                                      const Tensor& input, const std::vector<int64_t>& axes,
+std::unique_ptr<Tensor> ReduceCompute(const CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
+                                      const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                                      bool fast_reduction, const TensorShape* input_shape_override = nullptr);
+                                      bool fast_reduction, Stream* stream, const TensorShape* input_shape_override = nullptr);
 
 }  // namespace ReductionOps
 
@@ -28,11 +28,11 @@ struct PrepareReduceMetadata {
   int64_t input_count;
   int64_t output_count;
   // This holds the output dims without any reduced dims squeezed (even if keep_dims == 1)
-  std::vector<int64_t> output_dims;
+  TensorShapeVector output_dims;
   // This holds the output dims with with reduced dims squeezed (if keep_dims == 1)
-  std::vector<int64_t> squeezed_output_dims;
-  std::vector<int64_t> input_dims_cudnn;
-  std::vector<int64_t> output_dims_cudnn;
+  TensorShapeVector squeezed_output_dims;
+  TensorShapeVector input_dims_cudnn;
+  TensorShapeVector output_dims_cudnn;
 };
 
 template <bool allow_multi_axes>
@@ -47,9 +47,7 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
         calculate_sqt_(false),
         log_sum_exp_(false),
         fast_reduction_(false) {
-    // We need to cast away the const as PerThreadCudnnHandle() is currently a non-const method
-    // TODO: Clean up the CUDAExecutionProvider interface to avoid this
-    cuda_ep_ = const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()));
+    cuda_ep_ = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider());
   }
 
   // Only Max Min need to set ReduceTensorIndices CUDNN_REDUCE_TENSOR_FLATTENED_INDICES as per cudnn library manual
@@ -68,7 +66,9 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
       OutT* Y,
       const TensorShape& output_shape,
       cudnnReduceTensorOp_t cudnn_reduce_op,
-      std::vector<int64_t>& output_dims) const;
+      cudnnHandle_t cudnn_handle,
+      onnxruntime::Stream* stream,
+      TensorShapeVector& output_dims) const;
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
@@ -82,7 +82,7 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
   bool fast_reduction_;
 
   // We need to access to the CUDA EP instance to get the cudnn handle
-  CUDAExecutionProvider* cuda_ep_;
+  const CUDAExecutionProvider* cuda_ep_;
 };
 
 template <typename T>
@@ -219,15 +219,16 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
 
 Status PrepareForReduce(const Tensor* X,
                         bool keepdims,
-                        const std::vector<int64_t>& axes,
+                        gsl::span<const int64_t> axes,
                         PrepareReduceMetadata& prepare_reduce_metadata,
                         const TensorShape* input_shape_override = nullptr);
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
-Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
-                         const std::vector<int64_t>& axes,
+                         gsl::span<const int64_t> axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+                         Stream* ort_stream,
                          const TensorShape* input_shape_override = nullptr);
 
 // CUDA's reduction descriptor cudnnReduceTensorDescriptor_t is a pointer so

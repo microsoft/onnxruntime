@@ -18,7 +18,7 @@ The formula corresponding to LayerNorm activation subgraph:
 */
 class LayerNormFusion : public GraphTransformer {
  public:
-  LayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  LayerNormFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("LayerNormFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
@@ -35,15 +35,18 @@ The formula corresponding to LayerNorm activation subgraph:
 */
 class SimplifiedLayerNormFusion : public GraphTransformer {
  public:
-  SimplifiedLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {},
-                            const bool allow_precision_change = false) noexcept
+  SimplifiedLayerNormFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+                            bool skip_device_check = false) noexcept
       : GraphTransformer("SimplifiedLayerNormFusion", compatible_execution_providers),
-        allow_precision_change_(allow_precision_change) {}
+        skip_device_check_(skip_device_check) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
  private:
-  bool allow_precision_change_;
+  // A flag indicate whether device check is skipped for some cases.
+  // This is introduced for pre-training optimizations, where when optimization passes are running,
+  // devices placement is NOT done yet.
+  bool skip_device_check_;
 };
 
 }  // namespace onnxruntime

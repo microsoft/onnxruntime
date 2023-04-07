@@ -9,35 +9,38 @@ ONNX format contains metadata related to how the
 model was produced. It is useful when the model
 is deployed to production to keep track of which
 instance was used at a specific time.
-Let's see how to do that with a simple 
+Let's see how to do that with a simple
 logistic regression model trained with
 *scikit-learn* and converted with *sklearn-onnx*.
 """
 
 from onnxruntime.datasets import get_example
+
 example = get_example("logreg_iris.onnx")
 
-import onnx
+import onnx  # noqa: E402
+
 model = onnx.load(example)
 
-print("doc_string={}".format(model.doc_string))
-print("domain={}".format(model.domain))
-print("ir_version={}".format(model.ir_version))
-print("metadata_props={}".format(model.metadata_props))
-print("model_version={}".format(model.model_version))
-print("producer_name={}".format(model.producer_name))
-print("producer_version={}".format(model.producer_version))
+print(f"doc_string={model.doc_string}")
+print(f"domain={model.domain}")
+print(f"ir_version={model.ir_version}")
+print(f"metadata_props={model.metadata_props}")
+print(f"model_version={model.model_version}")
+print(f"producer_name={model.producer_name}")
+print(f"producer_version={model.producer_version}")
 
 #############################
 # With *ONNX Runtime*:
 
-from onnxruntime import InferenceSession
-sess = InferenceSession(example)
+import onnxruntime as rt  # noqa: E402
+
+sess = rt.InferenceSession(example, providers=rt.get_available_providers())
 meta = sess.get_modelmeta()
 
-print("custom_metadata_map={}".format(meta.custom_metadata_map))
-print("description={}".format(meta.description))
-print("domain={}".format(meta.domain, meta.domain))
-print("graph_name={}".format(meta.graph_name))
-print("producer_name={}".format(meta.producer_name))
-print("version={}".format(meta.version))
+print(f"custom_metadata_map={meta.custom_metadata_map}")
+print(f"description={meta.description}")
+print(f"domain={meta.domain}")
+print(f"graph_name={meta.graph_name}")
+print(f"producer_name={meta.producer_name}")
+print(f"version={meta.version}")

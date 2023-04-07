@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// if we can't load an ORT format model we can't really test anything
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 // custom ops are only supported in a minimal build if explicitly enabled
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
@@ -79,11 +76,11 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   // will now use the same stream too
   cudaStream_t compute_stream = nullptr;
   cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
-  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
+  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
 #else
-  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   // convert to ort by loading the onnx model
@@ -127,8 +124,8 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
 TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
 
-  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
-  Ort::CustomOpDomain custom_op_domain("");
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   //  load the ORT format model and execute it
@@ -144,8 +141,26 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
 
   TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
 }
+
+TEST(OrtFormatCustomOpTests, LoadOrtModelStandaloneCustomOpImplementation) {
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
+
+  StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider};
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&standalone_op);
+
+  // load the ORT format model and execute it
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
+}
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-
-#endif  // #if defined(ENABLE_ORT_FORMAT_LOAD)

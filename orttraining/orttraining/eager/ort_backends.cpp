@@ -8,7 +8,7 @@
 #include "ort_backends.h"
 #include "ort_log.h"
 #include "core/platform/env.h"
-#include "core/providers/shared_library/provider_host_api.h"
+#include "orttraining/python/orttraining_python_module_eager.h"
 
 
 //use the environment from python module
@@ -25,12 +25,7 @@ namespace torch_ort {
 namespace eager {
 
 using namespace onnxruntime;
-
-ORTBackendsManager& GetORTBackendsManager() {
-  auto& env = onnxruntime::python::GetTrainingORTEnv();
-  static ORTBackendsManager instance {env.GetLoggingManager()->DefaultLogger()};
-  return instance;
-}
+using namespace onnxruntime::python;
 
 onnxruntime::ORTInvoker& GetORTInvoker(const at::Device device) {
   return GetORTBackendsManager().GetInvoker(device);
@@ -46,25 +41,44 @@ ORTBackendsManager::ORTBackendsManager(const onnxruntime::logging::Logger& logge
 
 onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const std::string& provider_type,
                                  const ProviderOptions& provider_options){
-  auto ep = onnxruntime::python::GetOrCreateExecutionProvider(provider_type, 
+  auto ep = onnxruntime::python::GetOrCreateExecutionProvider(provider_type,
                                ProviderOptionsMap{{provider_type, provider_options}},
                                SessionOptions{});
 
-  auto invoker = 
+  auto invoker =
   std::make_unique<onnxruntime::ORTInvoker>(
     std::move(ep),
     logger_,
     custom_op_schema_);
 
   backends_[device_index] = std::move(invoker);
+  ProviderInfoMap provider_info;
+  provider_info[provider_type] = provider_options;
+  device_ep_info_[device_index] = provider_info;
   return onnxruntime::Status::OK();
 }
 
 OrtDevice ORTBackendsManager::GetOrtDeviceInfo(size_t torch_device_index){
   auto lookup = backends_.find(torch_device_index);
   ORT_ENFORCE(lookup != backends_.end());
-  auto allocator = lookup->second->GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault);
+  auto allocator = lookup->second->GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault);
   return allocator->Info().device;
+}
+
+size_t ORTBackendsManager::GetOrtDeviceIndex(const OrtMemoryInfo& ort_memory_info){
+  for (auto it = backends_.begin(); it != backends_.end(); ++it){
+    //eager mode currently only operate on EP's default memory type
+    auto allocator = it->second->GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault);
+    if (allocator->Info() == ort_memory_info)
+      return it->first;
+  }
+  ORT_THROW("Can't find the eager mode ORT device index for target ort tensor");
+}
+
+const ProviderInfoMap& ORTBackendsManager::GetOrtDeviceProviderInfo(size_t torch_device_index) const {
+  auto lookup = device_ep_info_.find(torch_device_index);
+  ORT_ENFORCE(lookup != device_ep_info_.end());
+  return lookup->second;
 }
 
 onnxruntime::ORTInvoker& ORTBackendsManager::GetInvoker(const at::Device device) {

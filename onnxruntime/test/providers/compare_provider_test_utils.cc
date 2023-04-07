@@ -21,8 +21,6 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultCudaExecutionProvider();
   else if (provider_type == onnxruntime::kDnnlExecutionProvider)
     execution_provider = DefaultDnnlExecutionProvider();
-  else if (provider_type == onnxruntime::kNupharExecutionProvider)
-    execution_provider = DefaultNupharExecutionProvider();
   else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
     execution_provider = DefaultTensorrtExecutionProvider();
   else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
@@ -33,6 +31,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultAclExecutionProvider();
   else if (provider_type == onnxruntime::kRocmExecutionProvider)
     execution_provider = DefaultRocmExecutionProvider();
+  else if (provider_type == onnxruntime::kDmlExecutionProvider)
+    execution_provider = DefaultDmlExecutionProvider();
   // skip if execution provider is disabled
   if (execution_provider == nullptr) {
     return nullptr;
@@ -58,9 +58,9 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   Status status;
 
   // In InferenceSession::Initialize(), the call to graph partitioner, which is responsible
-  // for Inlining function bodies for ops whose kernel is missing happens before the 
+  // for Inlining function bodies for ops whose kernel is missing happens before the
   // Cast Transformer. As a result, for MLFloat16 tests where the node is missing a CPU kernel,
-  // the function body is instead used for CPU pass. This option allows the comparison with 
+  // the function body is instead used for CPU pass. This option allows the comparison with
   // the CPU kernel by adding the input/output casts before looking for a registered CPU kernel.
   if (need_cpu_cast) {
     InsertCastTransformer transformer("Test");

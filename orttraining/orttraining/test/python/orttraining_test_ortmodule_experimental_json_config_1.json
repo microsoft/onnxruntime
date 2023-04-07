@@ -7,7 +7,6 @@
     },
     "UseExternalGPUAllocator" : false,
     "EnableCustomAutogradFunction": true,
-    "AllowLayerNormModPrecision": true,
     "EnableGradAccOptimization": true,
     "UseStaticShape": true,
     "RunSymbolicShapeInference": false,
@@ -27,5 +26,6 @@
     "FallbackPolicy":
     [
         "FALLBACK_DISABLE"
-    ]
+    ],
+    "OnnxOpsetVersion": 13
 }

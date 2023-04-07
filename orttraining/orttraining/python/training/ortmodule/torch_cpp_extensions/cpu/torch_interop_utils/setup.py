@@ -4,12 +4,18 @@
 # --------------------------------------------------------------------------
 
 import os
-from setuptools import setup, Extension
+
+from setuptools import Extension, setup  # noqa: F401
 from torch.utils import cpp_extension
 
-filename = os.path.join(os.path.dirname(__file__),
-                        'torch_interop_utils.cc')
-setup(name='torch_interop_utils',
-      ext_modules=[cpp_extension.CppExtension(name='torch_interop_utils',
-                                              sources=[filename])],
-      cmdclass={'build_ext': cpp_extension.BuildExtension})
+filename = os.path.join(os.path.dirname(__file__), "torch_interop_utils.cc")
+extra_compile_args = {"cxx": ["-O3"]}
+setup(
+    name="torch_interop_utils",
+    ext_modules=[
+        cpp_extension.CppExtension(
+            name="torch_interop_utils", sources=[filename], extra_compile_args=extra_compile_args
+        )
+    ],
+    cmdclass={"build_ext": cpp_extension.BuildExtension},
+)

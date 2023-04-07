@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <string_view>
+
+#include "core/common/hash_combine.h"
+
 struct OrtMemoryInfo {
   OrtMemoryInfo() = default;  // to allow default construction of Tensor
 
@@ -38,6 +42,16 @@ struct OrtMemoryInfo {
     return strcmp(name, other.name) < 0;
   }
 
+  // This is to make OrtMemoryInfo a valid key in hash tables
+  // we ignore device id
+  size_t Hash() const {
+    auto h = std::hash<int>()(alloc_type);
+    onnxruntime::HashCombine(mem_type, h);
+    onnxruntime::HashCombine(id, h);
+    onnxruntime::HashCombine<std::string_view>(name, h);
+    return h;
+  }
+
   std::string ToString() const {
     std::ostringstream ostr;
     ostr << "OrtMemoryInfo:["
@@ -51,6 +65,7 @@ struct OrtMemoryInfo {
   }
 };
 
+// Required by hash tables
 inline bool operator==(const OrtMemoryInfo& left, const OrtMemoryInfo& other) {
   return left.mem_type == other.mem_type &&
          left.alloc_type == other.alloc_type &&
@@ -61,3 +76,12 @@ inline bool operator==(const OrtMemoryInfo& left, const OrtMemoryInfo& other) {
 inline bool operator!=(const OrtMemoryInfo& lhs, const OrtMemoryInfo& rhs) { return !(lhs == rhs); }
 
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info);
+
+namespace std {
+template<>
+struct hash<OrtMemoryInfo> {
+  size_t operator()(const OrtMemoryInfo& i) const {
+    return i.Hash();
+  }
+};
+}

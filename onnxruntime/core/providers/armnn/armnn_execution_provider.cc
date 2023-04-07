@@ -125,13 +125,4 @@ std::shared_ptr<KernelRegistry> ArmNNExecutionProvider::GetKernelRegistry() cons
   return kernel_registry;
 }
 
-std::vector<std::unique_ptr<ComputeCapability>>
-ArmNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<std::unique_ptr<ComputeCapability>>
-      result = IExecutionProvider::GetCapability(graph, kernel_registries);
-
-  return result;
-}
-
 }  // namespace onnxruntime

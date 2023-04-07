@@ -55,12 +55,28 @@ TEST(CApiTest, model_from_array) {
   create_session(so);
 #endif
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+TEST(CApiTest, session_options_empty_affinity_string) {
+  Ort::SessionOptions options;
+  options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, "");
+  constexpr auto model_path = ORT_TSTR("testdata/matmul_1.onnx");
+
+  try {
+    Ort::Session session(*ort_env.get(), model_path, options);
+    ASSERT_TRUE(false) << "Creation of session should have thrown exception";
+  } catch (const std::exception& ex) {
+    ASSERT_THAT(ex.what(), testing::HasSubstr("Affinity string must not be empty"));
+  }
+}
+#endif
+
 #endif
 
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
 TEST(CApiTest, TestDisableExternalInitiliazers) {
 
-  const char* model_path = "testdata/model_with_external_initializers.onnx";
+  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializers.onnx");
 
   Ort::SessionOptions so;
   try {
@@ -70,6 +86,25 @@ TEST(CApiTest, TestDisableExternalInitiliazers) {
     ASSERT_THAT(ex.what(), testing::HasSubstr("Initializer tensors with external data is not allowed."));
   }
 }
+
+#elif !defined(ORT_MINIMAL_BUILD)
+TEST(CApiTest, TestExternalInitializersInjection) {
+  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializer_come_from_user.onnx");
+  std::array<int64_t, 4> Pads_not_on_disk{0, 0, 1, 1};
+  constexpr std::array<int64_t, 1> init_shape{4};
+
+  const std::vector<std::string> init_names{"Pads_not_on_disk"};
+  std::vector<Ort::Value> initializer_data;
+
+  auto cpu_mem_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  auto init_tensor = Ort::Value::CreateTensor(cpu_mem_info, Pads_not_on_disk.data(), Pads_not_on_disk.size(), init_shape.data(), init_shape.size());
+  initializer_data.push_back(std::move(init_tensor));
+
+  Ort::SessionOptions so;
+  so.AddExternalInitializers(init_names, initializer_data);
+  EXPECT_NO_THROW(Ort::Session(*ort_env, model_path, so));
+}
+
 #endif
 }  // namespace test
 }  // namespace onnxruntime

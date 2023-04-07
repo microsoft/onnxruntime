@@ -1,0 +1,257 @@
+parameters:
+- name: snpe_sdk_path_win
+  displayName: Snpe Windows SDK path
+  type: string
+  default: C:\data\local\SNPE\snpe_win-1.61.46.3724
+
+- name: snpe_sdk_info
+  displayName: Snpe SDK Version Information
+  type: string
+  default: snpe_win-1.61.46
+  
+- name: ort_package_version
+  displayName: OnnxRuntime Nuget package version
+  type: string
+  default: 1.13.1
+  
+- name: build_config
+  displayName: Build Configuration
+  type: string
+  default: 'Release'
+  
+- name: IsReleaseBuild
+  displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
+- name: DoEsrp
+  displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
+jobs:
+
+  - job: OnnxRuntime_SnpeNuget_Win_x64
+    timeoutInMinutes: 120
+
+    pool: 'Onnxruntime-SNPE-Windows-2022-CPU'
+    variables:
+      MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
+      OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      buildArch: x64
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+
+    steps:
+      - template: templates/set-version-number-variables-step.yml
+
+      - task: NuGetAuthenticate@0
+        inputs:
+          forceReinstallCredentialProvider: true  
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.8'
+          addToPath: true
+      
+      - task: PythonScript@0
+        displayName: 'Build onnxruntime for x64'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: '--disable_ml_ops --build_dir $(Build.BinariesDirectory)\Windows --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_snpe --snpe_root=${{parameters.snpe_sdk_path_win}}'
+
+      - template: templates/win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }}'
+          DisplayName: 'ESRP - Sign dlls'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
+      - task: CmdLine@2
+        displayName: 'Generating nuspec for the native Nuget package x64'
+        inputs:
+          script: |
+            copy $(Build.SourcesDirectory)\LICENSE $(Build.SourcesDirectory)\LICENSE.txt
+            python "$(Build.SourcesDirectory)\tools\nuget\generate_nuspec_for_native_nuget.py" --package_version ${{ parameters.ort_package_version }} --package_name Microsoft.ML.OnnxRuntime.Snpe --target_architecture x64 --build_config ${{ parameters.build_config }} --native_build_path=$(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }} --packages_path $(Build.BinariesDirectory)\Windows\packages --ort_build_path $(Build.BinariesDirectory)\Windows --sources_path $(Build.SourcesDirectory) --commit_id $(OnnxRuntimeGitCommitHash) --is_release_build ${{ parameters.IsReleaseBuild }} --sdk_info ${{ parameters.snpe_sdk_info }}
+            cd $(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }}
+            nuget pack NativeNuget.nuspec
+            mkdir $(Build.ArtifactStagingDirectory)\x64
+            copy $(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }}\*.nupkg $(Build.ArtifactStagingDirectory)\x64
+
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline x64 NuGet Artifact'
+        inputs:
+          artifactName: 'drop-winnuget-x64'
+          targetPath: '$(Build.ArtifactStagingDirectory)/x64'
+          
+  - job: OnnxRuntime_SnpeNuget_Win_Arm64
+    timeoutInMinutes: 120
+
+    pool: 'Onnxruntime-SNPE-Windows-2022-CPU'
+    variables:
+      MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
+      OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      buildArch: x64
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+
+    steps:
+      - template: templates/set-version-number-variables-step.yml
+
+      - task: NuGetAuthenticate@0
+        inputs:
+          forceReinstallCredentialProvider: true  
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.8'
+          addToPath: true
+
+      - task: PythonScript@0
+        displayName: 'Generate CMake Configuration for arm64'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: '--update --disable_ml_ops --build_dir $(Build.BinariesDirectory)\Win_arm64 --skip_submodule_sync --skip_tests --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --arm64 --use_snpe --snpe_root=${{parameters.snpe_sdk_path_win}}'
+
+      - task: VSBuild@1
+        displayName: 'Build onnxruntime arm64'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\onnxruntime.vcxproj'
+          platform: ARM64
+          configuration: ${{ parameters.build_config }}
+          msbuildArchitecture: ARM64
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}'
+          createLogFile: true
+
+      - task: VSBuild@1
+        displayName: 'Build onnx_test_runner arm64'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\onnx_test_runner.vcxproj'
+          platform: ARM64
+          configuration: ${{ parameters.build_config }}
+          msbuildArchitecture: ARM64
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}'
+          createLogFile: true
+
+      - task: VSBuild@1
+        displayName: 'Build onnxruntime_perf_test arm64'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\onnxruntime_perf_test.vcxproj'
+          platform: ARM64
+          configuration: ${{ parameters.build_config }}
+          msbuildArchitecture: ARM64
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}'
+          createLogFile: true
+
+      - template: templates/win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }}'
+          DisplayName: 'ESRP - Sign dlls'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
+      - task: CmdLine@2
+        displayName: 'Generating nuspec for the native Nuget package arm64'
+        inputs:
+          script: |
+            copy $(Build.SourcesDirectory)\LICENSE $(Build.SourcesDirectory)\LICENSE.txt
+            python "$(Build.SourcesDirectory)\tools\nuget\generate_nuspec_for_native_nuget.py" --package_version ${{ parameters.ort_package_version }} --package_name Microsoft.ML.OnnxRuntime.Snpe --target_architecture arm64 --build_config ${{ parameters.build_config }} --native_build_path=$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }} --packages_path $(Build.BinariesDirectory)\Win_arm64\packages --ort_build_path $(Build.BinariesDirectory)\Win_arm64 --sources_path $(Build.SourcesDirectory) --commit_id $(OnnxRuntimeGitCommitHash) --is_release_build ${{ parameters.IsReleaseBuild }} --sdk_info ${{ parameters.snpe_sdk_info }}
+            cd $(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }}
+            nuget pack NativeNuget.nuspec
+            mkdir $(Build.ArtifactStagingDirectory)\arm64
+            copy $(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }}\*.nupkg $(Build.ArtifactStagingDirectory)\arm64
+
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline arm64 NuGet Artifact'
+        inputs:
+          artifactName: 'drop-winnuget-arm64'
+          targetPath: '$(Build.ArtifactStagingDirectory)/arm64'
+          
+  - job: NuGet_Packaging_Snpe
+    workspace:
+      clean: all
+    pool: 'Onnxruntime-SNPE-Windows-2022-CPU'
+    dependsOn:
+    - OnnxRuntime_SnpeNuget_Win_x64
+    - OnnxRuntime_SnpeNuget_Win_Arm64
+    condition: succeeded()
+    steps:
+
+      - task: DownloadPipelineArtifact@0
+        displayName: 'Download Pipeline Artifact - Snpe NuGet x64'
+        inputs:
+          artifactName: 'drop-winnuget-x64'
+          targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
+          
+      - task: DownloadPipelineArtifact@0
+        displayName: 'Download Pipeline Artifact - Snpe NuGet arm64'
+        inputs:
+          artifactName: 'drop-winnuget-arm64'
+          targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
+      
+      - task: PowerShell@2
+        displayName: 'Bundle NuGet'
+        inputs:
+          targetType: 'inline'
+          script: |
+            Add-Type -AssemblyName "System.IO.Compression.FileSystem"
+
+            $nupkgs = (Get-ChildItem $(Build.BinariesDirectory)/nuget-artifact-x64 -Filter Microsoft.ML.OnnxRuntime.Snpe*.nupkg -Recurse)
+            $x64_nuget_package_name = $nupkgs[0].Name
+            $x64_nuget_package = $nupkgs[0].FullName
+            $x64_nupkg_unzipped_directory_root = $nupkgs[0].Directory.FullName
+            $x64_nupkg_unzipped_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, 'binaries', [System.IO.Path]::GetFileNameWithoutExtension($x64_nuget_package))
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($x64_nuget_package, $x64_nupkg_unzipped_directory)
+
+            $nupkgs = (Get-ChildItem $(Build.BinariesDirectory)/nuget-artifact-arm64 -Filter Microsoft.ML.OnnxRuntime.Snpe*.nupkg -Recurse)
+            $arm64_nuget_package = $nupkgs[0].FullName
+            $arm64_nupkg_unzipped_directory_root = $nupkgs[0].Directory.FullName
+            $arm64_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory_root, 'binaries', [System.IO.Path]::GetFileNameWithoutExtension($arm64_nuget_package))
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($arm64_nuget_package, $arm64_nupkg_unzipped_directory)
+
+            $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native')
+            $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native')
+
+            New-Item -Path $arm64_runtime_path_new -ItemType Directory
+
+            Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.dll'))                  $arm64_runtime_path_new
+            Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.lib'))                  $arm64_runtime_path_new
+            Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnx_test_runner.exe'))             $arm64_runtime_path_new
+            Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime_perf_test.exe'))        $arm64_runtime_path_new
+
+            $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'merged')
+            if (!(Test-Path $merged_nuget_path)) {
+                New-Item -Path $merged_nuget_path -ItemType Directory
+            }
+
+            $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
+
+            $zip_tool_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, 'ziptool')
+            if (!(Test-Path $zip_tool_directory)) {
+                New-Item -Path $zip_tool_directory -ItemType Directory
+            }
+
+            $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
+
+            Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
+            Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
+          workingDirectory: $(Build.BinariesDirectory)
+
+      - template: templates/esrp_nuget.yml
+        parameters:
+          DisplayName: 'ESRP - sign NuGet package'
+          FolderPath: '$(Build.ArtifactStagingDirectory)/merged'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline NuGet Artifact'
+        inputs:
+          artifactName: 'drop-winnuget'
+          targetPath: '$(Build.ArtifactStagingDirectory)/merged'
+

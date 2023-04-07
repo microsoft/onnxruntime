@@ -21,13 +21,18 @@ namespace EinsumOp {
 // Holds CUDA assets required for CUDA ops that need to be executed as part of the Einsum flow
 struct EinsumCudaAssets {
   explicit EinsumCudaAssets(cublasHandle_t cublas_handle,
-                            CUDAExecutionProvider* cuda_ep) {
-    cublas_handle_ = cublas_handle;
-    cuda_ep_ = cuda_ep;
+                            const CUDAExecutionProvider* cuda_ep,
+                            Stream* ort_stream) : cublas_handle_(cublas_handle),
+                                                  cuda_ep_(cuda_ep),
+                                                  ort_stream_(ort_stream) {}
+
+  cudaStream_t GetCudaStream() {
+    return ort_stream_ ? static_cast<cudaStream_t>(ort_stream_->GetHandle()) : nullptr;
   }
 
   cublasHandle_t cublas_handle_;
-  CUDAExecutionProvider* cuda_ep_;
+  const CUDAExecutionProvider* cuda_ep_;
+  Stream* ort_stream_;
 };
 
 namespace DeviceHelpers {
@@ -35,7 +40,7 @@ namespace DeviceHelpers {
 // These are CUDA EP specific device helper implementations
 namespace CudaDeviceHelpers {
 
-Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
+Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets);
 
 Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);
@@ -47,7 +52,7 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               void* einsum_cuda_assets);
 
 template <typename T>
-std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> reduce_axes,
                                   bool keep_dims, AllocatorPtr allocator,
                                   const TensorShape* input_shape_override,
                                   concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets);

@@ -4,7 +4,7 @@
 #include "core/providers/cpu/ml/array_feature_extractor.h"
 
 /**
-https://github.com/onnx/onnx/blob/master/onnx/defs/traditionalml/defs.cc
+https://github.com/onnx/onnx/blob/main/onnx/defs/traditionalml/defs.cc
 ONNX_OPERATOR_SCHEMA(ArrayFeatureExtractor)
     .SetDomain("ai.onnx.ml")
     .SetDoc(R"DOC(
@@ -54,7 +54,7 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
   const Tensor& X = *context->Input<Tensor>(0);
   const TensorShape& x_shape = X.Shape();
   const size_t x_num_dims = x_shape.NumDimensions();
-  const T* x_data = X.template Data<T>();
+  const T* x_data = X.Data<T>();
 
   if (x_num_dims == 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid argument: X input has empty dimensions.");
@@ -64,7 +64,7 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
 
   const Tensor& Y = *context->Input<Tensor>(1);
   const TensorShape& y_shape = Y.Shape();
-  const auto* y_data = Y.template Data<int64_t>();
+  const auto* y_data = Y.Data<int64_t>();
   const int64_t num_indices = y_shape.Size();
 
   // validate Y
@@ -90,7 +90,7 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
     return shape;
   }();
   Tensor* Z = context->Output(0, z_shape);
-  T* z_data = Z->template MutableData<T>();
+  T* z_data = Z->MutableData<T>();
 
   const int64_t x_size_until_last_dim = x_shape.SizeToDimension(x_num_dims - 1);
   for (int64_t i = 0; i < x_size_until_last_dim; ++i) {

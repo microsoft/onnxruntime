@@ -13,7 +13,7 @@ Rewrite graph fusing attention subgraph to a single Attention node.
 */
 class AttentionFusion : public GraphTransformer {
  public:
-  AttentionFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  AttentionFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("AttentionFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

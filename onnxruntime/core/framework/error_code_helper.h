@@ -8,7 +8,11 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
+// Convert onnxruntime::common::Status to OrtStatus*.
 _Ret_notnull_ OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);
+
+// Convert OrtStatus* to onnxruntime::common::Status.
+Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category = common::StatusCategory::ONNXRUNTIME);
 };
 
 #ifndef ORT_NO_EXCEPTIONS
@@ -20,7 +24,11 @@ _Ret_notnull_ OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);
   }                                                                 \
   catch (const std::exception& ex) {                                \
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
+  }                                                                 \
+  catch (...) {                                                     \
+    return OrtApis::CreateStatus(ORT_FAIL, "Unknown Exception");    \
   }
+
 #else
 #define API_IMPL_BEGIN {
 #define API_IMPL_END }

@@ -9,6 +9,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 namespace ml {  // name space for onnx.ml operators
@@ -19,14 +20,14 @@ enum class OUTPUT_MODE {
   ALL_SCORES
 };
 
-enum class NODE_MODE {
-  BRANCH_LEQ,
-  BRANCH_LT,
-  BRANCH_GTE,
-  BRANCH_GT,
-  BRANCH_EQ,
-  BRANCH_NEQ,
-  LEAF
+enum NODE_MODE : uint8_t {
+  LEAF = 1,
+  BRANCH_LEQ = 2,
+  BRANCH_LT = 4,
+  BRANCH_GTE = 6,
+  BRANCH_GT = 8,
+  BRANCH_EQ = 10,
+  BRANCH_NEQ = 12
 };
 
 static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
@@ -188,38 +189,40 @@ static inline float ErfInv(float x) {
 static inline void multiclass_probability(int64_t classcount,
                                           const gsl::span<const float>& r,
                                           const gsl::span<float>& p) {
-  int64_t sized2 = classcount * classcount;
+  auto safe_int_classcount = SafeInt<size_t>(classcount);
+  size_t sized2 = safe_int_classcount * classcount;
   std::vector<float> Q;
   std::vector<float> Qp;
   Q.assign(sized2, 0.f);
-  Qp.assign(classcount, 0.f);
+  Qp.assign(safe_int_classcount, 0.f);
 
   float eps = 0.005f / static_cast<float>(classcount);
-  for (int64_t i = 0; i < classcount; i++) {
-    p[i] = 1.0f / static_cast<float>(classcount);  // Valid if k = 1
-    for (int64_t j = 0; j < i; j++) {
-      Q[i * classcount + i] += r[j * classcount + i] * r[j * classcount + i];
-      Q[i * classcount + j] = Q[j * classcount + i];
+
+  for (size_t i = 0; i < safe_int_classcount; i++) {
+    p[i] = 1.0f / onnxruntime::narrow<float>(classcount);  // Valid if k = 1
+    for (size_t j = 0; j < i; j++) {
+      Q[i * safe_int_classcount + i] += r[j * safe_int_classcount + i] * r[j * safe_int_classcount + i];
+      Q[i * safe_int_classcount + j] = Q[j * safe_int_classcount + i];
     }
-    for (int64_t j = i + 1; j < classcount; j++) {
-      Q[i * classcount + i] += r[j * classcount + i] * r[j * classcount + i];
-      Q[i * classcount + j] = -r[j * classcount + i] * r[i * classcount + j];
+    for (size_t j = i + 1; j < safe_int_classcount; j++) {
+      Q[i * safe_int_classcount + i] += r[j * safe_int_classcount + i] * r[j * safe_int_classcount + i];
+      Q[i * safe_int_classcount + j] = -r[j * safe_int_classcount + i] * r[i * safe_int_classcount + j];
     }
   }
 
-  for (int64_t loop = 0; loop < 100; loop++) {
+  for (size_t loop = 0; loop < 100; loop++) {
     // stopping condition, recalculate QP,pQP for numerical accuracy
     float pQp = 0;
-    for (int64_t i = 0; i < classcount; i++) {
+    for (size_t i = 0; i < safe_int_classcount; i++) {
       Qp[i] = 0;
-      for (int64_t j = 0; j < classcount; j++) {
-        Qp[i] += Q[i * classcount + j] * p[j];
+      for (size_t j = 0; j < safe_int_classcount; j++) {
+        Qp[i] += Q[i * safe_int_classcount + j] * p[j];
       }
       pQp += p[i] * Qp[i];
     }
 
     float max_error = 0;
-    for (int64_t i = 0; i < classcount; i++) {
+    for (size_t i = 0; i < safe_int_classcount; i++) {
       float error = std::fabs(Qp[i] - pQp);
       if (error > max_error) {
         max_error = error;
@@ -229,19 +232,19 @@ static inline void multiclass_probability(int64_t classcount,
     if (max_error < eps)
       break;
 
-    for (int64_t i = 0; i < classcount; i++) {
-      float diff = (-Qp[i] + pQp) / Q[i * classcount + i];
+    for (size_t i = 0; i < safe_int_classcount; i++) {
+      float diff = (-Qp[i] + pQp) / Q[i * safe_int_classcount + i];
       p[i] += diff;
-      pQp = (pQp + diff * (diff * Q[i * classcount + i] + 2 * Qp[i])) / (1 + diff) / (1 + diff);
-      for (int64_t j = 0; j < classcount; j++) {
-        Qp[j] = (Qp[j] + diff * Q[i * classcount + j]) / (1 + diff);
+      pQp = (pQp + diff * (diff * Q[i * safe_int_classcount + i] + 2 * Qp[i])) / (1 + diff) / (1 + diff);
+      for (size_t j = 0; j < safe_int_classcount; j++) {
+        Qp[j] = (Qp[j] + diff * Q[i * safe_int_classcount + j]) / (1 + diff);
         p[j] /= (1 + diff);
       }
     }
   }
 }
 
-static const float ml_sqrt2 = 1.41421356f;
+static constexpr float ml_sqrt2 = 1.41421356f;
 
 static inline float ComputeLogistic(float val) {
   float v = 1 / (1 + std::exp(-std::abs(val)));
@@ -258,12 +261,12 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
 }
 
 template <typename T>
-static inline void ComputeSoftmax(const gsl::span<T>& values) {
+static inline void ComputeSoftmax(gsl::span<T>& values) {
   // TODO: Replace this with usage of code in Softmax operator
 
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+  for (auto it = values.begin(); it != values.end(); ++it) {
     if (static_cast<float>(*it) > v_max)
       v_max = static_cast<float>(*it);
   }
@@ -276,18 +279,12 @@ static inline void ComputeSoftmax(const gsl::span<T>& values) {
     *it = static_cast<float>(*it) / this_sum;
 }
 
-template <typename T>
-static inline void ComputeSoftmax(std::vector<T>& values) {
-  auto span = gsl::make_span(values);
-  ComputeSoftmax(span);
-}
-
 //this function skips zero values (since exp(0) is non zero)
 template <typename T>
-static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
+static inline void ComputeSoftmaxZero(gsl::span<T>& values) {
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+  for (auto it = values.begin(); it != values.end(); ++it) {
     if (static_cast<float>(*it) > v_max)
       v_max = static_cast<float>(*it);
   }
@@ -298,21 +295,15 @@ static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
       *it = std::exp(static_cast<float>(*it) - v_max);
       this_sum += static_cast<float>(*it);
     } else {
-      *it = static_cast<float>(*it) * exp_neg_v_max;
+      *it = *it * exp_neg_v_max;
     }
   }
   for (auto it = values.begin(); it != values.end(); ++it)
     *it = *it / this_sum;
 }
 
-template <typename T>
-static inline void ComputeSoftmaxZero(std::vector<T>& values) {
-  auto span = gsl::make_span(values);
-  ComputeSoftmaxZero(span);
-}
-
 template <typename T, typename IT>
-static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
+static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
                          T* Z, int add_second_class) {
   if (scores.size() >= 2) {
     switch (post_transform) {
@@ -324,16 +315,20 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
         for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
           *Z = static_cast<T>(ComputeLogistic(static_cast<float>(*it)));
         break;
-      case POST_EVAL_TRANSFORM::SOFTMAX:
-        ComputeSoftmax(scores);
+      case POST_EVAL_TRANSFORM::SOFTMAX: {
+        auto span = gsl::make_span(scores);
+        ComputeSoftmax(span);
         for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
           *Z = static_cast<T>(*it);
         break;
-      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
-        ComputeSoftmaxZero(scores);
+      }
+      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO: {
+        auto span = gsl::make_span(scores);
+        ComputeSoftmaxZero(span);
         for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
           *Z = static_cast<T>(*it);
         break;
+      }
       default:
       case POST_EVAL_TRANSFORM::NONE:
         for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
@@ -342,21 +337,21 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
     }
   } else if (scores.size() == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-      scores[0] = static_cast<T>(ComputeProbit(static_cast<float>(scores[0])));
-      *Z = scores[0];
+      scores[0] = ComputeProbit(static_cast<float>(scores[0]));
+      *Z = static_cast<T>(scores[0]);
     } else {
       switch (add_second_class) {
         case 0:  //0=all positive weights, winning class is positive
           scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
-          *Z = scores[0];
-          *(Z + 1) = scores[1];
+          scores[0] = 1 - scores[0];  //put opposite score in positive slot
+          *Z = static_cast<T>(scores[0]);
+          *(Z + 1) = static_cast<T>(scores[1]);
           break;
         case 1:  //1 = all positive weights, winning class is negative
           scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
-          *Z = scores[0];
-          *(Z + 1) = scores[1];
+          scores[0] = 1 - scores[0];  //put opposite score in positive slot
+          *Z = static_cast<T>(scores[0]);
+          *(Z + 1) = static_cast<T>(scores[1]);
           break;
         case 2:
         case 3:  //2 = mixed weights, winning class is positive
@@ -368,11 +363,11 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
             scores.push_back(scores[0]);
             scores[0] = -scores[0];
           }
-          *Z = scores[0];
-          *(Z + 1) = scores[1];
+          *Z = static_cast<T>(scores[0]);
+          *(Z + 1) = static_cast<T>(scores[1]);
           break;
         default:
-          *Z = scores[0];
+          *Z = static_cast<T>(scores[0]);
           break;
       }
     }
@@ -380,9 +375,9 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
 }
 
 template <typename T>
-static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
+static void write_scores(InlinedVector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
                          int add_second_class) {
-  T* out_p = Z->template MutableData<T>() + write_index;
+  T* out_p = Z->MutableData<T>() + write_index;
   size_t len;
   if (!IAllocator::CalcMemSizeForArray(scores.size(), sizeof(T), &len)) {
     ORT_THROW("length overflow");
@@ -446,7 +441,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         }
 
         if (use_mlas) {
-          MlasComputeSoftmax(s, s, num_batches, batch_size, false, threadpool);
+          MlasComputeSoftmax(s, s, num_batches, onnxruntime::narrow<size_t>(batch_size), false, threadpool);
         } else {
           while (s < s_end) {
             gsl::span<float> scores_for_batch(s, s + batch_size);
@@ -519,7 +514,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
       } else {
         // reverse iteration as the scores are packed together and each score needs to be expanded to two
         const float* cur_in = s_end;
-        float* cur_out = &*scores.end();
+        float* cur_out = scores.data() + scores.size();
         while (cur_in > s) {
           --cur_in;
           cur_out -= 2;

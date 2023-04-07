@@ -4,6 +4,8 @@
 #include "orttraining/core/agent/training_agent.h"
 #include "core/framework/utils.h"
 #include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/partial_graph_execution_state.h"
+#include "core/framework/stream_execution_context.h"
 
 namespace onnxruntime {
 namespace training {
@@ -12,17 +14,19 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
                              const std::vector<std::string>& fw_feed_names,
                              const std::vector<OrtDevice>& fw_outputs_device_info,
                              const std::vector<std::string>& bw_fetches_names,
-                             const std::vector<OrtDevice>& bw_outputs_device_info) : inference_session_(session) {
+                             const std::vector<OrtDevice>& bw_outputs_device_info,
+                             int local_rank) : inference_session_(session) {
+  ORT_UNUSED_PARAMETER(local_rank);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  inference_session_.GetMemoryProfiler().GetMemoryInfo().SetLocalRank(local_rank);
+#endif
   auto& session_state = session.GetSessionState();
   std::vector<std::string> fw_fetches_names;
   std::vector<std::string> bw_feed_names;
 
   size_t break_point = 0;
-  const SequentialExecutionPlan& seq_exec_plan = *(session_state.GetExecutionPlan());
-  const auto& exec_plan_vec = seq_exec_plan.execution_plan;
-  for (size_t program_counter = 0; program_counter < exec_plan_vec.size(); program_counter += 1) {
-    const auto& node_exec_plan = exec_plan_vec[program_counter];
-    auto node_index = node_exec_plan.node_index;
+  auto& training_node_execution_order = session_state.GetGraphViewer().GetNodesInTopologicalOrder(session.GetSessionOptions().execution_order);
+  for (auto node_index : training_node_execution_order) {
     if (session_state.GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
       auto& node = *(session_state.GetGraphViewer().GetGraph().GetNode(node_index));
       for (const auto& node_arg : node.InputDefs()) {
@@ -38,7 +42,7 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
   }
 
   fw_program_counter_end_ = break_point;
-  bw_program_counter_end_ = exec_plan_vec.size();
+  bw_program_counter_end_ = training_node_execution_order.size();
 
   CreateAndInitializeFeedsFetchesManager(session_state, fw_feed_names, fw_fetches_names, fw_outputs_device_info,
                                          fw_feeds_fetches_manager_);
@@ -51,25 +55,34 @@ TrainingAgent::~TrainingAgent() = default;
 
 common::Status TrainingAgent::RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                          PartialGraphExecutionState& state, const OrtValueCachePtr& cache) {
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  inference_session_.GetMemoryProfiler().GetMemoryInfo().SetIteration(profile_step_);
+  profile_step_ += 1;
+#endif
+
   state.SetProgramCounterStart(0);
   state.SetProgramCounterEnd(fw_program_counter_end_);
-  return RunCore(feeds, fetches, state, *fw_feeds_fetches_manager_, cache);
+
+  constexpr int32_t partial_graph_index = 0;
+  return RunCore(feeds, fetches, state, *fw_feeds_fetches_manager_, cache, partial_graph_index);
 }
 
 common::Status TrainingAgent::RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                           PartialGraphExecutionState& state) {
   state.SetProgramCounterStart(fw_program_counter_end_);
   state.SetProgramCounterEnd(bw_program_counter_end_);
-  return RunCore(feeds, fetches, state, *bw_feeds_fetches_manager_, nullptr);
+  constexpr int32_t partial_graph_index = 1;
+  return RunCore(feeds, fetches, state, *bw_feeds_fetches_manager_, nullptr, partial_graph_index);
 }
 
 common::Status TrainingAgent::RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                       PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
-                                      const OrtValueCachePtr& cache) {
+                                      const OrtValueCachePtr& cache, int32_t partial_graph_index) {
   auto fetches_size = feeds_fetches_manager.GetFeedsFetchesInfo().output_names.size();
   fetches.resize(fetches_size, {});
   RunOptions run_options;
-  return inference_session_.PartialRun(run_options, feeds, fetches, state, feeds_fetches_manager, cache);
+  return inference_session_.PartialRun(run_options, feeds, fetches, state, feeds_fetches_manager, cache,
+                                       partial_graph_index);
 }
 
 void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& session_state,

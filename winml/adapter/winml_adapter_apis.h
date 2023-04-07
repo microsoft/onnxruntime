@@ -10,6 +10,7 @@ namespace AI {
 namespace MachineLearning {
 namespace Adapter {
 
+ORT_API(void, ReleaseThreadPool, OrtThreadPool*);
 ORT_API(void, ReleaseModel, OrtModel*);
 ORT_API(void, ReleaseExecutionProvider, OrtExecutionProvider*);
 
@@ -20,10 +21,11 @@ ORT_API_STATUS(EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLogging
 
 // OrtModel methods
 ORT_API_STATUS(CreateModelFromPath, _In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out);
-ORT_API_STATUS(CreateModelFromData, _In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out);
+ORT_API_STATUS(CreateModelFromData, _In_opt_ void* data, _In_ size_t size, _Outptr_ OrtModel** out);
 ORT_API_STATUS(CloneModel, _In_ const OrtModel* in, _Outptr_ OrtModel** out);
 ORT_API_STATUS(ModelGetAuthor, _In_ const OrtModel* model, _Out_ const char** const author, _Out_ size_t* len);
 ORT_API_STATUS(ModelGetName, _In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len);
+ORT_API_STATUS(ModelSetName, _In_ const OrtModel* model, _In_ const char* name);
 ORT_API_STATUS(ModelGetDomain, _In_ const OrtModel* model, _Out_ const char** const domain, _Out_ size_t* len);
 ORT_API_STATUS(ModelGetDescription, _In_ const OrtModel* model, _Out_ const char** const description, _Out_ size_t* len);
 ORT_API_STATUS(ModelGetVersion, _In_ const OrtModel* model, _Out_ int64_t* version);
@@ -43,7 +45,7 @@ ORT_API_STATUS(SaveModel, _In_ const OrtModel* in, _In_ const wchar_t* const fil
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options, _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* cmd_queue, bool metacommands_enabled);
 
 // OrtSession methods
-ORT_API_STATUS(CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session);
+ORT_API_STATUS(CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session);
 
 //Do not release provider... as there is no release method available
 ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, _In_ size_t index, _Out_ OrtExecutionProvider** provider);
@@ -63,16 +65,12 @@ ORT_API_STATUS(SessionGetNamedDimensionsOverrides, _In_ OrtSession* session, _Ou
 ORT_API_STATUS(DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled);
 ORT_API_STATUS(DmlExecutionProviderFlushContext, _In_ OrtExecutionProvider* dml_provider);
 ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecutionProvider* dml_provider);
-ORT_API_STATUS(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* pResource, _Out_ void** dml_resource);
-ORT_API_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource);
-ORT_API_STATUS(DmlFreeGPUAllocation, _In_ void* ptr);
 
 // note: this returns a weak ref
 
 ORT_API_STATUS(GetProviderMemoryInfo, _In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info);
 ORT_API_STATUS(GetProviderAllocator, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator);
 ORT_API_STATUS(FreeProviderAllocator, _In_ OrtAllocator* allocator);
-ORT_API_STATUS(GetValueMemoryInfo, const OrtValue* value, OrtMemoryInfo** memory_info);
 
 // ExecutionProvider Methods
 ORT_API_STATUS(ExecutionProviderSync, _In_ OrtExecutionProvider* provider);
@@ -90,7 +88,7 @@ ORT_API_STATUS(CreateModel, _In_ int64_t opset, _Outptr_ OrtModel** out);
 ORT_API_STATUS(ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info);
 ORT_API_STATUS(ModelAddConstantInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value);
 ORT_API_STATUS(ModelAddOutput, _In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info);
-ORT_API_STATUS(ModelAddOperator, 
+ORT_API_STATUS(ModelAddOperator,
     _In_ OrtModel* model,
     _In_ const char* const op_type,
     _In_ const char* const op_name,
@@ -105,7 +103,7 @@ ORT_API_STATUS(ModelGetOpsetVersion, _In_ OrtModel* model, _In_ const char* cons
 ORT_API_STATUS(OperatorGetNumInputs,
       _In_ const char* const op_type,
       _In_ int64_t opset,
-      _In_ const char* const op_domain, 
+      _In_ const char* const op_domain,
       _Out_ size_t* num_inputs);
 
 ORT_API_STATUS(OperatorGetInputName,
@@ -127,6 +125,20 @@ ORT_API_STATUS(OperatorGetOutputName,
                _In_ const char* const op_domain,
                _In_ size_t index,
                _Out_ const char** const name);
+
+ORT_API_STATUS(JoinModels,
+               _In_ OrtModel* first_model,
+               _In_ OrtModel* second_model,
+               _In_ const char* const* output_names,
+               _In_ const char* const* input_names,
+               size_t num_linkages,
+               bool promote_unlinked_outputs,
+               _In_ const char* const join_node_prefix);
+
+ORT_API_STATUS(CreateThreadPool,
+               _In_ ThreadPoolType type,
+               _In_ OrtThreadPoolOptions* params,
+               _Outptr_ OrtThreadPool** out);
 
 // maps and sequences???
 //ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second

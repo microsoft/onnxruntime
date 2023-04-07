@@ -5,8 +5,6 @@
 
 #include <optional>
 
-#include "safeint/SafeInt.hpp"
-
 #import "src/cxx_api.h"
 #import "src/error_utils.h"
 #import "src/ort_enums_internal.h"
@@ -16,7 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 namespace {
 
 ORTTensorTypeAndShapeInfo* CXXAPIToPublicTensorTypeAndShapeInfo(
-    const Ort::TensorTypeAndShapeInfo& CXXAPITensorTypeAndShapeInfo) {
+    const Ort::ConstTensorTypeAndShapeInfo& CXXAPITensorTypeAndShapeInfo) {
   auto* result = [[ORTTensorTypeAndShapeInfo alloc] init];
   const auto elementType = CXXAPITensorTypeAndShapeInfo.GetElementType();
   const std::vector<int64_t> shape = CXXAPITensorTypeAndShapeInfo.GetShape();
@@ -44,6 +42,12 @@ ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
   }
 
   return result;
+}
+
+// out = a * b
+// returns true iff the result does not overflow
+bool SafeMultiply(size_t a, size_t b, size_t& out) {
+  return !__builtin_mul_overflow(a, b, &out);
 }
 
 }  // namespace

@@ -27,7 +27,7 @@ function formatDesc(opType: string, range: [number, number], support: boolean, l
   let versionDesc = '';
   if (support) {
     versionDesc = last ? `${range[0]}+` : range[0] === range[1] ? `${range[0]}` : `${range[0]}-${range[1]}`;
-    versionDesc = `[${versionDesc}](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#${opType}-${range[0]})`;
+    versionDesc = `[${versionDesc}](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#${opType}-${range[0]})`;
   }
   return versionDesc;
 }
@@ -73,7 +73,7 @@ const opTypes = Array.from(onnxOpset.keys()).sort();
 
 const doc = fs.createWriteStream(path.join(__dirname, '../docs/operators.md'));
 doc.write(`## Operators Support Table${EOL}${EOL}`);
-doc.write(`The following table shows [ai.onnx](https://github.com/onnx/onnx/blob/master/docs/Operators.md)\
+doc.write(`The following table shows [ai.onnx](https://github.com/onnx/onnx/blob/main/docs/Operators.md)\
   operators from which onnx opset version are currently supported by ONNX Runtime Web. For example, \`4-6, 8+\` means\
   ONNX Runtime Web currently support opset version 4 to 6, 8 and above.${EOL}${EOL}`);
 doc.write(`See [Compatibility](../README.md#Compatibility) for a list of the supported platforms.${EOL}${EOL}`);
@@ -99,7 +99,7 @@ for (const type of opTypes) {
     webgl.push(formatDesc(type, versionRange, checkSupport(type, versionRange, webglCheckOnlyRules), last));
   }
 
-  doc.write(`| [${type}](https://github.com/onnx/onnx/blob/master/docs/Operators.md#${type}) | ${
+  doc.write(`| [${type}](https://github.com/onnx/onnx/blob/main/docs/Operators.md#${type}) | ${
       webgl.filter(d => d.length > 0).join(', ')} |${EOL}`);
 }
 doc.end();

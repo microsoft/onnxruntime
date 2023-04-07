@@ -5,7 +5,9 @@
 
 set -e
 set -x
-export PATH=/opt/python/cp37-cp37m/bin:$PATH
+export PATH=/opt/python/cp38-cp38/bin:$PATH
+
+BUILD_DIR=${1:?"usage: $0 <build directory>"}
 
 # Validate the operator kernel registrations, as the ORT model uses hashes of the kernel registration details
 # to find kernels. If the hashes from the registration details are incorrect we will produce a model that will break
@@ -15,26 +17,21 @@ python3 /onnxruntime_src/tools/ci_build/op_registration_validator.py
 # Run a full build of ORT.
 # We need the ORT python package to generate the ORT format files and the required ops config files.
 # We do not run tests in this command since those are covered by other CIs.
-# We run two full builds here. One for enabling nnapi and the other for enabling coreml.
+# Both the NNAPI and CoreML EPs are enabled.
 python3 /onnxruntime_src/tools/ci_build/build.py \
-    --build_dir /build --cmake_generator Ninja \
+    --build_dir ${BUILD_DIR} --cmake_generator Ninja \
     --config Debug \
     --skip_submodule_sync \
     --parallel \
     --build_wheel \
     --skip_tests \
     --enable_training_ops \
-    --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so \
-    --use_nnapi\
+    --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp38-cp38/include/python3.8 PYTHON_LIBRARY=/usr/lib64/librt.so \
+    --use_nnapi \
     --use_coreml
 
-# Run kernel def hash verification test
-pushd /build/Debug
-ORT_TEST_STRICT_KERNEL_DEF_HASH_CHECK=1 ./onnxruntime_test_all --gtest_filter="KernelDefHashTest.ExpectedCpuKernelDefHashes"
-popd
-
 # Install the ORT python wheel
-python3 -m pip install --user /build/Debug/dist/*
+python3 -m pip install --user ${BUILD_DIR}/Debug/dist/*
 
 # Convert all the E2E ONNX models to ORT format
 python3 /onnxruntime_src/tools/python/convert_onnx_models_to_ort.py \
@@ -58,13 +55,17 @@ python3 /onnxruntime_src/tools/python/create_reduced_build_config.py --format OR
     /onnxruntime_src/onnxruntime/test/testdata \
     /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config
 
+# Append the info for ops involved from inside custom ops. These can't be read from the models as they're
+# dynamically created at runtime when the kernel is created.
+cat /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data/required_ops.standalone_invoker.config >> \
+    /home/onnxruntimedev/.test_data/required_ops.ort_models.config
+cat /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data/required_ops.standalone_invoker.config >> \
+    /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config
+
 # Test that we can convert an ONNX model with custom ops to ORT format
 mkdir /home/onnxruntimedev/.test_data/custom_ops_model
 cp /onnxruntime_src/onnxruntime/test/testdata/custom_op_library/*.onnx /home/onnxruntimedev/.test_data/custom_ops_model/
 python3 /onnxruntime_src/tools/python/convert_onnx_models_to_ort.py \
-    --custom_op_library /build/Debug/libcustom_op_library.so \
+    --custom_op_library ${BUILD_DIR}/Debug/libcustom_op_library.so \
     /home/onnxruntimedev/.test_data/custom_ops_model
 rm -rf /home/onnxruntimedev/.test_data/custom_ops_model
-
-# Clear the build
-rm -rf /build/Debug

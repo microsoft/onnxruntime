@@ -5,9 +5,11 @@
 """
 Implements ONNX's backend API.
 """
-from onnxruntime import RunOptions
+from typing import Any, Tuple  # noqa: F401
+
 from onnx.backend.base import BackendRep
-from typing import Any, Tuple
+
+from onnxruntime import RunOptions
 
 
 class OnnxRuntimeBackendRep(BackendRep):
@@ -46,6 +48,6 @@ class OnnxRuntimeBackendRep(BackendRep):
         else:
             inp = self._session.get_inputs()
             if len(inp) != 1:
-                raise RuntimeError("Model expect {0} inputs".format(len(inp)))
+                raise RuntimeError(f"Model expect {len(inp)} inputs")
             inps = {inp[0].name: inputs}
             return self._session.run(None, inps, options)

@@ -21,8 +21,9 @@ class OpKernelContextInternal : public OpKernelContext {
                                    IExecutionFrame& frame,
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
-                                   const bool& terminate_flag)
-      : OpKernelContext(&frame, &kernel, session_state.GetThreadPool(), logger),
+                                   const bool& terminate_flag,
+                                   Stream* stream)
+      : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger),
         session_state_(session_state),
         terminate_flag_(terminate_flag) {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
@@ -45,7 +46,7 @@ class OpKernelContextInternal : public OpKernelContext {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }
 
-  const OrtValue* GetInputMLValue(int index) const {
+  const OrtValue* GetInputMLValue(int index) const override {
     return OpKernelContext::GetInputMLValue(index);
   }
 
@@ -53,13 +54,13 @@ class OpKernelContextInternal : public OpKernelContext {
     return OpKernelContext::GetOutputMLValue(index);
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_ATEN
   Status SetOutputMLValue(int index, const OrtValue& ort_value) {
     return OpKernelContext::SetOutputMLValue(index, ort_value);
   }
 #endif
 
-  OrtValue* OutputMLValue(int index, const TensorShape& shape) {
+  OrtValue* OutputMLValue(int index, const TensorShape& shape) override {
     return OpKernelContext::OutputMLValue(index, shape);
   }
 

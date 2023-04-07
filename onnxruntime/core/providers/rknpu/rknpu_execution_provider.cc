@@ -65,7 +65,7 @@ std::vector<std::vector<int>> RknpuExecutionProvider::GetSupportedNodes(
 
 std::vector<std::unique_ptr<ComputeCapability>>
 RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                      const IKernelLookup& /*kernel_lookup*/) const {
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
@@ -256,30 +256,24 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
-common::Status RknpuExecutionProvider::Compile(
-    const std::vector<onnxruntime::Node*>& fused_nodes,
-    std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto* fused_node : fused_nodes) {
-    // Reconstruct graph proto from fused node's function body
-    const auto* func_body = fused_node->GetFunctionBody();
-    if (!func_body) {
-      return common::Status(common::ONNXRUNTIME,
-                            common::INVALID_ARGUMENT, "Function body is empty");
-    }
-    const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(),
+common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (const auto& fused_node_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
+    onnxruntime::Model model(graph_body_viewer.Name(), true, ModelMetaData(),
                              PathString(),
                              IOnnxRuntimeOpSchemaRegistryList(),
-                             graph_body.DomainToVersionMap(),
+                             graph_body_viewer.DomainToVersionMap(),
                              std::vector<ONNX_NAMESPACE::FunctionProto>(),
                              *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
+    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
     // Build map from input name to its index in input definitions
     std::unordered_map<std::string, int> input_map;
-    const auto& input_defs = fused_node->InputDefs();
+    const auto& input_defs = fused_node.InputDefs();
     input_map.reserve(input_defs.size());
     for (int i = 0, end = input_defs.size(); i < end; ++i) {
       input_map[input_defs[i]->Name()] = i;
@@ -287,15 +281,15 @@ common::Status RknpuExecutionProvider::Compile(
 
     // Build map from output name to its index in output definitions
     std::unordered_map<std::string, int> output_map;
-    const auto& output_defs = fused_node->OutputDefs();
+    const auto& output_defs = fused_node.OutputDefs();
     output_map.reserve(output_defs.size());
     for (int i = 0, end = output_defs.size(); i < end; ++i) {
       output_map[output_defs[i]->Name()] = i;
     }
 
-    model_proto_[fused_node->Name()] = model_proto;
-    input_info_[fused_node->Name()] = input_map;
-    output_info_[fused_node->Name()] = output_map;
+    model_proto_[fused_node.Name()] = model_proto;
+    input_info_[fused_node.Name()] = input_map;
+    output_info_[fused_node.Name()] = output_map;
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [&](ComputeContext* context,
@@ -321,20 +315,20 @@ common::Status RknpuExecutionProvider::Compile(
     };
 
     compute_info.compute_func = [](FunctionState state,
-                                   const OrtCustomOpApi* api,
+                                   const OrtApi* /*api*/,
                                    OrtKernelContext* context) {
-      Ort::CustomOpApi ort{*api};
+
+      Ort::KernelContext ctx(context);
       RknpuFuncState* rk_state = reinterpret_cast<RknpuFuncState*>(state);
-      const size_t n_inputs = ort.KernelContext_GetInputCount(context);
-      const size_t n_outputs = ort.KernelContext_GetOutputCount(context);
+      const size_t n_inputs = ctx.GetInputCount();
+      const size_t n_outputs = ctx.GetOutputCount();
 
       std::string input_shape;
       input_shape.reserve(4 * sizeof(int64_t) * n_inputs + n_inputs);
       for (size_t i = 0; i < n_inputs; i++) {
-        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
-        auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-        auto tensor_shape = ort.GetTensorShape(tensor_info);
-        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+        auto input_tensor = ctx.GetInput(i);
+        auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+        auto tensor_shape = input_tensor.GetTensorTypeAndShapeInfo().GetShape();
 
         const auto ndim = tensor_shape.size();
         input_shape.append(reinterpret_cast<const char*>(&ndim), sizeof(ndim));
@@ -347,12 +341,10 @@ common::Status RknpuExecutionProvider::Compile(
       if (rk_state->uniq_input_shape == "") {
         auto graph_proto = rk_state->model_proto.mutable_graph();
         for (size_t i = 0; i < n_inputs; i++) {
-          const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+          auto input_tensor = ctx.GetInput(i);
           input_bufs[i] = const_cast<const void*>(
-              ort.GetTensorData<void>(input_tensor));
-          auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-          auto tensor_shape = ort.GetTensorShape(tensor_info);
-          ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+              input_tensor.GetTensorRawData());
+          auto tensor_shape = input_tensor.GetTensorTypeAndShapeInfo().GetShape();
 
           auto g_in_shape =
               graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
@@ -418,13 +410,12 @@ common::Status RknpuExecutionProvider::Compile(
       std::vector<rk::nn::InputInfo> inputs;
       inputs.resize(graph->GetInputs().size());
       for (size_t i = 0; i < graph->GetInputs().size(); i++) {
-        const OrtValue* input_tensor =
-            ort.KernelContext_GetInput(context, rk_state->input_indexes[i]);
+        auto input_tensor =
+            ctx.GetInput(rk_state->input_indexes[i]);
         float* input_buf =
-            const_cast<float*>(ort.GetTensorData<float>(input_tensor));
+            const_cast<float*>(input_tensor.GetTensorData<float>());
 
-        const auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-        const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+        const auto input_element_count = input_tensor.GetTensorTypeAndShapeInfo().GetElementCount();
 
         auto type = graph->GetInputs()[i]->GetPrecision();
         size_t type_size = 4;
@@ -450,10 +441,7 @@ common::Status RknpuExecutionProvider::Compile(
 
         inputs[i].index = i;
         inputs[i].buf = (void*)input_buf;
-        inputs[i].size = std::accumulate(tensor_shape.begin(),
-                                         tensor_shape.end(), 1,
-                                         std::multiplies<int64_t>()) *
-                         type_size;
+        inputs[i].size = input_element_count * type_size;
         inputs[i].pass_through = false;
         inputs[i].type = type;
         inputs[i].layout = rk::nn::DataLayoutType::NCHW;
@@ -466,12 +454,11 @@ common::Status RknpuExecutionProvider::Compile(
         const auto output_shape = output->GetDims();
         std::vector<int64_t>
             int64_output_shape(output_shape.begin(), output_shape.end());
-        const auto* output_tensor = ort.KernelContext_GetOutput(
-            context, rk_state->output_indexes[i],
+        const auto* output_tensor = ctx.GetOutput(
+            rk_state->output_indexes[i],
             int64_output_shape.data(),
             int64_output_shape.size());
-        float* output_buf =
-            const_cast<float*>(ort.GetTensorData<float>(output_tensor));
+        float* output_buf = output_tensor.GetTensorMutableData<float>();
 
         const auto type = output->GetPrecision();
         size_t type_size = 4;

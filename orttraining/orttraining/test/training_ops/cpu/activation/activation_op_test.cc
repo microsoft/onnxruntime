@@ -61,9 +61,9 @@ float GeluGrad(float dy, float x) {
 }
 
 float GeluApproximationGrad(float dy, float x) {
-  static const float kAlpha = static_cast<float>(M_2_SQRTPI * M_SQRT1_2);
-  static const float kGamma = 0.044715f;
-  static const float kBeta = kAlpha * kGamma * 3.0f;
+  static constexpr float kAlpha = static_cast<float>(M_2_SQRTPI * M_SQRT1_2);
+  static constexpr float kGamma = 0.044715f;
+  static constexpr float kBeta = kAlpha * kGamma * 3.0f;
 
   float x_cube = x * x * x;
   float tanh_value = std::tanh(kAlpha * (x + kGamma * x_cube));
@@ -72,14 +72,23 @@ float GeluApproximationGrad(float dy, float x) {
   return result;
 }
 
-float ReluGrad(float dy, float x) {
+constexpr float ReluGrad(float dy, float x) {
   return x > 0 ? dy : 0;
 }
 
-float SigmoidGrad(float dy, float y) {
+constexpr float SigmoidGrad(float dy, float y) {
   return dy * y * (1 - y);
 }
 
+constexpr float TanhGrad(float dy, float y) {
+  return dy * (1 - y * y);
+}
+
+float QuickGeluGrad(float dy, float x, float alpha) {
+  float v = x * alpha;
+  float sigmoid = v >= 0 ? 1.f / (1.f + std::exp(-v)) : 1.f - 1.f / (1 + std::exp(v));
+  return dy * sigmoid * (1 + v * (1 - sigmoid));
+}
 }  // namespace
 
 TEST(GeluGradTest, Basic) {
@@ -180,6 +189,80 @@ TEST(SigmoidGradTest, Basic) {
       {}, 1, kMSDomain);
 }
 
+TEST(TanhGradTest, Basic) {
+  const std::vector<float> y_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+
+  TestElementwiseGradientOp(
+      "TanhGrad",
+      {{"dY", dY}, {"Y", y_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], y = params[1];
+
+        return TanhGrad(dy, y);
+      },
+      {}, 1, kMSDomain);
+}
+
+TEST(QuickGeluGradTest, Basic) {
+  const std::vector<float> x_vals = {-10.0f, -1.0f, 0.0f, 1.0f, 10.0f};
+  const std::vector<float> dY(5, 1.0f);
+
+  // Positive alpha.
+  {
+    constexpr float alpha = 1.702f;
+    TestElementwiseGradientOp(
+        "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+    // The ifdef is to suppress a warning: "lambda capture 'alpha' is not required to be captured for this use."
+    // But on Windows it is required.
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
+        [alpha](const std::vector<float>& params) {
+#endif
+          ORT_ENFORCE(params.size() == 2);
+          const auto dy = params[0], x = params[1];
+          return QuickGeluGrad(dy, x, alpha);
+        },
+        {{"alpha", alpha}}, 1, kMSDomain);
+  }
+
+  // Silu = x*sigmoid(x), i.e., alpha = 1.0f.
+  {
+    constexpr float alpha = 1.0f;
+    TestElementwiseGradientOp(
+        "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
+        [alpha](const std::vector<float>& params) {
+#endif
+          ORT_ENFORCE(params.size() == 2);
+          const auto dy = params[0], x = params[1];
+          return QuickGeluGrad(dy, x, alpha);
+        },
+        {{"alpha", alpha}}, 1, kMSDomain);
+  }
+
+  // Negative alpha.
+  {
+    constexpr float alpha = -1.702f;
+    TestElementwiseGradientOp(
+        "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
+        [alpha](const std::vector<float>& params) {
+#endif
+          ORT_ENFORCE(params.size() == 2);
+          const auto dy = params[0], x = params[1];
+          return QuickGeluGrad(dy, x, alpha);
+        },
+        {{"alpha", alpha}}, 1, kMSDomain);
+  }
+}
+
 namespace {
 template <typename TComputeGeluGradScalarFn>
 void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, const std::string& domain,
@@ -196,16 +279,16 @@ void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, con
   const std::vector<float> dY(input_size, 1.0f);
   const std::vector<float> B = ValueRange(bias_size, 1.0f);
 
-  test.AddInput<float>("dY", input_shape.GetDims(), dY);
-  test.AddInput<float>("X", input_shape.GetDims(), X);
-  test.AddInput<float>("B", bias_shape.GetDims(), B);
+  test.AddInput<float>("dY", input_shape.AsShapeVector(), dY);
+  test.AddInput<float>("X", input_shape.AsShapeVector(), X);
+  test.AddInput<float>("B", bias_shape.AsShapeVector(), B);
 
   std::vector<float> expected_dX{};
   for (int64_t i = 0; i < input_size; ++i) {
     expected_dX.push_back(compute_gelu_grad_scalar_fn(dY[i], X[i] + B[i % bias_size]));
   }
 
-  test.AddOutput("dX", input_shape.GetDims(), expected_dX);
+  test.AddOutput("dX", input_shape.AsShapeVector(), expected_dX);
 
   test.Run();
 }

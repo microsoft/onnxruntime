@@ -21,8 +21,9 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/session_options.h"
 #include "core/framework/TensorSeq.h"
+#include "core/providers/utils.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -114,12 +115,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                    Loop);
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
+                                   13, 15,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                                   Loop);
+
 ONNX_CPU_OPERATOR_KERNEL(Loop,
-                         13,
+                         16,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
                          Loop);
 
 Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
@@ -128,6 +137,13 @@ Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
   num_subgraph_inputs = 2 + num_loop_carried_vars;  // iter_num, cond, loop carried vars
   num_outputs = static_cast<int>(node.OutputDefs().size());
+
+  // Hold the type for loop carried dependencies - we will use it later
+  const auto& node_input_types = node.InputDefs();
+  loop_carried_vars_types.reserve(num_subgraph_inputs);
+  for (int i = 0; i < num_loop_carried_vars; ++i) {
+    loop_carried_vars_types.push_back(node_input_types[static_cast<size_t>(i) + 2]->TypeAsProto());
+  }
 
   auto& subgraph_inputs = subgraph.GetInputs();
   auto& subgraph_outputs = subgraph.GetOutputs();
@@ -164,8 +180,7 @@ class LoopImpl {
   LoopImpl(OpKernelContextInternal& context,
            const SessionState& session_state,
            const Loop::Info& info,
-           const Loop::ConcatOutput& concat_output_func,
-           void* stream);
+           const Loop::ConcatOutput& concat_output_func);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -198,7 +213,6 @@ class LoopImpl {
   std::vector<std::vector<OrtValue>> loop_output_tensors_;
 
   const Loop::ConcatOutput& concat_output_func_;
-  void* stream_;
 };
 
 static Status ConcatenateCpuOutput(void* /*stream*/,
@@ -242,13 +256,11 @@ void Loop::Init(const OpKernelInfo& info) {
   ORT_IGNORE_RETURN_VALUE(proto);
 
   concat_output_func_ = ConcatenateCpuOutput;
-  stream_ = nullptr;
 }
 
-std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* stream) {
+std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* /*stream*/) {
   auto result = std::make_unique<Loop>(info);
   result->SetConcatOutputFunc(concat_output_func);
-  result->SetComputeStream(stream);
   return result;
 }
 
@@ -264,7 +276,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   // the Loop inputs are matched to subgraph feeds based on order.
   // we first need the names of the Loop inputs to determine what device they are available on
   std::vector<std::string> feed_names;
-  feed_names.reserve(info_->num_subgraph_inputs + info_->num_implicit_inputs);
+  feed_names.reserve(static_cast<size_t>(info_->num_subgraph_inputs) + info_->num_implicit_inputs);
 
   // iter_num and cond subgraph inputs - created by the LoopImpl::Initialize so the name doesn't matter
   // as we skip them when we call FindDevicesForValues, and default them to always being on CPU.
@@ -275,7 +287,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   const auto& loop_inputs = node.InputDefs();
   for (int i = 0; i < info_->num_loop_carried_vars; ++i) {
     // + 2 to skip 'M' and 'cond' Loop inputs
-    feed_names.push_back(loop_inputs[i + 2]->Name());
+    feed_names.push_back(loop_inputs[static_cast<size_t>(i) + 2]->Name());
   }
 
   for (auto& entry : node.ImplicitInputDefs()) {
@@ -290,7 +302,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
 
   // now update the feed names to use the subgraph input names for the loop carried vars so that we can determine
   // what device the subgraph needs them on
-  for (int i = 0; i < info_->num_loop_carried_vars; ++i) {
+  for (ptrdiff_t i = 0; i < info_->num_loop_carried_vars; ++i) {
     // +2 for both to skip the iter_num and cond values
     feed_names[i + 2] = info_->subgraph_input_names[i + 2];
   }
@@ -307,13 +319,13 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   // 'cond' is first output and we need it to be on CPU so we can read the latest value
   const auto& cpu_allocator_info = session_state.GetExecutionProviders()
                                        .Get(onnxruntime::kCpuExecutionProvider)
-                                       ->GetAllocator(0, OrtMemTypeDefault)
+                                       ->GetAllocator(OrtMemTypeDefault)
                                        ->Info();
   fetch_locations.push_back(&cpu_allocator_info);
 
   // Loop state variables need to be where we can feed them in to the next iteration, so set the fetch location
   // to match the feed location.
-  for (int i = 0; i < info_->num_loop_carried_vars; ++i) {
+  for (ptrdiff_t i = 0; i < info_->num_loop_carried_vars; ++i) {
     // +2 for both to skip the iter_num and cond input values
     const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, loop_inputs[i + 2]->Name());
     fetch_locations.push_back(&alloc_info);
@@ -339,7 +351,7 @@ Status Loop::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
   ORT_ENFORCE(feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
-  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_, stream_};
+  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_};
 
   auto status = loop_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -352,14 +364,12 @@ Status Loop::Compute(OpKernelContext* ctx) const {
 LoopImpl::LoopImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
                    const Loop::Info& subgraph_info,
-                   const Loop::ConcatOutput& concat_output_func,
-                   void* stream)
+                   const Loop::ConcatOutput& concat_output_func)
     : context_(context),
       session_state_(session_state),
       info_(subgraph_info),
       implicit_inputs_(context_.GetImplicitInputs()),
-      concat_output_func_(concat_output_func),
-      stream_(stream) {
+      concat_output_func_(concat_output_func) {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
 
@@ -401,17 +411,17 @@ Status LoopImpl::Initialize() {
   // these need to be on CPU
   auto cpu_allocator = session_state_.GetExecutionProviders()
                            .Get(onnxruntime::kCpuExecutionProvider)
-                           ->GetAllocator(0, OrtMemTypeDefault);
-  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator, 0, iter_num_rank);
-  condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator, condition_, condition_rank);
+                           ->GetAllocator(OrtMemTypeDefault);
+  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator, 0, iter_num_rank != 0);
+  condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator, condition_, condition_rank != 0);
 
-  loop_output_tensors_.resize(info_.num_outputs - info_.num_loop_carried_vars);
+  loop_output_tensors_.resize(static_cast<size_t>(info_.num_outputs) - info_.num_loop_carried_vars);
 
   return status;
 }
 
 void LoopImpl::CreateInitialFeeds(std::vector<OrtValue>& feeds) {
-  feeds.reserve(info_.num_subgraph_inputs + info_.num_implicit_inputs);
+  feeds.reserve(static_cast<size_t>(info_.num_subgraph_inputs) + info_.num_implicit_inputs);
 
   // This ordering is the same as used in SetupSubgraphExecutionInfo
   feeds.push_back(iter_num_mlvalue_);
@@ -434,12 +444,12 @@ void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<OrtValue>& last_outpu
   // next_input: iter_num, cond, loop_vars. iter_num is re-used
 
   // simple copy for cond and loop carried vars. start at 1 to skip iter_num in input
-  for (int i = 1; i < info_.num_subgraph_inputs; ++i) {
+  for (ptrdiff_t i = 1; i < info_.num_subgraph_inputs; ++i) {
     next_inputs[i] = last_outputs[i - 1];
   }
 
   // save loop outputs as we have to concatenate at the end
-  for (int j = info_.num_loop_carried_vars; j < info_.num_outputs; ++j) {
+  for (ptrdiff_t j = info_.num_loop_carried_vars; j < info_.num_outputs; ++j) {
     ORT_ENFORCE(last_outputs[j + 1].IsTensor(), "All scan outputs MUST be tensors");
     loop_output_tensors_[j - info_.num_loop_carried_vars].push_back(last_outputs[j + 1]);  // skip 'cond' in output
   }
@@ -454,12 +464,13 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_outp
 
   // first dimension is number of iterations
   dims.push_back(gsl::narrow_cast<int64_t>(per_iteration_output.size()));
-  std::copy(per_iteration_dims.cbegin(), per_iteration_dims.cend(), std::back_inserter(dims));
+  std::copy(per_iteration_dims.begin(), per_iteration_dims.end(), std::back_inserter(dims));
 
   TensorShape output_shape{dims};
   Tensor* output = context_.Output(output_index, output_shape);
 
-  ORT_RETURN_IF_ERROR(concat_output_func_(stream_, per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
+  Stream* ort_stream = context_.GetComputeStream();
+  ORT_RETURN_IF_ERROR(concat_output_func_(ort_stream ? ort_stream->GetHandle() : nullptr, per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
 
   return Status::OK();
 }
@@ -481,8 +492,11 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     }
 
     status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {},
-                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
-
+                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(),
+                                    context_.GetComputeStream(),
+                                    // because the fetch[0] is the loop condition which we need to access on CPU,
+                                    // have to perofrm a stream sync to make sure the data arrived.
+                                    true);
     ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];
@@ -492,44 +506,66 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
 
   // As the loop carried variables may change shape across iterations there's no way to avoid a copy
   // as we need the final shape.
-  auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx, int64_t iter_num_value) {
+  auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx,
+                                       int64_t iter_num_value, const TypeProto& tp) {
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    // Only Optional type can be None (i.e.) not have data
+    if (tp.has_optional_type() && !input.IsAllocated()) {
+      // We can't rely on the input OrtValue containing type information
+      // as it could be a main graph input which will be missing the type
+      // in the corresponding OrtValue for the "None" case because
+      // the user doesn't provide any input for the "None" case.
+      ORT_RETURN_IF_ERROR(utils::OutputOptionalWithoutDataHelper(tp,
+                                                                 static_cast<OpKernelContext*>(&context_),
+                                                                 output_idx));
+    } else if (input.IsTensor()) {
+#else
+    ORT_UNUSED_PARAMETER(tp);
     if (input.IsTensor()) {
-      const auto& data = input.Get<Tensor>();
-      Tensor* output = context_.Output(output_idx, data.Shape());
+#endif
+      const auto& input_tensor = input.Get<Tensor>();
+      Tensor* output = context_.Output(output_idx, input_tensor.Shape());
       // Safely use the IDataTransfer abstraction as we only allow using
       // Loop on CUDA if the copy stream is the same as the compute stream.
       // So there is no explicit sync required between the compute and copy streams
       // to avoid data races.
-      ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output));
+      auto* data_transer = session_state_.GetDataTransferMgr().GetDataTransfer(input_tensor.Location().device, output->Location().device);
+      if (context_.GetComputeStream())
+        ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(input_tensor, *output, *context_.GetComputeStream()));
+      else
+        ORT_RETURN_IF_ERROR(data_transer->CopyTensor(input_tensor, *output));
     } else if (input.IsTensorSequence()) {
+      TensorSeq* output = context_.Output<TensorSeq>(output_idx);
+
       if (iter_num_value != 0) {
         // We can move the subgraph outputs directly into the Loop's outputs.
-        TensorSeq* output = context_.Output<TensorSeq>(output_idx);
         *output = std::move(*input.GetMutable<TensorSeq>());
       } else {
         // We can't move the Loop's inputs directly into the Loop's outputs
         // as operator inputs are read-only. Hence, we need to make a copy.
-        std::vector<Tensor> tensors;
-
         auto& data = input.Get<TensorSeq>();
-        TensorSeq* output = context_.Output<TensorSeq>(output_idx);
         output->SetType(data.DataType());
+        output->Reserve(data.Size());
 
         AllocatorPtr alloc;
         ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&alloc));
         for (auto it = data.begin(), end = data.end(); it != end; ++it) {
-          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+          Tensor tmp(it->Get<Tensor>().DataType(), it->Get<Tensor>().Shape(), alloc);
           // Safely use the IDataTransfer abstraction as we only allow using
           // Loop on CUDA if the copy stream is the same as the compute stream.
           // So there is no explicit sync required between the compute and copy streams
           // to avoid data races.
-          ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(*it, tmp));
-          tensors.push_back(std::move(tmp));
-        }
+          auto* data_transer = session_state_.GetDataTransferMgr().GetDataTransfer(it->Get<Tensor>().Location().device, tmp.Location().device);
+          if (context_.GetComputeStream())
+            ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(it->Get<Tensor>(), tmp, *context_.GetComputeStream()));
+          else
+            ORT_RETURN_IF_ERROR(data_transer->CopyTensor(it->Get<Tensor>(), tmp));
 
-        output->SetElements(std::move(tensors));
+          output->Add(std::move(tmp));
+        }
       }
     }
+
     return Status::OK();
   };
 
@@ -537,13 +573,13 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   if (iter_num_value != 0) {
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
       // need to allocate Loop output and copy OrtValue from fetches
-      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value));  // skip cond
+      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(fetches[static_cast<ptrdiff_t>(i) + 1], i, iter_num_value, *info_.loop_carried_vars_types[static_cast<ptrdiff_t>(i)]));  // skip cond
     }
 
     for (int i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
       // add last output
-      auto& per_iteration_outputs = loop_output_tensors_[i - info_.num_loop_carried_vars];
-      per_iteration_outputs.push_back(fetches[i + 1]);  // skip cond
+      auto& per_iteration_outputs = loop_output_tensors_[static_cast<ptrdiff_t>(i) - info_.num_loop_carried_vars];
+      per_iteration_outputs.push_back(fetches[static_cast<ptrdiff_t>(i) + 1]);  // skip cond
 
       ORT_RETURN_IF_ERROR(ConcatenateLoopOutput(per_iteration_outputs, i));
     }
@@ -551,7 +587,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     // no iterations.
     // copy input loop carried vars to output.
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
-      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value));  // skip iter# and cond
+      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(feeds[static_cast<ptrdiff_t>(i) + 2], i, iter_num_value, *info_.loop_carried_vars_types[i]));  // skip iter# and cond
     }
 
     // create empty outputs for loop outputs using the subgraph output shapes for the rank
@@ -559,11 +595,11 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
 
     for (int i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
       // get shape from subgraph output if possible to attempt to have the correct rank
-      auto* graph_output = graph_outputs.at(i + 1);  // + 1 as first subgraph output is condition value
+      auto* graph_output = graph_outputs.at(static_cast<ptrdiff_t>(i) + 1);  // + 1 as first subgraph output is condition value
       auto* graph_output_shape = graph_output->Shape();
 
       std::vector<int64_t> output_dims;
-      output_dims.reserve((graph_output_shape ? graph_output_shape->dim_size() : 0) + 1);
+      output_dims.reserve(static_cast<ptrdiff_t>(graph_output_shape ? graph_output_shape->dim_size() : 0) + 1);
       output_dims.push_back(0);  // num iterations is first dim
 
       if (graph_output_shape) {
@@ -571,7 +607,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         const auto& dims = tensor_shape.GetDims();
 
         // copy to output dims and use 0 for any symbolic dim
-        std::for_each(dims.cbegin(), dims.cend(),
+        std::for_each(dims.begin(), dims.end(),
                       [&output_dims](const int64_t dim) { output_dims.push_back(dim < 0 ? 0 : dim); });
       } else {
         // TODO: We could try and call ExecuteGraph to get the output shape from fetches so the rank is correct,

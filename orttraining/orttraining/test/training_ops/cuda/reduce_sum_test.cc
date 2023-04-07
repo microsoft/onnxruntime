@@ -24,7 +24,7 @@ static void TestReduceSum(const std::vector<int64_t>& X_dims,
 
   // create rand inputs
   RandomValueGenerator random{};
-  const bool is_positive = random.Uniform<int>({1}, 0, 2)[0] == 0;
+  const bool is_positive = random.Uniform<int>(std::array<int64_t, 1>{1}, 0, 2)[0] == 0;
   const float range_begin = is_positive ? 1.0f : -10.0f;
   const float range_end = is_positive ? 10.0f : -1.0f;
   const std::vector<float> X_data = random.Uniform<float>(X_dims, range_begin, range_end);

@@ -5,6 +5,7 @@
 
 #include <limits>
 
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
@@ -21,10 +22,10 @@ class DeepCpuGruOp final : public OpKernel {
 
     int64_t int64_value;
     ORT_ENFORCE(info.GetAttr("linear_before_reset", &int64_value).IsOK());
-    linear_before_reset_ = gsl::narrow<int>(int64_value);
+    linear_before_reset_ = narrow<int>(int64_value);
 
     ORT_ENFORCE(info.GetAttr("hidden_size", &int64_value).IsOK() && int64_value > 0);
-    hidden_size_ = gsl::narrow<int>(int64_value);
+    hidden_size_ = narrow<int>(int64_value);
 
     // optional attributes
     std::vector<std::string> activation_func_names = info.GetAttrsOrDefault<std::string>("activations");
@@ -51,8 +52,8 @@ class DeepCpuGruOp final : public OpKernel {
                                                      activation_func_betas);
 
     layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
-    ORT_ENFORCE(layout_ == 0, 
-        "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
+    ORT_ENFORCE(layout_ == 0,
+                "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -60,15 +61,35 @@ class DeepCpuGruOp final : public OpKernel {
   ~DeepCpuGruOp() override = default;
 
  private:
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
+
+  bool TryPackInputWeights(const Tensor& weight, AllocatorPtr& alloc);
+
+  bool TryPackRecurrentWeights(const Tensor& weights, AllocatorPtr& alloc);
+
   rnn::detail::Direction direction_;
   int num_directions_;
 
-  int hidden_size_ {};
+  int hidden_size_{};
   float clip_;
-  int linear_before_reset_ {};
+  int linear_before_reset_{};
   int64_t layout_;
 
   rnn::detail::ActivationFuncs activation_funcs_;
+
+  // This kernel supports either forward or bidirectional
+  // This is split in half for bidirectional, but we prepack it in the same buffer
+  rnn::detail::PackedWeights pre_packed_input_weights_;
+  // recurrent_weights_ZR_ fwd, followed by bwd
+  rnn::detail::PackedWeights pre_packed_recurrent_ZR_;
+  // recurrent_weights_H_ fwd, followed by bwd
+  rnn::detail::PackedWeights pre_packed_recurrent_H_;
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;
