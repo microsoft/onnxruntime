@@ -45,7 +45,7 @@ static void RunMultiHeadAttentionTest(
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !disable_cuda;
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get()) && !disable_rocm;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
-  bool enable_dml = !disable_dml;
+  bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get()) && !disable_dml;
 
   if (enable_cpu || enable_cuda || enable_rocm || enable_dml) {
     OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
@@ -501,6 +501,12 @@ TEST(MultiHeadAttentionTest, SelfAttentionWithPast) {
 TEST(MultiHeadAttentionTest, AttentionCutlassRelPosBias) {
   AttentionTestData data;
   GetAttentionDataCutlassRelPosBias(data);
+  RunMultiHeadAttentionTests(data);
+}
+
+TEST(MultiHeadAttentionTest, SelfAttention_Batch2_HeadSize32_PackedQKV_SeqLenStartMask_RightSidePadding) {
+  AttentionTestData data;
+  GetSelfAttention_Batch2_HeadSize32_PackedQKV_SeqLenStartMask_RightSidePadding(data);
   RunMultiHeadAttentionTests(data);
 }
 

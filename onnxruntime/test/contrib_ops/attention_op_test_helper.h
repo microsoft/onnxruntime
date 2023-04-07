@@ -64,6 +64,8 @@ void GetSelfAttentionDataWithPast(AttentionTestData& data);
 
 void GetAttentionDataCutlassRelPosBias(AttentionTestData& data);
 
+void GetSelfAttention_Batch2_HeadSize32_PackedQKV_SeqLenStartMask_RightSidePadding(AttentionTestData& data);
+
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type);
 }  // namespace test
 }  // namespace onnxruntime
