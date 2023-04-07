@@ -76,8 +76,6 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   } else {
     length_penalty = 1.0f;
   }
-  //length_penalty = length_penalty_tensor ? static_cast<float>(*length_penalty_tensor->Data<float>()) : 1;
-  ///length_penalty = length_penalty_tensor ? static_cast<MLFloat16>(*length_penalty_tensor->Data<MLFloat16>()) : 1.0f;//slx
 
   auto* repetition_penalty_tensor = context->Input<Tensor>(6);
   if (repetition_penalty_tensor) {
@@ -90,8 +88,6 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   } else {
     repetition_penalty = 1.0f;
   }
-  //repetition_penalty = repetition_penalty_tensor ? static_cast<float>(*repetition_penalty_tensor->Data<float>()) : 1.0f;
-  ///repetition_penalty = repetition_penalty_tensor ? static_cast<MLFloat16>(*repetition_penalty_tensor->Data<MLFloat16>()) : 1.0f;//slx  
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
 }
 

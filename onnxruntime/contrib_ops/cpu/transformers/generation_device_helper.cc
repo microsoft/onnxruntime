@@ -834,7 +834,7 @@ Status UpdateDecoderFeeds(
 //------------------------------------------------
 //  Modified Encoder functions for Whisper Model
 //------------------------------------------------
-///template <typename T>
+template <typename T>
 Status CreateWhisperEncoderInputs(
     const Tensor* original_encoder_input_features,
     const OrtValue* attn_mask_value,
@@ -856,23 +856,11 @@ Status CreateWhisperEncoderInputs(
   // Current shape is (batch_size, sequence_length)
   // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
   // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
-/*   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
-                       input_features_shape,
-                       const_cast<Tensor*>(original_encoder_input_features)->MutableData<float>(),
-                       allocator->Info(),
-                       encoder_input_features); */
-  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(),
-                       input_features_shape,
-                       const_cast<Tensor*>(original_encoder_input_features)->MutableData<MLFloat16>(),
-                       allocator->Info(),
-                       encoder_input_features);//slx 
-/*
   Tensor::InitOrtValue(DataTypeImpl::GetType<T>(),
                        input_features_shape,
                        const_cast<Tensor*>(original_encoder_input_features)->MutableData<T>(),
                        allocator->Info(),
-                       encoder_input_features);//slx
-*/
+                       encoder_input_features);
 
   if (attn_mask_value != nullptr) {
     const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
