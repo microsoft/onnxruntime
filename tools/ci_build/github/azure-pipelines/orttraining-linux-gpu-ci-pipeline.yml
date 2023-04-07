@@ -1,3 +1,10 @@
 trigger: none
 
 jobs:
+- job: Onnxruntime_Linux_GPU_Training
+  pool: Onnxruntime-Linux-GPU-NC6sv3
+  timeoutInMinutes: 120
+  steps:
+  - checkout: self
+    clean: true
+    submodules: none
