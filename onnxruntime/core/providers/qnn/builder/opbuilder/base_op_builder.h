@@ -143,6 +143,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Conv", "Conv2d"},
 
         {"GlobalAveragePool", "PoolAvg2d"},
+        {"AveragePool", "PoolAvg2d"},
         {"MaxPool", "PoolMax2d"},
 
         {"Reshape", "Reshape"},
