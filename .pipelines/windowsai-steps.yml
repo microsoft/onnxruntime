@@ -24,6 +24,10 @@ jobs:
     ob_sdl_binskim_break: true
     ob_sdl_binskim_scanOutputDirectoryOnly: true
   steps:
+    - task: UseDotNet@2
+      inputs:
+        version: '5.x'
+
     - template: ../tools/ci_build/github/azure-pipelines/templates/telemetry-steps.yml@self
 
     - task: NuGetCommand@2

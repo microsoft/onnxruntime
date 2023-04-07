@@ -211,5 +211,26 @@ TEST(LabelEncoder, StringToStringOpset2) {
   test.Run();
 }
 
+TEST(LabelEncoder, FloatToFloatOpset2) {
+  std::vector<std::int64_t> dims{1, 4};
+
+  std::vector<float> input{-1.0f, 0.0f, 3.1427f, 7.25f};
+  std::vector<float> output{1.0f, 0.0f, 2.718f, NAN};
+
+  OpTester test("LabelEncoder", 2, onnxruntime::kMLDomain);
+
+  const std::vector<float> keys{-1.0f, 0.0f, 7.25f};
+  const std::vector<float> values{1.0f, 0.0f, NAN};
+
+  test.AddAttribute("keys_floats", keys);
+  test.AddAttribute("values_floats", values);
+  test.AddAttribute("default_float", 2.718f);
+
+  test.AddInput<float>("X", dims, input);
+  test.AddOutput<float>("Y", dims, output);
+
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

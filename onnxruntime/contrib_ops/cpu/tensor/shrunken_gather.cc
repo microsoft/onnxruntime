@@ -38,8 +38,8 @@ void ShrunkenGatherCommon::CheckInput(const Tensor* input_tensor, const Tensor* 
 
   const int64_t N = indices_shape.Size();
   const int64_t indices_max = input_shape[axis];
-  ORT_ENFORCE(indices_max >= N, "ShrunkenGather indices elem count should >= input dim on axis: ", axis,
-              ", got ", N, " indices elem count, ", indices_max, " input dim");
+  ORT_ENFORCE(indices_max >= N, "ShrunkenGather indices elem count should <= input dim on axis: ", axis,
+              ", got indices elem count:", N, " input dim: ", indices_max);
 }
 
 Status ShrunkenGather::Compute(OpKernelContext* context) const {

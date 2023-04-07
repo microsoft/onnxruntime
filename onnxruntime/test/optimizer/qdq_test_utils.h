@@ -439,9 +439,11 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
                                         const std::vector<int64_t>& sizes_data,
                                         const std::string& mode = "nearest",
                                         const std::string& coordinate_transformation_mode = "half_pixel",
+                                        const std::string& nearest_mode = "round_prefer_floor",
                                         bool add_dq_output_float = false) {
   static_assert(std::is_same_v<InputType, int8_t> || std::is_same_v<InputType, uint8_t>);
-  return [input_shape, sizes_data, mode, coordinate_transformation_mode, add_dq_output_float](ModelTestBuilder& builder) {
+  return [input_shape, sizes_data, mode, coordinate_transformation_mode,
+          nearest_mode, add_dq_output_float](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<InputType>(input_shape,
                                                     std::numeric_limits<InputType>::min(),
                                                     std::numeric_limits<InputType>::max());
@@ -460,6 +462,10 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
 
     resize_node.AddAttribute("mode", mode);
     resize_node.AddAttribute("coordinate_transformation_mode", coordinate_transformation_mode);
+
+    if (mode == "nearest") {
+      resize_node.AddAttribute("nearest_mode", nearest_mode);
+    }
 
     if (add_dq_output_float) {
       // add Q

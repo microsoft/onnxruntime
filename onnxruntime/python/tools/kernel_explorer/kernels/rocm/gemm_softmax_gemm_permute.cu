@@ -242,7 +242,7 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
         GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_),
         GemmSoftmaxGemmPermuteTunableOp<T>::GetWorkspaceNumBytes(&this->attn_)));
 
-    this->params_.TuningContext()->EnableTunableOp();
+    this->params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   std::vector<std::string> ListOps() const {
