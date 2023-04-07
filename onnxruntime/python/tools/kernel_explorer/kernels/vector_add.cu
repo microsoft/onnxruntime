@@ -128,7 +128,7 @@ class VectorAddTunable : public IKernelExplorer {
     params_.z = static_cast<T*>(z.ptr());
     params_.n = n;
 
-    params_.TuningContext()->EnableTunableOp();
+    params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   void Run() override {

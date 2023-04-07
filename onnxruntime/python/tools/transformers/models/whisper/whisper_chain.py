@@ -1,6 +1,12 @@
+import os
+import sys
+
 import onnx
 from onnx import TensorProto, helper
 from transformers import WhisperConfig
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from convert_generation import get_shared_initializers  # noqa: E402
 
 
 def add_attention_mask(model):
@@ -13,16 +19,15 @@ def add_attention_mask(model):
 
 def chain_model(args):
     # Load encoder/decoder and insert necessary (but unused) graph inputs expected by BeamSearch op
-    encoder_model = onnx.load(args.encoder_path, load_external_data=True)
+    encoder_model = onnx.load_model(args.encoder_path, load_external_data=True)
     encoder_model.graph.name = "encoderdecoderinit subgraph"
     add_attention_mask(encoder_model)
 
-    decoder_model = onnx.load(args.decoder_path, load_external_data=True)
+    decoder_model = onnx.load_model(args.decoder_path, load_external_data=True)
     decoder_model.graph.name = "decoder subgraph"
     add_attention_mask(decoder_model)
 
     config = WhisperConfig.from_pretrained(args.model_name_or_path)
-    pad_token_id = config.pad_token_id
 
     beam_inputs = [
         "input_features",
@@ -42,14 +47,12 @@ def chain_model(args):
     node.domain = "com.microsoft"
     node.attribute.extend(
         [
-            helper.make_attribute("eos_token_id", 50256),
-            helper.make_attribute("pad_token_id", pad_token_id),
-            helper.make_attribute("decoder_start_token_id", 50257),
+            helper.make_attribute("eos_token_id", config.eos_token_id),
+            helper.make_attribute("pad_token_id", config.pad_token_id),
+            helper.make_attribute("decoder_start_token_id", config.decoder_start_token_id),
             helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
             helper.make_attribute("early_stopping", True),
             helper.make_attribute("model_type", 2),
-            helper.make_attribute("decoder", decoder_model.graph),
-            helper.make_attribute("encoder", encoder_model.graph),
         ]
     )
 
@@ -85,7 +88,14 @@ def chain_model(args):
     graph_outputs = [sequences]
 
     # Initializers/opsets
-    initializers = []
+    # Delete shared data between decoder/encoder and move to larger graph initializers
+    initializers = get_shared_initializers(encoder_model, decoder_model)
+    node.attribute.extend(
+        [
+            helper.make_attribute("decoder", decoder_model.graph),
+            helper.make_attribute("encoder", encoder_model.graph),
+        ]
+    )
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
     beam_graph = helper.make_graph([node], "beam-search-test", graph_inputs, graph_outputs, initializers)
