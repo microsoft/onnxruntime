@@ -47,33 +47,33 @@ struct UpStreamOperatorActorBase {
  * @brief Base class for all upstream operator info .
  */
 struct UpstreamOperatorInfoBase {
-  UpstreamOperatorInfoBase(Node* node) : node_ptr(node) {}
+  UpstreamOperatorInfoBase(Node* node, bool is_entry_node_ptr = false) : node_ptr(node) {
+    if (is_entry_node_ptr) {
+      entry_node_name = node_ptr->Name();
+    }
+  }
 
   Node* node_ptr;  // The node that triggers the optimization search.
+  std::string entry_node_name;
 };
 
 /**
  * @brief Pass through configuration for specific operator.
  *
  * For each operator:
- * > `input_indices` can be used to explicitly specify the input indices that Slicing op can be passed through.
- *   This could be helpful if some inputs are not applicable for pass through. If not specified, all inputs
- *   are considered (but there will be checks to ignore those inputs that are not affected by the slicing axis).
  * > `actor` will be used to perform the actual pass through, including both pre-check stage and post process
  *   stage.
  */
 template <typename T>
 struct OpPassThroughConfig {
-  OpPassThroughConfig(const std::vector<int>& input_indices,
-                      std::shared_ptr<T> actor,
+  OpPassThroughConfig(std::shared_ptr<T> actor,
                       const OPSET_VERSION_LIST& opset_list)
-      : input_indices(input_indices), actor(actor), opsets(opset_list) {
+      : actor(actor), opsets(opset_list) {
     // Compile-time check
     static_assert(std::is_base_of<UpStreamOperatorActorBase, T>::value,
                   "type parameter of this class must derive from UpStreamOperatorActorBase");
   }
 
-  std::vector<int> input_indices;
   std::shared_ptr<T> actor;
   const OPSET_VERSION_LIST& opsets;
 };
@@ -133,6 +133,28 @@ Node* InsertIntermediateNodeOnDestInput(Graph& graph,
                                         const onnxruntime::NodeAttributes& attributes,
                                         const std::string& domain,
                                         const logging::Logger& logger);
+
+enum class DimCompare {
+  Equal = 0,
+  BroadCast = 1,  // e.g. dim value is 1.
+  NotExist = 2,
+  NotEqual = 3,
+  DimCompareRetMax = 4,
+};
+
+/**
+ * @brief Compare the target shape with the fully broadcasted output shape.
+ *
+ * @param full_broadcasted_shape Full broadcasted shape as a baseline to compare.
+ * @param target_shape Shape to compare, can have a dim value be 1 for broad-cast-able dimension.
+ * @return A bool indicate whether check successfully or not.
+ *         A vector of type DimCompare. The size of the vector is the same as full_broadcasted_shape.
+ *
+ * Be noted: full_broadcasted_shape's length should be >= target_shape's length, otherwise return false.
+ */
+std::pair<bool, std::vector<DimCompare>> CompareInputShapeWithOutputShape(
+    const ONNX_NAMESPACE::TensorShapeProto* full_broadcasted_shape,
+    const ONNX_NAMESPACE::TensorShapeProto* target_shape);
 
 }  // namespace onnxruntime::optimizer::compute_optimizer
 #endif
