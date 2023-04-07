@@ -247,7 +247,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "fp16_test_tiny_yolov2", "ImageScaler is not a registered function/op"},
                 { "fp16_coreml_FNS-Candy", "ImageScaler is not a registered function/op" },
                 { "fp16_coreml_LinearRegression_NYCTaxi", "Error in Node:featureVectorizer : No Op registered for FeatureVectorizer with domain_version of 1"},
-                // { "test_bidaf", "Does not run in opset9, runs in other opsets. The model runs but I don't have a data set to debug output locally. Tensors of type ElementType not currently supported in the LoadTensorFromFile." },
                 { "test_mnist", "Does not run in opset9, runs in other opsets. The model runs but I don't have a data set to debug output locally. Tensors of type ElementType not currently supported in the LoadTensorFromFile" },
                 { "BERT_Squad", "Could not find an implementation for the nodeMeta bert / embeddings / one_hot:OneHot(9)" },
 
@@ -471,12 +470,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             if (result is null)
             {
-                // try matching the file name directly against the input/output name
-                if (!metadata.TryGetValue(fileName, out result))
-                {
-                    throw new InvalidDataException($"Unable to match file: {fileName} to input/output metadata");
-                }
-                nodeName = fileName;
+                throw new InvalidDataException($"Unable to match file: {fileName} to input/output metadata");
             }
             return nodeName;
         }

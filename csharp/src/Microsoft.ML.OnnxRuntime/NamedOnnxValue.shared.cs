@@ -12,6 +12,9 @@ namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
     /// The class holds keys and values for the dictionary
+    /// in a for of two DenseTensors. The class is used to avoid
+    /// data copy and make these available to the native code.
+    /// Strings require special handling.
     /// </summary>
     internal class MapHelper
     {
@@ -36,7 +39,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// directly. Thus we are able to avoid copying.
     /// 
     /// For outputs, tensor buffers works the same as input, providing it matches
-    /// the expected output shape. For other types (maps and sequences, we create a copy of the data).
+    /// the expected output shape. For other types (maps and sequences) we create a copy of the data.
     /// This is because, the class is not Disposable and it is a public interface, thus it can not own
     /// the underlying OrtValues that must be destroyed before Run() returns.
     /// 
@@ -46,7 +49,14 @@ namespace Microsoft.ML.OnnxRuntime
     /// It is a recursive structure that may contain Tensors (base case)
     /// Other sequences and maps. Although the OnnxValueType is exposed,
     /// the caller is supposed to know the actual data type contained.
-    /// For that one will need to consult model metadata.
+    /// 
+    /// The convention is that for tensors, it would contain a DenseTensor<T> instance or
+    /// anything derived from Tensor<T>.
+    /// 
+    /// For sequences, it would contain a IList<T> where T is an instance of NamedOnnxValue that
+    /// would contain a tensor or another type.
+    /// 
+    /// For Maps, it would contain a IDictionary<K, V> where K,V are primitive types or strings.
     /// 
     /// </summary>
     public class NamedOnnxValue
@@ -68,7 +78,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="name">input/output name</param>
         /// <param name="value">Object that may be a tensor, Dictionary, IList</param>
-        [Obsolete("This the constructor with valueType or static factory methods")]
+        [Obsolete("Use constructors with valueType or static factory methods")]
         protected NamedOnnxValue(string name, Object value)
         {
             _name = name;
@@ -76,13 +86,30 @@ namespace Microsoft.ML.OnnxRuntime
             ValueType = OnnxValueType.ONNX_TYPE_UNKNOWN;
         }
 
+        /// <summary>
+        /// Constructs an instance that contains a tensor, sequence or optional type.
+        /// </summary>
+        /// <param name="name"></param>
+        /// <param name="value"></param>
+        /// <param name="valueType"></param>
         internal NamedOnnxValue(string name, Object value, OnnxValueType valueType)
         {
             _name = name;
             _value = value;
             ValueType = valueType;
+
+            if (valueType == OnnxValueType.ONNX_TYPE_MAP)
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Use another __ctor for maps");
+            }
         }
 
+        /// <summary>
+        /// Use this to construct maps
+        /// </summary>
+        /// <param name="name"></param>
+        /// <param name="value"></param>
+        /// <param name="helper"></param>
         internal NamedOnnxValue(string name, Object value, MapHelper helper)
         {
             _name = name;
@@ -93,7 +120,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Onnx Value Type if known. In general, NamedOnnxValue is able to contain
-        /// arbitrary objects.
+        /// arbitrary objects. Please, follow the convention described in the class doc.
         /// </summary>
         public OnnxValueType ValueType { get; internal set; }
 
@@ -123,7 +150,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// This is a factory method that instantiates NamedOnnxValue.
+        /// Instantiates NamedOnnxValue that contains IDictionary<K, V>
         /// </summary>
         /// <typeparam name="K">Keys type</typeparam>
         /// <typeparam name="V">Values type</typeparam>
@@ -166,6 +193,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Try-get value as an Enumerable&lt;T&gt;.
+        /// T is usually a NamedOnnxValue instance that may contain
+        /// Tensors, Sequences, Maps or optional types
         /// </summary>
         /// <typeparam name="T">Type</typeparam>
         /// <returns>Enumerable object if contained value is a Enumerable. Null otherwise</returns>
@@ -178,8 +207,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Try-get value as an Dictionary&lt;K,V&gt;.
         /// </summary>
-        /// <typeparam name="K">Key type</typeparam>
-        /// <typeparam name="V">Value type</typeparam>
+        /// <typeparam name="K">Key type currently primitive type only</typeparam>
+        /// <typeparam name="V">Value type, currently primitive type only</typeparam>
         /// <returns>Dictionary object if contained value is a Dictionary. Null otherwise</returns>
         public IDictionary<K, V> AsDictionary<K, V>()
         {

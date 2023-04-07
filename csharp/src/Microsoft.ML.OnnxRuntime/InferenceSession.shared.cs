@@ -661,7 +661,7 @@ namespace Microsoft.ML.OnnxRuntime
             if (!_inputMetadata.TryGetValue(nodeName, out meta) &&
                 !_overridableInitializerMetadata.TryGetValue(nodeName, out meta))
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Input/output name: '{nodeName}' is not in the metadata");
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Input name: '{nodeName}' is not in the metadata");
             }
             return meta;
         }
@@ -677,7 +677,7 @@ namespace Microsoft.ML.OnnxRuntime
             NodeMetadata meta;
             if (!_outputMetadata.TryGetValue(nodeName, out meta))
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Input/output name: '{nodeName}' is not in the metadata");
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Output name: '{nodeName}' is not in the metadata");
             }
             return meta;
         }
@@ -1102,7 +1102,7 @@ namespace Microsoft.ML.OnnxRuntime
                     return GetOptionalMetadataFromTypeInfo(typeInfo);
             }
 
-            throw new NotImplementedException("Value type not supported in this code");
+            throw new OnnxRuntimeException(ErrorCode.NotImplemented, $"Value type: '{valueType}' not supported in this code");
         }
 
         internal static NodeMetadata GetSequenceMetadataFromTypeInfo(IntPtr typeInfo)

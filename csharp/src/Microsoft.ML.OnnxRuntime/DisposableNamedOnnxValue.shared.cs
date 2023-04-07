@@ -4,7 +4,6 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -56,7 +55,6 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// This class serves as a container for model run output values including
     /// tensors, sequences of tensors, sequences and maps.
-    /// It extends NamedOnnxValue, exposes the OnnxValueType and Tensor type
     /// The class must be disposed of.
     /// It disposes of _ortValueHolder that owns the underlying Ort output value and
     /// anything else that would need to be disposed by the instance of the class.
@@ -100,7 +98,9 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Construct from a dictionary
+        /// Construct an instance that would contain a map in a form of a Dictionary
+        /// Currently a limited number of primitive types are supported as map keys and values.
+        /// So this is not a full implementation of the map type.
         /// </summary>
         /// <param name="name"></param>
         /// <param name="value"></param>
@@ -394,11 +394,7 @@ namespace Microsoft.ML.OnnxRuntime
                     NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
                 }
 
-                if (valueElemType != TensorElementType.Float)
-                {
-                    throw new OnnxRuntimeException(ErrorCode.NotImplemented, $"Value element type: {valueElemType} not supported");
-                }
-
+                // The supported combinations of key and value types are taken from the ORT C API.
                 switch (keyElemType)
                 {
                     case TensorElementType.Int64:

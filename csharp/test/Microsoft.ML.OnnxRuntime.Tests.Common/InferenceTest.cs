@@ -588,7 +588,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var container = new List<NamedOnnxValue>();
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Contains("Input/output name: 'wrong_name' is not in the metadata", ex.Message);
+            Assert.Contains("Input name: 'wrong_name' is not in the metadata", ex.Message);
             session.Dispose();
         }
 
@@ -623,7 +623,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             container.Add(nov1);
             container.Add(nov2);
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Contains("Input/output name: 'extra' is not in the metadata", ex.Message);
+            Assert.Contains("Input name: 'extra' is not in the metadata", ex.Message);
             session.Dispose();
         }
 
@@ -655,7 +655,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("bad_output_name", outputTensor) };
             var bad_names = new string[] {"bad_output_name"};
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, bad_names));
-            Assert.Contains("Input/output name: 'bad_output_name' is not in the metadata", ex.Message);
+            Assert.Contains("Output name: 'bad_output_name' is not in the metadata", ex.Message);
             session.Dispose();
         }
 
