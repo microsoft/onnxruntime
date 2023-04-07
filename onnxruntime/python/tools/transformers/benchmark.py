@@ -343,7 +343,8 @@ def run_pytorch(
         )
 
         if config.model_type in ["vit", "swin"]:
-            sequence_lengths = [1]  # Set array to one entry so we iterate once, and ignore any extra lengths
+            # These models don't use sequence lengths, so just pick the first sequence length so that the summary still works
+            sequence_lengths = [ sequence_lengths[0] ]
         else:
             tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
@@ -785,6 +786,9 @@ def main():
     if args.precision == Precision.INT8 and args.use_gpu:
         logger.error("int8 is for CPU only")
         return
+
+    if len(args.models)==1 and MODELS[args.models[0]][3] in ["vit", "swim"]:
+        args.sequence_lengths = [""]
 
     args.num_threads = sorted({cpu_count if x <= 0 else x for x in args.num_threads})
 
