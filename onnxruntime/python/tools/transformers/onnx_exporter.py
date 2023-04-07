@@ -49,7 +49,7 @@ def restore_torch_functions():
 
 
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, config, data_type=numpy.int64):
-    if config.model_type == "vit" or config.model_type == "swin":
+    if config.model_type in ["vit", "swin"]:
         input_ids = numpy.random.rand(batch_size, 3, config.image_size, config.image_size).astype(numpy.float32)
         inputs = {"pixel_values": input_ids}
         return inputs
@@ -451,7 +451,7 @@ def validate_and_optimize_onnx(
     return (
         onnx_model_path,
         is_valid_onnx_model,
-        config.num_labels if model_type == "vit" or model_type == "swin" else config.vocab_size,
+        config.num_labels if model_type in ["vit", "swin"] else config.vocab_size,
     )
 
 
@@ -481,7 +481,7 @@ def export_onnx_model_from_pt(
     example_inputs = None
     max_input_size = None
 
-    if model_type == "vit" or model_type == "swin":
+    if model_type in ["vit", "swin"]:
         image_processor = AutoFeatureExtractor.from_pretrained(model_name, cache_dir=cache_dir)
         data = numpy.random.randint(
             low=0, high=256, size=config.image_size * config.image_size * 3, dtype=numpy.uint8
@@ -524,7 +524,7 @@ def export_onnx_model_from_pt(
         dynamic_axes = None
         output_names = None
 
-        if model_type == "vit" or model_type == "swin":
+        if model_type in ["vit", "swin"]:
             dynamic_axes, output_names = {key: {0: "pixel_values"} for key in example_inputs}, ["logits"]
         else:
             dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)

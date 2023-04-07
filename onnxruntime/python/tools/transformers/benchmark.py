@@ -262,7 +262,7 @@ def run_onnxruntime(
                         "datetime": str(datetime.now()),
                     }
 
-                    if config.model_type == "vit" or config.model_type == "swin":
+                    if config.model_type in ["vit", "swin"]:
                         logger.info(
                             f"Run onnxruntime on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}"
                         )
@@ -342,8 +342,8 @@ def run_pytorch(
             custom_model_class=model_class,
         )
 
-        if config.model_type == "vit" or config.model_type == "swin":
-            max_input_size = 1024  # Just needs to be greater than sequence_length
+        if config.model_type in ["vit", "swin"]:
+            sequence_lengths = [1]  # Set array to one entry so we iterate once, and ignore any extra lengths
         else:
             tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
@@ -368,10 +368,7 @@ def run_pytorch(
                 continue
 
             for sequence_length in sequence_lengths:
-                if max_input_size is not None and sequence_length > max_input_size:
-                    continue
-
-                if config.model_type == "vit" or config.model_type == "swin":
+                if config.model_type in ["vit", "swin"]:
                     logger.info(
                         f"Run PyTorch on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}"
                     )
@@ -381,6 +378,9 @@ def run_pytorch(
                         device=device,
                     )
                 else:
+                    if sequence_length > max_input_size:
+                        continue
+
                     logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
                     input_ids = torch.randint(
                         low=0,
