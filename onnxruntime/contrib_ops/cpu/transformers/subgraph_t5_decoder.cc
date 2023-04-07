@@ -234,7 +234,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
       decoder_feeds.push_back(expanded_hidden_states);
     } else {
       // past key/value for cross attention does not need to be initialized with max_seq_len since they are static.
-      bool use_max_seq_len = (j - first_past_input_index_) < static_cast<size_t>(2 * num_layers);
+      bool use_max_seq_len = (j - first_past_input_index_) < 2 * static_cast<size_t>(num_layers);
 
       OrtValue expanded_cache;
       if (is_output_float16_) {

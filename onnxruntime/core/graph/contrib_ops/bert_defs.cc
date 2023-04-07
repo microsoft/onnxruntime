@@ -208,7 +208,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
       if (past_present_share_buffer) {
         propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
-        propagateElemTypeFromInputToOutput(ctx, past_input_index + 1, 2);
+        propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_input_index) + 1, 2);
       } else {
         if (sequence_length > 0 && past_dims[2].has_dim_value()) {
           int64_t total_sequence_length = sequence_length + past_shape.dim(3).dim_value();
