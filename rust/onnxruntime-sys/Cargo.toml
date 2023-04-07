@@ -24,12 +24,12 @@ bindgen = "0.63"
 cmake = "0.1"
 
 # Used on unix
-flate2 = "1.0"
-tar = "0.4"
-ureq = "2.1"
+flate2 = "*"
+tar = "*"
+ureq = "2.6"
 
 # Used on Windows
-zip = "0.6"
+zip = "*"
 
 [features]
 default = []

@@ -24,24 +24,26 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let session = environment
         .new_session_builder()?
-        .with_graph_optimization_level(onnxruntime::GraphOptimizationLevel::Basic)?
+        .with_optimization_level(onnxruntime::GraphOptimizationLevel::Basic)?
         .with_model_from_file(path)?;
 
     println!("Inputs:");
-    for (index, input) in session.inputs.iter().enumerate() {
+    for (index, (name, tensor_info)) in session.inputs.iter().enumerate() {
         println!(
-            "  {}:\n    name = {}\n    type = {:?}\n    dimensions = {:?}",
-            index, input.name, input.input_type, input.dimensions
+            "  {}:\n    name = {}\n    type = {:?}\n    shape = {:?}",
+            index, name, tensor_info.element_type, tensor_info.tensor_shape
         )
     }
 
     println!("Outputs:");
-    for (index, output) in session.outputs.iter().enumerate() {
+    for (index, (name, tensor_info)) in session.outputs.iter().enumerate() {
         println!(
-            "  {}:\n    name = {}\n    type = {:?}\n    dimensions = {:?}",
-            index, output.name, output.output_type, output.dimensions
+            "  {}:\n    name = {}\n    type = {:?}\n    shape = {:?}",
+            index, name, tensor_info.element_type, tensor_info.tensor_shape
         );
     }
+
+    println!("Metadata: {:?}", session.get_metadata());
 
     Ok(())
 }

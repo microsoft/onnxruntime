@@ -1,15 +1,14 @@
 //! Module containing error definitions.
 
-use std::{io, path::PathBuf};
-
-use thiserror::Error;
-
 use onnxruntime_sys as sys;
 
-use crate::{char_p_to_string, environment::ENV};
+use crate::{ort_api, char_ptr_to_string, DeviceName, TensorElementDataType};
+use std::{path::PathBuf, str::Utf8Error};
+use thiserror::Error;
+use tracing::error;
 
 /// Type alias for the `Result`
-pub type Result<T> = std::result::Result<T, OrtError>;
+pub type OrtResult<T> = std::result::Result<T, OrtError>;
 
 /// Error type centralizing all possible errors
 #[non_exhaustive]
@@ -17,82 +16,143 @@ pub type Result<T> = std::result::Result<T, OrtError>;
 pub enum OrtError {
     /// For errors with libloading
     #[error("Failed to load or call onnxruntime library {0}")]
-    Library(#[from] libloading::Error),
-    /// The C API can message to the caller using a C `char *` which needs to be converted
+    Library(#[from] libloading::Error),    /// The C API can message to the caller using a C `char *` which needs to be converted
     /// to Rust's `String`. This operation can fail.
     #[error("Failed to construct String")]
     StringConversion(OrtApiError),
-    // FIXME: Move these to another enum (they are C API calls errors)
-    /// An error occurred when creating an ONNXRuntime environment
+    /// Error occurred when getting available providers
+    #[error("Failed to get available providers: {0}")]
+    GetAvailableProviders(OrtApiError),
+    /// Error occurred when releasing available providers
+    #[error("Failed to release available providers: {0}")]
+    ReleaseAvailableProviders(OrtApiError),
+    /// An error occurred when creating an ONNX environment
     #[error("Failed to create environment: {0}")]
     Environment(OrtApiError),
-    /// Error occurred when creating an ONNXRuntime session options
+    /// An error occurred when creating an ONNX environment
+    #[error("Failed to create environment: {0}")]
+    ThreadingOptions(OrtApiError),
+    /// Error occurred when creating an ONNX session options
     #[error("Failed to create session options: {0}")]
     SessionOptions(OrtApiError),
-    /// Error occurred when creating an ONNXRuntime session
+    /// Error occurred when creating an ONNX session
     #[error("Failed to create session: {0}")]
     Session(OrtApiError),
-    /// Error occurred when creating an ONNXRuntime allocator
+    /// Error occurred when creating an ONNX allocator
     #[error("Failed to get allocator: {0}")]
     Allocator(OrtApiError),
-    /// Error occurred when counting ONNXRuntime input or output count
+    /// Error occurred when trying to free a pointer using allocator
+    #[error("Failed to free using allocator: {0}")]
+    AllocatorFree(OrtApiError),
+    /// Error occurred when counting ONNX input or output count
     #[error("Failed to get input or output count: {0}")]
     InOutCount(OrtApiError),
-    /// Error occurred when getting ONNXRuntime input name
+    /// Error occurred while fetching metadata
+    #[error("failed to fetch metadata")]
+    MetadataFailure(OrtApiError),
+    /// Error occurred when getting ONNX input name
     #[error("Failed to get input name: {0}")]
-    InputName(OrtApiError),
-    /// Error occurred when getting ONNXRuntime type information
+    SessionGetInputName(OrtApiError),
+    /// Error occurred when getting ONNX output name
+    #[error("Failed to get output name: {0}")]
+    SessionGetOutputName(OrtApiError),
+    /// Error occurred when getting ONNX type information
     #[error("Failed to get type info: {0}")]
     GetTypeInfo(OrtApiError),
-    /// Error occurred when casting ONNXRuntime type information to tensor information
+    /// Error occurred when casting ONNX type information to tensor information
     #[error("Failed to cast type info to tensor info: {0}")]
     CastTypeInfoToTensorInfo(OrtApiError),
     /// Error occurred when getting tensor elements type
     #[error("Failed to get tensor element type: {0}")]
-    TensorElementType(OrtApiError),
-    /// Error occurred when getting ONNXRuntime dimensions count
+    GetTensorElementType(OrtApiError),
+    /// Error occurred when getting ONNX dimensions count
     #[error("Failed to get dimensions count: {0}")]
     GetDimensionsCount(OrtApiError),
-    /// Error occurred when getting ONNXRuntime dimensions
+    /// Error occurred when getting ONNX dimensions
     #[error("Failed to get dimensions: {0}")]
     GetDimensions(OrtApiError),
+    /// Error occurred when getting memory information
+    #[error("Failed to get get memory information: {0}")]
+    OrtMemoryInfo(OrtApiError),
+    /// Error occurred when creating memory information
+    #[error("Failed to get create memory information: {0}")]
+    CreateMemoryInfo(OrtApiError),
+    /// Error occurred when getting memory information
+    #[error("Failed to get memory information: {0}")]
+    GetTensorMemoryInfo(OrtApiError),
+    /// Error occurred when geting name from memory information
+    #[error("Failed to get memory information name: {0}")]
+    MemoryInfoGetName(OrtApiError),
+    /// Error occurred when geting id from memory information
+    #[error("Failed to get memory information id: {0}")]
+    MemoryInfoGetId(OrtApiError),
+    /// Error occurred when geting name from memory information
+    #[error("Failed to get memory information type: {0}")]
+    MemoryInfoGetMemType(OrtApiError),
+    /// Error occurred when geting allocator type from memory information
+    #[error("Failed to get memory information allocator type: {0}")]
+    MemoryInfoGetType(OrtApiError),
     /// Error occurred when creating CPU memory information
-    #[error("Failed to get dimensions: {0}")]
-    CreateCpuMemoryInfo(OrtApiError),
-    /// Error occurred when creating ONNXRuntime tensor
+    #[error("Failed to get create io_binding: {0}")]
+    CreateIoBinding(OrtApiError),
+    /// Error occurred when trying to bind an input
+    #[error("Failed to bind input: {0}")]
+    BindInput(OrtApiError),
+    /// Error occurred when trying to bind an output
+    #[error("Failed to bind output: {0}")]
+    BindOutput(OrtApiError),
+    /// Error occurred when trying to bind an output
+    #[error("Failed to bind output to device: {0}")]
+    BindOutputToDevice(OrtApiError),
+    /// Error occurred when trying to get bound output names
+    #[error("Failed to get bound output names: {0}")]
+    GetBoundOutputNames(OrtApiError),
+    /// Error occurred when trying to get bound output values
+    #[error("Failed to get bound output values: {0}")]
+    GetBoundOutputValues(OrtApiError),
+    /// Error occurred when trying to copy bound output values to CPU
+    #[error("Failed to copy bound output values: {0}")]
+    CopyOutputsAcrossDevices(OrtApiError),
+    /// Error occurred when creating ONNX tensor
     #[error("Failed to create tensor: {0}")]
     CreateTensor(OrtApiError),
-    /// Error occurred when creating ONNXRuntime tensor with specific data
+    /// Error occurred when creating ONNX tensor with specific data
     #[error("Failed to create tensor with data: {0}")]
     CreateTensorWithData(OrtApiError),
     /// Error occurred when filling a tensor with string data
     #[error("Failed to fill string tensor: {0}")]
     FillStringTensor(OrtApiError),
-    /// Error occurred when checking if ONNXRuntime tensor was properly initialized
+    /// Error occurred when checking if ONNX tensor was properly initialized
     #[error("Failed to check if tensor: {0}")]
     IsTensor(OrtApiError),
     /// Error occurred when getting tensor type and shape
     #[error("Failed to get tensor type and shape: {0}")]
     GetTensorTypeAndShape(OrtApiError),
-    /// Error occurred when ONNXRuntime inference operation was called
+    /// Error occurred when ONNX inference operation was called
     #[error("Failed to run: {0}")]
     Run(OrtApiError),
-    /// Error occurred when extracting data from an ONNXRuntime tensor into an C array to be used as an `ndarray::ArrayView`
+    /// Error occurred when extracting data from an ONNX tensor into an C array to be used as an `ndarray::ArrayView`
     #[error("Failed to get tensor data: {0}")]
     GetTensorMutableData(OrtApiError),
-
-    /// Error occurred when downloading a pre-trained ONNX model from the [ONNX Model Zoo](https://github.com/onnx/models)
-    #[error("Failed to download ONNX model: {0}")]
-    DownloadError(#[from] OrtDownloadError),
-
-    /// Dimensions of input data and ONNX model loaded from file do not match
-    #[error("Dimensions do not match: {0:?}")]
-    NonMatchingDimensions(NonMatchingDimensionsError),
-    /// File does not exists
+    /// DeviceNames do not match
+    #[error("Failed to get tensor data: {0}")]
+    GetTensorMutableDataNonMatchingDeviceName(NonMatchingDeviceName),
+    /// Data type of input data and ONNX model loaded from file do not match
+    #[error("Data type does not match: {0}")]
+    NonMachingTypes(NonMatchingDataTypes),
+    /// File does not exist
     #[error("File {filename:?} does not exists")]
-    FileDoesNotExists {
+    FileDoesNotExist {
         /// Path which does not exists
         filename: PathBuf,
+    },
+    /// File does not exist
+    #[error("File {filename:?} could not be read: {err}")]
+    FileRead {
+        /// Path which does not exists
+        filename: PathBuf,
+        /// Error
+        err: std::io::Error,
     },
     /// Path is an invalid UTF-8
     #[error("Path {path:?} cannot be converted to UTF-8")]
@@ -109,78 +169,69 @@ pub enum OrtError {
     /// Ort pointer should not have been null
     #[error("{0} pointer should not be null")]
     PointerShouldNotBeNull(String),
-    /// ONNXRuntime Model has invalid dimensions
+    /// ONNX Model has invalid dimensions
     #[error("Invalid dimensions")]
     InvalidDimensions,
     /// The runtime type was undefined
     #[error("Undefined Tensor Element Type")]
     UndefinedTensorElementType,
-    /// Error occurred when checking if ONNXRuntime tensor was properly initialized
-    #[error("Failed to check if tensor")]
-    IsTensorCheck,
+    /// The OrtValue is not of type Tensor
+    #[error("OrtValue is not Tensor")]
+    NotTensor,
+    #[cfg(feature = "cuda")]
+    /// The CreateCUDAProviderOptions call failed.
+    #[error("Failed to CreateCUDAProviderOptions: {0}")]
+    CreateCUDAProviderOptions(OrtApiError),
+    #[cfg(feature = "cuda")]
+    /// The UpdateCUDAProviderOptions call failed.
+    #[error("Failed to UpdateCUDAProviderOptions: {0}")]
+    UpdateCUDAProviderOptions(OrtApiError),
+    #[cfg(feature = "cuda")]
+    /// The SessionOptionsAppendExecutionProviderCudaV2 call failed.
+    #[error("Failed to SessionOptionsAppendExecutionProvider_CUDA_V2: {0}")]
+    SessionOptionsAppendExecutionProviderCudaV2(OrtApiError),
+    /// Details as reported by the FFI layer cannot be converted to UTF-8
+    #[error("Failed to convert CStr to UTF-8")]
+    IntoStringError(Utf8Error),
 }
 
 /// Error used when dimensions of input (from model and from inference call)
 /// do not match (as they should).
-#[non_exhaustive]
 #[derive(Error, Debug)]
-pub enum NonMatchingDimensionsError {
-    /// Number of inputs from model does not match number of inputs from inference call
-    #[error("Non-matching number of inputs: {inference_input_count:?} for input vs {model_input_count:?} for model (inputs: {inference_input:?}, model: {model_input:?})")]
-    InputsCount {
-        /// Number of input dimensions used by inference call
-        inference_input_count: usize,
+pub enum NonMatchingDataTypes {
+    /// Requested data type for input does not match requested data type
+    #[error("Non-matching data types: {input:?} for input vs {requested:?}")]
+    DataType {
         /// Number of input dimensions defined in model
-        model_input_count: usize,
-        /// Input dimensions used by inference call
-        inference_input: Vec<Vec<usize>>,
-        /// Input dimensions defined in model
-        model_input: Vec<Vec<Option<u32>>>,
-    },
-    /// Inputs length from model does not match the expected input from inference call
-    #[error("Different input lengths: Expected Input: {model_input:?} vs Received Input: {inference_input:?}")]
-    InputsLength {
-        /// Input dimensions used by inference call
-        inference_input: Vec<Vec<usize>>,
-        /// Input dimensions defined in model
-        model_input: Vec<Vec<Option<u32>>>,
+        input: TensorElementDataType,
+        /// Number of input dimensions used by inference call
+        requested: TensorElementDataType,
     },
 }
 
-/// Error details when ONNXRuntime C API fail
+/// Error used when device name does not match required
+#[derive(Error, Debug)]
+pub enum NonMatchingDeviceName {
+    /// Requested DeviceName does not match tensor DeviceName
+    #[error("Non-matching device: {tensor:?} for tensor vs {requested:?}")]
+    DeviceName {
+        /// The DeviceName of the tensor
+        tensor: DeviceName,
+        /// The requested DeviceName
+        requested: DeviceName,
+    },
+}
+
+/// Error details when ONNX C API fail
 #[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum OrtApiError {
-    /// Details as reported by the ONNXRuntime C API in case of error
+    /// Details as reported by the ONNX C API in case of error
     #[error("Error calling ONNX Runtime C function: {0}")]
     Msg(String),
-    /// Details as reported by the ONNXRuntime C API in case of error cannot be converted to UTF-8
+    /// Details as reported by the ONNX C API in case of error cannot be converted to UTF-8
     #[error("Error calling ONNX Runtime C function and failed to convert error message to UTF-8")]
     IntoStringError(std::ffi::IntoStringError),
-}
-
-/// Error from downloading pre-trained model from the [ONNX Model Zoo](https://github.com/onnx/models).
-#[non_exhaustive]
-#[derive(Error, Debug)]
-pub enum OrtDownloadError {
-    /// Generic input/output error
-    #[error("Error downloading data to file: {0}")]
-    IoError(#[from] io::Error),
-    #[cfg(feature = "model-fetching")]
-    /// Download error by ureq
-    #[error("Error downloading data to file: {0}")]
-    UreqError(#[from] Box<ureq::Error>),
-    /// Error getting content-length from an HTTP GET request
-    #[error("Error getting content-length")]
-    ContentLengthError,
-    /// Mismatch between amount of downloaded and expected bytes
-    #[error("Error copying data to file: expected {expected} length, received {io}")]
-    CopyError {
-        /// Expected amount of bytes to download
-        expected: u64,
-        /// Number of bytes read from network and written to file
-        io: u64,
-    },
 }
 
 /// Wrapper type around a ONNXRuntime C API's `OrtStatus` pointer
@@ -194,16 +245,16 @@ impl From<*const sys::OrtStatus> for OrtStatusWrapper {
     }
 }
 
-pub(crate) fn assert_null_pointer<T>(ptr: *const T, name: &str) -> Result<()> {
+pub(crate) fn assert_null_pointer<T>(ptr: *const T, name: &str) -> OrtResult<()> {
     ptr.is_null()
         .then_some(())
         .ok_or_else(|| OrtError::PointerShouldBeNull(name.to_owned()))
 }
 
-pub(crate) fn assert_not_null_pointer<T>(ptr: *const T, name: &str) -> Result<()> {
+pub(crate) fn assert_not_null_pointer<T>(ptr: *const T, name: &str) -> OrtResult<()> {
     (!ptr.is_null())
         .then_some(())
-        .ok_or_else(|| OrtError::PointerShouldBeNull(name.to_owned()))
+        .ok_or_else(|| OrtError::PointerShouldNotBeNull(name.to_owned()))
 }
 
 impl From<OrtStatusWrapper> for std::result::Result<(), OrtApiError> {
@@ -212,15 +263,9 @@ impl From<OrtStatusWrapper> for std::result::Result<(), OrtApiError> {
             Ok(())
         } else {
             let raw: *const i8 = unsafe {
-                ENV.get()
-                    .unwrap()
-                    .lock()
-                    .unwrap()
-                    .api()
-                    .GetErrorMessage
-                    .unwrap()(status.0)
+                ort_api().GetErrorMessage.unwrap()(status.0)
             };
-            match char_p_to_string(raw) {
+            match char_ptr_to_string(raw) {
                 Ok(msg) => Err(OrtApiError::Msg(msg)),
                 Err(err) => match err {
                     OrtError::StringConversion(OrtApiError::IntoStringError(e)) => {
@@ -238,12 +283,4 @@ pub(crate) fn status_to_result(
 ) -> std::result::Result<(), OrtApiError> {
     let status_wrapper: OrtStatusWrapper = status.into();
     status_wrapper.into()
-}
-
-/// A wrapper around a function on `OrtApi` that maps the status code into [`OrtApiError`]
-pub(crate) unsafe fn call_ort<F>(mut f: F) -> std::result::Result<(), OrtApiError>
-where
-    F: FnMut(sys::OrtApi) -> *const sys::OrtStatus,
-{
-    status_to_result(f(ENV.get().unwrap().lock().unwrap().api()))
 }

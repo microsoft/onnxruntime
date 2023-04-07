@@ -1,36 +1,26 @@
 //! Module containing session types
 
-use std::{convert::TryFrom, ffi::CString, fmt::Debug, path::Path};
+use crate::{
+    ort_api,
+    error::{status_to_result, assert_not_null_pointer, assert_null_pointer, OrtResult, OrtError, OrtApiError},
+    allocator::Allocator,
+    char_ptr_to_string,
+    environment::{Environment, _Environment},
+    io_binding::IoBinding,
+    memory_info::MemoryInfo,
+    allocator::AllocatorType, DeviceName, GraphOptimizationLevel, MemType,
+    TensorElementDataType, OrtValue, metadata::Metadata,
+};
+use indexmap::IndexMap;
+use onnxruntime_sys as sys;
+use std::{os::raw::c_char, sync::{Arc, Weak}};
+use std::{collections::HashMap, io::Read};
+use std::{ffi::CString, ffi::OsString, fmt::Debug, path::Path};
 
-#[cfg(not(target_family = "windows"))]
-use std::os::unix::ffi::OsStrExt;
-#[cfg(target_family = "windows")]
+#[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
 
-#[cfg(feature = "model-fetching")]
-use std::env;
-
-use crate::{
-    char_p_to_string,
-    environment::{Environment, _Environment},
-    error::{
-        assert_not_null_pointer, assert_null_pointer, status_to_result, NonMatchingDimensionsError,
-        OrtApiError, OrtError, Result,
-    },
-    memory::MemoryInfo,
-    tensor::{
-        construct::ConstructTensor,
-        ort_output_tensor::{OrtOutput, OrtOwnedTensorExtractor},
-        OrtOutputTensor,
-    },
-    AllocatorType, GraphOptimizationLevel, MemType, TensorElementDataType,
-};
-use onnxruntime_sys as sys;
-
-use tracing::{debug, error};
-
-#[cfg(feature = "model-fetching")]
-use crate::{download::AvailableOnnxModel, error::OrtDownloadError};
+use tracing::{error, trace};
 
 /// Type used to create a session using the _builder pattern_
 ///
@@ -47,58 +37,47 @@ use crate::{download::AvailableOnnxModel, error::OrtDownloadError};
 ///
 /// ```no_run
 /// # use std::error::Error;
-/// # use std::env::var;
 /// # use onnxruntime::{environment::Environment, LoggingLevel, GraphOptimizationLevel};
 /// # fn main() -> Result<(), Box<dyn Error>> {
-/// # let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
-///
-/// let builder = Environment::builder()
+/// let environment = Environment::builder()
 ///     .with_name("test")
-///     .with_log_level(LoggingLevel::Warning);
-///
-/// let builder = if let Some(path) = path {
-///     builder.with_library_path(path)
-/// } else {
-///     builder
-/// };
-/// let environment = builder.build()?;
-///
+///     .with_log_level(LoggingLevel::Verbose)
+///     .build()?;
 /// let mut session = environment
 ///     .new_session_builder()?
-///     .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
-///     .with_intra_op_num_threads(1)?
+///     .with_optimization_level(GraphOptimizationLevel::Basic)?
+///     .with_number_threads(1)?
 ///     .with_model_from_file("squeezenet.onnx")?;
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct SessionBuilder<'a> {
-    env: &'a Environment,
+pub struct SessionBuilder<'e> {
+    env: &'e Environment,
     session_options_ptr: *mut sys::OrtSessionOptions,
-
     allocator: AllocatorType,
     memory_type: MemType,
+    load_metadata: bool,
 }
 
-impl<'a> Drop for SessionBuilder<'a> {
+impl<'e> Drop for SessionBuilder<'e> {
     #[tracing::instrument]
     fn drop(&mut self) {
         if self.session_options_ptr.is_null() {
-            error!("Session options pointer is null, not dropping");
+            error!("SessionBuilder pointer is null, not dropping");
         } else {
-            debug!("Dropping the session options.");
-            unsafe {
-                self.env.env().api().ReleaseSessionOptions.unwrap()(self.session_options_ptr)
-            };
+            trace!("Dropping SessionBuilder.");
+            unsafe { ort_api().ReleaseSessionOptions.unwrap()(self.session_options_ptr) };
         }
+
+        self.session_options_ptr = std::ptr::null_mut();
     }
 }
 
-impl<'a> SessionBuilder<'a> {
-    pub(crate) fn new(env: &'a Environment) -> Result<SessionBuilder<'a>> {
+impl<'e> SessionBuilder<'e> {
+    pub(crate) fn new(env: &'e Environment) -> OrtResult<SessionBuilder<'e>> {
         let mut session_options_ptr: *mut sys::OrtSessionOptions = std::ptr::null_mut();
-        let status =
-            unsafe { env.env().api().CreateSessionOptions.unwrap()(&mut session_options_ptr) };
+        let status = unsafe { ort_api().CreateSessionOptions.unwrap()(&mut session_options_ptr) };
 
         status_to_result(status).map_err(OrtError::SessionOptions)?;
         assert_null_pointer(status, "SessionStatus")?;
@@ -109,46 +88,212 @@ impl<'a> SessionBuilder<'a> {
             session_options_ptr,
             allocator: AllocatorType::Arena,
             memory_type: MemType::Default,
+            load_metadata: false,
         })
     }
 
     /// Configure the session to use a number of threads
-    pub fn with_intra_op_num_threads(self, num_threads: i16) -> Result<SessionBuilder<'a>> {
-        // FIXME: Pre-built binaries use OpenMP, set env variable instead
-
+    pub fn with_intra_op_num_threads(self, num_threads: u16) -> OrtResult<SessionBuilder<'e>> {
         // We use a u16 in the builder to cover the 16-bits positive values of a i32.
-        let num_threads = i32::from(num_threads);
         let status = unsafe {
-            self.env.env().api().SetIntraOpNumThreads.unwrap()(
-                self.session_options_ptr,
-                num_threads,
-            )
+            ort_api().SetIntraOpNumThreads.unwrap()(self.session_options_ptr, num_threads as i32)
         };
         status_to_result(status).map_err(OrtError::SessionOptions)?;
-        assert_null_pointer(status, "SessionStatus")?;
+        Ok(self)
+    }
+
+    /// Configure the session to use a number of threads
+    pub fn with_inter_op_num_threads(self, num_threads: u16) -> OrtResult<SessionBuilder<'e>> {
+        // We use a u16 in the builder to cover the 16-bits positive values of a i32.
+        let status = unsafe {
+            ort_api().SetInterOpNumThreads.unwrap()(self.session_options_ptr, num_threads as i32)
+        };
+        status_to_result(status).map_err(OrtError::SessionOptions)?;
         Ok(self)
     }
 
     /// Set the session's optimization level
-    pub fn with_graph_optimization_level(
+    pub fn with_optimization_level(
         self,
         opt_level: GraphOptimizationLevel,
-    ) -> Result<SessionBuilder<'a>> {
+    ) -> OrtResult<SessionBuilder<'e>> {
         // Sets graph optimization level
-        unsafe {
-            self.env
-                .env()
-                .api()
-                .SetSessionGraphOptimizationLevel
-                .unwrap()(self.session_options_ptr, opt_level.into())
+        let status = unsafe {
+            ort_api().SetSessionGraphOptimizationLevel.unwrap()(
+                self.session_options_ptr,
+                opt_level.into(),
+            )
         };
+        status_to_result(status).map_err(OrtError::SessionOptions)?;
+        Ok(self)
+    }
+
+    /// Set the session's disable per session threads
+    pub fn with_disable_per_session_threads(self) -> OrtResult<SessionBuilder<'e>> {
+        let status = unsafe { ort_api().DisablePerSessionThreads.unwrap()(self.session_options_ptr) };
+        status_to_result(status).map_err(OrtError::SessionOptions)?;
+        Ok(self)
+    }
+
+    /// Enable profiling for a session.
+    pub fn with_profiling(
+        self,
+        profile_file_prefix: Option<impl Into<String>>,
+    ) -> OrtResult<SessionBuilder<'e>> {
+        let status = unsafe {
+            if let Some(profile_file_prefix) = profile_file_prefix {
+                #[cfg(target_os = "windows")]
+                {
+                    // Convert string to UTF-16
+                    let profile_file_prefix: Vec<u16> = OsString::from(profile_file_prefix.into()).encode_wide().collect();
+                    ort_api().EnableProfiling.unwrap()(
+                        self.session_options_ptr,
+                        profile_file_prefix.as_ptr(),
+                    )
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    let profile_file_prefix = CString::new(profile_file_prefix.into()).unwrap();
+                    ort_api().EnableProfiling.unwrap()(
+                        self.session_options_ptr,
+                        profile_file_prefix.as_ptr(),
+                    )
+                }
+            } else {
+                ort_api().DisableProfiling.unwrap()(self.session_options_ptr)
+            }
+        };
+        status_to_result(status).map_err(OrtError::SessionOptions)?;
+
+        Ok(self)
+    }
+
+    /// Set ExecutionMode for a session.
+    pub fn with_execution_mode(self, exection_mode: ExecutionMode) -> OrtResult<SessionBuilder<'e>> {
+        let status = unsafe {
+            ort_api().SetSessionExecutionMode.unwrap()(self.session_options_ptr, exection_mode.into())
+        };
+        status_to_result(status).map_err(OrtError::SessionOptions)?;
+
+        Ok(self)
+    }
+
+    /// Set MemPattern for a session.
+    pub fn with_mem_pattern(self, mem_pattern: bool) -> OrtResult<SessionBuilder<'e>> {
+        let status = unsafe {
+            if mem_pattern {
+                ort_api().EnableMemPattern.unwrap()(self.session_options_ptr)
+            } else {
+                ort_api().DisableMemPattern.unwrap()(self.session_options_ptr)
+            }
+        };
+        status_to_result(status).map_err(OrtError::SessionOptions)?;
+
+        Ok(self)
+    }
+
+    /// Set CpuMemArena for a session.
+    pub fn with_cpu_mem_arena(self, cpu_mem_arena: bool) -> OrtResult<SessionBuilder<'e>> {
+        let status = unsafe {
+            if cpu_mem_arena {
+                ort_api().EnableCpuMemArena.unwrap()(self.session_options_ptr)
+            } else {
+                ort_api().DisableCpuMemArena.unwrap()(self.session_options_ptr)
+            }
+        };
+        status_to_result(status).map_err(OrtError::SessionOptions)?;
+
+        Ok(self)
+    }
+
+    /// Set the session to use cpu
+    pub fn with_cpu(self, _use_arena: bool) -> OrtResult<SessionBuilder<'e>> {
+        unimplemented!("Requires non-standard build of ORT")
+        /* 
+        unsafe {
+            sys::OrtSessionOptionsAppendExecutionProvider_CPU(
+                self.session_options_ptr,
+                i32::from(use_arena),
+            );
+        };
+
+        Ok(self)
+        */
+    }
+
+    /// Set the session to use cuda
+    #[cfg(feature = "cuda")]
+    pub fn with_cuda(self, options: CUDAProviderOptions) -> OrtResult<SessionBuilder<'e>> {
+        unsafe {
+            let mut cuda_options_ptr: *mut sys::OrtCUDAProviderOptionsV2 = std::ptr::null_mut();
+            let status = ort_api().CreateCUDAProviderOptions.unwrap()(&mut cuda_options_ptr);
+            status_to_result(status).map_err(OrtError::CreateCUDAProviderOptions)?;
+            assert_not_null_pointer(cuda_options_ptr, "CreateCUDAProviderOptions")?;
+
+            let (keys, values) = options.get_keys_values();
+
+            let status = ort_api().UpdateCUDAProviderOptions.unwrap()(
+                cuda_options_ptr,
+                keys.iter().map(|k| k.as_ptr()).collect::<Vec<_>>().as_ptr(),
+                values
+                    .iter()
+                    .map(|v| v.as_ptr())
+                    .collect::<Vec<_>>()
+                    .as_ptr(),
+                keys.len(),
+            );
+            status_to_result(status).map_err(OrtError::UpdateCUDAProviderOptions)?;
+
+            let status = ort_api()
+                .SessionOptionsAppendExecutionProvider_CUDA_V2
+                .unwrap()(self.session_options_ptr, cuda_options_ptr);
+
+            status_to_result(status)
+                .map_err(OrtError::SessionOptionsAppendExecutionProviderCudaV2)?;
+
+            ort_api().ReleaseCUDAProviderOptions.unwrap()(cuda_options_ptr);
+        }
+        Ok(self)
+    }
+
+    /// Set the session to use cuda
+    #[cfg(feature = "cuda")]
+    pub fn with_tensorrt(self, options: TensorrtProviderOptions) -> OrtResult<SessionBuilder<'e>> {
+        unsafe {
+            let mut trt_options_ptr: *mut sys::OrtTensorRTProviderOptionsV2 = std::ptr::null_mut();
+            let status = ort_api().CreateTensorRTProviderOptions.unwrap()(&mut trt_options_ptr);
+            status_to_result(status).map_err(OrtError::Allocator)?;
+            assert_not_null_pointer(trt_options_ptr, "OrtTensorRTProviderOptionsV2")?;
+
+            let (keys, values) = options.get_keys_values();
+
+            let status = ort_api().UpdateTensorRTProviderOptions.unwrap()(
+                trt_options_ptr,
+                keys.iter().map(|k| k.as_ptr()).collect::<Vec<_>>().as_ptr(),
+                values
+                    .iter()
+                    .map(|v| v.as_ptr())
+                    .collect::<Vec<_>>()
+                    .as_ptr(),
+                keys.len(),
+            );
+            status_to_result(status).map_err(OrtError::Allocator)?;
+
+            let status = ort_api()
+                .SessionOptionsAppendExecutionProvider_TensorRT_V2
+                .unwrap()(self.session_options_ptr, trt_options_ptr);
+
+            status_to_result(status).map_err(OrtError::Allocator)?;
+
+            ort_api().ReleaseTensorRTProviderOptions.unwrap()(trt_options_ptr);
+        }
         Ok(self)
     }
 
     /// Set the session's allocator
     ///
     /// Defaults to [`AllocatorType::Arena`](../enum.AllocatorType.html#variant.Arena)
-    pub fn with_allocator(mut self, allocator: AllocatorType) -> Result<SessionBuilder<'a>> {
+    pub fn with_allocator(mut self, allocator: AllocatorType) -> OrtResult<SessionBuilder<'e>> {
         self.allocator = allocator;
         Ok(self)
     }
@@ -156,509 +301,727 @@ impl<'a> SessionBuilder<'a> {
     /// Set the session's memory type
     ///
     /// Defaults to [`MemType::Default`](../enum.MemType.html#variant.Default)
-    pub fn with_memory_type(mut self, memory_type: MemType) -> Result<SessionBuilder<'a>> {
+    pub fn with_memory_type(mut self, memory_type: MemType) -> OrtResult<SessionBuilder<'e>> {
         self.memory_type = memory_type;
         Ok(self)
     }
 
-    /// Download an ONNX pre-trained model from the [ONNX Model Zoo](https://github.com/onnx/models) and commit the session
-    #[cfg(feature = "model-fetching")]
-    pub fn with_model_downloaded<M>(self, model: M) -> Result<Session>
-    where
-        M: Into<AvailableOnnxModel>,
-    {
-        self.with_model_downloaded_monomorphized(model.into())
-    }
-
-    #[cfg(feature = "model-fetching")]
-    fn with_model_downloaded_monomorphized(self, model: AvailableOnnxModel) -> Result<Session> {
-        let download_dir = env::current_dir().map_err(OrtDownloadError::IoError)?;
-        let downloaded_path = model.download_to(download_dir)?;
-        self.with_model_from_file(downloaded_path)
+    /// Load model metadata
+    pub fn with_metadata(mut self) -> OrtResult<SessionBuilder<'e>> {
+        self.load_metadata = true;
+        Ok(self)
     }
 
     // TODO: Add all functions changing the options.
     //       See all OrtApi methods taking a `options: *mut OrtSessionOptions`.
 
     /// Load an ONNX graph from a file and commit the session
-    pub fn with_model_from_file<P>(self, model_filepath_ref: P) -> Result<Session>
+    #[tracing::instrument]
+    pub fn with_model_from_file<P>(self, model_filepath_ref: P) -> OrtResult<Arc<Session>>
     where
-        P: AsRef<Path> + 'a,
+        P: AsRef<Path> + Debug + 'e,
     {
         let model_filepath = model_filepath_ref.as_ref();
-        let mut session_ptr: *mut sys::OrtSession = std::ptr::null_mut();
 
         if !model_filepath.exists() {
-            return Err(OrtError::FileDoesNotExists {
+            return Err(OrtError::FileDoesNotExist {
                 filename: model_filepath.to_path_buf(),
             });
         }
 
-        // Build an OsString than a vector of bytes to pass to C
-        let model_path = std::ffi::OsString::from(model_filepath);
-        #[cfg(target_family = "windows")]
-        let model_path: Vec<u16> = model_path
-            .encode_wide()
-            .chain(std::iter::once(0)) // Make sure we have a null terminated string
-            .collect();
-        #[cfg(not(target_family = "windows"))]
-        let model_path: Vec<std::os::raw::c_char> = model_path
-            .as_bytes()
-            .iter()
-            .chain(std::iter::once(&b'\0')) // Make sure we have a null terminated string
-            .map(|b| *b as std::os::raw::c_char)
-            .collect();
+        let mut onnx_file =
+            std::fs::File::open(model_filepath).map_err(|err| OrtError::FileRead {
+                filename: model_filepath.to_path_buf(),
+                err,
+            })?;
+        let mut model = Vec::new();
+        onnx_file
+            .read_to_end(&mut model)
+            .map_err(|err| OrtError::FileRead {
+                filename: model_filepath.to_path_buf(),
+                err,
+            })?;
 
-        unsafe {
-            let api = self.env.env().api();
-
-            let status = api.CreateSession.unwrap()(
-                self.env.env().env_ptr,
-                model_path.as_ptr(),
-                self.session_options_ptr,
-                &mut session_ptr,
-            );
-
-            status_to_result(status).map_err(OrtError::Session)?;
-            assert_null_pointer(status, "SessionStatus")?;
-            assert_not_null_pointer(session_ptr, "Session")?;
-        };
-        let mut allocator_ptr: *mut sys::OrtAllocator = std::ptr::null_mut();
-        let status = unsafe {
-            self.env.env().api().GetAllocatorWithDefaultOptions.unwrap()(&mut allocator_ptr)
-        };
-        status_to_result(status).map_err(OrtError::Allocator)?;
-        assert_null_pointer(status, "SessionStatus")?;
-        assert_not_null_pointer(allocator_ptr, "Allocator")?;
-
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, &self.env)?;
-        unsafe {
-            // Extract input and output properties
-            let num_input_nodes =
-                dangerous::extract_inputs_count(session_ptr, self.env.env.clone())?;
-            let num_output_nodes =
-                dangerous::extract_outputs_count(session_ptr, self.env.env.clone())?;
-            let inputs = (0..num_input_nodes)
-                .map(|i| {
-                    dangerous::extract_input(session_ptr, allocator_ptr, i, self.env.env.clone())
-                })
-                .collect::<Result<Vec<Input>>>()?;
-            let outputs = (0..num_output_nodes)
-                .map(|i| {
-                    dangerous::extract_output(session_ptr, allocator_ptr, i, self.env.env.clone())
-                })
-                .collect::<Result<Vec<Output>>>()?;
-
-            Ok(Session {
-                env: self.env.env.clone(),
-                session_ptr,
-                allocator_ptr,
-                memory_info,
-                inputs,
-                outputs,
-            })
-        }
+        self.with_model_from_memory(&model)
     }
 
     /// Load an ONNX graph from memory and commit the session
-    pub fn with_model_from_memory<B>(self, model_bytes: B) -> Result<Session>
+    #[tracing::instrument(skip(model_bytes))]
+    pub fn with_model_from_memory<B>(self, model_bytes: B) -> OrtResult<Arc<Session>>
     where
-        B: AsRef<[u8]>,
+        B: AsRef<[u8]> + Debug,
     {
         self.with_model_from_memory_monomorphized(model_bytes.as_ref())
     }
 
-    fn with_model_from_memory_monomorphized(self, model_bytes: &[u8]) -> Result<Session> {
+    #[tracing::instrument(skip(model_bytes))]
+    fn with_model_from_memory_monomorphized(self, model_bytes: &[u8]) -> OrtResult<Arc<Session>> {
         let mut session_ptr: *mut sys::OrtSession = std::ptr::null_mut();
-        unsafe {
-            let api = self.env.env().api();
 
-            let model_data = model_bytes.as_ptr().cast::<std::ffi::c_void>();
+        let env = self.env.env();
+
+        let status = unsafe {
+            let model_data = model_bytes.as_ptr() as *const std::ffi::c_void;
             let model_data_length = model_bytes.len();
-            let status = api.CreateSessionFromArray.unwrap()(
-                self.env.env().env_ptr,
+            ort_api().CreateSessionFromArray.unwrap()(
+                env.env_ptr as *const sys::OrtEnv,
                 model_data,
                 model_data_length,
                 self.session_options_ptr,
                 &mut session_ptr,
-            );
-
-            status_to_result(status).map_err(OrtError::Session)?;
-            assert_null_pointer(status, "SessionStatus")?;
-            assert_not_null_pointer(session_ptr, "Session")?;
+            )
         };
-        let mut allocator_ptr: *mut sys::OrtAllocator = std::ptr::null_mut();
-        let status = unsafe {
-            self.env.env().api().GetAllocatorWithDefaultOptions.unwrap()(&mut allocator_ptr)
-        };
-        status_to_result(status).map_err(OrtError::Allocator)?;
+        status_to_result(status).map_err(OrtError::Session)?;
         assert_null_pointer(status, "SessionStatus")?;
-        assert_not_null_pointer(allocator_ptr, "Allocator")?;
+        assert_not_null_pointer(session_ptr, "Session")?;
 
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, &self.env)?;
-        unsafe {
-            // Extract input and output properties
-            let num_input_nodes =
-                dangerous::extract_inputs_count(session_ptr, self.env.env.clone())?;
-            let num_output_nodes =
-                dangerous::extract_outputs_count(session_ptr, self.env.env.clone())?;
-            let inputs = (0..num_input_nodes)
-                .map(|i| {
-                    dangerous::extract_input(session_ptr, allocator_ptr, i, self.env.env.clone())
-                })
-                .collect::<Result<Vec<Input>>>()?;
-            let outputs = (0..num_output_nodes)
-                .map(|i| {
-                    dangerous::extract_output(session_ptr, allocator_ptr, i, self.env.env.clone())
-                })
-                .collect::<Result<Vec<Output>>>()?;
+        let allocator = Allocator::try_new()?;
 
-            Ok(Session {
-                env: self.env.env.clone(),
-                session_ptr,
-                allocator_ptr,
-                memory_info,
-                inputs,
-                outputs,
+        let memory_info =
+            MemoryInfo::new(DeviceName::Cpu, 0, AllocatorType::Arena, MemType::Default)?;
+
+        // Extract input and output properties
+        let num_input_nodes = dangerous::extract_inputs_count(session_ptr)?;
+        let num_output_nodes = dangerous::extract_outputs_count(session_ptr)?;
+        let inputs = (0..num_input_nodes)
+            .map(|i| {
+                Ok( dangerous::extract_input(session_ptr, allocator.ptr, i)? )
             })
+            .collect::<OrtResult<IndexMap<String, GraphTensorInfo>>>()?;
+        let outputs = (0..num_output_nodes)
+            .map(|i| {
+                Ok( dangerous::extract_output(session_ptr, allocator.ptr, i)? )
+            })
+            .collect::<OrtResult<IndexMap<String, GraphTensorInfo>>>()?;
+        
+        let metadata = 
+        if self.load_metadata {
+            Some(Metadata::new(session_ptr, &allocator)?)
+        } else {
+            None
+        };
+
+        trace!("Created Session: {session_ptr:?}");
+        Ok( Arc::new_cyclic(|weak_self| { 
+            Session {
+            env: self.env.env.clone(),
+            ptr: session_ptr,
+            allocator,
+            memory_info,
+            weak_self: weak_self.clone(),
+            inputs,
+            outputs,
+            metadata,
+        }}))
+    }
+}
+
+/// Execution mode
+#[derive(Debug, Clone)]
+pub enum ExecutionMode {
+    /// Sequential
+    Sequential,
+    /// Parallel
+    Parallel,
+}
+
+impl From<ExecutionMode> for sys::ExecutionMode {
+    fn from(val: ExecutionMode) -> Self {
+        match val {
+            ExecutionMode::Sequential => sys::ExecutionMode::ORT_SEQUENTIAL,
+            ExecutionMode::Parallel => sys::ExecutionMode::ORT_PARALLEL,
         }
     }
 }
 
-/// Type storing the session information, built from an [`Environment`](environment/struct.Environment.html)
-#[derive(Debug)]
-pub struct Session {
-    env: _Environment,
-    session_ptr: *mut sys::OrtSession,
-    allocator_ptr: *mut sys::OrtAllocator,
-    memory_info: MemoryInfo,
-    /// Information about the ONNX's inputs as stored in loaded file
-    pub inputs: Vec<Input>,
-    /// Information about the ONNX's outputs as stored in loaded file
-    pub outputs: Vec<Output>,
+#[cfg(feature = "cuda")]
+#[derive(Debug, Clone)]
+/// Configuration options for the CUDA Execution Provider.
+pub struct CUDAProviderOptions {
+    /// The device ID.
+    device_id: usize,
+    /// The size limit of the device memory arena in bytes.
+    gpu_mem_limit: usize,
+    /// The strategy for extending the device memory arena.
+    arena_extend_strategy: ArenaExtendStrategy,
+    /// The type of search done for cuDNN convolution algorithms.
+    cudnn_conv_algo_search: CuDNNConvAlgoSearch,
+    /// Whether to do copies in the default stream or use separate streams.
+    do_copy_in_default_stream: bool,
+    /// Allow ORT to allocate the maximum possible workspace as determined by CuDNN.
+    cudnn_conv_use_max_workspace: bool,
+    /// Convolution Input Padding in the CUDA EP.
+    cudnn_conv1d_pad_to_nc1d: bool,
+    /// Enable the usage of CUDA Graphs.
+    enable_cuda_graph: bool,
 }
 
-/// Information about an ONNX's input as stored in loaded file
-#[derive(Debug)]
-pub struct Input {
-    /// Name of the input layer
-    pub name: String,
-    /// Type of the input layer's elements
-    pub input_type: TensorElementDataType,
-    /// Shape of the input layer
-    ///
-    /// C API uses a i64 for the dimensions. We use an unsigned of the same range of the positive values.
-    pub dimensions: Vec<Option<u32>>,
+#[cfg(feature = "cuda")]
+impl Default for CUDAProviderOptions {
+    fn default() -> Self {
+        Self {
+            device_id: 0,
+            gpu_mem_limit: 18446744073709551615,
+            arena_extend_strategy: ArenaExtendStrategy::NextPowerOfTwo,
+            cudnn_conv_algo_search: CuDNNConvAlgoSearch::Exhaustive,
+            do_copy_in_default_stream: true,
+            cudnn_conv_use_max_workspace: false,
+            cudnn_conv1d_pad_to_nc1d: false,
+            enable_cuda_graph: false,
+        }
+    }
 }
 
-/// Information about an ONNX's output as stored in loaded file
-#[derive(Debug)]
-pub struct Output {
-    /// Name of the output layer
-    pub name: String,
-    /// Type of the output layer's elements
-    pub output_type: TensorElementDataType,
-    /// Shape of the output layer
-    ///
-    /// C API uses a i64 for the dimensions. We use an unsigned of the same range of the positive values.
-    pub dimensions: Vec<Option<u32>>,
+#[cfg(feature = "cuda")]
+impl CUDAProviderOptions {
+    fn get_keys_values(&self) -> (Vec<CString>, Vec<CString>) {
+        let keys = vec![
+            "device_id",
+            "gpu_mem_limit",
+            "arena_extend_strategy",
+            "cudnn_conv_algo_search",
+            "do_copy_in_default_stream",
+            "cudnn_conv_use_max_workspace",
+            "cudnn_conv1d_pad_to_nc1d",
+            "enable_cuda_graph",
+        ]
+        .into_iter()
+        .map(|k| CString::new(k).unwrap())
+        .collect::<Vec<_>>();
+
+        let values = vec![
+            self.device_id.to_string(),
+            self.gpu_mem_limit.to_string(),
+            match self.arena_extend_strategy {
+                ArenaExtendStrategy::NextPowerOfTwo => "kNextPowerOfTwo",
+                ArenaExtendStrategy::SameAsRequested => "kSameAsRequested",
+            }
+            .to_string(),
+            match self.cudnn_conv_algo_search {
+                CuDNNConvAlgoSearch::Exhaustive => "EXHAUSTIVE",
+                CuDNNConvAlgoSearch::Heuristic => "HEURISTIC",
+                CuDNNConvAlgoSearch::Default => "DEFAULT",
+            }
+            .to_string(),
+            i32::from(self.do_copy_in_default_stream).to_string(),
+            i32::from(self.cudnn_conv_use_max_workspace).to_string(),
+            i32::from(self.cudnn_conv1d_pad_to_nc1d).to_string(),
+            i32::from(self.enable_cuda_graph).to_string(),
+        ]
+        .into_iter()
+        .map(|k| CString::new(k).unwrap())
+        .collect::<Vec<_>>();
+
+        (keys, values)
+    }
+
+    /// Set device_id
+    pub fn with_device_id(mut self, device_id: usize) -> Self {
+        self.device_id = device_id;
+        self
+    }
+
+    /// Set gpu_mem_limit
+    pub fn with_gpu_mem_limit(mut self, gpu_mem_limit: usize) -> Self {
+        self.gpu_mem_limit = gpu_mem_limit;
+        self
+    }
+
+    /// Set arena_extend_strategy
+    pub fn with_arena_extend_strategy(
+        mut self,
+        arena_extend_strategy: ArenaExtendStrategy,
+    ) -> Self {
+        self.arena_extend_strategy = arena_extend_strategy;
+        self
+    }
+
+    /// Set cudnn_conv_algo_search
+    pub fn with_cudnn_conv_algo_search(
+        mut self,
+        cudnn_conv_algo_search: CuDNNConvAlgoSearch,
+    ) -> Self {
+        self.cudnn_conv_algo_search = cudnn_conv_algo_search;
+        self
+    }
+
+    /// Set do_copy_in_default_stream
+    pub fn with_do_copy_in_default_stream(mut self, do_copy_in_default_stream: bool) -> Self {
+        self.do_copy_in_default_stream = do_copy_in_default_stream;
+        self
+    }
+
+    /// Set cudnn_conv_use_max_workspace
+    pub fn with_cudnn_conv_use_max_workspace(mut self, cudnn_conv_use_max_workspace: bool) -> Self {
+        self.cudnn_conv_use_max_workspace = cudnn_conv_use_max_workspace;
+        self
+    }
+
+    /// Set cudnn_conv1d_pad_to_nc1d
+    pub fn with_cudnn_conv1d_pad_to_nc1d(mut self, cudnn_conv1d_pad_to_nc1d: bool) -> Self {
+        self.cudnn_conv1d_pad_to_nc1d = cudnn_conv1d_pad_to_nc1d;
+        self
+    }
+
+    /// Set enable_cuda_graph
+    pub fn with_enable_cuda_graph(mut self, enable_cuda_graph: bool) -> Self {
+        self.enable_cuda_graph = enable_cuda_graph;
+        self
+    }
 }
 
-impl Input {
+#[derive(Debug, Clone)]
+/// The strategy for extending the device memory arena.
+pub enum ArenaExtendStrategy {
+    /// subsequent extensions extend by larger amounts (multiplied by powers of two)
+    NextPowerOfTwo = 0,
+    /// extend by the requested amount
+    SameAsRequested = 1,
+}
+
+#[derive(Debug, Clone)]
+/// The type of search done for cuDNN convolution algorithms.
+pub enum CuDNNConvAlgoSearch {
+    /// expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
+    Exhaustive,
+    /// lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
+    Heuristic,
+    /// default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+    Default,
+}
+
+#[cfg(feature = "cuda")]
+#[derive(Debug, Clone)]
+/// Configuration options for the TensorRT Execution Provider.
+pub struct TensorrtProviderOptions {
+    /// The device ID.
+    device_id: usize,
+    /// The maximum workspace size for TensorRT engine.
+    max_workspace_size: usize,
+    /// The maximum number of iterations allowed in model partitioning for TensorRT.
+    max_partition_iterations: usize,
+    /// The minimum node size in a subgraph after partitioning.
+    min_subgraph_size: usize,
+    /// Enable FP16 mode in TensorRT.
+    fp16_enable: bool,
+    /// Enable FP16 mode in TensorRT.
+    int8_enable: bool,
+    /// Specify INT8 calibration table file for non-QDQ models in INT8 mode.
+    int8_calibration_table_name: Option<String>,
+    ///  Select what calibration table is used for non-QDQ models in INT8 mode.
+    /// If true, native TensorRT generated calibration table is used
+    /// If false, ONNXRUNTIME tool generated calibration table is used.
+    int8_use_native_calibration_table: bool,
+    /// Enable Deep Learning Accelerator (DLA).
+    dla_enable: bool,
+    /// Specify DLA core to execute on.
+    dla_core: usize,
+    /// Enable TensorRT engine caching.
+    engine_cache_enable: bool,
+    /// Specify path for TensorRT engine and profile files.
+    engine_cache_path: Option<String>,
+    /// Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem.
+    dump_subgraphs: bool,
+    /// Sequentially build TensorRT engines across provider instances in multi-GPU environment.
+    force_sequential_engine_build: bool,
+    /// Enable context memory sharing between subgraphs.
+    #[cfg(feature = "ort_1_14_0")]
+    context_memory_sharing_enable: bool,
+    /// Force Pow + Reduce ops in layer norm to FP32.
+    #[cfg(feature = "ort_1_14_0")]
+    layer_norm_fp32_fallback: bool,
+}
+
+#[cfg(feature = "cuda")]
+impl Default for TensorrtProviderOptions {
+    fn default() -> Self {
+        Self {
+            device_id: 0,
+            max_workspace_size: 1073741824,
+            max_partition_iterations: 1000,
+            min_subgraph_size: 1,
+            fp16_enable: false,
+            int8_enable: false,
+            int8_calibration_table_name: None,
+            int8_use_native_calibration_table: false,
+            dla_enable: false,
+            dla_core: 0,
+            engine_cache_enable: false,
+            engine_cache_path: None,
+            dump_subgraphs: false,
+            force_sequential_engine_build: false,
+            #[cfg(feature = "ort_1_14_0")]
+            context_memory_sharing_enable: false,
+            #[cfg(feature = "ort_1_14_0")]
+            layer_norm_fp32_fallback: false,
+        }
+    }
+}
+
+#[cfg(feature = "cuda")]
+impl TensorrtProviderOptions {
+    fn get_keys_values(&self) -> (Vec<CString>, Vec<CString>) {
+        let mut keys = vec![
+            "device_id",
+            "trt_max_workspace_size",
+            "trt_max_partition_iterations",
+            "trt_min_subgraph_size",
+            "trt_fp16_enable",
+            "trt_int8_enable",
+            "trt_int8_use_native_calibration_table",
+            "trt_dla_enable",
+            "trt_dla_core",
+            "trt_engine_cache_enable",
+            "trt_dump_subgraphs",
+            "trt_force_sequential_engine_build",
+        ]
+        .into_iter()
+        .map(|k| CString::new(k).unwrap())
+        .collect::<Vec<_>>();
+
+        #[cfg(feature = "ort_1_14_0")]
+        keys.append(
+            &mut vec![
+                "trt_context_memory_sharing_enable",
+                "trt_layer_norm_fp32_fallback",
+            ]
+            .into_iter()
+            .map(|k| CString::new(k).unwrap())
+            .collect::<Vec<_>>(),
+        );
+
+        let mut values = vec![
+            self.device_id.to_string(),
+            self.max_workspace_size.to_string(),
+            self.max_partition_iterations.to_string(),
+            self.min_subgraph_size.to_string(),
+            i32::from(self.fp16_enable).to_string(),
+            i32::from(self.int8_enable).to_string(),
+            i32::from(self.int8_use_native_calibration_table).to_string(),
+            i32::from(self.dla_enable).to_string(),
+            self.dla_core.to_string(),
+            i32::from(self.engine_cache_enable).to_string(),
+            i32::from(self.dump_subgraphs).to_string(),
+            i32::from(self.force_sequential_engine_build).to_string(),
+        ]
+        .into_iter()
+        .map(|k| CString::new(k).unwrap())
+        .collect::<Vec<_>>();
+
+        #[cfg(feature = "ort_1_14_0")]
+        values.append(
+            &mut vec![
+                i32::from(self.context_memory_sharing_enable).to_string(),
+                i32::from(self.layer_norm_fp32_fallback).to_string(),
+            ]
+            .into_iter()
+            .map(|k| CString::new(k).unwrap())
+            .collect::<Vec<_>>(),
+        );
+
+        if let Some(engine_cache_path) = &self.engine_cache_path {
+            keys.push(CString::new("trt_engine_cache_path").unwrap());
+            values.push(CString::new(engine_cache_path.clone()).unwrap());
+        };
+
+        if let Some(int8_calibration_table_name) = &self.int8_calibration_table_name {
+            keys.push(CString::new("trt_int8_calibration_table_name").unwrap());
+            values.push(CString::new(int8_calibration_table_name.clone()).unwrap());
+        };
+
+        (keys, values)
+    }
+
+    /// Set device_id
+    pub fn with_device_id(mut self, device_id: usize) -> Self {
+        self.device_id = device_id;
+        self
+    }
+
+    /// Set trt_max_workspace_size
+    pub fn with_max_workspace_size(mut self, max_workspace_size: usize) -> Self {
+        self.max_workspace_size = max_workspace_size;
+        self
+    }
+
+    /// Set trt_max_partition_iterations
+    pub fn with_max_partition_iterations(mut self, max_partition_iterations: usize) -> Self {
+        self.max_partition_iterations = max_partition_iterations;
+        self
+    }
+
+    /// Set min_subgraph_size
+    pub fn with_min_subgraph_size(mut self, min_subgraph_size: usize) -> Self {
+        self.min_subgraph_size = min_subgraph_size;
+        self
+    }
+
+    /// Set fp16_enable
+    pub fn with_fp16_enable(mut self, fp16_enable: bool) -> Self {
+        self.fp16_enable = fp16_enable;
+        self
+    }
+
+    /// Set int8_enable
+    pub fn with_int8_enable(mut self, int8_enable: bool) -> Self {
+        self.int8_enable = int8_enable;
+        self
+    }
+
+    /// Set int8_calibration_table_name
+    pub fn with_int8_calibration_table_name(
+        mut self,
+        int8_calibration_table_name: Option<&str>,
+    ) -> Self {
+        self.int8_calibration_table_name = int8_calibration_table_name.map(|v| v.to_string());
+        self
+    }
+
+    /// Set int8_use_native_calibration_table
+    pub fn with_int8_use_native_calibration_table(
+        mut self,
+        int8_use_native_calibration_table: bool,
+    ) -> Self {
+        self.int8_use_native_calibration_table = int8_use_native_calibration_table;
+        self
+    }
+
+    /// Set dla_enable
+    pub fn with_dla_enable(mut self, dla_enable: bool) -> Self {
+        self.dla_enable = dla_enable;
+        self
+    }
+
+    /// Set dla_core
+    pub fn with_dla_core(mut self, dla_core: usize) -> Self {
+        self.dla_core = dla_core;
+        self
+    }
+
+    /// Set engine_cache_enable
+    pub fn with_engine_cache_enable(mut self, engine_cache_enable: bool) -> Self {
+        self.engine_cache_enable = engine_cache_enable;
+        self
+    }
+
+    /// Set engine_cache_path
+    pub fn with_engine_cache_path(mut self, engine_cache_path: Option<&str>) -> Self {
+        self.engine_cache_path = engine_cache_path.map(|v| v.to_string());
+        self
+    }
+
+    /// Set dump_subgraphs
+    pub fn with_dump_subgraphs(mut self, dump_subgraphs: bool) -> Self {
+        self.dump_subgraphs = dump_subgraphs;
+        self
+    }
+
+    /// Set force_sequential_engine_build
+    pub fn with_force_sequential_engine_build(
+        mut self,
+        force_sequential_engine_build: bool,
+    ) -> Self {
+        self.force_sequential_engine_build = force_sequential_engine_build;
+        self
+    }
+
+    /// Set context_memory_sharing_enable
+    #[cfg(feature = "ort_1_14_0")]
+    pub fn with_context_memory_sharing_enable(
+        mut self,
+        context_memory_sharing_enable: bool,
+    ) -> Self {
+        self.context_memory_sharing_enable = context_memory_sharing_enable;
+        self
+    }
+
+    /// Set layer_norm_fp32_fallback
+    #[cfg(feature = "ort_1_14_0")]
+    pub fn with_layer_norm_fp32_fallback(mut self, layer_norm_fp32_fallback: bool) -> Self {
+        self.layer_norm_fp32_fallback = layer_norm_fp32_fallback;
+        self
+    }
+}
+
+/// Description of tensor provided by the ONNX Graph.
+/// Some dimensions may be variable (i.e. unspecified).
+#[derive(Debug)]
+pub struct GraphTensorInfo {
+    /// Optimization to prevent regenerating this for each run() call
+    name_cstr: CString,
+    /// Shape of the tensor. None = variable. C API uses an i64, though the value must be positive.
+    pub tensor_shape: Vec<Option<u32>>,
+    /// Teneor element data type
+    pub element_type: TensorElementDataType,
+}
+
+impl GraphTensorInfo {
+    pub(crate) fn new(name: String, tensor_shape: Vec<Option<u32>>, element_type: TensorElementDataType) -> GraphTensorInfo {
+        GraphTensorInfo { name_cstr: CString::new(name).unwrap(), tensor_shape, element_type }
+    }
+
     /// Return an iterator over the shape elements of the input layer
     ///
     /// Note: The member [`Input::dimensions`](struct.Input.html#structfield.dimensions)
     /// stores `u32` (since ONNX uses `i64` but which cannot be negative) so the
     /// iterator converts to `usize`.
-    pub fn dimensions(&self) -> impl Iterator<Item = Option<usize>> + '_ {
-        self.dimensions.iter().map(|d| d.map(|d2| d2 as usize))
+    pub fn shape(&self) -> impl Iterator<Item = Option<usize>> + '_ {
+        self.tensor_shape.iter().map(|d| d.map(|d2| d2 as usize))
     }
 }
 
-impl Output {
-    /// Return an iterator over the shape elements of the output layer
-    ///
-    /// Note: The member [`Output::dimensions`](struct.Output.html#structfield.dimensions)
-    /// stores `u32` (since ONNX uses `i64` but which cannot be negative) so the
-    /// iterator converts to `usize`.
-    pub fn dimensions(&self) -> impl Iterator<Item = Option<usize>> + '_ {
-        self.dimensions.iter().map(|d| d.map(|d2| d2 as usize))
-    }
+/// Type storing the session information, built from an [`Environment`](environment/struct.Environment.html)
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct Session {
+    env: _Environment,
+    pub(crate) ptr: *mut sys::OrtSession,
+    pub(crate) allocator: Allocator,
+    pub(crate) memory_info: MemoryInfo,    
+    weak_self: Weak<Session>,
+    /// Information about the ONNX's inputs as stored in loaded file
+    pub inputs: IndexMap<String, GraphTensorInfo>,
+    /// Information about the ONNX's outputs as stored in loaded file
+    pub outputs: IndexMap<String, GraphTensorInfo>,
+    /// Standard metadata for all graphs: producer_name, description, graph_name, domain, graph_description,
+    /// plus custom key / value pairs.
+    metadata: Option<Metadata>,
 }
+
+// This makes sense because, once created, the contents of Session are effectively read-only
+unsafe impl Send for Session {}
+unsafe impl Sync for Session {}
 
 impl Drop for Session {
     #[tracing::instrument]
     fn drop(&mut self) {
-        debug!("Dropping the session.");
-        if self.session_ptr.is_null() {
-            error!("Session pointer is null, not dropping.");
+        if self.ptr.is_null() {
+            error!("Session pointer is null, not dropping");
         } else {
-            unsafe { self.env.env().api().ReleaseSession.unwrap()(self.session_ptr) };
+            trace!("Dropping Session: {:?}.", self.ptr);
+            unsafe { ort_api().ReleaseSession.unwrap()(self.ptr) };
         }
 
-        self.session_ptr = std::ptr::null_mut();
-        self.allocator_ptr = std::ptr::null_mut();
+        self.ptr = std::ptr::null_mut();
     }
 }
-
-unsafe impl Send for Session {}
-
-unsafe impl Sync for Session {}
 
 impl Session {
     /// Run the input data through the ONNX graph, performing inference.
     ///
-    /// Note that ONNX models can have multiple inputs; a `Vec<_>` is thus
-    /// used for the input data here.
-    pub fn run<'input, 'output>(
-        &'output self,
-        mut input_arrays: impl AsMut<[Box<dyn ConstructTensor + 'input>]> + 'input,
-    ) -> Result<Vec<OrtOutput<'output>>> {
-        let mut output_tensor_extractors_ptrs: Vec<*mut sys::OrtValue> =
-            vec![std::ptr::null_mut(); self.outputs.len()];
-
-        let output_names_cstring: Vec<CString> = self
-            .outputs
-            .iter()
-            .map(|output| output.name.clone())
-            .map(|n| CString::new(n).unwrap())
-            .collect();
-        let output_names_ptr: Vec<*const i8> = output_names_cstring
-            .iter()
-            .map(|n| n.as_ptr().cast::<i8>())
-            .collect();
-
-        let input_names_ptr: Vec<*const i8> = self
-            .inputs
-            .iter()
-            .map(|input| input.name.clone())
-            .map(|n| CString::new(n).unwrap())
-            .map(|n| n.into_raw() as *const i8)
-            .collect();
-
-        {
-            let memory_info = &self.memory_info;
-
-            let allocator = self.allocator_ptr;
-
-            let arr = input_arrays.as_mut();
-
-            let input_tensors = arr
-                .into_iter()
-                .map(|v| v.construct(memory_info, allocator))
-                .collect::<Result<Vec<_>>>()?;
-
-            let input_arrays_shapes: Vec<Vec<usize>> =
-                input_tensors.iter().map(|v| v.shape().to_vec()).collect();
-
-            self.validate_input_shapes(&input_arrays_shapes)?;
-
-            // Build arguments to Run()
-
-            let input_ort_values: Vec<*const sys::OrtValue> = input_tensors
-                .iter()
-                .map(|input_array_ort| input_array_ort.ptr() as *const sys::OrtValue)
-                .collect();
-
-            let run_options_ptr: *const sys::OrtRunOptions = std::ptr::null();
-
-            let status = unsafe {
-                self.env.env().api().Run.unwrap()(
-                    self.session_ptr,
-                    run_options_ptr,
-                    input_names_ptr.as_ptr(),
-                    input_ort_values.as_ptr(),
-                    input_ort_values.len(),
-                    output_names_ptr.as_ptr(),
-                    output_names_ptr.len(),
-                    output_tensor_extractors_ptrs.as_mut_ptr(),
-                )
-            };
-            status_to_result(status).map_err(OrtError::Run)?;
-        }
-
-        let outputs: Result<Vec<OrtOutputTensor>> = output_tensor_extractors_ptrs
-            .into_iter()
-            .map(|ptr| {
-                let mut tensor_info_ptr: *mut sys::OrtTensorTypeAndShapeInfo = std::ptr::null_mut();
-                let status = unsafe {
-                    self.env.env().api().GetTensorTypeAndShape.unwrap()(
-                        ptr,
-                        &mut tensor_info_ptr as _,
-                    )
-                };
-                status_to_result(status).map_err(OrtError::GetTensorTypeAndShape)?;
-                let dims = unsafe { get_tensor_dimensions(tensor_info_ptr, self.env.clone()) };
-
-                unsafe {
-                    self.env.env().api().ReleaseTensorTypeAndShapeInfo.unwrap()(tensor_info_ptr)
-                };
-                let dims: Vec<_> = dims?.iter().map(|&n| n as usize).collect();
-
-                let mut output_tensor_extractor =
-                    OrtOwnedTensorExtractor::new(dims, self.env.clone());
-                output_tensor_extractor.tensor_ptr = ptr;
-
-                output_tensor_extractor.extract()
+    /// The inputs are specified as a map of input_name to &OrtValue. 
+    /// The input name must exist in session.inputs.
+    /// The requested outputs are specified as a list of names, which
+    /// must exist in session.outputs.
+    /// The returned list of OrtValues correspond to the list of output_names.
+    /// 
+    /// If using ndarray, an owned array can be stored in an OrtNdArray, which
+    /// can create an OrtValue and return a reference to it for use here.
+    #[tracing::instrument]
+    pub fn run(
+        &self,
+        inputs: HashMap<&String, &OrtValue>,
+        output_names: &[String],
+    ) -> OrtResult<Vec<OrtValue>> {
+        // Construct list of input names: pointers to CString names in self.inputs
+        let input_names_ptr: Vec<*const c_char> = inputs
+            .keys()
+            .map(|name| match self.inputs.get(*name) {
+                Some(input_info) => Ok(input_info.name_cstr.as_ptr()),
+                None => Err(OrtError::PointerShouldNotBeNull(format!("Input tensor {:?} does not exist", name))),
             })
-            .collect();
+            .collect::<OrtResult<Vec<_>>>()?;
 
-        // Reconvert to CString so drop impl is called and memory is freed
-        let cstrings: Result<Vec<CString>> = input_names_ptr
-            .into_iter()
-            .map(|p| {
-                assert_not_null_pointer(p, "i8 for CString")?;
-                unsafe { Ok(CString::from_raw(p as *mut i8)) }
+        // Construct list of output names: pointers to CString names in self.outputs
+        let output_names_ptr: Vec<*const c_char> = output_names
+            .iter()
+            .map(|name| match self.inputs.get(name) {
+                Some(input_info) => Ok(input_info.name_cstr.as_ptr()),
+                None => Err(OrtError::PointerShouldNotBeNull(format!("Output tensor {:?} does not exist", name))),
             })
-            .collect();
-        cstrings?;
+            .collect::<OrtResult<Vec<_>>>()?;
 
-        outputs?
+        // Construct list of inputs: pointers to sys::OrtValues
+        let input_ort_values: Vec<*const sys::OrtValue> = inputs
+            .values()
+            .map(|input| input.ptr as *const sys::OrtValue)
+            .collect();
+
+        // Construct list of outputs: unassigned pointers to future sys::OrtValues
+        let mut output_ort_values: Vec<*mut sys::OrtValue> =
+            vec![std::ptr::null_mut(); output_names_ptr.len()];
+
+        let run_options_ptr: *const sys::OrtRunOptions = std::ptr::null();
+
+        let status = unsafe {
+            ort_api().Run.unwrap()(
+                self.ptr,
+                run_options_ptr,
+                input_names_ptr.as_ptr(),
+                input_ort_values.as_ptr(),
+                input_ort_values.len(),
+                output_names_ptr.as_ptr(),
+                output_names_ptr.len(),
+                output_ort_values.as_mut_ptr(),
+            )
+        };
+        status_to_result(status).map_err(OrtError::Run)?;
+
+        Ok( output_ort_values
             .into_iter()
-            .map(|v| OrtOutput::try_from(v))
-            .collect()
+            .map(|ort_value_ptr| ort_value_ptr.into())
+            .collect::<Vec<OrtValue>>() )
     }
 
-    fn validate_input_shapes(&self, input_array_shapes: &[Vec<usize>]) -> Result<()> {
-        // ******************************************************************
-        // FIXME: Properly handle errors here
-        // Make sure all dimensions match (except dynamic ones)
-
-        // Verify length of inputs
-        if input_array_shapes.len() != self.inputs.len() {
-            error!(
-                "Non-matching number of inputs: {} (inference) vs {} (model)",
-                input_array_shapes.len(),
-                self.inputs.len()
-            );
-            return Err(OrtError::NonMatchingDimensions(
-                NonMatchingDimensionsError::InputsCount {
-                    inference_input_count: 0,
-                    model_input_count: 0,
-                    inference_input: input_array_shapes.to_vec(),
-                    model_input: self
-                        .inputs
-                        .iter()
-                        .map(|input| input.dimensions.clone())
-                        .collect(),
-                },
-            ));
-        }
-
-        // Verify length of each individual inputs
-        let inputs_different_length = input_array_shapes
-            .iter()
-            .zip(self.inputs.iter())
-            .any(|(l, r)| l.len() != r.dimensions.len());
-        if inputs_different_length {
-            error!(
-                "Different input lengths: {:?} vs {:?}",
-                self.inputs, input_array_shapes
-            );
-            return Err(OrtError::NonMatchingDimensions(
-                NonMatchingDimensionsError::InputsLength {
-                    inference_input: input_array_shapes
-                        .iter()
-                        .map(|input_array| input_array.to_vec())
-                        .collect(),
-                    model_input: self
-                        .inputs
-                        .iter()
-                        .map(|input| input.dimensions.clone())
-                        .collect(),
-                },
-            ));
-        }
-
-        // Verify shape of each individual inputs
-        let inputs_different_shape =
-            input_array_shapes
-                .iter()
-                .zip(self.inputs.iter())
-                .any(|(l, r)| {
-                    let l_shape = l;
-                    let r_shape = r.dimensions.as_slice();
-                    l_shape.iter().zip(r_shape.iter()).any(|(l2, r2)| match r2 {
-                        Some(r3) => *r3 as usize != *l2,
-                        None => false, // None means dynamic size; in that case shape always match
-                    })
-                });
-        if inputs_different_shape {
-            error!(
-                "Different input lengths: {:?} vs {:?}",
-                self.inputs, input_array_shapes
-            );
-            return Err(OrtError::NonMatchingDimensions(
-                NonMatchingDimensionsError::InputsLength {
-                    inference_input: input_array_shapes
-                        .iter()
-                        .map(|input_array| input_array.to_vec())
-                        .collect(),
-                    model_input: self
-                        .inputs
-                        .iter()
-                        .map(|input| input.dimensions.clone())
-                        .collect(),
-                },
-            ));
-        }
-
+    /// Run the input data through the ONNX graph, performing inference.
+    pub fn run_with_iobinding(&self, io_binding: &IoBinding) -> OrtResult<()> {
+        let run_options_ptr: *const sys::OrtRunOptions = std::ptr::null();
+        let status =
+            unsafe { ort_api().RunWithBinding.unwrap()(self.ptr, run_options_ptr, io_binding.ptr) };
+        status_to_result(status).map_err(OrtError::Run)?;
         Ok(())
     }
-}
 
-unsafe fn get_tensor_dimensions(
-    tensor_info_ptr: *const sys::OrtTensorTypeAndShapeInfo,
-    env: _Environment,
-) -> Result<Vec<i64>> {
-    let mut num_dims = 0;
-    let status = env.env().api().GetDimensionsCount.unwrap()(tensor_info_ptr, &mut num_dims);
-    status_to_result(status).map_err(OrtError::GetDimensionsCount)?;
-    (num_dims != 0)
-        .then_some(())
-        .ok_or(OrtError::InvalidDimensions)?;
+    /// Create or return the session [`IoBinding`](../io_binding/struct.IoBinding.html)
+    pub fn io_binding(&self) -> OrtResult<IoBinding> {
+        let arc_self = self.weak_self.upgrade().expect("Session's weak pointer to itself is null. This should be impossible.");
+        IoBinding::new(arc_self)
+    }
 
-    let mut node_dims: Vec<i64> = vec![0; num_dims as usize];
-    let status = env.env().api().GetDimensions.unwrap()(
-        tensor_info_ptr,
-        node_dims.as_mut_ptr(), // FIXME: UB?
-        num_dims,
-    );
-    status_to_result(status).map_err(OrtError::GetDimensions)?;
-    Ok(node_dims)
+    /// Return reference to metadata if it was loaded by SessionBuilder,
+    /// otherwise None. (Simpler than session.metadata.as_ref())
+    pub fn get_metadata(&self) -> Option<&Metadata> {
+        match &self.metadata {
+            Some(md) => Some(&md),
+            None => None,
+        }
+    }
 }
 
 /// This module contains dangerous functions working on raw pointers.
 /// Those functions are only to be used from inside the
 /// `SessionBuilder::with_model_from_file()` method.
 mod dangerous {
-    use super::{
-        assert_not_null_pointer, assert_null_pointer, char_p_to_string, get_tensor_dimensions,
-        status_to_result, sys, Input, OrtApiError, OrtError, Output, Result, TensorElementDataType,
-    };
+    use std::convert::TryInto;
 
-    use crate::environment::_Environment;
+    use crate::tensor_type_and_shape_info::TensorTypeAndShapeInfo;
 
-    pub(super) unsafe fn extract_inputs_count(
-        session_ptr: *mut sys::OrtSession,
-        env: _Environment,
-    ) -> Result<usize> {
-        let f = env.env().api().SessionGetInputCount.unwrap();
+    use super::*;
+
+    pub(super) fn extract_inputs_count(session_ptr: *mut sys::OrtSession) -> OrtResult<usize> {
+        let f = ort_api().SessionGetInputCount.unwrap();
         extract_io_count(f, session_ptr)
     }
 
-    pub(super) unsafe fn extract_outputs_count(
-        session_ptr: *mut sys::OrtSession,
-        env: _Environment,
-    ) -> Result<usize> {
-        let f = env.env().api().SessionGetOutputCount.unwrap();
+    pub(super) fn extract_outputs_count(session_ptr: *mut sys::OrtSession) -> OrtResult<usize> {
+        let f = ort_api().SessionGetOutputCount.unwrap();
         extract_io_count(f, session_ptr)
     }
 
     fn extract_io_count(
         f: extern_system_fn! { unsafe fn(*const sys::OrtSession, *mut usize) -> *mut sys::OrtStatus },
         session_ptr: *mut sys::OrtSession,
-    ) -> Result<usize> {
+    ) -> OrtResult<usize> {
         let mut num_nodes: usize = 0;
         let status = unsafe { f(session_ptr, &mut num_nodes) };
         status_to_result(status).map_err(OrtError::InOutCount)?;
@@ -669,89 +1032,73 @@ mod dangerous {
         Ok(num_nodes)
     }
 
-    unsafe fn extract_input_name(
+    pub(super) fn extract_input(
         session_ptr: *mut sys::OrtSession,
         allocator_ptr: *mut sys::OrtAllocator,
         i: usize,
-        env: _Environment,
-    ) -> Result<String> {
-        let f = env.env().api().SessionGetInputName.unwrap();
-        extract_io_name(f, session_ptr, allocator_ptr, i, env)
+    ) -> OrtResult<(String, GraphTensorInfo)> {
+        let name = extract_input_name(session_ptr, allocator_ptr, i)?;
+        let f = ort_api().SessionGetInputTypeInfo.unwrap();
+        let (element_type, tensor_shape) = extract_io_type_info(f, session_ptr, i)?;
+        Ok((name.clone(), GraphTensorInfo::new(name, tensor_shape, element_type)))
     }
 
-    unsafe fn extract_output_name(
+    fn extract_input_name(
         session_ptr: *mut sys::OrtSession,
         allocator_ptr: *mut sys::OrtAllocator,
         i: usize,
-        env: _Environment,
-    ) -> Result<String> {
-        let f = env.env().api().SessionGetOutputName.unwrap();
-        extract_io_name(f, session_ptr, allocator_ptr, i, env)
-    }
-
-    fn extract_io_name(
-        f: extern_system_fn! { unsafe fn(
-            *const sys::OrtSession,
-            usize,
-            *mut sys::OrtAllocator,
-            *mut *mut i8,
-        ) -> *mut sys::OrtStatus },
-        session_ptr: *mut sys::OrtSession,
-        allocator_ptr: *mut sys::OrtAllocator,
-        i: usize,
-        env: _Environment,
-    ) -> Result<String> {
-        let mut name_bytes: *mut i8 = std::ptr::null_mut();
-
-        let status = unsafe { f(session_ptr, i, allocator_ptr, &mut name_bytes) };
-        status_to_result(status).map_err(OrtError::InputName)?;
-        assert_not_null_pointer(name_bytes, "InputName")?;
-
-        let name = char_p_to_string(name_bytes)?;
-
-        unsafe {
-            env.env().api().AllocatorFree.unwrap()(
-                allocator_ptr,
-                name_bytes as *mut std::ffi::c_void,
-            )
+    ) -> OrtResult<String> {
+        let mut name_ptr: *mut c_char = std::ptr::null_mut();
+        let status = unsafe {
+            ort_api().SessionGetInputName.unwrap()(session_ptr, i, allocator_ptr, &mut name_ptr)
         };
+        status_to_result(status).map_err(OrtError::SessionGetInputName)?;
+        assert_not_null_pointer(name_ptr, "SessionGetInputName")?;
 
-        Ok(name)
+        let input_name = char_ptr_to_string(name_ptr)?;
+
+        let status = unsafe {
+            ort_api().AllocatorFree.unwrap()(allocator_ptr, name_ptr as *mut std::ffi::c_void)
+        };
+        status_to_result(status).map_err(OrtError::AllocatorFree)?;
+
+        Ok(input_name)
     }
 
-    pub(super) unsafe fn extract_input(
+    fn extract_output_name(
         session_ptr: *mut sys::OrtSession,
         allocator_ptr: *mut sys::OrtAllocator,
         i: usize,
-        env: _Environment,
-    ) -> Result<Input> {
-        let input_name = extract_input_name(session_ptr, allocator_ptr, i, env.clone())?;
-        let f = env.env().api().SessionGetInputTypeInfo.unwrap();
-        let (input_type, dimensions) = extract_io(f, session_ptr, i, env)?;
-        Ok(Input {
-            name: input_name,
-            input_type,
-            dimensions,
-        })
+    ) -> OrtResult<String> {
+        let mut name_ptr: *mut c_char = std::ptr::null_mut();
+        let status = unsafe {
+            ort_api().SessionGetOutputName.unwrap()(session_ptr, i, allocator_ptr, &mut name_ptr)
+        };
+        status_to_result(status).map_err(OrtError::SessionGetOutputName)?;
+        assert_not_null_pointer(name_ptr, "SessionGetOutputName")?;
+
+        let output_name = char_ptr_to_string(name_ptr)?;
+
+        let status = unsafe {
+            ort_api().AllocatorFree.unwrap()(allocator_ptr, name_ptr as *mut std::ffi::c_void)
+        };
+        status_to_result(status).map_err(OrtError::AllocatorFree)?;
+
+        Ok(output_name)
     }
 
-    pub(super) unsafe fn extract_output(
+    pub(super) fn extract_output(
         session_ptr: *mut sys::OrtSession,
         allocator_ptr: *mut sys::OrtAllocator,
         i: usize,
-        env: _Environment,
-    ) -> Result<Output> {
-        let output_name = extract_output_name(session_ptr, allocator_ptr, i, env.clone())?;
-        let f = env.env().api().SessionGetOutputTypeInfo.unwrap();
-        let (output_type, dimensions) = extract_io(f, session_ptr, i, env)?;
-        Ok(Output {
-            name: output_name,
-            output_type,
-            dimensions,
-        })
+    ) -> OrtResult<(String, GraphTensorInfo)> {
+        let name = extract_output_name(session_ptr, allocator_ptr, i)?;
+        let f = ort_api().SessionGetOutputTypeInfo.unwrap();
+        let (element_type, tensor_shape) = extract_io_type_info(f, session_ptr, i)?;
+        Ok((name.clone(), GraphTensorInfo::new(name, tensor_shape, element_type)))
     }
 
-    fn extract_io(
+    fn extract_io_type_info(
         f: extern_system_fn! { unsafe fn(
             *const sys::OrtSession,
             usize,
@@ -759,8 +1106,7 @@ mod dangerous {
         ) -> *mut sys::OrtStatus },
         session_ptr: *mut sys::OrtSession,
         i: usize,
-        env: _Environment,
-    ) -> Result<(TensorElementDataType, Vec<Option<u32>>)> {
+    ) -> OrtResult<(TensorElementDataType, Vec<Option<u32>>)> {
         let mut typeinfo_ptr: *mut sys::OrtTypeInfo = std::ptr::null_mut();
 
         let status = unsafe { f(session_ptr, i, &mut typeinfo_ptr) };
@@ -769,38 +1115,23 @@ mod dangerous {
 
         let mut tensor_info_ptr: *const sys::OrtTensorTypeAndShapeInfo = std::ptr::null_mut();
         let status = unsafe {
-            env.env().api().CastTypeInfoToTensorInfo.unwrap()(typeinfo_ptr, &mut tensor_info_ptr)
+            ort_api().CastTypeInfoToTensorInfo.unwrap()(typeinfo_ptr, &mut tensor_info_ptr)
         };
         status_to_result(status).map_err(OrtError::CastTypeInfoToTensorInfo)?;
         assert_not_null_pointer(tensor_info_ptr, "TensorInfo")?;
 
-        let mut type_sys = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-        let status = unsafe {
-            env.env().api().GetTensorElementType.unwrap()(tensor_info_ptr, &mut type_sys)
-        };
-        status_to_result(status).map_err(OrtError::TensorElementType)?;
-        (type_sys != sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED)
-            .then_some(())
-            .ok_or(OrtError::UndefinedTensorElementType)?;
-        // This transmute should be safe since its value is read from GetTensorElementType which we must trust.
-        let io_type: TensorElementDataType = unsafe { std::mem::transmute(type_sys) };
-
-        // info!("{} : type={}", i, type_);
-
-        let node_dims = unsafe { get_tensor_dimensions(tensor_info_ptr, env.clone())? };
-
-        // for j in 0..num_dims {
-        //     info!("{} : dim {}={}", i, j, node_dims[j as usize]);
-        // }
-
-        unsafe { env.env().api().ReleaseTypeInfo.unwrap()(typeinfo_ptr) };
+        let type_and_shape_info: TensorTypeAndShapeInfo =
+            (tensor_info_ptr as *mut sys::OrtTensorTypeAndShapeInfo).try_into()?;
 
         Ok((
-            io_type,
-            node_dims
+            type_and_shape_info.element_data_type.clone(),
+            type_and_shape_info
+                .dimensions
+                .clone()
                 .into_iter()
                 .map(|d| if d == -1 { None } else { Some(d as u32) })
                 .collect(),
         ))
     }
+
 }

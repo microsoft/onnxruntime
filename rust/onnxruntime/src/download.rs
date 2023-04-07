@@ -18,7 +18,7 @@ use std::{
 };
 
 #[cfg(feature = "model-fetching")]
-use crate::error::{OrtDownloadError, Result};
+use crate::error::{OrtDownloadError, OrtResult};
 
 #[cfg(feature = "model-fetching")]
 use tracing::info;

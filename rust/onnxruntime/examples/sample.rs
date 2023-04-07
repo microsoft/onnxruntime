@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
-use onnxruntime::{environment::Environment, ndarray::Array, GraphOptimizationLevel, LoggingLevel};
-use std::env::var;
+use onnxruntime::{environment::Environment, ndarray::Array, GraphOptimizationLevel, LoggingLevel, OrtNdArray};
+use std::{env::var, collections::HashMap};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -39,7 +39,7 @@ fn run() -> Result<(), Error> {
 
     let session = environment
         .new_session_builder()?
-        .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
+        .with_optimization_level(GraphOptimizationLevel::Basic)?
         .with_intra_op_num_threads(1)?
         // NOTE: The example uses SqueezeNet 1.0 (ONNX version: 1.3, Opset version: 8),
         //       _not_ SqueezeNet 1.1 as downloaded by '.with_model_downloaded(ImageClassification::SqueezeNet)'
@@ -47,36 +47,64 @@ fn run() -> Result<(), Error> {
         //          curl -LO "https://github.com/onnx/models/raw/main/vision/classification/squeezenet/model/squeezenet1.0-8.onnx"
         .with_model_from_file("squeezenet1.0-8.onnx")?;
 
-    let input0_shape: Vec<usize> = session.inputs[0]
-        .dimensions()
+    let input0_shape: Vec<usize> = session.inputs.get_index(0)
+        .unwrap()
+        .1
+        .shape()
         .map(std::option::Option::unwrap)
         .collect();
-    let output0_shape: Vec<usize> = session.outputs[0]
-        .dimensions()
+    let output0_shape: Vec<usize> = session.outputs.get_index(0)
+        .unwrap()
+        .1
+        .shape()
         .map(std::option::Option::unwrap)
         .collect();
 
     assert_eq!(input0_shape, [1, 3, 224, 224]);
     assert_eq!(output0_shape, [1, 1000, 1, 1]);
 
-    // initialize input data with values in [0.0, 1.0]
-    let n: u32 = session.inputs[0]
-        .dimensions
-        .iter()
-        .map(|d| d.unwrap())
-        .product();
-    let array = Array::linspace(0.0_f32, 1.0, n as usize)
-        .into_shape(input0_shape)
-        .unwrap();
-    let input_tensor_values = vec![array.into()];
+    // Create input arrays in a map from input_name to array.
+    // OrtNdArray is a container for an ndarray::Array that will
+    // generate an OrtValue upon request.
+    // This is generally long-lived, where the array(s) are
+    // set with different inputs for each call to session.run()
+    let mut input_arrays: HashMap<String, OrtNdArray<_,_>> = session.inputs.iter()
+        .map(|(name, tensor_info)| {
+            // Get shape of tensor
+            let shape: Vec<usize> = tensor_info.tensor_shape.iter()
+                .map(|d| d.unwrap() as usize)
+                .collect();
+            // Compute total size of tensor (for linspace)
+            let n: usize = shape.iter().product();
+            // Create a 1-D tensor of the right total size, then reshape it.
+            let array = Array::linspace(0.0_f32, 1.0, n)
+                .into_shape(shape)
+                .unwrap();
+            // Key/value pair
+            (name.clone(), OrtNdArray::new(array))
+        })
+        .collect();
 
-    let outputs = session.run(input_tensor_values)?;
+    // A quick translation of name / OrtNdArray -> name / OrtValue
+    // before each call to session.run()
+    let inputs = 
+        onnxruntime::create_graph_inputs(&session, input_arrays.iter_mut())?;
+    
+    // Ask session.run() for all outputs
+    let output_names: Vec<String> = session.outputs
+        .keys()
+        .map(|name| name.clone())
+        .collect();
 
-    let output = outputs[0].float_array().unwrap();
+    // Compute the ONNX graph
+    let outputs = session.run(inputs, output_names.as_slice())?;
 
-    assert_eq!(output.shape(), output0_shape.as_slice());
+    // Convert the output OrtValue to an ndarray to consume its contents.
+    let out_tensor = outputs.get(0).unwrap().array_view::<f32>()?;
+
+    assert_eq!(out_tensor.shape(), output0_shape.as_slice());
     for i in 0..5 {
-        println!("Score for class [{}] =  {}", i, output[[0, i, 0, 0]]);
+        println!("Score for class [{}] =  {}", i, out_tensor[[0, i, 0, 0]]);
     }
 
     Ok(())

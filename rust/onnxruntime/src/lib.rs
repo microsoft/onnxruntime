@@ -151,6 +151,8 @@ to download.
 //! See the [`sample.rs`](https://github.com/nbigaouette/onnxruntime-rs/blob/main/onnxruntime/examples/sample.rs)
 //! example for more details.
 
+use std::ffi::CString;
+
 use onnxruntime_sys as sys;
 
 // Make functions `extern "stdcall"` for Windows 32bit.
@@ -173,21 +175,44 @@ macro_rules! extern_system_fn {
     ($(#[$meta:meta])* $vis:vis unsafe fn $($tt:tt)*) => ($(#[$meta])* $vis unsafe extern "C" fn $($tt)*);
 }
 
+pub mod allocator;
+
 pub mod download;
 pub mod environment;
+pub use environment::Environment;
+pub(crate) use environment::ort_api;
+
 pub mod error;
-mod memory;
+pub use error::{OrtApiError, OrtError, OrtResult};
+
 pub mod session;
-pub mod tensor;
+pub use session::Session;
+
+pub mod memory_info;
+pub use memory_info::MemoryInfo;
+
+pub mod metadata;
+pub use metadata::Metadata;
+
+pub mod tensor_type_and_shape_info;
+pub use tensor_type_and_shape_info::TensorTypeAndShapeInfo;
+
+pub mod ortndarray;
+pub use ortndarray::{OrtNdArray, create_graph_inputs, copy_array_to_ort_value};
+
+pub mod value;
+pub use value::OrtValue;
+
+pub mod io_binding;
+pub use io_binding::IoBinding;
 
 // Re-export
-pub use error::{OrtApiError, OrtError, Result};
 use sys::OnnxEnumInt;
 
 // Re-export ndarray as it's part of the public API anyway
 pub use ndarray;
 
-fn char_p_to_string(raw: *const i8) -> Result<String> {
+fn char_ptr_to_string(raw: *const i8) -> OrtResult<String> {
     let c_string = unsafe { std::ffi::CStr::from_ptr(raw as *mut i8).to_owned() };
 
     match c_string.into_string() {
@@ -349,52 +374,104 @@ impl From<GraphOptimizationLevel> for sys::GraphOptimizationLevel {
     }
 }
 
-// FIXME: Use https://docs.rs/bindgen/0.54.1/bindgen/struct.Builder.html#method.rustified_enum
-// FIXME: Add tests to cover the commented out types
+#[derive(Clone, Debug)]
+/// DeviceName for MemoryInfo location
+pub enum DeviceName {
+    /// Cpu
+    Cpu,
+    /// Cuda
+    Cuda,
+    /// CudaPinned
+    CudaPinned,
+    /// Cann
+    Cann,
+    /// CannPinned
+    CannPinned,
+    /// Dml
+    Dml,
+    /// Hip
+    Hip,
+    /// HipPinned
+    HipPinned,
+    /// OpenVinoCpu
+    OpenVinoCpu,
+    /// OpenVinoGpu
+    OpenVinoGpu,
+}
+
+impl From<DeviceName> for CString {
+    fn from(val: DeviceName) -> Self {
+        match val {
+            DeviceName::Cpu => CString::new("Cpu").unwrap(),
+            DeviceName::Cuda => CString::new("Cuda").unwrap(),
+            DeviceName::CudaPinned => CString::new("CudaPinned").unwrap(),
+            DeviceName::Cann => CString::new("Cann").unwrap(),
+            DeviceName::CannPinned => CString::new("CannPinned").unwrap(),
+            DeviceName::Dml => CString::new("DML").unwrap(),
+            DeviceName::Hip => CString::new("Hip").unwrap(),
+            DeviceName::HipPinned => CString::new("HipPinned").unwrap(),
+            DeviceName::OpenVinoCpu => CString::new("OpenVINO_CPU").unwrap(),
+            DeviceName::OpenVinoGpu => CString::new("OpenVINO_GPU").unwrap(),
+        }
+    }
+}
+
+impl From<&str> for DeviceName {
+    fn from(val: &str) -> Self {
+        match val {
+            "Cpu" => DeviceName::Cpu,
+            // not sure why this value exists
+            "CUDA_CPU" => DeviceName::Cpu,
+            "Cuda" => DeviceName::Cuda,
+            "CudaPinned" => DeviceName::CudaPinned,
+            "Cann" => DeviceName::Cuda,
+            "CannPinned" => DeviceName::CudaPinned,
+            "Dml" => DeviceName::Dml,
+            "Hip" => DeviceName::Hip,
+            "HipPinned" => DeviceName::HipPinned,
+            "OpenVINO_CPU" => DeviceName::OpenVinoCpu,
+            "OpenVINO_GPU" => DeviceName::OpenVinoGpu,
+            other => unimplemented!("{other:?} not implemented"),
+        }
+    }
+}
+
 /// Enum mapping ONNX Runtime's supported tensor types
-#[derive(Debug)]
-#[cfg_attr(not(windows), repr(u32))]
-#[cfg_attr(windows, repr(i32))]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TensorElementDataType {
     /// 32-bit floating point, equivalent to Rust's `f32`
-    Float = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT as OnnxEnumInt,
+    Float,
     /// Unsigned 8-bit int, equivalent to Rust's `u8`
-    Uint8 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 as OnnxEnumInt,
+    Uint8,
     /// Signed 8-bit int, equivalent to Rust's `i8`
-    Int8 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 as OnnxEnumInt,
+    Int8,
     /// Unsigned 16-bit int, equivalent to Rust's `u16`
-    Uint16 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16 as OnnxEnumInt,
+    Uint16,
     /// Signed 16-bit int, equivalent to Rust's `i16`
-    Int16 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16 as OnnxEnumInt,
+    Int16,
     /// Signed 32-bit int, equivalent to Rust's `i32`
-    Int32 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 as OnnxEnumInt,
+    Int32,
     /// Signed 64-bit int, equivalent to Rust's `i64`
-    Int64 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64 as OnnxEnumInt,
+    Int64,
     /// String, equivalent to Rust's `String`
-    String = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING as OnnxEnumInt,
-    // /// Boolean, equivalent to Rust's `bool`
-    // Bool = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL as OnnxEnumInt,
-    // /// 16-bit floating point, equivalent to Rust's `f16`
-    // Float16 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 as OnnxEnumInt,
+    String,
+    /// Boolean, equivalent to Rust's `bool`
+    Bool,
+    /// 16-bit floating point, equivalent to Rust's `f16`
+    Float16,
     /// 64-bit floating point, equivalent to Rust's `f64`
-    Double = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE as OnnxEnumInt,
+    Double,
     /// Unsigned 32-bit int, equivalent to Rust's `u32`
-    Uint32 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32 as OnnxEnumInt,
+    Uint32,
     /// Unsigned 64-bit int, equivalent to Rust's `u64`
-    Uint64 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64 as OnnxEnumInt,
-    // /// Complex 64-bit floating point, equivalent to Rust's `???`
-    // Complex64 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64 as OnnxEnumInt,
-    // /// Complex 128-bit floating point, equivalent to Rust's `???`
-    // Complex128 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128 as OnnxEnumInt,
-    // /// Brain 16-bit floating point
-    // Bfloat16 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16 as OnnxEnumInt,
+    Uint64,
+    /// Undefined
+    Undefined,
 }
 
 impl From<TensorElementDataType> for sys::ONNXTensorElementDataType {
     fn from(val: TensorElementDataType) -> Self {
-        use TensorElementDataType::{
-            Double, Float, Int16, Int32, Int64, Int8, String, Uint16, Uint32, Uint64, Uint8,
-        };
+        use TensorElementDataType::*;
         match val {
             Float => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
             Uint8 => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,
@@ -404,34 +481,75 @@ impl From<TensorElementDataType> for sys::ONNXTensorElementDataType {
             Int32 => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32,
             Int64 => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
             String => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,
-            // Bool => {
-            //     sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL
-            // }
-            // Float16 => {
-            //     sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16
-            // }
+            Bool => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
+            Float16 => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
             Double => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,
             Uint32 => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,
             Uint64 => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,
-            // Complex64 => {
-            //     sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64
-            // }
-            // Complex128 => {
-            //     sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128
-            // }
-            // Bfloat16 => {
-            //     sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16
-            // }
+            Undefined => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
         }
     }
 }
+
+impl From<sys::ONNXTensorElementDataType> for TensorElementDataType {
+    fn from(val: sys::ONNXTensorElementDataType) -> Self {
+        match val {
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED => {
+                TensorElementDataType::Undefined
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT => {
+                TensorElementDataType::Float
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 => {
+                TensorElementDataType::Uint8
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 => {
+                TensorElementDataType::Int8
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16 => {
+                TensorElementDataType::Uint16
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16 => {
+                TensorElementDataType::Int16
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 => {
+                TensorElementDataType::Int32
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64 => {
+                TensorElementDataType::Int64
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING => {
+                TensorElementDataType::String
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL => {
+                TensorElementDataType::Bool
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 => {
+                TensorElementDataType::Float16
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE => {
+                TensorElementDataType::Double
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32 => {
+                TensorElementDataType::Uint32
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64 => {
+                TensorElementDataType::Uint64
+            }
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64 => todo!(),
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128 => todo!(),
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16 => todo!(),
+        }
+    }
+}
+
 
 /// Trait used to map Rust types (for example `f32`) to ONNX types (for example `Float`)
 pub trait TypeToTensorElementDataType {
     /// Return the ONNX type for a Rust type
     fn tensor_element_data_type() -> TensorElementDataType;
 
-    /// If the type is `String`, returns `Some` with utf8 contents, else `None`.
+    /// If the type is `String`, returns `Some` with utf8 contents,else `None`.
     fn try_utf8_bytes(&self) -> Option<&[u8]>;
 }
 
@@ -450,21 +568,18 @@ macro_rules! impl_type_trait {
     };
 }
 
+//impl_type_trait!(f16, Float16);   // Requires half crate
 impl_type_trait!(f32, Float);
-impl_type_trait!(u8, Uint8);
+impl_type_trait!(f64, Double);
 impl_type_trait!(i8, Int8);
-impl_type_trait!(u16, Uint16);
 impl_type_trait!(i16, Int16);
 impl_type_trait!(i32, Int32);
 impl_type_trait!(i64, Int64);
-// impl_type_trait!(bool, Bool);
-// impl_type_trait!(f16, Float16);
-impl_type_trait!(f64, Double);
+impl_type_trait!(u8, Uint8);
+impl_type_trait!(u16, Uint16);
 impl_type_trait!(u32, Uint32);
 impl_type_trait!(u64, Uint64);
-// impl_type_trait!(, Complex64);
-// impl_type_trait!(, Complex128);
-// impl_type_trait!(, Bfloat16);
+
 
 /// Adapter for common Rust string types to Onnx strings.
 ///
@@ -499,50 +614,36 @@ impl<T: Utf8Data> TypeToTensorElementDataType for T {
     }
 }
 
-/// Allocator type
-#[derive(Debug, Clone)]
-#[repr(i32)]
-pub enum AllocatorType {
-    // Invalid = sys::OrtAllocatorType::Invalid as i32,
-    /// Device allocator
-    Device = sys::OrtAllocatorType::OrtDeviceAllocator as i32,
-    /// Arena allocator
-    Arena = sys::OrtAllocatorType::OrtArenaAllocator as i32,
-}
-
-impl From<AllocatorType> for sys::OrtAllocatorType {
-    fn from(val: AllocatorType) -> Self {
-        use AllocatorType::{Arena, Device};
-        match val {
-            // Invalid => sys::OrtAllocatorType::Invalid,
-            Device => sys::OrtAllocatorType::OrtDeviceAllocator,
-            Arena => sys::OrtAllocatorType::OrtArenaAllocator,
-        }
-    }
-}
-
 /// Memory type
 ///
 /// Only support ONNX's default type for now.
 #[derive(Debug, Clone)]
 #[repr(i32)]
 pub enum MemType {
-    // FIXME: C API's `OrtMemType_OrtMemTypeCPU` defines it equal to `OrtMemType_OrtMemTypeCPUOutput`. How to handle this??
-    // CPUInput = sys::OrtMemType::OrtMemTypeCPUInput as i32,
-    // CPUOutput = sys::OrtMemType::OrtMemTypeCPUOutput as i32,
-    // CPU = sys::OrtMemType::OrtMemTypeCPU as i32,
-    /// Default memory type
-    Default = sys::OrtMemType::OrtMemTypeDefault as i32,
+    /// CPUInput
+    CPUInput,
+    /// CPUOutput
+    CPUOutput,
+    /// Default
+    Default,
 }
 
 impl From<MemType> for sys::OrtMemType {
     fn from(val: MemType) -> Self {
-        use MemType::Default;
         match val {
-            // CPUInput => sys::OrtMemType::OrtMemTypeCPUInput,
-            // CPUOutput => sys::OrtMemType::OrtMemTypeCPUOutput,
-            // CPU => sys::OrtMemType::OrtMemTypeCPU,
-            Default => sys::OrtMemType::OrtMemTypeDefault,
+            MemType::CPUInput => sys::OrtMemType::OrtMemTypeCPUInput,
+            MemType::CPUOutput => sys::OrtMemType::OrtMemTypeCPUOutput,
+            MemType::Default => sys::OrtMemType::OrtMemTypeDefault,
+        }
+    }
+}
+
+impl From<sys::OrtMemType> for MemType {
+    fn from(val: sys::OrtMemType) -> Self {
+        match val {
+            sys::OrtMemType::OrtMemTypeCPUInput => MemType::CPUInput,
+            sys::OrtMemType::OrtMemTypeCPUOutput => MemType::CPUOutput,
+            sys::OrtMemType::OrtMemTypeDefault => MemType::Default,
         }
     }
 }
@@ -555,6 +656,6 @@ mod test {
     fn test_char_p_to_string() {
         let s = std::ffi::CString::new("foo").unwrap();
         let ptr = s.as_c_str().as_ptr();
-        assert_eq!("foo", char_p_to_string(ptr).unwrap());
+        assert_eq!("foo", char_ptr_to_string(ptr).unwrap());
     }
 }

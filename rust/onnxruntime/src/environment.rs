@@ -1,7 +1,7 @@
 //! Module containing environment types
 
 use crate::{
-    error::{status_to_result, OrtError, Result},
+    error::{status_to_result, OrtError, OrtResult},
     onnxruntime::custom_logger,
     session::SessionBuilder,
     LoggingLevel,
@@ -11,28 +11,29 @@ use onnxruntime_sys as sys;
 use onnxruntime_sys::library_filename;
 use std::{
     ffi::CString,
-    ptr::{null, null_mut},
-    sync::{Arc, Mutex, MutexGuard},
+    ptr::null_mut,
+    sync::{Arc, Mutex, MutexGuard, 
+        atomic::{AtomicPtr, Ordering}},
 };
 use sys::{onnxruntime, ORT_API_VERSION};
 use tracing::{debug, warn};
 
-pub(crate) static ENV: OnceCell<Arc<Mutex<_EnvironmentSingleton>>> = OnceCell::new();
+static ENV: OnceCell<Arc<Mutex<_EnvironmentSingleton>>> = OnceCell::new();
 
-pub(crate) static LIB: OnceCell<onnxruntime> = OnceCell::new();
+static LIB: OnceCell<onnxruntime> = OnceCell::new();
+
+static API: OnceCell<AtomicPtr<sys::OrtApi>> = OnceCell::new();
+
+pub(crate) fn ort_api() -> sys::OrtApi {
+    let atomic_ptr = API.get().expect("Environment not initialized");
+    let api_ref = atomic_ptr.load(Ordering::Relaxed) as *const sys::OrtApi;
+    unsafe { *api_ref }
+}
 
 #[derive(Debug)]
 pub(crate) struct _EnvironmentSingleton {
     name: CString,
     pub(crate) env_ptr: *mut sys::OrtEnv,
-
-    pub api: *const sys::OrtApi,
-}
-
-impl _EnvironmentSingleton {
-    pub(crate) unsafe fn api(&self) -> sys::OrtApi {
-        *self.api
-    }
 }
 
 unsafe impl Send for _EnvironmentSingleton {}
@@ -117,16 +118,24 @@ impl Environment {
     }
 
     #[tracing::instrument]
-    fn new(name: &str, log_level: LoggingLevel, path: Option<String>) -> Result<Environment> {
+    fn new(name: &str, log_level: LoggingLevel, path: Option<String>) -> OrtResult<Environment> {
+        // Load library
         let lib = if let Some(path) = path {
             LIB.get_or_try_init(|| unsafe { onnxruntime::new(path) })?
         } else {
             LIB.get_or_try_init(|| unsafe { onnxruntime::new(library_filename("onnxruntime")) })?
         };
+        
+        // Initialize static pointer to library's API
+        API.get_or_init(|| {
+            let api_ptr: *mut sys::OrtApi = unsafe {
+                (*lib.OrtGetApiBase()).GetApi.unwrap()(ORT_API_VERSION) as *mut sys::OrtApi
+            };
+            AtomicPtr::new(api_ptr)
+        });
+
         let env = ENV.get_or_try_init(|| {
             debug!("Environment not yet initialized, creating a new one.");
-
-            let api = unsafe { (*lib.OrtGetApiBase()).GetApi.unwrap()(ORT_API_VERSION) };
 
             let mut env_ptr: *mut sys::OrtEnv = std::ptr::null_mut();
 
@@ -136,7 +145,7 @@ impl Environment {
 
             let cname = CString::new(name).unwrap();
             unsafe {
-                let create_env_with_custom_logger = (*api).CreateEnvWithCustomLogger.unwrap();
+                let create_env_with_custom_logger = ort_api().CreateEnvWithCustomLogger.unwrap();
                 let status = create_env_with_custom_logger(
                     logging_function,
                     logger_param,
@@ -155,16 +164,13 @@ impl Environment {
             Ok::<_, OrtError>(Arc::new(Mutex::new(_EnvironmentSingleton {
                 name: cname,
                 env_ptr,
-                api,
             })))
         })?;
 
         let mut guard = env.lock().expect("Lock is poisoned");
 
-        if guard.env_ptr.is_null() || guard.api.is_null() {
+        if guard.env_ptr.is_null() {
             debug!("Environment not yet initialized, creating a new one.");
-
-            let api = unsafe { (*lib.OrtGetApiBase()).GetApi.unwrap()(ORT_API_VERSION) };
 
             let mut env_ptr: *mut sys::OrtEnv = std::ptr::null_mut();
 
@@ -174,7 +180,7 @@ impl Environment {
 
             let cname = CString::new(name).unwrap();
             unsafe {
-                let create_env_with_custom_logger = (*api).CreateEnvWithCustomLogger.unwrap();
+                let create_env_with_custom_logger = ort_api().CreateEnvWithCustomLogger.unwrap();
                 let status = create_env_with_custom_logger(
                     logging_function,
                     logger_param,
@@ -191,7 +197,6 @@ impl Environment {
             );
 
             guard.env_ptr = env_ptr;
-            guard.api = api;
             guard.name = cname;
         }
 
@@ -202,7 +207,7 @@ impl Environment {
 
     /// Create a new [`SessionBuilder`](../session/struct.SessionBuilder.html)
     /// used to create a new ONNXRuntime session.
-    pub fn new_session_builder(&self) -> Result<SessionBuilder> {
+    pub fn new_session_builder(&self) -> OrtResult<SessionBuilder> {
         SessionBuilder::new(self)
     }
 }
@@ -213,10 +218,8 @@ impl Drop for Environment {
             let env = &mut *ENV.get().unwrap().lock().expect("Lock is poisoned");
 
             unsafe {
-                let release_env = env.api().ReleaseEnv.unwrap();
+                let release_env = ort_api().ReleaseEnv.unwrap();
                 release_env(env.env_ptr);
-
-                env.api = null();
 
                 env.env_ptr = null_mut();
                 env.name = CString::default();
@@ -277,7 +280,7 @@ impl EnvBuilder {
     }
 
     /// Commit the configuration to a new [`Environment`](environment/struct.Environment.html)
-    pub fn build(self) -> Result<Environment> {
+    pub fn build(self) -> OrtResult<Environment> {
         Environment::new(&self.name, self.log_level, self.path)
     }
 }
