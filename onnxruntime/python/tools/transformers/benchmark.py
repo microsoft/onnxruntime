@@ -343,7 +343,7 @@ def run_pytorch(
         )
 
         if config.model_type == "vit" or config.model_type == "swin":
-            max_input_size = 1024   # Just needs to be greater than sequence_length
+            max_input_size = 1024  # Just needs to be greater than sequence_length
         else:
             tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
@@ -378,7 +378,7 @@ def run_pytorch(
                     input_ids = torch.randn(
                         size=(batch_size, 3, config.image_size, config.image_size),
                         dtype=torch.float16 if precision == Precision.FLOAT16 else torch.float32,
-                        device=device
+                        device=device,
                     )
                 else:
                     logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
