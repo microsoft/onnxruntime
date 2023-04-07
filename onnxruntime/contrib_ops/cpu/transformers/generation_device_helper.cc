@@ -1022,6 +1022,25 @@ template Status ExpandBuffer<MLFloat16>(
     OrtValue& expanded,
     bool only_copy_shape);
 
+template Status CreateWhisperEncoderInputs<float>(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* attn_mask_value,
+    int pad_token_id,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_features,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids);
+
+template Status CreateWhisperEncoderInputs<MLFloat16>(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* attn_mask_value,
+    int pad_token_id,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_features,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids);
 }  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime
