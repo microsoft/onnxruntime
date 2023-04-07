@@ -458,7 +458,6 @@ def parse_arguments():
         action="store_true",
         help="Don't do a " "'git submodule update'. Makes the Update phase faster.",
     )
-    parser.add_argument("--use_vstest", action="store_true", help="Use use_vstest for running unitests.")
     parser.add_argument("--use_mimalloc", action="store_true", help="Use mimalloc allocator")
     parser.add_argument("--use_dnnl", action="store_true", help="Build with DNNL.")
     parser.add_argument(
@@ -1748,51 +1747,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if len(dll_path_list) > 0:
             dll_path = os.pathsep.join(dll_path_list)
 
-        if not ctest_path:
-            if is_windows():
-                # Get the "Google Test Adapter" for vstest.
-                if not os.path.exists(os.path.join(cwd, "googletestadapter.0.17.1")):
-                    run_subprocess(
-                        [
-                            "nuget.exe",
-                            "restore",
-                            os.path.join(source_dir, "packages.config"),
-                            "-ConfigFile",
-                            os.path.join(source_dir, "NuGet.config"),
-                            "-PackagesDirectory",
-                            cwd,
-                        ]
-                    )
-                cwd2 = os.path.join(cwd, config)
-                executables = ["onnxruntime_test_all.exe", "onnxruntime_mlas_test.exe"]
-                if args.build_shared_lib:
-                    executables.append("onnxruntime_shared_lib_test.exe")
-                    executables.append("onnxruntime_global_thread_pools_test.exe")
-                    executables.append("onnxruntime_api_tests_without_env.exe")
-                    executables.append("onnxruntime_customopregistration_test")
-
-                run_subprocess(
-                    [
-                        "vstest.console.exe",
-                        "--parallel",
-                        "--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common",
-                        "/Logger:trx",
-                        "/Enablecodecoverage",
-                        "/Platform:x64",
-                        "/Settings:%s" % os.path.join(source_dir, "cmake\\codeconv.runsettings"),
-                        *executables,
-                    ],
-                    cwd=cwd2,
-                    dll_path=dll_path,
-                )
-            else:
-                executables = ["onnxruntime_test_all", "onnxruntime_mlas_test"]
-                if args.build_shared_lib:
-                    executables.append("onnxruntime_shared_lib_test")
-                    executables.append("onnxruntime_global_thread_pools_test")
-                    executables.append("onnxruntime_api_tests_without_env")
-                    executables.append("onnxruntime_customopregistration_test")
-
+        if not ctest_path and not is_windows():
+            executables = ["onnxruntime_test_all", "onnxruntime_mlas_test"]
+            if args.build_shared_lib:
+                executables.append("onnxruntime_shared_lib_test")
+                executables.append("onnxruntime_global_thread_pools_test")
+                executables.append("onnxruntime_api_tests_without_env")
+                executables.append("onnxruntime_customopregistration_test")
                 for exe in executables:
                     run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
@@ -2220,6 +2181,37 @@ def is_cross_compiling_on_apple(args):
     return False
 
 
+# RID is short for runtime identifier. If a nuget package has native binaries,
+# the RID designates on which platforms the package can be restored. However, Google's
+# protobuf package doesn't use standard RIDs from .NET RID catalog. This function is
+# specific for "google.protobuf.tools" nuget package
+# We do not care which CPU arch this ONNX Runtime build is targeting, we only care
+# the "host" CPU type.
+def get_protobuf_rid():
+    cpu_arch = platform.architecture()[0]
+    if is_windows():
+        if platform.machine() == "AMD64":
+            # Even if cpu_arch is "32bit", we still use a 64-bit protoc binary because the CPU can run it
+            return "windows_x64"
+        # No ARM32/ARM64 support yet
+        # If you ran a x64 python exe on a Windows ARM64 machine, it will fall into the "windows_x64" branch above.
+        # If you ran native ARM64 python exe, we use "windows_x64" protoc.exe instead.
+        if platform.machine() == "ARM64":
+            return "windows_x64"
+        return None
+    if is_linux():
+        # TODO: exclude ARM
+        if cpu_arch == "64bit":
+            return "linux_x64"
+        if cpu_arch == "32bit":
+            return "linux_x86"
+        return None
+    if is_macOS():
+        # TODO: exclude ARM
+        return "macosx_x64"
+    return None
+
+
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     if (args.arm or args.arm64 or args.arm64ec) and not (is_windows() or is_cross_compiling_on_apple(args)):
         raise BuildError(
@@ -2227,53 +2219,29 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
             "cross-compiling for ARM/ARM64/Store and linux cross-compiling iOS"
         )
 
-    log.info("Building protoc for host to be used in cross-compiled build process")
-    protoc_build_dir = os.path.join(os.getcwd(), build_dir, "host_protoc")
-    os.makedirs(protoc_build_dir, exist_ok=True)
-    # Generate step
-    cmd_args = [
-        cmake_path,
-        os.path.join(source_dir, "cmake", "external", "protobuf", "cmake"),
-        "-Dprotobuf_BUILD_TESTS=OFF",
-        "-Dprotobuf_WITH_ZLIB_DEFAULT=OFF",
-        "-Dprotobuf_BUILD_SHARED_LIBS=OFF",
-    ]
+    rid = get_protobuf_rid()
+    if rid is None:
+        return None
+    run_subprocess(
+        [
+            "nuget.exe",
+            "restore",
+            os.path.join(source_dir, "packages.config"),
+            "-ConfigFile",
+            os.path.join(source_dir, "NuGet.config"),
+            "-PackagesDirectory",
+            build_dir,
+        ]
+    )
 
-    is_ninja = args.cmake_generator == "Ninja"
-    if args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
-        cmd_args += ["-G", args.cmake_generator]
+    protoc_path = list(Path(build_dir).glob("Google.Protobuf.Tools.*"))[0] / "tools" / rid
     if is_windows():
-        if not is_ninja:
-            cmd_args += ["-T", "host=x64"]
-    elif is_macOS():
-        if args.use_xcode:
-            cmd_args += ["-G", "Xcode"]
-            # CMake < 3.18 has a bug setting system arch to arm64 (if not specified) for Xcode 12,
-            # protoc for host should be built using host architecture
-            # Explicitly specify the CMAKE_OSX_ARCHITECTURES for x86_64 Mac.
-            cmd_args += ["-DCMAKE_OSX_ARCHITECTURES={}".format("arm64" if platform.machine() == "arm64" else "x86_64")]
-
-    run_subprocess(cmd_args, cwd=protoc_build_dir)
-    # Build step
-    cmd_args = [cmake_path, "--build", protoc_build_dir, "--config", "Release", "--target", "protoc"]
-    run_subprocess(cmd_args)
-
-    # Absolute protoc path is needed for cmake
-    config_dir = ""
-    suffix = ""
-
-    if (is_windows() and not is_ninja) or (is_macOS() and args.use_xcode):
-        config_dir = "Release"
-
-    if is_windows():
-        suffix = ".exe"
-
-    expected_protoc_path = os.path.join(protoc_build_dir, config_dir, "protoc" + suffix)
-
-    if not os.path.exists(expected_protoc_path):
-        raise BuildError(f"Couldn't find {expected_protoc_path}. Host build of protoc failed.")
-
-    return expected_protoc_path
+        protoc_path = protoc_path / "protoc.exe"
+    else:
+        protoc_path = protoc_path / "protoc"
+    if not protoc_path.exists():
+        return None
+    return protoc_path.absolute()
 
 
 def generate_documentation(source_dir, build_dir, configs, validate):
@@ -2444,7 +2412,7 @@ def main():
     # cmake_path and ctest_path can be None. For example, if a person only wants to run the tests, he/she doesn't need
     # to have cmake/ctest.
     cmake_path = resolve_executable_path(args.cmake_path)
-    ctest_path = None if args.use_vstest else resolve_executable_path(args.ctest_path)
+    ctest_path = resolve_executable_path(args.ctest_path)
     build_dir = args.build_dir
     script_dir = os.path.realpath(os.path.dirname(__file__))
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
@@ -2498,7 +2466,11 @@ def main():
                 )
 
         cmake_extra_args = []
-        path_to_protoc_exe = args.path_to_protoc_exe
+        path_to_protoc_exe = None
+        if args.path_to_protoc_exe:
+            path_to_protoc_exe = Path(args.path_to_protoc_exe)
+            if not path_to_protoc_exe.exists():
+                raise BuildError("The value to --path_to_protoc_exe is invalid.")
         if not args.skip_submodule_sync:
             update_submodules(source_dir)
         if is_windows():
