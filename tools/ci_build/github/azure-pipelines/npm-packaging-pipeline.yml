@@ -46,7 +46,6 @@ stages:
 
 - stage: Build_React_Native
   dependsOn: Extract_commit
-  stages:
   - template: templates/react-native-ci.yml
     parameters:
       NpmPackagingMode: ${{ variables.NpmPackagingMode }}
