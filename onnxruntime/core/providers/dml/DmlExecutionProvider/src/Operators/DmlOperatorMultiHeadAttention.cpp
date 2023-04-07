@@ -194,10 +194,13 @@ public:
                     ? DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH
                     : DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END;
 
-                uint32_t desiredShape[2] = {1, batchSize};
-                m_inputTensorDescs[dmlMaskIndex] = TensorDesc(
-                    m_inputTensorDescs[dmlMaskIndex].GetDmlDataType(),
-                    desiredShape);
+                if (maskType == DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH)
+                {
+                    uint32_t desiredShape[2] = {1, batchSize};
+                    m_inputTensorDescs[dmlMaskIndex] = TensorDesc(
+                        m_inputTensorDescs[dmlMaskIndex].GetDmlDataType(),
+                        desiredShape);
+                }
             }
             else
             {
