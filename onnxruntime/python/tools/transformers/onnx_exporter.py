@@ -16,7 +16,7 @@ from benchmark_helper import OptimizerInfo, Precision, create_onnxruntime_sessio
 from huggingface_models import MODEL_CLASSES
 from quantize_helper import QuantizeHelper
 from torch_onnx_export_helper import torch_onnx_export
-from transformers import AutoConfig, AutoModelForImageClassification, AutoFeatureExtractor, AutoTokenizer, LxmertConfig, TransfoXLConfig
+from transformers import AutoConfig, AutoFeatureExtractor, AutoTokenizer, LxmertConfig, TransfoXLConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
 from gpt2_helper import PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState, TFGPT2ModelNoPastState  # noqa: E402
