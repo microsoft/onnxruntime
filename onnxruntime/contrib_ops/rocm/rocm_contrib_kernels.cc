@@ -257,7 +257,7 @@ Status RegisterRocmContribKernels(KernelRegistry& kernel_registry) {
 #ifdef ENABLE_TRAINING_OPS
     // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
     // 2). this is needed by inference for other purpose.
-    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, ShrunkenGather)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kMSDomain, 1, ShrunkenGather)>,
 #endif
 
 #if defined(USE_MPI) && defined(ORT_USE_NCCL)
