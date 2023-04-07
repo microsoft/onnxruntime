@@ -535,9 +535,16 @@ def parse_arguments():
     )
     parser.add_argument(
         "--cmake_generator",
-        choices=["Visual Studio 15 2017", "Visual Studio 16 2019", "Visual Studio 17 2022", "Ninja"],
+        choices=[
+            "Visual Studio 16 2019",
+            "Visual Studio 17 2022",
+            "Ninja",
+            "MinGW Makefiles",
+            "NMake Makefiles",
+            "Xcode",
+        ],
         default="Visual Studio 16 2019" if is_windows() else None,
-        help="Specify the generator that CMake invokes. " "This is only supported on Windows",
+        help="Specify the generator that CMake invokes. ",
     )
     parser.add_argument(
         "--enable_multi_device_test",
@@ -2473,11 +2480,9 @@ def main():
                 raise BuildError("The value to --path_to_protoc_exe is invalid.")
         if not args.skip_submodule_sync:
             update_submodules(source_dir)
-        if is_windows():
+        if is_windows() and not args.build_wasm:
             cpu_arch = platform.architecture()[0]
-            if args.build_wasm:
-                cmake_extra_args = ["-G", "Ninja"]
-            elif args.cmake_generator == "Ninja":
+            if args.cmake_generator == "Ninja":
                 if cpu_arch == "32bit" or args.arm or args.arm64 or args.arm64ec:
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
