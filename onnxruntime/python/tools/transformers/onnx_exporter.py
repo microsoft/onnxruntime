@@ -450,7 +450,7 @@ def validate_and_optimize_onnx(
     return (
         onnx_model_path,
         is_valid_onnx_model,
-        config.num_labels if model_type == "vit" or model_type == "swin" else config.vocab_size
+        config.num_labels if model_type == "vit" or model_type == "swin" else config.vocab_size,
     )
 
 
