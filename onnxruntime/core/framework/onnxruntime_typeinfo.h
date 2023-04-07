@@ -28,8 +28,6 @@ struct OrtTensorTypeAndShapeInfo;
  * This class is mainly for the C API
  */
 struct OrtTypeInfo {
-  // Provide default construction
-  using Ptr = std::unique_ptr<OrtTypeInfo>;
 
   ONNXType type;
   std::string denotation;
@@ -39,21 +37,21 @@ struct OrtTypeInfo {
   std::unique_ptr<OrtSequenceTypeInfo> sequence_type_info;
   std::unique_ptr<OrtOptionalTypeInfo> optional_type_info;
 
-  Ptr Clone() const;
+  std::unique_ptr<OrtTypeInfo> Clone() const;
 
-  static Ptr FromOrtValue(const OrtValue& value);
-  static Ptr FromTypeProto(const ONNX_NAMESPACE::TypeProto&);
+  static std::unique_ptr<OrtTypeInfo> FromOrtValue(const OrtValue& value);
+  static std::unique_ptr<OrtTypeInfo> FromTypeProto(const ONNX_NAMESPACE::TypeProto&);
   static const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
 
-  explicit OrtTypeInfo(ONNXType type1) noexcept;
+  explicit OrtTypeInfo(ONNXType type) noexcept;
 
-  explicit OrtTypeInfo(std::unique_ptr<OrtMapTypeInfo> map_type_info1) noexcept;
+  explicit OrtTypeInfo(std::unique_ptr<OrtMapTypeInfo> map_type_info) noexcept;
 
-  OrtTypeInfo(ONNXType type1, std::unique_ptr<OrtTensorTypeAndShapeInfo> data1) noexcept;
+  OrtTypeInfo(ONNXType type, std::unique_ptr<OrtTensorTypeAndShapeInfo> data) noexcept;
 
-  explicit OrtTypeInfo(std::unique_ptr<OrtSequenceTypeInfo> sequence_type_info1) noexcept;
+  explicit OrtTypeInfo(std::unique_ptr<OrtSequenceTypeInfo> sequence_type_info) noexcept;
 
-  explicit OrtTypeInfo(std::unique_ptr<OrtOptionalTypeInfo> optional_type_info1) noexcept;
+  explicit OrtTypeInfo(std::unique_ptr<OrtOptionalTypeInfo> optional_type_info) noexcept;
 
 
   OrtTypeInfo(const OrtTypeInfo&) = delete;
@@ -62,7 +60,7 @@ struct OrtTypeInfo {
   ~OrtTypeInfo();
 
   template<typename... Args>
-  static Ptr MakePtr(Args... args) {
+  static std::unique_ptr<OrtTypeInfo> MakePtr(Args... args) {
     return std::make_unique<OrtTypeInfo>(std::forward<Args>(args)...);
   }
 

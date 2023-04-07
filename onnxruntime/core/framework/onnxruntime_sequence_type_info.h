@@ -13,16 +13,14 @@ class TypeProto;
 struct OrtSequenceTypeInfo {
  public:
 
-  using Ptr = std::unique_ptr<OrtSequenceTypeInfo>;
-
-  explicit OrtSequenceTypeInfo(OrtTypeInfo::Ptr sequence_key_type) noexcept;
+  explicit OrtSequenceTypeInfo(std::unique_ptr<OrtTypeInfo> sequence_key_type) noexcept;
   ~OrtSequenceTypeInfo();
 
-  OrtTypeInfo::Ptr sequence_key_type_;
+  std::unique_ptr<OrtTypeInfo> sequence_key_type_;
 
-  Ptr Clone() const;
+  std::unique_ptr<OrtSequenceTypeInfo> Clone() const;
 
-  static Ptr FromTypeProto(const ONNX_NAMESPACE::TypeProto&);
+  static std::unique_ptr<OrtSequenceTypeInfo> FromTypeProto(const ONNX_NAMESPACE::TypeProto&);
 
   OrtSequenceTypeInfo(const OrtSequenceTypeInfo& other) = delete;
   OrtSequenceTypeInfo& operator=(const OrtSequenceTypeInfo& other) = delete;

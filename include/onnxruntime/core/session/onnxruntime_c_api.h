@@ -564,7 +564,14 @@ typedef struct OrtMIGraphXProviderOptions {
  */
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, cache_dir{}, context{}, enable_opencl_throttling{}, enable_dynamic_shapes{} {}
+  OrtOpenVINOProviderOptions() : device_type{},
+                                 enable_vpu_fast_compile{},
+                                 device_id{},
+                                 num_of_threads{},
+                                 cache_dir{},
+                                 context{},
+                                 enable_opencl_throttling{},
+                                 enable_dynamic_shapes{} {}
 #endif
   /** \brief Device type string
    *
@@ -4087,8 +4094,8 @@ struct OrtApi {
    * \since Version 1.15.
    */
   ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out);
-  
- /** \brief Get Optional Type information from an ::OrtTypeInfo
+
+  /** \brief Get Optional Type information from an ::OrtTypeInfo
    *
    * This augments ::OrtTypeInfo to return an ::OrtOptionalTypeInfo when the type is optional.
    * The OrtOptionalTypeInfo also has a nested ::OrtTypeInfo that describes the type of the optional value.

@@ -19,7 +19,6 @@ class DataTypeImpl;
 
 struct OrtTensorTypeAndShapeInfo {
  public:
-  using Ptr = std::unique_ptr<OrtTensorTypeAndShapeInfo>;
 
   ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
   onnxruntime::TensorShape shape;
@@ -27,25 +26,31 @@ struct OrtTensorTypeAndShapeInfo {
   // one entry per dimension in shape. only guaranteed to be populated for graph inputs and outputs
   std::vector<std::string> dim_params;
 
-  OrtTensorTypeAndShapeInfo() = default;
+  OrtTensorTypeAndShapeInfo();
   ~OrtTensorTypeAndShapeInfo();
 
-  Ptr Clone() const {
+  // Utils
+  static std::unique_ptr<OrtTensorTypeAndShapeInfo> GetTensorShapeAndTypeHelper(
+      ONNXTensorElementDataType type,
+      onnxruntime::TensorShape shape,
+      const std::vector<std::string>* dim_params);
+
+  static std::unique_ptr<OrtTensorTypeAndShapeInfo> GetTensorShapeAndType(
+      onnxruntime::TensorShape shape,
+      const onnxruntime::DataTypeImpl& tensor_data_type);
+
+  static std::unique_ptr<OrtTensorTypeAndShapeInfo> GetTensorShapeAndType(
+      onnxruntime::TensorShape shape,
+      const std::vector<std::string>* dim_params,
+      const ONNX_NAMESPACE::TypeProto&);
+
+  std::unique_ptr<OrtTensorTypeAndShapeInfo> Clone() const {
     return std::make_unique<OrtTensorTypeAndShapeInfo>(*this);
   }
 
-  OrtTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo& other) = default;
-  OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other) = default;
-
-  // Utils
-  static Ptr GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type, onnxruntime::TensorShape shape,
-                                         const std::vector<std::string>* dim_params);
-
-  static Ptr GetTensorShapeAndType(onnxruntime::TensorShape shape,
-                                   const onnxruntime::DataTypeImpl& tensor_data_type);
-
-  static Ptr GetTensorShapeAndType(onnxruntime::TensorShape shape, const std::vector<std::string>* dim_params,
-                                   const ONNX_NAMESPACE::TypeProto&);
+  // Copy ops are public because std::make_unique above requires them to be accessible
+  OrtTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo& other);
+  OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other);
 };
 
 constexpr ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementDataType(int32_t dtype);

@@ -4,7 +4,7 @@
 
 #include <memory>
 
-#include "core/framework/onnxruntime_typeinfo.h"
+struct OrtTypeInfo;
 
 namespace ONNX_NAMESPACE {
 class TypeProto;
@@ -12,16 +12,14 @@ class TypeProto;
 
 struct OrtOptionalTypeInfo {
 
-  using Ptr = std::unique_ptr<OrtOptionalTypeInfo>;
-
-  explicit OrtOptionalTypeInfo(OrtTypeInfo::Ptr contained_type) noexcept;
+  explicit OrtOptionalTypeInfo(std::unique_ptr<OrtTypeInfo> contained_type) noexcept;
   ~OrtOptionalTypeInfo();
 
-  OrtTypeInfo::Ptr contained_type_;
+  std::unique_ptr<OrtTypeInfo> contained_type_;
 
-  Ptr Clone() const;
+  std::unique_ptr<OrtOptionalTypeInfo> Clone() const;
 
-  static Ptr FromTypeProto(const ONNX_NAMESPACE::TypeProto&);
+  static std::unique_ptr<OrtOptionalTypeInfo> FromTypeProto(const ONNX_NAMESPACE::TypeProto&);
 
   OrtOptionalTypeInfo(const OrtOptionalTypeInfo& other) = delete;
   OrtOptionalTypeInfo& operator=(const OrtOptionalTypeInfo& other) = delete;
