@@ -23,17 +23,3 @@ parameters:
 stages:
 - stage: Build_Android_AAR
   displayName: Build Android AAR
-  jobs:
-  - template: android-java-api-aar.yml
-    parameters:
-      buildConfig: '${{parameters.BuildConfig}}'
-      # Mobile build:
-      #  buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_mobile_aar_build_settings.json'
-      #  includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
-      #  artifactName: 'onnxruntime-android-mobile-aar'
-      #  packageName: 'onnxruntime-mobile'
-      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
-      artifactName: 'onnxruntime-android-full-aar'
-      job_name_suffix: 'For_React_Native'
-      pool_name: '${{parameters.PoolName}}'
-      packageName: 'onnxruntime-android'
