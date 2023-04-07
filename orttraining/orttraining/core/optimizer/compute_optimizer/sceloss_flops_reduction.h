@@ -4,11 +4,8 @@
 #pragma once
 
 #include "core/optimizer/graph_transformer.h"
-#include "core/optimizer/compute_optimizer/common.h"
-#include "core/optimizer/utils.h"
-#include "core/graph/graph_utils.h"
 
-namespace onnxruntime::optimizer::compute_optimizer {
+namespace onnxruntime {
 
 /**
  * @brief Graph transformer that inserts ShrunkenGather before SoftmaxCrossEntropyLossInternal.
@@ -72,4 +69,4 @@ class InsertGatherBeforeSceLoss : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
 
-}  // namespace onnxruntime::optimizer::compute_optimizer
+}  // namespace onnxruntime

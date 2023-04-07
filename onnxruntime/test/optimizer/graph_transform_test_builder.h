@@ -186,6 +186,11 @@ class ModelTestBuilder {
     return MakeInitializer({static_cast<int64_t>(data.size())}, data);
   }
 
+  NodeArg* MakeEmptyInput() {
+    NodeArg* empty = &graph_.GetOrCreateNodeArg("", nullptr);
+    return empty;
+  }
+
   Node& AddNode(const std::string& op_type,
                 const std::vector<NodeArg*>& input_args,
                 const std::vector<NodeArg*>& output_args,

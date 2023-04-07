@@ -1,17 +1,79 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// #include <onnx/defs/attr_proto_util.h>
+#include <onnx/defs/attr_proto_util.h>
 
 #include "core/graph/graph_utils.h"
+#include "core/framework/random_seed.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/shared_utils.h"
-
+#include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_flops_reduction.h"
 
+namespace onnxruntime {
 
-namespace onnxruntime::optimizer::compute_optimizer {
+// Put utilities in anonymous namespace.
+namespace {
+NodeArg* InsertNodesForValidLabelIndices(Graph& graph, Node& node, NodeArg* label_input, NodeArg* reduce_index_input) {
+  InlinedVector<NodeArg*> input_args{label_input, reduce_index_input};
+
+  InlinedVector<NodeArg*> output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("label_sub_result"),
+                                                                node.MutableInputDefs()[1]->TypeAsProto())};
+
+  Node& sub_node = graph.AddNode(graph.GenerateNodeName("labels_sub"), "Sub", "label sub padding idx", input_args,
+                                 output_args, nullptr, kOnnxDomain);
+  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(sub_node), "Failed to set op schema for " + sub_node.Name());
+  sub_node.SetExecutionProviderType(node.GetExecutionProviderType());
+
+  auto non_zero_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("labels_filter_pad_result"),
+                                                    node.MutableInputDefs()[1]->TypeAsProto());
+
+  Node& non_zero_node = graph.AddNode(graph.GenerateNodeName("labels_filter_pad"), "NonZero",
+                                      "labels filtering padding idx",
+                                      {sub_node.MutableOutputDefs()[0]},
+                                      {non_zero_out_arg}, nullptr, kOnnxDomain);
+
+  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(non_zero_node),
+              "Failed to set op schema for " + non_zero_node.Name());
+
+  const std::string dim_name = MakeString("valid_label_count_", utils::GetRandomSeed());
+
+  // 1D input NonZero generates output of shape (1,valid_token_count).
+  ONNX_NAMESPACE::TensorShapeProto non_zero_output_shape;
+  non_zero_output_shape.add_dim()->set_dim_value(1);
+  non_zero_output_shape.add_dim()->set_dim_param(dim_name);
+  non_zero_out_arg->SetShape(non_zero_output_shape);
+  non_zero_node.SetExecutionProviderType(node.GetExecutionProviderType());
+
+  InlinedVector<NodeArg*> squeeze_input_args;
+  squeeze_input_args.push_back(non_zero_out_arg);
+
+  bool opset_lower_than_13 = onnxruntime::optimizer::compute_optimizer::GetONNXOpSetVersion(graph) < 13;
+  onnxruntime::NodeAttributes attributes;
+  if (opset_lower_than_13) {
+    attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{0});
+  } else {
+    squeeze_input_args.push_back(onnxruntime::optimizer::compute_optimizer::CreateInitializerFromVector(
+        graph, {0}, graph.GenerateNodeArgName("axes")));
+  }
+
+  auto squeeze_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("squeeze_adaptor"),
+                                                   non_zero_out_arg->TypeAsProto());
+  Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("squeeze_adaptor"), "Squeeze", "nonzero_squeezer",
+                                     squeeze_input_args, {squeeze_out_arg}, &attributes, kOnnxDomain);
+  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(squeeze_node),
+              "Failed to set op schema for " + squeeze_node.Name());
+
+  // After Squeeze, the shape becomes (valid_token_count).
+  ONNX_NAMESPACE::TensorShapeProto squeeze_output_shape;
+  squeeze_output_shape.add_dim()->set_dim_param(dim_name);
+  squeeze_out_arg->SetShape(squeeze_output_shape);
+  squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
+
+  return squeeze_out_arg;
+}
+}  // namespace
 
 Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                             const logging::Logger& logger) const {
@@ -94,66 +156,12 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     // we don't do the check explicitly here.
 
     LOG_DEBUG_INFO(logger, "Inserting Sub+NonZero nodes for filtering valid tokens");
+
     // It is possible a label input is used by multiple SoftmaxCrossEntropyLossInternal nodes, here we will create a
     // subgraph retrieving valid tokens for each SoftmaxCrossEntropyLossInternal node.
     // The duplication will be removed by CSE graph transformers.
-
-    InlinedVector<NodeArg*> input_args;
-    input_args.reserve(node.InputDefs().size());
-    input_args.push_back(node.MutableInputDefs()[1]);
-    input_args.push_back(node.MutableInputDefs()[3]);
-
-    InlinedVector<NodeArg*> output_args;
-    output_args.push_back(
-        &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("label_sub_result"),
-                                  node.MutableInputDefs()[1]->TypeAsProto()));
-
-    Node& sub_node = graph.AddNode(graph.GenerateNodeName("labels_sub"), "Sub", "label sub padding idx", input_args,
-                                   output_args, nullptr, kOnnxDomain);
-    ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(sub_node), "Failed to set op schema for " + sub_node.Name());
-    sub_node.SetExecutionProviderType(node.GetExecutionProviderType());
-
-    auto non_zero_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("labels_filter_pad_result"),
-                                                      node.MutableInputDefs()[1]->TypeAsProto());
-
-    Node& non_zero_node = graph.AddNode(graph.GenerateNodeName("labels_filter_pad"), "NonZero",
-                                        "labels filtering padding idx",
-                                        {sub_node.MutableOutputDefs()[0]},
-                                        {non_zero_out_arg}, nullptr, kOnnxDomain);
-
-    ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(non_zero_node),
-                "Failed to set op schema for " + non_zero_node.Name());
-
-    // 1D input NonZero generates output of shape (1,valid_token_count).
-    ONNX_NAMESPACE::TensorShapeProto non_zero_output_shape;
-    non_zero_output_shape.add_dim()->set_dim_value(1);
-    non_zero_output_shape.add_dim()->set_dim_param("valid_token_count");
-    non_zero_out_arg->SetShape(non_zero_output_shape);
-    non_zero_node.SetExecutionProviderType(node.GetExecutionProviderType());
-
-    bool opset_lower_than_13 = GetONNXOpSetVersion(graph) < 13;
-    onnxruntime::NodeAttributes attributes;
-    if (opset_lower_than_13) {
-      attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{0});
-    }
-    InlinedVector<NodeArg*> squeeze_input_args;
-    squeeze_input_args.push_back(non_zero_out_arg);
-    if (opset_lower_than_13) {
-      squeeze_input_args.push_back(CreateUnsqueezeAxesInitializer(graph, {0}));
-    }
-
-    auto squeeze_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("squeeze_adaptor"),
-                                                     non_zero_out_arg->TypeAsProto());
-    Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("squeeze_adaptor"), "Squeeze", "nonzero_squeezer",
-                                       squeeze_input_args, {squeeze_out_arg}, &attributes, kOnnxDomain);
-    ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(squeeze_node),
-                "Failed to set op schema for " + squeeze_node.Name());
-
-    // After Squeeze, the shape becomes (valid_token_count).
-    ONNX_NAMESPACE::TensorShapeProto squeeze_output_shape;
-    squeeze_output_shape.add_dim()->set_dim_param("valid_token_count");
-    squeeze_out_arg->SetShape(squeeze_output_shape);
-    squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
+    NodeArg* valid_labels_input_arg =
+        InsertNodesForValidLabelIndices(graph, node, node.MutableInputDefs()[1], node.MutableInputDefs()[3]);
 
     // Insert the ShrunkenGather node on the two inputs.
     for (int i = 0; i < 2; ++i) {
@@ -162,7 +170,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
       InlinedVector<NodeArg*> input_args;
       input_args.reserve(2);
       input_args.push_back(node.MutableInputDefs()[i]);
-      input_args.push_back(squeeze_out_arg);
+      input_args.push_back(valid_labels_input_arg);
 
       InlinedVector<NodeArg*> output_args;
       output_args.push_back(
@@ -173,7 +181,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
       int new_gather_input_index_to_connect = 0;
       /* new node output index to connect to node*/
       int new_gather_output_index_to_connect = 0;
-      Node* new_gather_node = InsertIntermediateNodeOnDestInput(
+      Node* new_gather_node = onnxruntime::optimizer::compute_optimizer::InsertIntermediateNodeOnDestInput(
           graph, node,
           i,
           new_gather_input_index_to_connect,
@@ -189,7 +197,9 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
 
       new_gather_node->SetExecutionProviderType(node.GetExecutionProviderType());
       auto gather_out_arg = new_gather_node->MutableOutputDefs()[0];
-      UpdateSliceOutputShape(*gather_out_arg, 0, squeeze_output_shape.dim(0));
+
+      onnxruntime::optimizer::compute_optimizer::UpdateSliceOutputShape(
+          *gather_out_arg, 0, valid_labels_input_arg->Shape()->dim(0));
     }
 
     modified = true;
@@ -202,4 +212,4 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
   return Status::OK();
 }
 
-}  // namespace onnxruntime::optimizer::compute_optimizer
+}  // namespace onnxruntime

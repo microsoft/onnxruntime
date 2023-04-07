@@ -150,6 +150,31 @@ std::pair<bool, std::vector<DimCompare>> CompareInputShapeWithOutputShape(
   return std::make_pair<bool, std::vector<DimCompare>>(true, std::move(rets));
 }
 
+int GetONNXOpSetVersion(const Graph& graph) {
+  int onnx_opset = -1;
+  auto onnx_domain_it = graph.DomainToVersionMap().find(kOnnxDomain);
+  if (onnx_domain_it != graph.DomainToVersionMap().end()) {
+    onnx_opset = onnx_domain_it->second;
+  } else {
+    auto onnx_domain_alias_it = graph.DomainToVersionMap().find(kOnnxDomainAlias);
+    if (onnx_domain_alias_it != graph.DomainToVersionMap().end())
+      onnx_opset = onnx_domain_alias_it->second;
+    else
+      ORT_THROW("ONNX domain not found in this model");
+  }
+  return onnx_opset;
+}
+
+NodeArg* CreateInitializerFromVector(Graph& graph, const InlinedVector<int64_t>& values,
+                                     const std::string& name) {
+  ONNX_NAMESPACE::TensorProto const_tensor;
+  const_tensor.set_name(name);
+  const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  const_tensor.add_dims(values.size());
+  const_tensor.set_raw_data(values.data(), values.size() * sizeof(int64_t));
+  return &graph_utils::AddInitializer(graph, const_tensor);
+}
+
 }  // namespace onnxruntime::optimizer::compute_optimizer
 
 #endif
