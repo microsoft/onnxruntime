@@ -35,7 +35,7 @@ struct PartialGraphExecutionState {
                                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                               const SessionState& session_state,
                                               const logging::Logger& sess_logger,
-                                              const DeviceStreamCollection* device_streams);
+                                              DeviceStreamCollection* device_streams);
   DeviceStreamCollection* GetDeviceStreamCollection(const SessionState& session_state);
 
  private:

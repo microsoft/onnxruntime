@@ -23,6 +23,23 @@ class DeviceStreamCollectionImpl {
   ~DeviceStreamCollectionImpl() {
   }
 
+  void ReleaseSingleStreamBuffers(Stream* stream) {
+    if (!stream) return;
+    for (auto& ep : eps_) {
+      auto& allocators = ep->GetAllocators();
+      for (auto& alloc : allocators) {
+        if (alloc->Info().device == stream->GetDevice() &&
+            alloc->Info().alloc_type == OrtArenaAllocator) {
+          auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
+          auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
+          if (stream_aware_alloc) {
+            stream_aware_alloc->ReleaseStreamBuffers(stream);
+          }
+        }
+      }
+    }
+  }
+
   Status CleanUp(bool sync_streams) {
     if (sync_streams) {
       for (auto& device_stream : device_streams_) {
@@ -37,22 +54,9 @@ class DeviceStreamCollectionImpl {
 
     // only clean the streams that is owned by current context
     for (auto& stream : owned_streams_) {
-      if (stream) {
-        for (auto& ep : eps_) {
-          auto& allocators = ep->GetAllocators();
-          for (auto& alloc : allocators) {
-            if (alloc->Info().device == stream->GetDevice() &&
-                alloc->Info().alloc_type == OrtArenaAllocator) {
-              auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
-              auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
-              if (stream_aware_alloc) {
-                stream_aware_alloc->ReleaseStreamBuffers(stream.get());
-              }
-            }
-          }
-        }
-      }
+      ReleaseSingleStreamBuffers(stream.get());
     }
+    ReleaseSingleStreamBuffers(memory_pattern_stream_.get());
     return Status::OK();
   }
 
@@ -78,6 +82,13 @@ class DeviceStreamCollectionImpl {
 
   size_t NumStreams() { return num_streams_; }
 
+  Stream* CreateMemoryPatternStream() {
+    if (!memory_pattern_stream_) {
+      memory_pattern_stream_ = std::make_unique<Stream>(nullptr, OrtDevice());
+    }
+    return memory_pattern_stream_.get();
+  }
+
  private:
   size_t num_streams_;
   std::vector<Stream*> device_streams_;
@@ -86,6 +97,8 @@ class DeviceStreamCollectionImpl {
   // with a different lifetime of session state, we need to hold the reference of EPs.
   InlinedVector<std::shared_ptr<IExecutionProvider>> eps_;
   bool is_main_graph_ = false;
+  std::unique_ptr<Stream> memory_pattern_stream_;
+  void ReleaseSingleStreamBuffers();
 };
 
 DeviceStreamCollection::DeviceStreamCollection(size_t num_streams,
@@ -115,6 +128,10 @@ Status DeviceStreamCollection::CleanUp(bool sync_streams) {
 
 Stream* DeviceStreamCollection::GetStream(size_t stream_idx) const {
   return impl_->GetStream(stream_idx);
+}
+
+Stream* DeviceStreamCollection::CreateMemoryPatternStream() {
+  return impl_->CreateMemoryPatternStream();
 }
 
 }  // namespace onnxruntime

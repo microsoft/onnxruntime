@@ -64,7 +64,7 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
                                                                         const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                                                         const SessionState& session_state,
                                                                         const logging::Logger& sess_logger,
-                                                                        const DeviceStreamCollection* device_streams) {
+                                                                        DeviceStreamCollection* device_streams) {
   if (execution_context_ == nullptr) {
     auto* execution_plan = session_state.GetExecutionPlan();
     LOGS(sess_logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();

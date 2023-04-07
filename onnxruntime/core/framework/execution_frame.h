@@ -25,6 +25,7 @@ class OrtValueNameIdxMap;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
 class Stream;
+class DeviceStreamCollection;
 
 class IExecutionFrame {
  protected:
@@ -139,7 +140,7 @@ class ExecutionFrame final : public IExecutionFrame {
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state,
-                 gsl::span<Stream*> device_streams);
+                 DeviceStreamCollection* device_streams);
 
   ~ExecutionFrame() override;
 
@@ -237,7 +238,7 @@ class ExecutionFrame final : public IExecutionFrame {
   // It is never updated after creation
   const InlinedHashMap<int, TensorShape>* inferred_shapes_{nullptr};
 
-  gsl::span<Stream*> device_streams_;
+  DeviceStreamCollection* device_streams_;
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Size of virtual memory allocated before any kernel execution.

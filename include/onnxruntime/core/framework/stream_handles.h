@@ -29,7 +29,7 @@ class Stream {
 
   virtual ~Stream() = default;
   virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) {
-    return {};
+    return std::make_unique<synchronize::Notification>(*this);
   };
   // block the host thread until all the tasks in the stream finished.
   virtual void Flush(){};
@@ -131,7 +131,7 @@ class Notification {
   }
 
  protected:
-  virtual void Activate() = 0;
+  virtual void Activate() {};
   // which stream create this notification.
   Stream& stream_;
   // TODO: use inline container.

@@ -61,7 +61,7 @@ class StreamExecutionContext {
 #ifdef ORT_ENABLE_STREAM
                          gsl::span<const size_t> notification_owners,
                          size_t num_barriers,
-                         const DeviceStreamCollection* device_stream_map,
+                         DeviceStreamCollection* device_stream_map,
 #endif
                          gsl::span<const int> feed_mlvalue_idxs,
                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
