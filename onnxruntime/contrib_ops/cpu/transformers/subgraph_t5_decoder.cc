@@ -156,7 +156,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     int cur_len,
     transformers::Sequences& sequences,
     int past_present_share_buffer_max_seq_len,
-    bool add_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
+    bool need_cache_indir) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // Allocate subgraph inputs from same device as inputs of encoder subgraph.
@@ -261,29 +261,12 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   // TODO: This part shares the similar logic with CreateInitialFeeds() in subgraph_gpt.cc. We should refactor it.
   if (past_present_share_buffer_) {
     // Past sequence length feed
-    int64_t past_seq_len_dims[] = {1};
-    TensorShape past_seq_len_shape(&past_seq_len_dims[0], 1);
-    OrtValue past_seq_len_tensor_value;
-    Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), past_seq_len_shape, cpu_allocator, past_seq_len_tensor_value);
-    decoder_feeds.push_back(past_seq_len_tensor_value);
-    *past_seq_len_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = 1;
+    ORT_RETURN_IF_ERROR(AppendPastSequenceLength(decoder_feeds, cpu_allocator, 1));
     // Add beam search specific inputs
-    if (add_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
-      // Beam width feed
-      int64_t num_beams_dims[] = {1};
-      TensorShape num_beams_shape(&num_beams_dims[0], 1);
-      OrtValue num_beams_tensor_value;
-      Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), num_beams_shape, cpu_allocator, num_beams_tensor_value);
-      decoder_feeds.push_back(num_beams_tensor_value);
-      *num_beams_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = static_cast<int32_t>(num_beam);
-
-      // Cache indirection feed
-      int64_t cache_indirection_dims[] = {static_cast<int64_t>(batch_beam_size / num_beam), num_beam, past_present_share_buffer_max_seq_len};
-      TensorShape cache_indirection_shape(&cache_indirection_dims[0], 3);
-      OrtValue default_cache_indirection;
-      Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), cache_indirection_shape,
-                           allocator, default_cache_indirection);
-      decoder_feeds.push_back(default_cache_indirection);
+    if (need_cache_indir) {
+      const int64_t batch_size = static_cast<int64_t>(batch_beam_size / num_beam);
+      ORT_RETURN_IF_ERROR(AppendBeamWidthAndCacheIndir(decoder_feeds, cpu_allocator, allocator, batch_size, num_beam,
+                                                       past_present_share_buffer_max_seq_len));
     }
   }
 

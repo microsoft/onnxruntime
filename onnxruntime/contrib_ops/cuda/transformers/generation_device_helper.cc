@@ -914,7 +914,7 @@ Status UpdateGptFeeds(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
+    bool need_cache_indir) {
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator updateFeedsRange("UpdateGptFeeds", profile::Color::Yellow);
   updateFeedsRange.Begin();
@@ -964,7 +964,7 @@ Status UpdateGptFeeds(
 
     // If the last input is not `past_sequence_length`, then the beam search specific inputs
     // for `DecoderMaskedSelfAttention` is present
-    if (has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
+    if (need_cache_indir) {
       ORT_ENFORCE(!beam_indices_gpu.empty(), "Beam indices must be present on CUDA while using DecoderMaskedSelfAttention with BeamSearch");
 
       // The cache indirection feed comes 2 feeds after the `past_sequence_length` feed
@@ -1033,7 +1033,7 @@ Status UpdateDecoderFeeds(
     int current_length,
     int input_sequence_len,
     bool past_present_share_buffer,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
+    bool need_cache_indir,
     transformers::Sequences&,
     const transformers::IConsoleDumper* dumper) {
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
@@ -1079,7 +1079,7 @@ Status UpdateDecoderFeeds(
 
     // If the last input is not `past_sequence_length`, then the beam search specific inputs
     // for `DecoderMaskedSelfAttention` is present
-    if (has_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
+    if (need_cache_indir) {
       ORT_ENFORCE(!beam_indices_gpu.empty(), "Beam indices must be present on CUDA while using DecoderMaskedMultiHeadAttention with BeamSearch");
 
       // The cache indirection feed comes 2 feeds after the `past_sequence_length` feed
@@ -1281,7 +1281,7 @@ template Status UpdateGptFeeds<float>(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+    bool need_cache_indir);
 
 // Float16
 template void InitBeamState<MLFloat16>(
@@ -1341,7 +1341,7 @@ template Status UpdateGptFeeds<MLFloat16>(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+    bool need_cache_indir);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,
@@ -1359,7 +1359,7 @@ template Status UpdateDecoderFeeds<float>(
     int current_length,
     int input_sequence_len,
     bool past_present_share_buffer,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
+    bool need_cache_indir,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
@@ -1379,7 +1379,7 @@ template Status UpdateDecoderFeeds<MLFloat16>(
     int current_length,
     int input_sequence_len,
     bool past_present_share_buffer,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
+    bool need_cache_indir,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 

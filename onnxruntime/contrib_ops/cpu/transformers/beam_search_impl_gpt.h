@@ -69,7 +69,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
                             OrtValue& expanded_input_ids,
                             std::vector<OrtValue>& feeds,
                             IAllocatorUniquePtr<char>& buffer,
-                            bool add_beam_search_specific_inputs_for_decoder_masked_self_attention);
+                            bool need_cache_indir);
 
   // Update the input for next iteration.
   Status UpdateFeeds(
@@ -83,7 +83,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
       gsl::span<const int32_t> beam_indices_gpu,
       int past_sequence_length,
       int input_sequence_len,
-      bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+      bool need_cache_indir);
 
   const SessionState* init_run_decoder_session_state_ = nullptr;
   GptSubgraph* init_run_gpt_subgraph_ = nullptr;
@@ -105,7 +105,7 @@ Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths
                                             OrtValue& expanded_input_ids,
                                             std::vector<OrtValue>& feeds,
                                             IAllocatorUniquePtr<char>& buffer,
-                                            bool add_beam_search_specific_inputs_for_decoder_masked_self_attention) {
+                                            bool need_cache_indir) {
   const OrtValue* input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
   const OrtValue* attn_mask_value = this->context_.GetInputOrtValue(9);
@@ -124,7 +124,7 @@ Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths
                                                       buffer,
                                                       this->ort_stream_,
                                                       this->parameters_->max_length,
-                                                      add_beam_search_specific_inputs_for_decoder_masked_self_attention);
+                                                      need_cache_indir);
   }
 
   return gpt_subgraph_.CreateInitialFeeds(input_ids,
@@ -140,7 +140,7 @@ Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths
                                           buffer,
                                           this->ort_stream_,
                                           this->parameters_->max_length,
-                                          add_beam_search_specific_inputs_for_decoder_masked_self_attention);
+                                          need_cache_indir);
 }
 
 template <typename T>
@@ -155,7 +155,7 @@ Status BeamSearchGpt<T>::UpdateFeeds(
     gsl::span<const int32_t> beam_indices_gpu,
     int past_sequence_length,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
+    bool need_cache_indir) {
   return update_feeds_func_(this->temp_space_allocator_,
                             this->ort_stream_,
                             last_outputs,
@@ -172,7 +172,7 @@ Status BeamSearchGpt<T>::UpdateFeeds(
                             gpt_subgraph_.past_present_share_buffer_,
                             past_sequence_length,
                             input_sequence_len,
-                            has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+                            need_cache_indir);
 }
 
 template <typename T>

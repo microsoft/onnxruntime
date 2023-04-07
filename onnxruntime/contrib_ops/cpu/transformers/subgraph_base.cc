@@ -176,6 +176,44 @@ Status Subgraph::GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shap
   return Status::OK();
 }
 
+Status Subgraph::AppendPastSequenceLength(std::vector<OrtValue>& feeds,
+                                          AllocatorPtr cpu_allocator,
+                                          const int32_t init_value) {
+  int64_t past_seq_len_dims[] = {1};
+  TensorShape past_seq_len_shape(&past_seq_len_dims[0], 1);
+  OrtValue past_seq_len_tensor_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), past_seq_len_shape, cpu_allocator, past_seq_len_tensor_value);
+  feeds.push_back(past_seq_len_tensor_value);
+  *past_seq_len_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = init_value;
+
+  return Status::OK();
+}
+
+Status Subgraph::AppendBeamWidthAndCacheIndir(std::vector<OrtValue>& feeds,
+                                              AllocatorPtr cpu_allocator,
+                                              AllocatorPtr default_allocator,
+                                              const int64_t batch_size,
+                                              const int64_t num_beams,
+                                              const int64_t max_seq_len) {
+  // Beam width feed
+  int64_t num_beams_dims[] = {1};
+  TensorShape num_beams_shape(&num_beams_dims[0], 1);
+  OrtValue num_beams_tensor_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), num_beams_shape, cpu_allocator, num_beams_tensor_value);
+  feeds.push_back(num_beams_tensor_value);
+  *num_beams_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = static_cast<int32_t>(num_beams);
+
+  // Cache indirection feed
+  int64_t cache_indirection_dims[] = {batch_size, num_beams, max_seq_len};
+  TensorShape cache_indirection_shape(&cache_indirection_dims[0], 3);
+  OrtValue default_cache_indirection;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), cache_indirection_shape,
+                       default_allocator, default_cache_indirection);
+  feeds.push_back(default_cache_indirection);
+
+  return Status::OK();
+}
+
 }  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -66,6 +66,17 @@ class Subgraph {
                        const ONNX_NAMESPACE::TensorShapeProto* logits_shape,
                        bool merged_past);
 
+  Status AppendPastSequenceLength(std::vector<OrtValue>& feeds,
+                                  AllocatorPtr cpu_allocator,
+                                  const int32_t init_value);
+
+  Status AppendBeamWidthAndCacheIndir(std::vector<OrtValue>& feeds,
+                                      AllocatorPtr cpu_allocator,
+                                      AllocatorPtr default_allocator,
+                                      const int64_t batch_size,
+                                      const int64_t num_beams,
+                                      const int64_t max_seq_len);
+
   AllocatorPtr allocator_;
   const SessionState* session_state_;
   const SessionState* subgraph_session_state_;

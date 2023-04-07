@@ -40,7 +40,7 @@ class T5DecoderSubgraph : public Subgraph {
       int cur_len,
       transformers::Sequences& sequences,
       int past_present_share_buffer_max_seq_len = -1,
-      bool add_beam_search_specific_inputs_for_decoder_masked_self_attention = false);
+      bool need_cache_indir = false);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;

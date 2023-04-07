@@ -614,13 +614,13 @@ Status UpdateGptFeeds(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
+    bool need_cache_indir) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
   ORT_UNUSED_PARAMETER(beam_indices_gpu);
   ORT_UNUSED_PARAMETER(input_sequence_len);
-  ORT_UNUSED_PARAMETER(has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+  ORT_UNUSED_PARAMETER(need_cache_indir);
 
   // The following updates inputs for subgraph
 
@@ -808,14 +808,14 @@ Status UpdateDecoderFeeds(
     int current_length,
     int input_sequence_len,
     bool past_present_share_buffer,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
+    bool need_cache_indir,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(stream);
   ORT_UNUSED_PARAMETER(beam_indices_gpu);
   ORT_UNUSED_PARAMETER(input_sequence_len);
   ORT_UNUSED_PARAMETER(past_present_share_buffer);
-  ORT_UNUSED_PARAMETER(has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+  ORT_UNUSED_PARAMETER(need_cache_indir);
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
   // next_inputs: input_ids,
   //              encoder_attention_mask, encoder_hidden_states(optional),
@@ -1017,7 +1017,7 @@ template Status UpdateGptFeeds<float>(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+    bool need_cache_indir);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,
@@ -1035,7 +1035,7 @@ template Status UpdateDecoderFeeds<float>(
     int current_length,
     int input_sequence_len,
     bool past_present_share_buffer,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
+    bool need_cache_indir,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 

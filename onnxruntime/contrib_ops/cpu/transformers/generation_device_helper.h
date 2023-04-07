@@ -136,7 +136,7 @@ using UpdateGptFeedsFunc = std::function<Status(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention)>;
+    bool need_cache_indir)>;
 
 // Create encoder inputs (for encoder-decoder model like T5).
 using CreateEncoderInputsFunc = std::function<Status(
@@ -167,7 +167,7 @@ using UpdateDecoderFeedsFunc = std::function<Status(
     int current_length,
     int input_sequence_len,
     bool past_present_share_buffer,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
+    bool need_cache_indir,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper)>;
 
@@ -278,7 +278,7 @@ Status UpdateGptFeeds(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+    bool need_cache_indir);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5
@@ -311,7 +311,7 @@ Status UpdateDecoderFeeds(
     int current_length,
     int input_sequence_len,
     bool past_present_share_buffer,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention,
+    bool need_cache_indir,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
