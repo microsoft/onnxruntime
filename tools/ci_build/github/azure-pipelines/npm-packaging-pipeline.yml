@@ -50,6 +50,7 @@ stages:
     BuildConfig: 'Release'
     PoolName: 'Linux-CPU'
     PackageName: 'onnxruntime-react-native'
+    BuildAndroidAARStageDependsOn: 'Extract_commit'
 
 - stage: Download_Node_Package
   dependsOn:
