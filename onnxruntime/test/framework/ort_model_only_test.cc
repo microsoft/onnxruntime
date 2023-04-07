@@ -21,10 +21,27 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include <cstdlib>
+#include "test/util/include/default_providers.h"
+
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+
+TEST(TempTest, LoadModel) {
+  Status status;
+  auto model_uri = ORT_TSTR("/Users/smckay/src/github/ort/cmake/external/onnx/onnx/backend/test/data/node/test_dynamicquantizelinear_expanded/model.onnx");
+
+  SessionOptions so;
+
+  so.session_logid = "TempTest.LoadModel";
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCoreMLExecutionProvider()));
+
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());  // optimizers run during initialization
+}
 
 struct OrtModelTestInfo {
   std::basic_string<ORTCHAR_T> model_filename;
@@ -461,7 +478,7 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithSavedRuntimeOptimizations) {
                          std::vector<uint8_t> input_data = random.Uniform<uint8_t>(input_dims, 0, 255);
                          OrtValue ml_value;
                          CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
-                                              input_dims, input_data, &ml_value);
+                                                input_dims, input_data, &ml_value);
 
                          inputs.emplace(MakeString("X_", i), std::move(ml_value));
                          output_names.push_back(MakeString("Y_", i));

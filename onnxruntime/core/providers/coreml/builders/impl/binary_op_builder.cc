@@ -64,6 +64,10 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     } else {
       layer->mutable_multiplybroadcastable();
     }
+  } else if (op_type == "Sub") {
+    layer->mutable_subtractbroadcastable();
+  } else if (op_type == "Div") {
+    layer->mutable_dividebroadcastable();
   } else if (op_type == "Pow") {
     layer->mutable_powbroadcastable();
   } else {
