@@ -2,11 +2,8 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/nn/batch_norm_grad.h"
-#include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/providers/common.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/common/safeint.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
 
 namespace onnxruntime {
