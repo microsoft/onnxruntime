@@ -1,21 +1,7 @@
-/**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
-/* Modifications Copyright (c) Microsoft. */
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-#include "batch_norm_grad.h"
+#include "orttraining/training_ops/cpu/nn/batch_norm_grad.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
@@ -30,19 +16,19 @@ template <typename T>
 Status BatchNormalizationGrad<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* dY = ctx->Input<Tensor>(0);
   const Tensor* X = ctx->Input<Tensor>(1);
-  const Tensor* Scale = ctx->Input<Tensor>(2);
+  const Tensor* scale = ctx->Input<Tensor>(2);
   const Tensor* saved_mean = ctx->Input<Tensor>(3);
   const Tensor* saved_inv_std = ctx->Input<Tensor>(4);
 
   const TensorShape X_shape = X->Shape();
   const TensorShape channel_shape = saved_mean->Shape();
 
-  // no B here, but B has same size as Scale, so can validate inputs for gradient with this substitute
-  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, Scale, Scale, saved_mean, saved_inv_std));
+  // no B here, but B has same size as scale, so can validate inputs for gradient with this substitute
+  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, scale, saved_mean, saved_inv_std));
 
   const auto* dY_data = dY->template Data<T>();
   const auto* X_data = X->template Data<T>();
-  const auto* Scale_data = Scale->template Data<T>();
+  const auto* scale_data = scale->template Data<T>();
   const auto* saved_mean_data = saved_mean->template Data<T>();
   const auto* saved_inv_std_data = saved_inv_std->template Data<T>();
 
@@ -58,7 +44,7 @@ Status BatchNormalizationGrad<T>::Compute(OpKernelContext* ctx) const {
   size_t sample_size = X_shape.SizeFromDimension(2);
   size_t scale_tensor_size = C;
 
-  ConstEigenVectorArrayMap<T> scale_arr(Scale_data, scale_tensor_size);
+  ConstEigenVectorArrayMap<T> scale_arr(scale_data, scale_tensor_size);
   ConstEigenVectorArrayMap<T> mean_arr(saved_mean_data, scale_tensor_size);
   ConstEigenVectorArrayMap<T> inv_std_arr(saved_inv_std_data, scale_tensor_size);
 
@@ -77,25 +63,23 @@ Status BatchNormalizationGrad<T>::Compute(OpKernelContext* ctx) const {
   for (size_t nc = 0; nc < N * C; ++nc) {
     size_t c = nc % C;
     dBias_arr(c) += dY_arr.col(nc).sum();
-    dScale_arr(c) +=
-        ((X_arr.col(nc) - mean_arr(c)) * inv_std_arr(c) * dY_arr.col(nc)).sum();
+    dScale_arr(c) += ((X_arr.col(nc) - mean_arr(c)) * inv_std_arr(c) * dY_arr.col(nc)).sum();
   }
   for (size_t nc = 0; nc < N * C; ++nc) {
     size_t c = nc % C;
-    dX_arr.col(nc) = scaled_inv_std(c) *
-                      (dY_arr.col(nc) * N * sample_size - dBias_arr(c) -
-                       (X_arr.col(nc) - mean_arr(c)) * dScale_arr(c) * inv_std_arr(c));
+    dX_arr.col(nc) = scaled_inv_std(c) * (dY_arr.col(nc) * N * sample_size - dBias_arr(c) -
+                                          (X_arr.col(nc) - mean_arr(c)) * dScale_arr(c) * inv_std_arr(c));
   }
 
   return Status::OK();
 }
 
 ONNX_OPERATOR_KERNEL_EX(
-    BatchNormalizationGrad,
-    kMSDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    BatchNormalizationGrad, kMSDomain, 1, kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
     BatchNormalizationGrad<float>);
 
 }  // namespace contrib
