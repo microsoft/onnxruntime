@@ -110,6 +110,7 @@ def build_dynamic_axes(example_inputs, outputs_flatten):
                 dynamic_axes[output_name].update({j: "seq_len"})
     return dynamic_axes, output_names
 
+
 def validate_onnx_model(
     onnx_model_path,
     example_inputs,
