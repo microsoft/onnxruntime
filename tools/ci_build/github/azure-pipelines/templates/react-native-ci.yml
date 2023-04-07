@@ -20,6 +20,6 @@ parameters:
   type: string
   default: 'NPM_packages'
 
-stages:
-- stage: Build_Android_AAR
+jobs:
+- job: Build_Android_AAR
   displayName: Build Android AAR
