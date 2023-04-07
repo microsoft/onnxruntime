@@ -22,7 +22,7 @@ parameters:
 - name: BuildAndroidAARStageDependsOn
   displayName: 'Stage the Build Android AAR stage depends on'
   type: string
-  default: 'Extract_commit'
+  default: ''
 
 stages:
 - stage: Build_Android_AAR
