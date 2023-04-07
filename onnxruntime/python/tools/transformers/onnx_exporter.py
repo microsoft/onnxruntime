@@ -250,7 +250,7 @@ def optimize_onnx_model(
         opt_model = optimize_model(
             onnx_model_path,
             model_type,
-            num_heads=num_attention_heads if model_type != "swin" else 0,
+            num_heads=num_attention_heads if model_type != "swin" else 0, # For Swin, num_attention_heads is a list, so use 0 for now
             hidden_size=hidden_size if model_type != "swin" else 0,
             opt_level=0,
             optimization_options=optimization_options,
@@ -487,6 +487,7 @@ def export_onnx_model_from_pt(
     example_inputs = filter_inputs(example_inputs, input_names)
 
     example_outputs = model(**example_inputs)
+
     assert isinstance(example_outputs, (list, tuple)), f"type of output is not list or tuple: {type(example_outputs)}"
 
     # Flatten is needed for gpt2 and distilgpt2.
