@@ -186,8 +186,8 @@ class GraphExecutionManager(GraphExecutionInterface):
             ortmodule._defined_from_envvar("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER", 1, warn=True) == 1
         )
         self._enable_label_sparsity_optimization = (
-            self._enable_compute_optimizer and
-            ortmodule._defined_from_envvar("ORTMODULE_ENABLE_LABEL_SPARSITY_OPT", 0, warn=True) == 1
+            self._enable_compute_optimizer
+            and ortmodule._defined_from_envvar("ORTMODULE_ENABLE_LABEL_SPARSITY_OPT", 0, warn=True) == 1
         )
 
         # Flag to re-export the model due to attribute change on the original module.
