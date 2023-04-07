@@ -383,5 +383,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     NhwcConv,
     1,
     OpSchema().FillUsing(ConvOpSchemaGenerator()));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(NhwcFusedConv, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(
+NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
+Only has fp16 implementation as of 2023/04/15.
+)DOC")
+                                .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+                                .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+                                .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+                                .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+                                .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
+                                .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("activation", "", AttributeProto::STRING, OPTIONAL_VALUE)
+                                .Attr("activation_params", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
+                                .Input(0, "X", "", "T")
+                                .Input(1, "W", "", "T")
+                                .Input(2, "B", "", "T", OpSchema::Optional)
+                                .Input(3, "Z", "Tensor to be added to the output, must be the same shape and format as the output tensor.", "T", OpSchema::Optional)
+                                .Output(0, "Y", "", "T")
+                                .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output types to float tensors")
+                                .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  convPoolShapeInferenceNhwc(ctx, true, false, 0, 1);
+                                }));
+
 }  // namespace contrib
 }  // namespace onnxruntime
