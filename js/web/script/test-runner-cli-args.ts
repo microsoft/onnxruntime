@@ -360,10 +360,15 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   // Option: -b=<...>, --backend=<...>
   const browserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack'];
+
+  // TODO: remove this when Chrome support WebGPU.
+  //       we need this for now because Chrome does not support webgpu yet,
+  //       and ChromeCanary is not in CI.
+  const defaultBrowserBackends = ['webgl', /* 'webgpu', */ 'wasm', 'xnnpack'];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
-  const backend =
-      (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : browserBackends) : backendArgs.split(',');
+  const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :
+                                                      backendArgs.split(',');
   for (const b of backend) {
     if ((env !== 'node' && browserBackends.indexOf(b) === -1) || (env === 'node' && nodejsBackends.indexOf(b) === -1)) {
       throw new Error(`backend ${b} is not supported in env ${env}`);
