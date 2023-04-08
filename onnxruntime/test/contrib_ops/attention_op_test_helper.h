@@ -49,8 +49,8 @@ void GetAttentionWeight(std::vector<float>& weight_data, int elements = 64 * 3 *
 void GetAttentionBias(std::vector<float>& bias_data, int elements = 3 * 64, int offset = 0, int step = 1);
 
 void GetCrossAttentionData_HeadSize40(AttentionTestData& data);
-void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data, bool is_mask_1d);
-void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& data);
+void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data, AttentionMaskType mask_type);
+void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& data, AttentionMaskType mask_type);
 
 void GetCrossAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedKV(AttentionTestData& data);
 void GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(AttentionTestData& data);
@@ -63,8 +63,6 @@ void GetCrossAttentionDataWithPast(AttentionTestData& data);
 void GetSelfAttentionDataWithPast(AttentionTestData& data);
 
 void GetAttentionDataCutlassRelPosBias(AttentionTestData& data);
-
-void GetSelfAttention_Batch2_HeadSize32_PackedQKV_SeqLenStartMask_RightSidePadding(AttentionTestData& data);
 
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type);
 }  // namespace test

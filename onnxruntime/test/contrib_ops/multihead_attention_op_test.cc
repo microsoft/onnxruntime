@@ -41,7 +41,7 @@ static void RunMultiHeadAttentionTest(
     bool disable_dml = false) {
   kv_sequence_length = (kv_sequence_length == 0 ? sequence_length : kv_sequence_length);
 
-  int min_cuda_architecture = use_float16 ? 750 : 0;
+  int min_cuda_architecture = use_float16 ? 700 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !disable_cuda;
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get()) && !disable_rocm;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
@@ -444,19 +444,31 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask1D) {
   AttentionTestData data;
-  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, true);
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, AttentionMaskType::MASK_1D_KEY_SEQ_LEN);
   RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask2D) {
   AttentionTestData data;
-  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, false);
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, AttentionMaskType::MASK_2D_KEY_PADDING);
+  RunMultiHeadAttentionTests(data);
+}
+
+TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_KeySeqLenStartMask) {
+  AttentionTestData data;
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START);
   RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Mask2D) {
   AttentionTestData data;
-  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data);
+  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data, AttentionMaskType::MASK_2D_KEY_PADDING);
+  RunMultiHeadAttentionTests(data);
+}
+
+TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_KeySeqLenStartMask) {
+  AttentionTestData data;
+  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data, AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START);
   RunMultiHeadAttentionTests(data);
 }
 
@@ -501,12 +513,6 @@ TEST(MultiHeadAttentionTest, SelfAttentionWithPast) {
 TEST(MultiHeadAttentionTest, AttentionCutlassRelPosBias) {
   AttentionTestData data;
   GetAttentionDataCutlassRelPosBias(data);
-  RunMultiHeadAttentionTests(data);
-}
-
-TEST(MultiHeadAttentionTest, SelfAttention_Batch2_HeadSize32_PackedQKV_SeqLenStartMask_RightSidePadding) {
-  AttentionTestData data;
-  GetSelfAttention_Batch2_HeadSize32_PackedQKV_SeqLenStartMask_RightSidePadding(data);
   RunMultiHeadAttentionTests(data);
 }
 
