@@ -125,7 +125,7 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
   }
 }
 
-void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
   // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
 
   // Q, K and V without packing:
@@ -152,6 +152,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
   // Shape inference
+  int64_t sequence_length = 0;
   if (hasInputShape(ctx, 0)) {
     auto& query_shape = getInputShape(ctx, 0);
     auto& query_dims = query_shape.dim();
@@ -176,6 +177,10 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
         fail_shape_inference("Inputs 2 (value) shall be 3 or 4 dimensions");
       }
 
+      if (value_dims.size() == 3) {
+        sequence_length = value_dims[1].dim_value();
+      }
+
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
@@ -188,6 +193,35 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       auto& key_shape = getInputShape(ctx, 1);
       if (key_shape.dim().size() == 5) {  // packed KV
         ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput(ctx);
+      }
+    }
+  }
+
+  if (ctx.getNumOutputs() > 1) {  // has present output
+    if (hasInputShape(ctx, past_input_index)) {
+      auto& past_shape = getInputShape(ctx, past_input_index);
+      auto& past_dims = past_shape.dim();
+      if (past_dims.size() != 4) {
+        fail_shape_inference("The past input shall be 5 dimensions");
+      }
+
+      auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
+      if (past_present_share_buffer) {
+        propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
+        propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_input_index) + 1, 2);
+      } else {
+        if (sequence_length > 0 && past_dims[2].has_dim_value()) {
+          int64_t total_sequence_length = sequence_length + past_shape.dim(3).dim_value();
+
+          ONNX_NAMESPACE::TensorShapeProto present_shape;
+          for (auto& dim : past_dims) {
+            *present_shape.add_dim() = dim;
+          }
+          present_shape.mutable_dim(2)->set_dim_value(total_sequence_length);
+
+          updateOutputShape(ctx, 1, present_shape);
+          updateOutputShape(ctx, 2, present_shape);
+        }
       }
     }
   }
@@ -660,8 +694,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         {"tensor(int32)"},
                         "Constrain mask index to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          // TODO:
-          (void) (ctx);
+           MultiHeadAttentionTypeAndShapeInference(ctx, 5);
         }));
 
 constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
@@ -743,7 +776,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          MultiHeadAttentionTypeAndShapeInference(ctx);
+          MultiHeadAttentionTypeAndShapeInference(ctx, 6);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
