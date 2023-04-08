@@ -41,8 +41,9 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
-    PoolName: 'Win-CPU-2021'
+    PoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
     PackageName: 'onnxruntime-web'
+    ExtraBuildArgs: ''
 
 - template: templates/react-native-ci.yml
   parameters:
@@ -59,7 +60,7 @@ stages:
   - Build_web_Debug
   jobs:
   - job: Download_Node_Package
-    pool: 'Win-CPU-2021'
+    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 10
