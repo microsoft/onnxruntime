@@ -51,7 +51,7 @@ Status ModelBuilder::Initialize() {
 
 void ModelBuilder::PreprocessInitializers() {
   // TODO: We should be using GetConstantInitializer not GetAllInitializedTensors in all places
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
+  const auto& initializers = graph_viewer_.GetAllInitializedTensors();
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
 
   for (size_t i = 0; i < node_indices.size(); i++) {
@@ -68,9 +68,9 @@ void ModelBuilder::PreprocessInitializers() {
         }
       }
 
-      if (const auto* op_builder = GetOpBuilder(*node)) s {
-          op_builder->AddInitializersToSkip(*this, *node);
-        }
+      if (const auto* op_builder = GetOpBuilder(node)) {
+        op_builder->AddInitializersToSkip(*this, node);
+      }
     }
   }
 }
@@ -264,9 +264,13 @@ void ModelBuilder::AddLayer(std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> lay
 }
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
-  // decrement usage count
-  assert(initializer_usage_.find(tensor_name) != initializer_usage_.end());
-  initializer_usage_[tensor_name] -= 1;
+  // decrement usage count if this is a known initializer.
+  // For simplicity the OpBuilder::AddInitializersToSkip implementations may call this for arbitrary input names
+  // without first checking if the value is an initializer.
+  auto entry = initializer_usage_.find(tensor_name);
+  if (entry != initializer_usage_.end()) {
+    entry->second -= 1;
+  }
 }
 
 void ModelBuilder::AddInputToSkip(const std::string& input_name) {
