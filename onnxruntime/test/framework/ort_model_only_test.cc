@@ -21,28 +21,10 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include <cstdlib>
-#include "test/util/include/default_providers.h"
-
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
-
-TEST(TempTest, LoadModel) {
-  Status status;
-  auto model_uri = ORT_TSTR("/Users/smckay/src/github/ort/cmake/external/onnx/onnx/backend/test/data/node/test_dynamicquantizelinear_expanded/model.onnx");
-
-  SessionOptions so;
-
-  so.session_logid = "TempTest.LoadModel";
-  InferenceSession session{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCoreMLExecutionProvider()));
-
-  ASSERT_STATUS_OK(session.Load(model_uri));
-  ASSERT_STATUS_OK(session.Initialize());  // optimizers run during initialization
-}
-
 struct OrtModelTestInfo {
   std::basic_string<ORTCHAR_T> model_filename;
   std::string logid;
