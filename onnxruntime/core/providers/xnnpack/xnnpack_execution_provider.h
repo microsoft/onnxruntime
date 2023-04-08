@@ -48,9 +48,10 @@ class XnnpackExecutionProvider : public IExecutionProvider {
     return xnnpack_thread_pool_;
   }
 
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
  private:
   pthreadpool* xnnpack_thread_pool_{nullptr};
-  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 };
 
 }  // namespace onnxruntime

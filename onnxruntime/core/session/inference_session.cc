@@ -529,8 +529,8 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   return execution_providers_.Add(provider_type, p_exec_provider);
 }
 
-IExecutionProvider* InferenceSession::GetExecutionProviderFromEnv(int index) { 
-    return environment_.GetExecutionProvider(index); 
+IExecutionProvider* InferenceSession::GetExecutionProviderFromEnv(int index) {
+    return environment_.GetExecutionProvider(index);
 }
 
 // Custom Op support
@@ -1300,28 +1300,6 @@ common::Status InferenceSession::Initialize() {
     //      }
     //    }
 
-    // At this time we know all the providers that will be part of this session.
-    // Read shared allocators from the environment and update them in the respective providers.
-    //
-    // The reason for updating the providers is so that when the session state is created the allocators
-    // are setup appropriately keyed by OrtMemoryInfo with delegates going to the respective providers.
-    // Secondly, the GetAllocator() method inside IExecutionProvider is still used in various places, hence
-    // it doesn't make sense to just update the allocator map inside session state with these shared allocators; doing
-    // so would cause inconsistency between the allocator map inside session sate and that inside the providers.
-    // TODO: we could refactor the allocators to not require the call to GetAllocator but that change is much bigger
-    // since we've to take into account the per-thread cuda allocators.
-    // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
-    // from IAllocator to keep things clean.
-    //
-    // NOTE: UpdateProvidersWithSharedAllocators is replace-only and will not insert a new allocator into the EP, so
-    // it must be called after RegisterAllocator.
-    bool use_env_allocators =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
-    if (use_env_allocators) {
-      LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
-      UpdateProvidersWithSharedAllocators();
-    }
-
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
     session_activity_started_ = true;
@@ -1338,6 +1316,13 @@ common::Status InferenceSession::Initialize() {
         session_profiler_,
         session_options_,
         prepacked_weights_container_);
+
+    bool use_env_allocators =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
+    if (use_env_allocators) {
+      LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
+      UpdateSessionStateAllocatorsWithSharedAllocators();
+    }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
@@ -1575,17 +1560,11 @@ common::Status InferenceSession::Initialize() {
 #pragma warning(pop)
 #endif
 
-// This method should be called from within Initialize() only and before the creation of the session state.
-// This ensures all providers have been registered in the session and the session state is consistent with the providers.
-void InferenceSession::UpdateProvidersWithSharedAllocators() {
-  ORT_ENFORCE(false);
-  // const auto& provider_ids = execution_providers_.GetIds();
-  // for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
-  //   for (const auto& id : provider_ids) {
-  //     auto* provider_ptr = execution_providers_.Get(id);
-  //     provider_ptr->ReplaceAllocator(one_shared_alloc);
-  //   }
-  // }
+void InferenceSession::UpdateSessionStateAllocatorsWithSharedAllocators() {
+  std::map<OrtDevice, AllocatorPtr>& session_allocators = session_state_->GetAllocators();
+  for (const auto& shared_alloc : environment_.GetRegisteredSharedAllocators()) {
+    session_allocators[shared_alloc->Info().device] = shared_alloc;
+  }
 }
 
 int InferenceSession::GetCurrentNumRuns() const {

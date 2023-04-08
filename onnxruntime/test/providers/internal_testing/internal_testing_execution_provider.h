@@ -35,6 +35,8 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
     return *this;
   }
 
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
  private:
   const std::string ep_name_;
 
@@ -51,10 +53,6 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   bool debug_output_{false};
   bool enable_static_kernels_{false};
   DataLayout preferred_layout_;
-
-  // used for testing allocator sharing as a few EPs (e.g. CUDA, TRT, TVM) override GetAllocator and have a local
-  // AllocatorPtr that can get out of sync with the allocator lists in the base IExecutionProvider
-  AllocatorPtr local_allocator_;
 };
 
 }  // namespace internal_testing_ep

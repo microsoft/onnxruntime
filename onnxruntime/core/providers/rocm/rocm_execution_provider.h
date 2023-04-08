@@ -96,7 +96,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return ROCMExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  void RegisterAllocator(AllocatorManager& allocator_manager) override;
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
@@ -105,6 +104,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const override;
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   ROCMExecutionProviderInfo info_;

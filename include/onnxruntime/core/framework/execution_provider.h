@@ -63,11 +63,12 @@ class IExecutionProvider {
   }
 
   IExecutionProvider(const std::string& type, OrtDevice device, bool use_metadef_id_creator = false)
-      : type_{type}, default_device_(device) {
+      : default_device_(device), type_{type} {
     if (use_metadef_id_creator) {
       metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
     }
   }
+  OrtDevice default_device_;
 
  public:
   virtual ~IExecutionProvider() = default;
@@ -203,8 +204,6 @@ class IExecutionProvider {
   */
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
 
-  void InsertAllocator(AllocatorPtr allocator);
-
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
     // GraphViewer that filters the full graph to the nodes that are covered by 'node'
@@ -295,7 +294,7 @@ class IExecutionProvider {
 
   virtual OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const;
 
-  std::vector<AllocatorPtr>& GetCachedAllocators();
+  virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
 
  private:
   const std::string type_;
@@ -303,16 +302,6 @@ class IExecutionProvider {
   // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
 
-  virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
-
-  OrtMutex mutex_;  // static?
-
- protected:
-  // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
-  // contains the same instances as allocators_
-  std::vector<AllocatorPtr> allocator_list_;
-
- private:
   // helper to generate ids that are unique to model and deterministic, even if the execution provider is shared across
   // multiple sessions.
   class ModelMetadefIdGenerator {
@@ -325,8 +314,5 @@ class IExecutionProvider {
   };
 
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
-
- protected:
-  OrtDevice default_device_;
 };
 }  // namespace onnxruntime

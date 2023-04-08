@@ -67,7 +67,7 @@ TEST(OptimizerTest, Basic) {
 
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), cpu_execution_provider->GetCachedAllocators()[0]}};
+  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), cpu_execution_provider->CreatePreferredAllocators()[0]}};
 #if !defined(DISABLE_SPARSE_TENSORS)
   OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set,
                                      graph.ModelPath(),

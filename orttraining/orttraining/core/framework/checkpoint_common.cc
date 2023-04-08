@@ -34,7 +34,7 @@ Status CreateOrtValuesFromTensorProtos(
   create_arena = false;
 #endif
   static const AllocatorCreationInfo info{[](int) { return std::make_unique<CPUAllocator>(); }, DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
-  static const AllocatorPtr cpu_allocator = CreateAllocator(info);  // TODO(leca): shall we make IExecutionProvider::CreatePreferredAllocators() public?
+  static const AllocatorPtr cpu_allocator = CreateAllocator(info);
 
   for (const auto& tensor_proto : tensor_protos) {
     TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(tensor_proto)};

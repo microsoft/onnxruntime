@@ -31,12 +31,11 @@ class CPUExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
-  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
   CPUExecutionProviderInfo info_;
   std::vector<FuseRuleFn> fuse_rules_;
-  AllocatorPtr allocator_;
 };
 
 // Registers all available CPU kernels

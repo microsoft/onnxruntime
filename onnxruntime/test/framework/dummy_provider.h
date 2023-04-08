@@ -19,7 +19,6 @@ class DummyExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
- private:
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 };
 

@@ -285,10 +285,6 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
-void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  g_host->IExecutionProvider__InsertAllocator(this, allocator);
-}
-
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const IKernelLookup& kernel_lookup) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);

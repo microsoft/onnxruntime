@@ -255,17 +255,6 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
 
   OverrideTunableOpInfoByEnv(info_);
-
-  // setup CUDA allocator
-//  InsertAllocator(CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-//                                      info_.external_allocator_info, info_.default_memory_arena_cfg));
-//  // cuda pinned memory allocator
-//  AllocatorCreationInfo pinned_memory_info(
-//      [](OrtDevice::DeviceId device_id) {
-//        ORT_UNUSED_PARAMETER(device_id);
-//        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED);
-//      });
-//  InsertAllocator(CreateAllocator(pinned_memory_info));
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {

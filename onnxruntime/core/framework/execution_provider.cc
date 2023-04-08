@@ -27,38 +27,11 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  const OrtMemoryInfo& info = allocator->Info();
-
-  auto it = std::find_if(allocator_list_.begin(), allocator_list_.end(), [&](AllocatorPtr ptr) {
-    return ptr->Info() == allocator->Info();
-  });
-
-  if (it != allocator_list_.end()) {
-    ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(),
-              " Existing allocator: ", (*it)->Info().name,
-              " New allocator: ", allocator->Info().name);
-  } else {
-    allocator_list_.push_back(allocator);
-  }
-}
-
 OrtDevice IExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
     return OrtDevice();  // default return CPU device.
   }
   return default_device_;
-}
-
-std::vector<AllocatorPtr>& IExecutionProvider::GetCachedAllocators() {
-  std::lock_guard<OrtMutex> lock(mutex_);
-  if (allocator_list_.size() == 0) {
-    std::vector<AllocatorPtr> preferred_allocators = CreatePreferredAllocators();
-    for (int i = 0; i < preferred_allocators.size(); i++) {
-      allocator_list_.push_back(preferred_allocators[i]);
-    }
-  }
-  return allocator_list_;
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

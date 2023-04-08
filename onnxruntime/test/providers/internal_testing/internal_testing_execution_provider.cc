@@ -36,6 +36,15 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
       preferred_layout_{preferred_layout} {
 }
 
+std::vector<AllocatorPtr> InternalTestingExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo allocator_info(
+      [](int) {
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
+                                                            OrtAllocatorType::OrtDeviceAllocator));
+      });
+  return std::vector<AllocatorPtr>{CreateAllocator(allocator_info)};
+}
+
 InternalTestingExecutionProvider::~InternalTestingExecutionProvider() {}
 
 DataLayout InternalTestingExecutionProvider::GetPreferredLayout() const {

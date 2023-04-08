@@ -88,28 +88,7 @@ std::shared_ptr<KernelRegistry> GetAclKernelRegistry() {
 }  // namespace acl
 
 ACLExecutionProvider::ACLExecutionProvider(const ACLExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kAclExecutionProvider} {
-  ORT_UNUSED_PARAMETER(info);
-
-  AllocatorCreationInfo default_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(ACL, OrtAllocatorType::OrtDeviceAllocator));
-      },
-      0,
-      info.create_arena};
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-  AllocatorCreationInfo cpu_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(ACL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      },
-      0,
-      info.create_arena};
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
-}
+    : IExecutionProvider{onnxruntime::kAclExecutionProvider}, info_{info} {}
 
 ACLExecutionProvider::~ACLExecutionProvider() {
 }
@@ -117,6 +96,17 @@ ACLExecutionProvider::~ACLExecutionProvider() {
 std::shared_ptr<KernelRegistry> ACLExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::acl::GetAclKernelRegistry();
   return kernel_registry;
+}
+
+std::vector<AllocatorPtr> ACLExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo default_memory_info{
+      [](int) {
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(ACL, OrtAllocatorType::OrtDeviceAllocator));
+      },
+      0,
+      info_.create_arena};
+  std::vector<AllocatorPtr> ret{CreateAllocator(default_memory_info)};
+  return ret;
 }
 
 }  // namespace onnxruntime

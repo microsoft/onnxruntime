@@ -134,10 +134,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
-
-  void RegisterAllocator(AllocatorManager& allocator_manager) override;
-
   Status OnRunEnd(bool sync_stream) override;
 
   ProviderOptions GetProviderOptions() const override {
@@ -145,6 +141,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   }
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   TensorrtExecutionProviderInfo info_;
@@ -167,7 +164,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
-  AllocatorPtr allocator_;
   bool context_memory_sharing_enable_ = false;
   bool layer_norm_fp32_fallback_ = false;
   size_t max_ctx_mem_size_ = 0;

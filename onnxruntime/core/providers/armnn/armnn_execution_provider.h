@@ -32,6 +32,7 @@ class ArmNNExecutionProvider : public IExecutionProvider {
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 };
 
 }  // namespace onnxruntime

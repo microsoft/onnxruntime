@@ -99,22 +99,6 @@ std::shared_ptr<KernelRegistry> GetArmNNKernelRegistry() {
 ArmNNExecutionProvider::ArmNNExecutionProvider(const ArmNNExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kArmNNExecutionProvider} {
   ORT_UNUSED_PARAMETER(info);
-
-  AllocatorCreationInfo default_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(ArmNN, OrtAllocatorType::OrtDeviceAllocator));
-      },
-      0};
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-  AllocatorCreationInfo cpu_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(ArmNN_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      }};
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 ArmNNExecutionProvider::~ArmNNExecutionProvider() {
@@ -123,6 +107,16 @@ ArmNNExecutionProvider::~ArmNNExecutionProvider() {
 std::shared_ptr<KernelRegistry> ArmNNExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::armnn_ep::GetArmNNKernelRegistry();
   return kernel_registry;
+}
+
+std::vector<AllocatorPtr> ArmNNExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo default_memory_info{
+      [](int) {
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(ArmNN, OrtAllocatorType::OrtDeviceAllocator));
+      },
+      0};
+  std::vector<AllocatorPtr> ret{CreateAllocator(default_memory_info)};
+  return ret;
 }
 
 }  // namespace onnxruntime

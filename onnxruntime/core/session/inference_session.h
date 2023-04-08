@@ -643,8 +643,8 @@ class InferenceSession {
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
-  // Updates all providers with the allocators from the env based on OrtMemoryInfo
-  void UpdateProvidersWithSharedAllocators();
+  // Updates all SessionState allocators with the allocators from the env
+  void UpdateSessionStateAllocatorsWithSharedAllocators();
 
   /*
    * Validate and parses the shrink arena request string from the user

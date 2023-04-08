@@ -68,6 +68,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<IndexedSubGraph> GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
 private:
   bool fp16_enable_ = false;
