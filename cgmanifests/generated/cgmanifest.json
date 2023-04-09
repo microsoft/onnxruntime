@@ -362,7 +362,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5723bb8950318135ed9cf4fc76bed988a087f536",
+          "commitHash": "3a8436ac436124a57a4e22d5c8713a2d42b381d7",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
         "comments": "re2"
