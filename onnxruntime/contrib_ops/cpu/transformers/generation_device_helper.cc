@@ -834,7 +834,7 @@ Status UpdateDecoderFeeds(
 //------------------------------------------------
 //  Modified Encoder functions for Whisper Model
 //------------------------------------------------
-
+template <typename T>
 Status CreateWhisperEncoderInputs(
     const Tensor* original_encoder_input_features,
     const OrtValue* attn_mask_value,
@@ -856,9 +856,9 @@ Status CreateWhisperEncoderInputs(
   // Current shape is (batch_size, sequence_length)
   // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
   // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
+  Tensor::InitOrtValue(DataTypeImpl::GetType<T>(),
                        input_features_shape,
-                       const_cast<Tensor*>(original_encoder_input_features)->MutableData<float>(),
+                       const_cast<Tensor*>(original_encoder_input_features)->MutableData<T>(),
                        allocator->Info(),
                        encoder_input_features);
 
@@ -1022,6 +1022,25 @@ template Status ExpandBuffer<MLFloat16>(
     OrtValue& expanded,
     bool only_copy_shape);
 
+template Status CreateWhisperEncoderInputs<float>(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* attn_mask_value,
+    int pad_token_id,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_features,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids);
+
+template Status CreateWhisperEncoderInputs<MLFloat16>(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* attn_mask_value,
+    int pad_token_id,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_features,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids);
 }  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime

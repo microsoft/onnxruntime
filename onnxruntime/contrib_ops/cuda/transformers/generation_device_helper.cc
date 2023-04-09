@@ -197,6 +197,10 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
         memcpy(destination, input.Get<Tensor>().Data<int32_t>(), bytes);
       } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
         memcpy(destination, input.Get<Tensor>().Data<int64_t>(), bytes);
+      } else if (dataType == DataTypeImpl::GetType<float>()) {
+        memcpy(destination, input.Get<Tensor>().Data<float>(), bytes);
+      } else if (dataType == DataTypeImpl::GetType<MLFloat16>()) {
+        memcpy(destination, input.Get<Tensor>().Data<MLFloat16>(), bytes);
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                                "AddToFeeds: An implementation for the input type ",
