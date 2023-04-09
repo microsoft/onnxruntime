@@ -372,7 +372,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "ff15c6ada150a5018c5ef2172401cb4529eac9c0",
+          "commitHash": "4cafc9196c4da9c817992b20f5253ef967685bf8",
           "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
         },
         "comments": "safeint"

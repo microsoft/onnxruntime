@@ -264,8 +264,10 @@ FetchContent_Declare(
     URL_HASH SHA1=${DEP_SHA1_safeint}
 )
 
+# use fetch content rather than makeavailable because safeint only includes unconditional test targets
+FetchContent_Populate(safeint)
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
-onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL flatbuffers)
+onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 GSL flatbuffers)
 if(NOT flatbuffers_FOUND)
   if(NOT TARGET flatbuffers::flatbuffers)
     add_library(flatbuffers::flatbuffers ALIAS flatbuffers)
