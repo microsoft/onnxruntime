@@ -212,7 +212,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "436617053d0f39a1019a371c3a9aa599b3cb2cea",
+          "commitHash": "ac5489682760393fe21bd2a8e038b528442412a7",
           "repositoryUrl": "https://github.com/google/nsync.git"
         },
         "comments": "google_nsync"
