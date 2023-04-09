@@ -99,6 +99,16 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreatePadOpBuilder("Pad", op_registrations);
   }
 
+  {  // Unary
+    CreateUnaryOpBuilder("Sqrt", op_registrations);
+    CreateUnaryOpBuilder("Reciprocal", op_registrations);
+  }
+
+  { // Reduction
+    CreateReductionOpBuilder("ReduceSum", op_registrations);
+    CreateReductionOpBuilder("ReduceMean", op_registrations);
+  }
+
   return op_registrations;
 }
 
