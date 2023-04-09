@@ -262,7 +262,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5f4caba4e7a9017816e47becdd918fcc872039ba",
+          "commitHash": "d0849dca2c466bdce38a32a7e4265b193b8fb0f9",
           "repositoryUrl": "https://github.com/microsoft/wil.git"
         },
         "comments": "microsoft_wil"
