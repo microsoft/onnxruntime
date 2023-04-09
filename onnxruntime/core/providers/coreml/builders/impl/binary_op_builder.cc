@@ -37,6 +37,10 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (op_type == "Add") {
     layer->mutable_add();
+  } else if (op_type == "Mul") {
+    layer->mutable_multiply();
+  } else if (op_type == "Pow") {
+    layer->mutable_powbroadcastable();
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
