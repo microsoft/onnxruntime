@@ -282,7 +282,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "7bc4e1ae9b36ec8ee635c3629b59ec525bbe82b9",
+          "commitHash": "f6133a9f1f965d89676a33c4a39b3df09373b929",
           "repositoryUrl": "https://github.com/boostorg/mp11.git"
         },
         "comments": "mp11"
