@@ -53,12 +53,3 @@ assemble_and_upload_pod "onnxruntime-mobile-c"
 assemble_and_upload_pod "onnxruntime-mobile-objc"
 assemble_and_upload_pod "onnxruntime-c"
 assemble_and_upload_pod "onnxruntime-objc"
-
-cd ${BINARIES_STAGING_DIR}/objc_api_docs
-zip -r ${ARTIFACTS_STAGING_DIR}/objc_api_docs.zip *
-
-cat > ${ARTIFACTS_STAGING_DIR}/readme.txt <<'EOM'
-Release TODO:
-- publish the podspecs
-- publish the Objective-C API documentation
-EOM

@@ -39,7 +39,7 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                 int opset = 11) {
   std::unique_ptr<OpTester> tester;
   if (!attributes.activation.empty()) {
-    tester = std::make_unique<OpTester>("FusedConv", 1, onnxruntime::kMSDomain);
+    tester = std::make_unique<OpTester>("NhwcFusedConv", 1, onnxruntime::kMSDomain);
     tester->AddAttribute("activation", attributes.activation);
 
     if (!attributes.activation_parameters.empty()) {
@@ -68,12 +68,14 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
   }
 
 
-  ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
-  const char* szNames[] = {"X", "W", "B"};
+  ORT_ENFORCE(inputs.size() <= 4, "Our name array is only setup to handle 4 inputs");
+  const char* szNames[] = {"X", "W", "B", "Z"};
   tester->AddInput<MLFloat16>(szNames[0], input_shapes[0], inputs[0]);
   tester->AddInput<MLFloat16>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
-  if (inputs.size() == 3)
+  if (inputs.size() >= 3)
     tester->AddInput<MLFloat16>(szNames[2], input_shapes[2], inputs[2]);
+  if (inputs.size() >= 4)
+    tester->AddInput<MLFloat16>(szNames[3], input_shapes[3], inputs[3]);
 
   tester->AddOutput<MLFloat16>("Y", expected_output_shape, expected_output, /*no sort*/ false, 0.002f, 0.0f);
 
@@ -506,86 +508,6 @@ TEST(ConvFp16Test, Conv2D_AutoPad2) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
-#ifndef DISABLE_CONTRIB_OPS
-TEST(ConvFp16Test, Conv2D_HardSigmoid) {
-  ConvOpAndTestAttributes attrs = {
-      "",                           // auto_pad
-      vector<int64_t>{1, 1},        // dilations
-      1,                            // group
-      vector<int64_t>{2, 2},        // kernel_shape
-      vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1},        // strides
-      {},                           // excluded EPs
-      "HardSigmoid",                // activation
-      vector<float>{0.2f, 0.5f}     // activation_parameters
-  };
-
-  vector<MLFloat16> X = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
-                         MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
-                         MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
-  vector<int64_t> X_shape = {1, 1, 3, 3};
-  vector<MLFloat16> W = {MLFloat16(0.125f), MLFloat16(0.125f), MLFloat16(0.125f), MLFloat16(0.125f),
-                         MLFloat16(-0.125f), MLFloat16(-0.125f), MLFloat16(-0.125f), MLFloat16(-0.125f)};
-  vector<int64_t> W_shape = {2, 1, 2, 2};
-  vector<int64_t> Y_shape = {1, 2, 2, 2};
-  auto expected_vals = {MLFloat16(0.8f), MLFloat16(0.9f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(0.2f), MLFloat16(0.1f), MLFloat16(0.0f), MLFloat16(0.0f)};
-  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-}
-
-TEST(ConvFp16Test, Conv2D_Relu) {
-  ConvOpAndTestAttributes attrs = {
-      "",                           // auto_pad
-      vector<int64_t>{1, 1},        // dilations
-      1,                            // group
-      vector<int64_t>{2, 2},        // kernel_shape
-      vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1},        // strides
-      {},                           // excluded EPs
-      "Relu"                        // activation
-  };
-
-  vector<MLFloat16> X = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
-                         MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
-                         MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
-  vector<int64_t> X_shape = {1, 1, 3, 3};
-  vector<MLFloat16> W = {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
-                         MLFloat16(-1.0f), MLFloat16(-1.0f), MLFloat16(-1.0f), MLFloat16(-1.0f)};
-  vector<int64_t> W_shape = {2, 1, 2, 2};
-  vector<int64_t> Y_shape = {1, 2, 2, 2};
-  auto expected_vals = {MLFloat16(12.0f), MLFloat16(16.0f), MLFloat16(24.0f), MLFloat16(28.0f),
-                        MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f)};
-  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-}
-
-TEST(ConvFp16Test, Conv2D_Bias_Relu) {
-  ConvOpAndTestAttributes attrs = {
-      "",                           // auto_pad
-      vector<int64_t>{1, 1},        // dilations
-      1,                            // group
-      vector<int64_t>{2, 2},        // kernel_shape
-      vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1},        // strides
-      {},                           // excluded EPs
-      "Relu"                        // activation
-  };
-
-  vector<MLFloat16> X = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
-                         MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
-                         MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
-  vector<int64_t> X_shape = {1, 1, 3, 3};
-  vector<MLFloat16> W = {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
-                         MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f)};
-  vector<int64_t> W_shape = {2, 1, 2, 2};
-  vector<int64_t> Y_shape = {1, 2, 2, 2};
-  vector<MLFloat16> B = {MLFloat16(1.0f), MLFloat16(-1.0f)};
-  vector<int64_t> B_shape = {2};
-  auto expected_vals = {MLFloat16(13.0f), MLFloat16(17.0f), MLFloat16(25.0f), MLFloat16(29.0f),
-                        MLFloat16(11.0f), MLFloat16(15.0f), MLFloat16(23.0f), MLFloat16(27.0f)};
-  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
-}
-#endif // CONTRIB_OPS
-
-
 TEST(ConvFp16Test, Conv3D_1) {
   ConvOpAndTestAttributes attrs = {
       "",                                 // auto_pad
@@ -978,29 +900,91 @@ TEST(ConvFp16Test, Pointwise_Relu) {
   };
 
   vector<MLFloat16> X = {
-      MLFloat16(-9.f), MLFloat16(1.f), MLFloat16(2.f),
-      MLFloat16(-5.f), MLFloat16(3.f), MLFloat16(-2.f),
-      MLFloat16(5.f), MLFloat16(-3.f), MLFloat16(1.f),
-      MLFloat16(1.f), MLFloat16(8.f), MLFloat16(-4.f),
-      MLFloat16(-1.f), MLFloat16(6.f), MLFloat16(7.f),
-      MLFloat16(-1.f), MLFloat16(4.f), MLFloat16(-5.f),
-      MLFloat16(-9.f), MLFloat16(1.f), MLFloat16(2.f),
-      MLFloat16(-5.f), MLFloat16(3.f), MLFloat16(-2.f),
-      MLFloat16(5.f), MLFloat16(-3.f), MLFloat16(1.f)};
+      MLFloat16(-9.f), MLFloat16(1.f), MLFloat16(-9.f),
+      MLFloat16(1.f), MLFloat16(8.f), MLFloat16(1.f),
+      MLFloat16(2.f), MLFloat16(-4.f), MLFloat16(2.f),
+      MLFloat16(-5.f), MLFloat16(-1.f), MLFloat16(-5.f),
+      MLFloat16(3.f), MLFloat16(6.f), MLFloat16(3.f),
+      MLFloat16(-2.f), MLFloat16(7.f), MLFloat16(-2.f),
+      MLFloat16(5.f), MLFloat16(-1.f), MLFloat16(5.f),
+      MLFloat16(-3.f), MLFloat16(4.f), MLFloat16(-3.f),
+      MLFloat16(1.f), MLFloat16(-5.f), MLFloat16(1.f)};
   vector<int64_t> X_shape = {1, 3, 3, 3};
   vector<MLFloat16> W = {MLFloat16(2.f), MLFloat16(-3.f), MLFloat16(0.5f),
                          MLFloat16(0.25f), MLFloat16(-2.f), MLFloat16(-0.75f)};
   vector<int64_t> W_shape = {2, 3, 1, 1};
-  vector<int64_t> Y_shape = {1, 2, 3, 3};
+  vector<int64_t> Y_shape = {1, 3, 3, 2};
   auto expected_vals = {
-      MLFloat16(0.f), MLFloat16(0.f), MLFloat16(17.f),
-      MLFloat16(0.f), MLFloat16(0.f), MLFloat16(0.f),
-      MLFloat16(15.5f), MLFloat16(0.f), MLFloat16(17.5f),
-      MLFloat16(2.5f), MLFloat16(0.f), MLFloat16(7.f),
-      MLFloat16(4.5f), MLFloat16(0.f), MLFloat16(0.f),
-      MLFloat16(0.f), MLFloat16(0.f), MLFloat16(9.5f)};
+      MLFloat16(0.f), MLFloat16(2.5f),
+      MLFloat16(0.f), MLFloat16(0.f),
+      MLFloat16(17.f), MLFloat16(7.f),
+      MLFloat16(0.f), MLFloat16(4.5f), 
+      MLFloat16(0.f), MLFloat16(0.f),
+      MLFloat16(0.f), MLFloat16(0.f),
+      MLFloat16(15.5f), MLFloat16(0.f),
+      MLFloat16(0.f), MLFloat16(0.f),
+      MLFloat16(17.5f), MLFloat16(9.5f)};
 
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+TEST(ConvFp16Test, Conv2D_HardSigmoid) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {},                           // excluded EPs
+      "HardSigmoid",                // activation
+      vector<float>{0.2f, 0.5f}     // activation_parameters
+  };
+
+  vector<MLFloat16> X = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                         MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+                         MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
+  vector<int64_t> X_shape = {1, 3, 3, 1};
+  vector<MLFloat16> W = {MLFloat16(0.125f), MLFloat16(0.125f), MLFloat16(0.125f), MLFloat16(0.125f),
+                         MLFloat16(-0.125f), MLFloat16(-0.125f), MLFloat16(-0.125f), MLFloat16(-0.125f)};
+  vector<int64_t> W_shape = {2, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 2, 2, 2};
+  auto expected_vals = {
+      MLFloat16(0.8f), MLFloat16(0.2f),
+      MLFloat16(0.9f), MLFloat16(0.1f),
+      MLFloat16(1.0f), MLFloat16(0.0f),
+      MLFloat16(1.0f), MLFloat16(0.0f)};
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+
+TEST(ConvFp16Test, Conv2D_Bias_Z_Relu) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {},                           // excluded EPs
+      "Relu"                        // activation
+  };
+
+  vector<MLFloat16> X = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                         MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+                         MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
+  vector<int64_t> X_shape = {1, 3, 3, 1};
+  vector<MLFloat16> W = {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+                         MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f)};
+  vector<int64_t> W_shape = {2, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 2, 2, 2};
+  vector<MLFloat16> B = {MLFloat16(1.0f), MLFloat16(-1.0f)};
+  vector<int64_t> B_shape = {2};
+  vector<MLFloat16> Z = {MLFloat16(-1.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+                         MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(1.0f)};
+  vector<int64_t> Z_shape = {1, 2, 2, 2};
+  auto expected_vals = {MLFloat16(12.0f), MLFloat16(11.0f), MLFloat16(17.0f), MLFloat16(15.0f), MLFloat16(25.0f), MLFloat16(23.0f), MLFloat16(29.0f), MLFloat16(28.0f)};
+  TestConvFp16Op(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape);
 }
 
 #endif  // CONTRIB_OPS
