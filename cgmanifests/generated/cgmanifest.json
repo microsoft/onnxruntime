@@ -352,7 +352,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
+          "commitHash": "6481e8bef08f606ddd627e4d3be89f64d62e1b8a",
           "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
         },
         "comments": "pytorch_cpuinfo"

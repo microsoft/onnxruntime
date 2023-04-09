@@ -363,12 +363,6 @@ FetchContent_Declare(
 
 if (CPUINFO_SUPPORTED)
   onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
-  if (pytorch_cpuinfo_SOURCE_DIR)
-    # shouldn't need to define these aliases after we use a version of cpuinfo with this commit:
-    # https://github.com/pytorch/cpuinfo/commit/082deffc80ce517f81dc2f3aebe6ba671fcd09c9
-    add_library(cpuinfo::cpuinfo ALIAS cpuinfo)
-    add_library(cpuinfo::clog ALIAS clog)
-  endif()
 endif()
 
 
