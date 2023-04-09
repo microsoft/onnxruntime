@@ -35,6 +35,11 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
 }
 
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger) {
+  if (node.Name() == "Square_1") {
+    LOGS(logger, WARNING) << "CoreML skipping Square_1";
+    return false;
+  }
+
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
     const auto* op_builder = op_builders.at(node.OpType());
