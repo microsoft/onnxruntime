@@ -318,7 +318,7 @@ Status UpdateDecoderFeeds(
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model with float input like Whisper
 // ---------------------------------------------------------------
-
+template <typename T>
 Status CreateWhisperEncoderInputs(
     const Tensor* original_encoder_input_features,
     const OrtValue* attn_mask_value,
