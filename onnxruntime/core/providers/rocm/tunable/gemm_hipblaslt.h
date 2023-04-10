@@ -19,11 +19,11 @@ namespace internal {
 
 #ifdef USE_HIPBLASLT
 
-typedef enum _ActivationType {
+enum ActivationType {
   NONE = 0,
   RELU = 1,
   GELU = 2,
-} ActivationType;
+};
 
 template <typename T>
 constexpr hipblasDatatype_t HipBlasDataTypeFor(const T*) {
@@ -173,7 +173,7 @@ Status HipBlasLtMatMul(const ParamsT* params, int64_t batch, ActivationType acti
                                             workspace_size,
                                             params->stream));
 
-  if (workspace > 0) {
+  if (workspace_size > 0) {
     HIP_RETURN_IF_ERROR(hipFreeAsync(workspace, params->stream));
   }
 
