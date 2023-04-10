@@ -47,7 +47,7 @@ class GemmTunable : public IKernelExplorer {
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    params_.TuningContext()->EnableTunableOp();
+    params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   ~GemmTunable() {
@@ -108,7 +108,7 @@ class BatchedGemmTunable : public IBatchedGemmKernelExplorer<T> {
     params_.ldc = ldc;
     params_.batch = batch;
 
-    params_.TuningContext()->EnableTunableOp();
+    params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   ~BatchedGemmTunable() {
@@ -170,7 +170,7 @@ class StridedBatchedGemmTunable : public IKernelExplorer {
     params_.stride_c = stride_c;
     params_.batch = batch;
 
-    params_.TuningContext()->EnableTunableOp();
+    params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   ~StridedBatchedGemmTunable() {

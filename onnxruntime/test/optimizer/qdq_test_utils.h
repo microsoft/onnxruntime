@@ -195,6 +195,103 @@ GetQDQTestCaseFn BuildQDQReduceOpTestCase(const std::string& reduce_op_type, con
   };
 }
 
+// Creates the following graph:
+//                                _______________________
+//    input (f32) -> Q -> DQ ->  |                       | -> Q -> DQ -> output (f32)
+// axes (int32, initializer) ->  |         Gather        |
+//                               |_______________________|
+//
+template <typename QuantType, typename IndicesType>
+GetQDQTestCaseFn BuildQDQGatherOpTestCase(const std::vector<int64_t>& input_shape,
+                                          const std::vector<IndicesType> indices,
+                                          const std::vector<int64_t>& indices_shape,
+                                          int64_t axis) {
+  return [input_shape, indices, indices_shape, axis](ModelTestBuilder& builder) {
+
+    auto* input_data = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* final_output = builder.MakeOutput();
+
+    // input_data -> Q/DQ ->
+    auto* input_qdq_output = AddQDQNodePair<QuantType>(builder, input_data, .003f, 1);
+
+    auto* indices_input = builder.MakeInitializer<IndicesType>(indices_shape, indices);
+
+    auto* gather_output = builder.MakeIntermediate();
+    Node& gather_node = builder.AddNode("Gather", {input_qdq_output, indices_input}, {gather_output});
+    gather_node.AddAttribute("axis", axis);
+
+    // -> Q/DQ -> final_output
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<QuantType>(gather_output, .003f, 1,
+                                             q_output);
+
+    builder.AddDequantizeLinearNode<QuantType>(q_output, .003f, 1,
+                                               final_output);
+  };
+}
+
+// Creates the following graph:
+//                                _______________________
+//    input (f32) -> Q -> DQ ->  |                       | -> Q -> DQ -> output (f32)
+// axes (int32, initializer) ->  |         Gather        |
+//                               |_______________________|
+//
+template <typename QuantType, typename IndicesType>
+GetQDQTestCaseFn BuildQDQGatherOpScalarIndicesTestCase(const std::vector<int64_t>& input_shape,
+                                                       const IndicesType indices,
+                                                       int64_t axis) {
+  return [input_shape, indices, axis](ModelTestBuilder& builder) {
+    auto* input_data = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* final_output = builder.MakeOutput();
+
+    // input_data -> Q/DQ ->
+    auto* input_qdq_output = AddQDQNodePair<QuantType>(builder, input_data, .003f, 1);
+
+    auto* indices_input = builder.MakeScalarInitializer<IndicesType>(indices);
+
+    auto* gather_output = builder.MakeIntermediate();
+    Node& gather_node = builder.AddNode("Gather", {input_qdq_output, indices_input}, {gather_output});
+    gather_node.AddAttribute("axis", axis);
+
+    // -> Q/DQ -> final_output
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<QuantType>(gather_output, .003f, 1,
+                                             q_output);
+
+    builder.AddDequantizeLinearNode<QuantType>(q_output, .003f, 1,
+                                               final_output);
+  };
+}
+
+// Creates the following graph:
+//                                _______________________
+//                               |                       |
+//    input (f32) -> Q -> DQ ->  |       LeakyRelu       | -> Q -> DQ -> output (f32)
+//                               |_______________________|
+//
+template <typename QuantType>
+GetQDQTestCaseFn BuildQDQLeakyReluOpTestCase(const std::vector<int64_t>& input_shape) {
+  return [input_shape](ModelTestBuilder& builder) {
+    auto* input_data = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* final_output = builder.MakeOutput();
+
+    // input_data -> Q/DQ ->
+    auto* input_qdq_output = AddQDQNodePair<QuantType>(builder, input_data, 0.0473f, 137);
+
+    auto* leakyrelu_output = builder.MakeIntermediate();
+    Node& leakyrelu_node = builder.AddNode("LeakyRelu", {input_qdq_output}, {leakyrelu_output});
+    leakyrelu_node.AddAttribute("alpha", 0.2f);
+
+    // -> Q/DQ -> final_output
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<QuantType>(leakyrelu_output, 0.02696f, 48,
+                                             q_output);
+
+    builder.AddDequantizeLinearNode<QuantType>(q_output, 0.02696f, 48,
+                                               final_output);
+  };
+}
+
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {
@@ -365,9 +462,11 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
                                         const std::vector<int64_t>& sizes_data,
                                         const std::string& mode = "nearest",
                                         const std::string& coordinate_transformation_mode = "half_pixel",
+                                        const std::string& nearest_mode = "round_prefer_floor",
                                         bool add_dq_output_float = false) {
   static_assert(std::is_same_v<InputType, int8_t> || std::is_same_v<InputType, uint8_t>);
-  return [input_shape, sizes_data, mode, coordinate_transformation_mode, add_dq_output_float](ModelTestBuilder& builder) {
+  return [input_shape, sizes_data, mode, coordinate_transformation_mode,
+          nearest_mode, add_dq_output_float](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<InputType>(input_shape,
                                                     std::numeric_limits<InputType>::min(),
                                                     std::numeric_limits<InputType>::max());
@@ -386,6 +485,10 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
 
     resize_node.AddAttribute("mode", mode);
     resize_node.AddAttribute("coordinate_transformation_mode", coordinate_transformation_mode);
+
+    if (mode == "nearest") {
+      resize_node.AddAttribute("nearest_mode", nearest_mode);
+    }
 
     if (add_dq_output_float) {
       // add Q

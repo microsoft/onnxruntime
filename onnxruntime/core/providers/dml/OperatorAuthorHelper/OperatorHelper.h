@@ -1546,6 +1546,7 @@ using ShapeInferenceHelper_IsInf = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Mod = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_BitShift= GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Round = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_QuickGelu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_ReduceSum = ReduceHelper;
 using ShapeInferenceHelper_ReduceMean = ReduceHelper;

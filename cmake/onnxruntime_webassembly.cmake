@@ -97,7 +97,7 @@ target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
-      nsync_cpp
+      nsync::nsync_cpp
       ${PROTOBUF_LIB}
       onnx
       onnx_proto
@@ -172,7 +172,7 @@ else()
   endif()
 
   target_link_libraries(onnxruntime_webassembly PRIVATE
-    nsync_cpp
+    nsync::nsync_cpp
     ${PROTOBUF_LIB}
     onnx
     onnx_proto
