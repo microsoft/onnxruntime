@@ -67,10 +67,9 @@ void ModelBuilder::PreprocessInitializers() {
           entry->second++;
         }
       }
-
-      if (const auto* op_builder = GetOpBuilder(node)) {
-        op_builder->AddInitializersToSkip(*this, node);
-      }
+    }
+    if (const auto* op_builder = GetOpBuilder(node)) {
+      op_builder->AddInitializersToSkip(*this, node);
     }
   }
 }
