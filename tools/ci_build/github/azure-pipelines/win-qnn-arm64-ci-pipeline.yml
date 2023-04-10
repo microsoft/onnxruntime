@@ -43,19 +43,16 @@ jobs:
       versionSpec: '3.x'
       addToPath: true
       architecture: $(buildArch)
-     
-  - task: PowerShell@2
-    displayName: 'Install Protoc for ARM64'
-    inputs:
-      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_protoc.ps1'
-      workingDirectory: '$(Build.BinariesDirectory)'
-      arguments: -cpu_arch arm64 -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
 
+  - task: NuGetToolInstaller@1
+    inputs:
+      versionSpec: 6.4.x
+     
   - task: PythonScript@0
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--arm64 --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --cmake_generator "Visual Studio 16 2019" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel --path_to_protoc_exe $(Build.BinariesDirectory)\$(BuildConfig)\installed\bin\protoc'
+      arguments: '--arm64 --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --cmake_generator "Visual Studio 16 2019" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
