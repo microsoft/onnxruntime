@@ -2473,9 +2473,9 @@ def main():
                 target_arch = platform.machine()
                 if target_arch == "AMD64":
                     if cpu_arch == "32bit" or args.x86:
-                        target_arch = "x64"
-                    else:
                         target_arch = "Win32"
+                    else:
+                        target_arch = "x64"
                     host_arch = "x64"
                 elif target_arch == "ARM64":
                     host_arch = "ARM64"
