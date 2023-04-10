@@ -51,6 +51,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
   * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
+  * <a href="#com.microsoft.NhwcFusedConv">com.microsoft.NhwcFusedConv</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
   * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
@@ -465,9 +466,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain to float tensors.</dd>
-<dt><tt>F</tt> : tensor(float), tensor(int32)</dt>
+<dt><tt>F</tt> : tensor(float), tensor(int32), tensor(float16)</dt>
 <dd>Constrain input type to float or int tensors.</dd>
 <dt><tt>I</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
@@ -2634,6 +2635,64 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.NhwcFusedConv"></a><a name="com.microsoft.nhwcfusedconv">**com.microsoft.NhwcFusedConv**</a>
+
+  NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
+  Only has fp16 implementation as of 2023/04/15.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd></dd>
+<dt><tt>activation_params</tt> : list of floats</dt>
+<dd></dd>
+<dt><tt>auto_pad</tt> : string</dt>
+<dd></dd>
+<dt><tt>dilations</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>group</tt> : int</dt>
+<dd></dd>
+<dt><tt>kernel_shape</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>pads</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>strides</tt> : list of ints</dt>
+<dd></dd>
+</dl>
+
+#### Inputs (2 - 4)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd></dd>
+<dt><tt>W</tt> : T</dt>
+<dd></dd>
+<dt><tt>B</tt> (optional) : T</dt>
+<dd></dd>
+<dt><tt>Z</tt> (optional) : T</dt>
+<dd>Tensor to be added to the output, must be the same shape and format as the output tensor.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd></dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors</dd>
 </dl>
 
 

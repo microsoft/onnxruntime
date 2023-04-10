@@ -71,6 +71,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreatePoolOpBuilder("GlobalAveragePool", *this);
+    CreatePoolOpBuilder("AveragePool", *this);
     CreatePoolOpBuilder("MaxPool", *this);
   }
 
@@ -129,6 +130,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateInstanceNormOpBuilder("InstanceNormalization", *this);
+  }
+
+  {
+    CreateBatchNormOpBuilder("BatchNormalization", *this);
   }
 }
 
