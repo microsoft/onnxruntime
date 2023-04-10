@@ -40,7 +40,7 @@ class GemmTunableOp : public TunableOp<GemmParams<T>> {
     this->RegisterOp(RocBlasGemmOp<T>);
 
 #ifdef USE_HIPBLASLT
-    this->RegisterOp(HipBlasLtGemmOp<T, GemmParams<T>>{});
+    this->RegisterOp(HipBlasLtGemmOp<T>);
 #endif
 
 #ifdef USE_ROCBLAS_EXTENSION_API
@@ -145,7 +145,7 @@ class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>
     this->RegisterOp(RocBlasStridedBatchedGemmOp<T>);
 
 #ifdef USE_HIPBLASLT
-    this->RegisterOp(HipBlasLtGemmOp<T, StridedBatchedGemmParams<T>>{});
+    this->RegisterOp(HipBlasLtStridedBatchedGemmOp<T>);
 #endif
 
 #ifdef USE_ROCBLAS_EXTENSION_API

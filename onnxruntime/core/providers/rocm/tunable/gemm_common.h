@@ -55,7 +55,6 @@ struct GemmParams : tunable::OpParams {
   T beta;
   T* c;
   int64_t ldc;
-  int64_t batch = 1;
 };
 
 template <typename T>
