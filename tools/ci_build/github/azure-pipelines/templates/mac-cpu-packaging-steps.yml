@@ -43,7 +43,7 @@ steps:
     Today: ${{ parameters.Today }}
     AdditionalKey: onnxruntime_${{ parameters.MacosArch }}
     CacheDir: ${{ parameters.CacheDir }}
-    ChangeEveryCommit: false
+    ChangeEveryCommit: true
     BuildStep:
       - script: |
           rm -rf $(Build.BinariesDirectory)/Release

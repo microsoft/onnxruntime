@@ -55,14 +55,6 @@ jobs:
 
   - template: set-version-number-variables-step.yml
 
-  - script: |
-      brew install ccache
-      echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
-      mkdir -p $(PROTO_CACHE_DIR)
-      mkdir -p $(ORT_CACHE_DIR)
-    displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
-    condition: eq(${{ parameters.WithCache }}, true)
-
   - template: mac-build-step-with-cache.yml
     parameters:
       WithCache: ${{ parameters.WithCache }}
