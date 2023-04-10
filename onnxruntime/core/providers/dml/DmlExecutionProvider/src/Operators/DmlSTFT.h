@@ -2,6 +2,10 @@
 
 #include "DmlDFT.h"
 
+// NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
+//       should be removed from IsCustomOpShader(...) in
+//       onnxruntime\core\providers\dml\DmlExecutionProvider\src\ExecutionProvider.cpp
+
 enum DmlSTFTKernelInputIndex : uint32_t
 {
     Signal,
