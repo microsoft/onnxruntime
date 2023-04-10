@@ -1726,13 +1726,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         dll_path_list = []
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
-        # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
-        # This works for Python 3.7 and below, and doesn't work for Python 3.8+
-        # User will need to import torch before onnxruntime and it will work for all versions
-        if (args.enable_lazy_tensor) and is_windows():
-            import torch
-
-            dll_path_list.append(os.path.join(os.path.dirname(torch.__file__), "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:
