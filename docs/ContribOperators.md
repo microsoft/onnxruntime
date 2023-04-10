@@ -466,9 +466,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain to float tensors.</dd>
-<dt><tt>F</tt> : tensor(float), tensor(int32), tensor(float16)</dt>
+<dt><tt>F</tt> : tensor(float), tensor(int32)</dt>
 <dd>Constrain input type to float or int tensors.</dd>
 <dt><tt>I</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
