@@ -54,7 +54,7 @@ NodeArg* InsertNodesForValidLabelIndices(Graph& graph, Node& node, NodeArg* labe
   if (opset_lower_than_13) {
     attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{0});
   } else {
-    squeeze_input_args.push_back(onnxruntime::optimizer::compute_optimizer::CreateInitializerFromVector(
+    squeeze_input_args.push_back(onnxruntime::optimizer::compute_optimizer::Create1DInitializerFromVector(
         graph, {0}, graph.GenerateNodeArgName("axes")));
   }
 

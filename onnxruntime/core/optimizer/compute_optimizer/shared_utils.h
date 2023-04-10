@@ -165,8 +165,8 @@ int GetONNXOpSetVersion(const Graph& graph);
  * @brief Create Initializer from given vector and name.
  */
 
-NodeArg* CreateInitializerFromVector(Graph& graph, const InlinedVector<int64_t>& values,
-                                     const std::string& name);
+NodeArg* Create1DInitializerFromVector(Graph& graph, const InlinedVector<int64_t>& values,
+                                       const std::string& name);
 
 }  // namespace onnxruntime::optimizer::compute_optimizer
 #endif

@@ -138,7 +138,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
               "Unsqueeze",
               "Unsqueeze node",
               {current_node.MutableInputDefs()[input_index],
-               CreateInitializerFromVector(graph, {pair.second.non_negative_axis}, graph.GenerateNodeArgName("axes"))},
+               Create1DInitializerFromVector(graph, {pair.second.non_negative_axis}, graph.GenerateNodeArgName("axes"))},
               {&graph.GetOrCreateNodeArg(
                   graph.GenerateNodeArgName("unsqueeze_adaptor"),
                   current_node.MutableInputDefs()[input_index]->TypeAsProto())},
@@ -195,7 +195,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
             "Squeeze",
             "Squeeze node",
             {consumer.MutableInputDefs()[index],
-             CreateInitializerFromVector(graph, {slice_axis}, graph.GenerateNodeArgName("axes"))},
+             Create1DInitializerFromVector(graph, {slice_axis}, graph.GenerateNodeArgName("axes"))},
             {&graph.GetOrCreateNodeArg(
                 graph.GenerateNodeArgName("squeeze_adaptor"),
                 consumer.MutableInputDefs()[index]->TypeAsProto())},
@@ -427,7 +427,7 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
   auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
   axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
 
-  // Make sure layernorm/softmax's reduction happens after the axis we want to slice.
+  // Make sure LayerNormalization's reduction happens after the axis we want to slice.
   if (axis <= info.non_negative_axis) {
     return false;
   }
@@ -435,17 +435,8 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
   const NodeArg* gather_data_input_arg = current_node.OutputDefs()[info.GetDataProducerOutputIndex()];
   const auto& gather_data_input_shape = gather_data_input_arg->Shape();
 
-  // Only handle the case where the first input is 3D.
-  auto ln_input_arg = current_node.InputDefs()[0];
-  auto ln_input_shape = ln_input_arg->Shape();
-  auto ln_input_rank = ln_input_shape->dim_size();
-  if (ln_input_rank != 3) {
-    LOG_DEBUG_INFO(logger, "Fail LayerNormalizationGatherActor::PreCheck for node " + current_node.Name() +
-                               ": data_input_rank is " + std::to_string(ln_input_rank));
-    return false;
-  }
-
-  auto [success, ret] = CompareInputShapeWithOutputShape(gather_data_input_shape, ln_input_shape);
+  auto [success, ret] = CompareInputShapeWithOutputShape(gather_data_input_shape,
+                                                         current_node.InputDefs()[0]->Shape());
   if (!success) {
     // This should not happen!!!
     LOG_DEBUG_INFO(logger, "Fail LayerNormalizationGatherActor::PreCheck for node " + current_node.Name() +
@@ -458,9 +449,9 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
   all_input_cmp_rets[0] = std::move(ret);
 
   shape_update_func = [&info](Node& node) -> void {
-    // Be noted: LayerNorm's 2nd and 3rd output have shape [batch, sequence, 1]. The dim is still kept even
-    // for reduced axes.
-    // So the slicing axis is same with the 1st output.
+    // Be noted: If LayerNorm's data input is [dim1, dim2, dim3], reduce axis is 1,
+    // then its 2nd and 3rd outputs have shape [dim1, dim2, 1]. The dim is still kept even
+    // for reduced axes, so the slicing axis is same with the 1st output.
     for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
       UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis,
                              info.output_dim_on_axis);
@@ -478,7 +469,7 @@ bool SoftmaxGatherActor::PreCheck(const Graph& graph, const Node& current_node, 
   auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
   axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
 
-  // Make sure layernorm/softmax's reduction happens after the axis we want to slice.
+  // Make sure Softmax's reduction happens after the axis we want to slice.
   if (axis <= info.non_negative_axis) {
     return false;
   }
@@ -602,8 +593,8 @@ bool ReshapeGatherActor::PostProcess(
           new_values.push_back(new_shape_const_values[i]);
         }
       }
-      auto new_shape_arg = CreateInitializerFromVector(graph, new_values,
-                                                       graph.GenerateNodeArgName(arg_to_be_replaced->Name()));
+      auto new_shape_arg = Create1DInitializerFromVector(graph, new_values,
+                                                         graph.GenerateNodeArgName(arg_to_be_replaced->Name()));
       graph_utils::ReplaceNodeInput(current_node, 1, *new_shape_arg);
     } else {
       LOG_DEBUG_INFO(logger, "Reshape's shape has 0 specified for axis: " + std::to_string(slice_axis) +
@@ -616,8 +607,8 @@ bool ReshapeGatherActor::PostProcess(
   if (info_without_node.output_dim_on_axis.has_dim_value()) {
     new_shape_const_values[slice_axis] = info_without_node.output_dim_on_axis.dim_value();
     auto new_shape_arg =
-        CreateInitializerFromVector(graph, new_shape_const_values,
-                                    graph.GenerateNodeArgName(current_node.MutableInputDefs()[1]->Name()));
+        Create1DInitializerFromVector(graph, new_shape_const_values,
+                                      graph.GenerateNodeArgName(current_node.MutableInputDefs()[1]->Name()));
     graph_utils::ReplaceNodeInput(current_node, 1, *new_shape_arg);
     return true;
   }

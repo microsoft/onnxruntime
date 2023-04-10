@@ -91,7 +91,7 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
         break;
       }
 
-      if (graph.GetConsumerNodes(input_tensor_producer_node->MutableOutputDefs()[0]->Name()).size() > 1) {
+      if (input_tensor_producer_node->GetOutputEdgesCount() > 1) {
         LOG_DEBUG_INFO(logger, log_prefix + " stops at node " + input_tensor_producer_node->Name() +
                                    " since multiple consumers found");
         continue;

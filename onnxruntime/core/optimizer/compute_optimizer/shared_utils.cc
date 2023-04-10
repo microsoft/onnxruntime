@@ -47,7 +47,11 @@ Node* InsertIntermediateNodeOnDestInput(Graph& graph,
   for (size_t j = 0; j < new_node.MutableOutputDefs().size(); ++j) {
     graph.UpdateProducerNode(new_node.MutableOutputDefs()[j]->Name(), new_node.Index());
   }
-  graph.AddConsumerNode(src_node_arg->Name(), &new_node);
+
+  for (size_t j = 0; j < new_node.MutableInputDefs().size(); ++j) {
+    graph.AddConsumerNode(new_node.MutableInputDefs()[j]->Name(), &new_node);
+  }
+
   const Node* src_node = graph.GetProducerNode(src_node_arg->Name());
   if (src_node) {
     int src_out_index = optimizer_utils::IndexOfNodeOutput(*src_node, *src_node_arg);
@@ -165,8 +169,8 @@ int GetONNXOpSetVersion(const Graph& graph) {
   return onnx_opset;
 }
 
-NodeArg* CreateInitializerFromVector(Graph& graph, const InlinedVector<int64_t>& values,
-                                     const std::string& name) {
+NodeArg* Create1DInitializerFromVector(Graph& graph, const InlinedVector<int64_t>& values,
+                                       const std::string& name) {
   ONNX_NAMESPACE::TensorProto const_tensor;
   const_tensor.set_name(name);
   const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);

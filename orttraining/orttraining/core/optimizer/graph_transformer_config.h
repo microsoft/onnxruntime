@@ -22,7 +22,7 @@ struct TrainingGraphTransformerConfiguration : public GraphTransformerConfigurat
   // Number of layers to apply recompute
   int number_recompute_layers{0};
 
-  // Enable generic compute optimizer.
+  // Enable compute optimizer.
   bool enable_compute_optimizer{false};
 
   // Enable label sparsity compute optimization.
