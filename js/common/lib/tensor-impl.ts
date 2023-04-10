@@ -274,7 +274,7 @@ export class Tensor implements TensorInterface {
     const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' && image instanceof HTMLImageElement;
     const isImageDataEle = typeof (ImageData) !== 'undefined' && image instanceof ImageData;
     const isImageBitmap = typeof (ImageBitmap) !== 'undefined' && image instanceof ImageBitmap;
-    const isString = typeof (String) !== 'undefined' && (image instanceof String || typeof image === 'string');
+    const isString = typeof image === 'string';
 
     let data: Uint8ClampedArray|undefined;
     let tensorConfig: TensorFromImageOptions = options ?? {};
