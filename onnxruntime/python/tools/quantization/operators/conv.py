@@ -2,9 +2,9 @@ import numpy as np
 import onnx
 from onnx import onnx_pb as onnx_proto
 
+from ..quant_utils import BiasToQuantize  # noqa: F401
 from ..quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,
-    BiasToQuantize,
     QuantizedValue,
     QuantizedValueType,
     attribute_to_kwarg,
@@ -34,7 +34,7 @@ class ConvInteger(QuantOperatorBase):
         # Add tensors for the shape to be reshaped to
         weight = find_by_name(node.input[1], model.initializer())
         if weight is None:
-            raise ValueError("Expected {} to be an initializer".format(node.input[1]))
+            raise ValueError(f"Expected {node.input[1]} to be an initializer")
 
         # Add reshape for correct broadcase
         output = node.output[0]
@@ -238,7 +238,7 @@ class QDQConv(QDQOperatorBase):
 
     def quantize(self):
         node = self.node
-        assert node.op_type == "Conv"
+        assert node.op_type == "Conv" or node.op_type == "ConvTranspose"
 
         self.quantizer.quantize_activation_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:

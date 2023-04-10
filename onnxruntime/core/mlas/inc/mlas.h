@@ -78,12 +78,16 @@ Abstract:
 #endif
 
 #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
-// Visual Studio older than 2022 does not support fp16 intrinsic
-
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
+#if !defined(__APPLE__)
+// Had to temporary disable fp16 under APPLE ARM64, as compiling
+// the source files require a hardware specific compilation flag.
+// When building an universial binary for APPLE, this flag would
+// cause trouble for x64 target.
 
 #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
+#endif // 
 #endif // ARM64
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 
@@ -1433,18 +1437,20 @@ public:
 };
 
 /**
- * @brief Half precision activation functions
+ * @brief Half precision activation functions, with optional sum tensor.
+ * Supplied sum tensor must be the same layout as the GEMM output tensor.
+ * And the supplied sum tensor will be added to the final result.
 */
-class MLAS_HALF_GEMM_ACTIVATION_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
-public:
+class MLAS_HALF_GEMM_ACTIVATION_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR
+{
+  public:
     MLAS_HALF_GEMM_ACTIVATION_PROCESSOR(
-        const MLAS_ACTIVATION& Activation
-        ) :
-            Activation_(Activation)
+        const MLAS_ACTIVATION& Activation,
+        const MLAS_FP16* SumBuf = nullptr)
+       : Activation_(Activation), SumBuf_(SumBuf)
     {}
 
-    void
-    Process(
+    void Process(
         MLAS_FP16* C,
         size_t StartM,
         size_t StartN,
@@ -1453,8 +1459,9 @@ public:
         size_t ldc
         ) const override;
 
-private:
+  private:
     const MLAS_ACTIVATION& Activation_;
+    const MLAS_FP16* SumBuf_;
 };
 
 inline
@@ -1641,3 +1648,44 @@ MlasTranspose(
         reinterpret_cast<uint16_t*>(Output),
         M, N);
 }
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+/**
+ * @brief Max Pooling for fp16 NHWC
+ * @param Input         Indirect buffer to activations
+ * @param Output        Address of the result tensor
+ * @param Channels      C in NHWC
+ * @param OutputCount   Number of output pixels
+ * @param KernelSize    Size of the kernel
+ * @return 
+*/
+void
+MLASCALL
+MlasNhwcMaxPool(
+    const MLAS_FP16* const* Input,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+/**
+ * @brief Avg Pooling for fp16 nhwc
+ * @param Input         Indirect buffer to activations
+ * @param Output        Address of the output data
+ * @param Channels      C in NHWC
+ * @param OutputCount   Number of output pixels
+ * @param KernelSize    size of the kernel
+ * @return 
+*/
+void
+MLASCALL
+MlasNhwcAvgPool(
+    const MLAS_FP16* const* Input,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+#endif

@@ -47,7 +47,7 @@ class GemmFastGeluTunable : public IKernelExplorer {
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    params_.TuningContext()->EnableTunableOp();
+    params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   ~GemmFastGeluTunable() {

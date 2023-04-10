@@ -1,12 +1,12 @@
 # https://docs.microsoft.com/en-us/azure/mysql/connect-python
 
+import argparse
+import os
+from datetime import datetime
+
+import git
 import mysql.connector
 from mysql.connector import errorcode
-import git
-import os
-
-import argparse
-from datetime import datetime
 
 
 def get_repo_commit(repo_path):
@@ -101,6 +101,7 @@ insert_table_script = "INSERT INTO onnxruntime.perf_test_training_ort_module_dat
     %(Memory)s,\
     %(RunConfig)s,\
     %(Time)s)"
+
 
 # Obtain connection string information from the portal
 def connect_to_perf_dashboard_db(mysql_server_name, power_bi_user_name, password, database):

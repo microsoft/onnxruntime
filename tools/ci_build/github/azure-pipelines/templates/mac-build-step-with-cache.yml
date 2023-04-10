@@ -1,0 +1,44 @@
+# It's used for compilation with cache in Mac Host.
+
+parameters:
+- name: TODAY
+  type: string
+
+- name: BuildStep
+  type: stepList
+
+- name: AdditionalKey
+  type: string
+
+- name: CacheDir
+  type: string
+
+- name: ChangeEveryCommit
+  type: boolean
+  default: true
+
+steps:
+  - script: |
+      which ccache || brew install ccache
+      echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
+      mkdir -p "${{ parameters.CacheDir }}"
+    displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
+
+  - task: Cache@2
+    inputs:
+      ${{ if eq(parameters.ChangeEveryCommit, true) }}:
+        key:  ' "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}} | "$(Build.SourceVersion)" '
+        restoreKeys: |
+          "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}}
+      ${{ else }}:
+        key:  ' ${{parameters.AdditionalKey}} '
+        restoreKeys: |
+          ${{parameters.AdditionalKey}}
+      path: ${{ parameters.CacheDir }}
+    displayName: ccache task
+
+  - ${{ parameters.BuildStep }}
+
+  - template: check-cache-stats.yml
+    parameters:
+      CacheDir: ${{ parameters.CacheDir }}

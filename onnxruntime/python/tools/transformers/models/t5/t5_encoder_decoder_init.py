@@ -127,7 +127,7 @@ class T5EncoderDecoderInitHelper:
 
         present_names = PastKeyValuesHelper.get_past_names(model.config.num_layers, present=True)
 
-        output_names = ["logits", "encoder_hidden_states"] + present_names
+        output_names = ["logits", "encoder_hidden_states", *present_names]
 
         # Shape of input tensors (sequence_length==1):
         #    input_ids: (batch_size, sequence_length)
@@ -255,7 +255,7 @@ class T5EncoderDecoderInitHelper:
 
         test_cases = [(4, 11), (1, 2), (3, 1), (8, 5)]
         test_cases_max_diff = []
-        for (batch_size, encode_sequence_length) in test_cases[:max_cases]:
+        for batch_size, encode_sequence_length in test_cases[:max_cases]:
             inputs = T5EncoderDecoderInitInputs.create_dummy(
                 model.config,
                 batch_size,

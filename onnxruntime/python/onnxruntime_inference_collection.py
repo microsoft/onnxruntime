@@ -2,15 +2,22 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from __future__ import annotations
+
 import collections
 import collections.abc
 import os
+import typing
 import warnings
+from typing import Any, Sequence
 
 from onnxruntime.capi import _pybind_state as C
 
+if typing.TYPE_CHECKING:
+    import onnxruntime
 
-def get_ort_device_type(device_type, device_index):
+
+def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
     if device_type == "cuda":
         return C.OrtDevice.cuda()
     elif device_type == "cpu":
@@ -21,7 +28,11 @@ def get_ort_device_type(device_type, device_index):
         raise Exception("Unsupported device type: " + device_type)
 
 
-def check_and_normalize_provider_args(providers, provider_options, available_provider_names):
+def check_and_normalize_provider_args(
+    providers: Sequence[str, tuple[str, dict[Any, Any]]] | None,
+    provider_options: Sequence[dict[Any, Any]] | None,
+    available_provider_names: Sequence[str],
+):
     """
     Validates the 'providers' and 'provider_options' arguments and returns a
         normalized version.
@@ -57,7 +68,7 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
             )
 
         if name in provider_name_to_options:
-            warnings.warn("Duplicate provider '{}' encountered, ignoring.".format(name))
+            warnings.warn(f"Duplicate provider '{name}' encountered, ignoring.")
             return
 
         normalized_options = {str(key): str(value) for key, value in options.items()}
@@ -105,7 +116,6 @@ class Session:
     """
 
     def __init__(self):
-
         # self._sess is managed by the derived class and relies on bindings from C.InferenceSession
         self._sess = None
         self._enable_fallback = True
@@ -193,21 +203,20 @@ class Session:
         num_inputs = len(input_feed)
         # the graph may have optional inputs used to override initializers. allow for that.
         if num_inputs < num_required_inputs:
-            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
+            raise ValueError(f"Model requires {num_required_inputs} inputs. Input Feed contains {num_inputs}")
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
             return self._sess.run(output_names, input_feed, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print("EP Error: {} using {}".format(str(err), self._providers))
-                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
                 return self._sess.run(output_names, input_feed, run_options)
-            else:
-                raise
+            raise
 
     def run_with_ort_values(self, output_names, input_dict_ort_values, run_options=None):
         """
@@ -239,21 +248,20 @@ class Session:
         num_inputs = len(input_dict_ort_values)
         # the graph may have optional inputs used to override initializers. allow for that.
         if num_inputs < num_required_inputs:
-            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
+            raise ValueError(f"Model requires {num_required_inputs} inputs. Input Feed contains {num_inputs}")
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
             return invoke(self._sess, output_names, input_dict_ort_values, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print("EP Error: {} using {}".format(str(err), self._providers))
-                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
                 return invoke(self._sess, output_names, input_dict_ort_values, run_options)
-            else:
-                raise
+            raise
 
     def end_profiling(self):
         """
@@ -311,10 +319,17 @@ class InferenceSession(Session):
     This is the main class used to run a model.
     """
 
-    def __init__(self, path_or_bytes, sess_options=None, providers=None, provider_options=None, **kwargs):
+    def __init__(
+        self,
+        path_or_bytes: str | bytes | os.PathLike,
+        sess_options: Sequence[onnxruntime.SessionOptions] | None = None,
+        providers: Sequence[str, tuple[str, dict[Any, Any]]] | None = None,
+        provider_options: Sequence[dict[Any, Any]] | None = None,
+        **kwargs,
+    ) -> None:
         """
-        :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
-        :param sess_options: session options
+        :param path_or_bytes: Filename or serialized ONNX or ORT format model in a byte string.
+        :param sess_options: Session options.
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
             (provider name, options dict). If not provided, then all available
@@ -342,17 +357,19 @@ class InferenceSession(Session):
         means execute a node using `CUDAExecutionProvider`
         if capable, otherwise execute using `CPUExecutionProvider`.
         """
-
-        Session.__init__(self)
+        super().__init__()
 
         if isinstance(path_or_bytes, str):
             self._model_path = path_or_bytes
+            self._model_bytes = None
+        elif isinstance(path_or_bytes, os.PathLike):
+            self._model_path = str(path_or_bytes)
             self._model_bytes = None
         elif isinstance(path_or_bytes, bytes):
             self._model_path = None
             self._model_bytes = path_or_bytes  # TODO: This is bad as we're holding the memory indefinitely
         else:
-            raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
+            raise TypeError(f"Unable to load from type '{type(path_or_bytes)}'")
 
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
@@ -364,15 +381,15 @@ class InferenceSession(Session):
 
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)
-        except ValueError:
+        except ValueError as e:
             if self._enable_fallback:
-                print("EP Error using {}".format(providers))
-                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                print(f"EP Error {e} when using {providers}")
+                print(f"Falling back to {self._fallback_providers} and retrying.")
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
                 self.disable_fallback()
-            else:
-                raise
+                return
+            raise
 
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
@@ -392,7 +409,7 @@ class InferenceSession(Session):
         if providers == [] and len(available_providers) > 1:
             self.disable_fallback()
             raise ValueError(
-                "This ORT build has {} enabled. ".format(available_providers)
+                f"This ORT build has {available_providers} enabled. "
                 + "Since ORT 1.9, you are required to explicitly set "
                 + "the providers parameter when instantiating InferenceSession. For example, "
                 "onnxruntime.InferenceSession(..., providers={}, ...)".format(available_providers)
@@ -447,7 +464,7 @@ class IOBinding:
     This class provides API to bind input/output to a specified device, e.g. GPU.
     """
 
-    def __init__(self, session):
+    def __init__(self, session: Session):
         self._iobinding = C.SessionIOBinding(session._sess)
         self._numpy_obj_references = {}
 

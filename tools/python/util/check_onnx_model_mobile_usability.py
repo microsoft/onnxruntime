@@ -8,7 +8,7 @@ import pathlib
 # need this before the mobile helper imports for some reason
 logging.basicConfig(format="%(levelname)s:  %(message)s")
 
-from .mobile_helpers import check_model_can_use_ort_mobile_pkg, usability_checker  # noqa
+from .mobile_helpers import check_model_can_use_ort_mobile_pkg, usability_checker  # noqa: E402
 
 
 def check_usability():

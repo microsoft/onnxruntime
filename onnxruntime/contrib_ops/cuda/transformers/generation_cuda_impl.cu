@@ -746,7 +746,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                                 d_presence_mask);
 }
 
-__global__ void UpdateDecoderMaskedSelfAttentionCacheIndirectionKernel(int32_t* tgt_indir_cache,
+__global__ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirectionKernel(int32_t* tgt_indir_cache,
                                                                             const int32_t* src_indir_cache,
                                                                             const int32_t* beam_ids,
                                                                             int batch_size,
@@ -785,7 +785,7 @@ __global__ void UpdateDecoderMaskedSelfAttentionCacheIndirectionKernel(int32_t* 
   }
 }
 
-void UpdateDecoderMaskedSelfAttentionCacheIndirection(int32_t* tgt_indir_cache,
+void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_cache,
                                                            const int32_t* src_indir_cache,
                                                            const int32_t* beam_ids,
                                                            int batch_size,
@@ -796,7 +796,7 @@ void UpdateDecoderMaskedSelfAttentionCacheIndirection(int32_t* tgt_indir_cache,
                                                            cudaStream_t stream) {
   const dim3 block(32);
   const dim3 grid((current_length + block.x - 1) / block.x, batch_size * beam_width);
-  UpdateDecoderMaskedSelfAttentionCacheIndirectionKernel<<<grid, block, 0, stream>>>(tgt_indir_cache,
+  UpdateDecoderMaskedMultiHeadAttentionCacheIndirectionKernel<<<grid, block, 0, stream>>>(tgt_indir_cache,
                                                                                           src_indir_cache,
                                                                                           beam_ids,
                                                                                           batch_size,

@@ -752,6 +752,17 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetShrunkenGatherGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Shape",
+              {I(0)},
+              {IA("I0_shape")}),
+      NodeDef(OpDef{"GatherGrad", kMSDomain, 1},
+              {IA("I0_shape"), I(1), GO(0)},
+              {GI(0)},
+              SrcNodeAttributes())};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetGatherElementsGradient) {
   return std::vector<NodeDef>{
       NodeDef("Shape",
