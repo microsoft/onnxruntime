@@ -63,9 +63,9 @@ Status HipBlasLtMatMul(const ParamsT* params, int64_t batch, ActivationType acti
   int64_t lda = (params->opb == BlasOp::N) ? params->n : params->k;
   int64_t ldb = (params->opa == BlasOp::N) ? params->k : params->m;
   int64_t ldc = params->n;
-  int64_t stride_a = params->n * params->k;
-  int64_t stride_b = params->k * params->m;
-  int64_t stride_c = params->n * params->m;
+  int64_t stride_a = (params->opb == BlasOp::N) ? lda * params->k : lda * params->n;
+  int64_t stride_b = (params->opa == BlasOp::N) ? ldb * params->m : ldb * params->k;
+  int64_t stride_c = ldc * params->m;
   float alpha = static_cast<float>(params->alpha);
   float beta = static_cast<float>(params->beta);
   int row_a, col_a, row_b, col_b, row_c, col_c;
