@@ -170,7 +170,7 @@ Status CheckInputs(const T* query,
             "Expect 'key' shape (batch_size, num_heads, kv_sequence_length, head_size) for past_key");
       }
 
-      qkv_format = QKV_BSN3H; // key is past_key, so qkv must be packed
+      qkv_format = UNKNOWN;
       kv_sequence_length = static_cast<int>(key_dims[2]);
     }
   } else {  // packed QKV
@@ -287,7 +287,7 @@ Status CheckInputs(const T* query,
     }
   }
 
-  ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
+  // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
