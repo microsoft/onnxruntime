@@ -82,7 +82,8 @@ jobs:
               --enable_training \
               --use_cache \
               --build_java --build_nodejs --update --build; \
-            ccache -s"
+                ccache -sv; \
+                ccache -z"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2

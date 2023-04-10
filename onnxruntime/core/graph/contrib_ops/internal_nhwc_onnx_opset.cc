@@ -115,6 +115,11 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 1);
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 13);
 
+#if defined(USE_QNN)
+  REGISTER_NHWC_SCHEMA(fn, Resize, 11);
+  REGISTER_NHWC_SCHEMA(fn, Resize, 13);
+#endif
+
   // internal QLinear ops
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearConvTranspose, 1);

@@ -272,7 +272,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f412df7a2b64421e1f1d61fde6055a6ea288e8f5",
+          "commitHash": "3e313478d91c04ac5821743688ce55fc27432c4f",
           "repositoryUrl": "https://github.com/microsoft/mimalloc.git"
         },
         "comments": "mimalloc"

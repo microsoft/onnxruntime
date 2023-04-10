@@ -725,6 +725,35 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalInputs) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_for_ops_having_missing_optional_inputs.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, *logger_).IsOK());
+
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  // The Resize node has some missing optional inputs (roi and scales)
+  ASSERT_TRUE(op_to_count["Resize"] == 1);
+  ASSERT_TRUE(op_to_count["Reshape"] == 1);
+
+  InlinedHashSet<std::string_view> compatible_eps;
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  std::unique_ptr<CPUExecutionProvider> e =
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        compatible_eps),
+      TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  // The Resize node is constant folded
+  ASSERT_TRUE(op_to_count["Resize"] == 0);
+  ASSERT_TRUE(op_to_count["Reshape"] == 1);
+}
+
 static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<std::string, int>& expected_op_count,
                                                       Graph& graph,
                                                       SessionOptions& session_options,
@@ -4000,6 +4029,72 @@ TEST_F(GraphTransformationTests, QuickGelu) {
       builder.AddNode("Sigmoid", {mul_out_0}, {sigmoid_out});
       builder.AddNode("Mul", {input_arg, sigmoid_out}, {mul_out_1});
       builder.AddNode("Identity", {mul_out_0}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 2);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 2);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.QuickGelu"] == 0);
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+
+  // Sigmoid's output is a graph output.
+  {
+    constexpr float alpha = 1.702f;
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* alpha_arg = builder.MakeInitializer<float>({}, {alpha});
+      auto* mul_out_0 = builder.MakeIntermediate();
+      auto* sigmoid_out = builder.MakeOutput();
+      auto* mul_out_1 = builder.MakeOutput();
+
+      builder.AddNode("Mul", {alpha_arg, input_arg}, {mul_out_0});
+      builder.AddNode("Sigmoid", {mul_out_0}, {sigmoid_out});
+      builder.AddNode("Mul", {input_arg, sigmoid_out}, {mul_out_1});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 2);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Mul"] == 2);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sigmoid"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.QuickGelu"] == 0);
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+
+  // First Mul's output is a graph output.
+  {
+    constexpr float alpha = 1.702f;
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* alpha_arg = builder.MakeInitializer<float>({}, {alpha});
+      auto* mul_out_0 = builder.MakeOutput();
+      auto* sigmoid_out = builder.MakeIntermediate();
+      auto* mul_out_1 = builder.MakeOutput();
+
+      builder.AddNode("Mul", {alpha_arg, input_arg}, {mul_out_0});
+      builder.AddNode("Sigmoid", {mul_out_0}, {sigmoid_out});
+      builder.AddNode("Mul", {input_arg, sigmoid_out}, {mul_out_1});
     };
 
     auto pre_graph_checker = [&](Graph& graph) {

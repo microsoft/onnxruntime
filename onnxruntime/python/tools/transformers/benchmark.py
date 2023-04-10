@@ -262,7 +262,12 @@ def run_onnxruntime(
                         "datetime": str(datetime.now()),
                     }
 
-                    logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}")
+                    if config.model_type in ["vit", "swin"]:
+                        logger.info(
+                            f"Run onnxruntime on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}"
+                        )
+                    else:
+                        logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}")
 
                     if disable_ort_io_binding:
                         result = inference_ort(
@@ -336,11 +341,16 @@ def run_pytorch(
             cache_dir=cache_dir,
             custom_model_class=model_class,
         )
-        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        max_input_size = (
-            tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-        )
+        if config.model_type in ["vit", "swin"]:
+            # These models don't use sequence lengths, so just pick the first sequence length so that the summary still works
+            sequence_lengths = [sequence_lengths[0]]
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+
+            max_input_size = (
+                tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+            )
 
         logger.debug(f"Model {model}")
         logger.debug(f"Number of parameters {model.num_parameters()}")
@@ -359,17 +369,27 @@ def run_pytorch(
                 continue
 
             for sequence_length in sequence_lengths:
-                if max_input_size is not None and sequence_length > max_input_size:
-                    continue
+                if config.model_type in ["vit", "swin"]:
+                    logger.info(
+                        f"Run PyTorch on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}"
+                    )
+                    input_ids = torch.randn(
+                        size=(batch_size, 3, config.image_size, config.image_size),
+                        dtype=torch.float16 if precision == Precision.FLOAT16 else torch.float32,
+                        device=device,
+                    )
+                else:
+                    if max_input_size is not None and sequence_length > max_input_size:
+                        continue
 
-                logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
-                input_ids = torch.randint(
-                    low=0,
-                    high=config.vocab_size - 1,
-                    size=(batch_size, sequence_length),
-                    dtype=torch.long,
-                    device=device,
-                )
+                    logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
+                    input_ids = torch.randint(
+                        low=0,
+                        high=config.vocab_size - 1,
+                        size=(batch_size, sequence_length),
+                        dtype=torch.long,
+                        device=device,
+                    )
                 try:
                     inference = (
                         torch.jit.trace(model, input_ids) if torchscript else torch.compile(model) if torch2 else model
@@ -766,6 +786,9 @@ def main():
     if args.precision == Precision.INT8 and args.use_gpu:
         logger.error("int8 is for CPU only")
         return
+
+    if len(args.models) == 1 and MODELS[args.models[0]][3] in ["vit", "swim"]:
+        args.sequence_lengths = [""]
 
     args.num_threads = sorted({cpu_count if x <= 0 else x for x in args.num_threads})
 

@@ -45,6 +45,10 @@
 #include "orttraining/training_ops/cpu/tensor/split.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
 #include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
+
+// Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+// 2). this is needed by inference for other purpose.
+#include "contrib_ops/cpu/tensor/shrunken_gather.h"
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -275,6 +279,11 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
     return p->SGDOptimizerV2Base::PrepareForCompute(ctx,
                                                     reinterpret_cast<contrib::SGDOptimizerV2Base::Prepare&>(prepare));
   }
+  void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p, const Tensor* input_tensor,
+                                                 const Tensor* indices_tensor, int64_t axis_in) const override {
+    return p->ShrunkenGatherCommon::CheckInput(input_tensor, indices_tensor, axis_in);
+  }
+
 #endif
 
 #ifdef ENABLE_TRAINING

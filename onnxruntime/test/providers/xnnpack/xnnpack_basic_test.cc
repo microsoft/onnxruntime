@@ -504,6 +504,7 @@ TEST(XnnpackEP, TestResize_u8_and_s8_NHWC_half_pixel) {
                                       {1, 32, 32, 3} /* sizes_data */,
                                       "linear" /* mode */,
                                       "half_pixel" /* coordinate_transformation_mode */,
+                                      "" /* nearest_mode (doesn't apply for linear mode) */,
                                       true /*add_dq_output_float*/),
                "xnnpack_qdq_test_graph_resize",
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
@@ -511,6 +512,7 @@ TEST(XnnpackEP, TestResize_u8_and_s8_NHWC_half_pixel) {
                                               {1, 32, 32, 3} /* sizes_data */,
                                               "linear" /* mode */,
                                               "half_pixel" /* coordinate_transformation_mode */,
+                                              "" /* nearest_mode (doesn't apply for linear mode) */,
                                               true /*add_dq_output_float*/),
                "xnnpack_qdq_test_graph_resize",
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
@@ -520,6 +522,7 @@ TEST(XnnpackEP, TestResize_u8_and_s8_NHWC_align_corners) {
                                       {1, 32, 32, 3} /* sizes_data */,
                                       "linear" /* mode */,
                                       "align_corners" /* coordinate_transformation_mode */,
+                                      "" /* nearest_mode (doesn't apply for linear mode) */,
                                       true /*add_dq_output_float*/),
                "xnnpack_qdq_test_graph_resize",
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
@@ -527,6 +530,7 @@ TEST(XnnpackEP, TestResize_u8_and_s8_NHWC_align_corners) {
                                               {1, 32, 32, 3} /* sizes_data */,
                                               "linear" /* mode */,
                                               "align_corners" /* coordinate_transformation_mode */,
+                                              "" /* nearest_mode (doesn't apply for linear mode) */,
                                               true /*add_dq_output_float*/),
                "xnnpack_qdq_test_graph_resize",
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
@@ -537,6 +541,7 @@ TEST(XnnpackEP, TestResize_u8_and_s8_NHWC_pytorch_half_pixel) {
                                       {1, 32, 32, 3} /* sizes_data */,
                                       "linear" /* mode */,
                                       "pytorch_half_pixel" /* coordinate_transformation_mode */,
+                                      "" /* nearest_mode (doesn't apply for linear mode) */,
                                       true /*add_dq_output_float*/),
                "xnnpack_qdq_test_graph_resize",
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
@@ -544,6 +549,7 @@ TEST(XnnpackEP, TestResize_u8_and_s8_NHWC_pytorch_half_pixel) {
                                               {1, 32, 32, 3} /* sizes_data */,
                                               "linear" /* mode */,
                                               "pytorch_half_pixel" /* coordinate_transformation_mode */,
+                                              "" /* nearest_mode (doesn't apply for linear mode) */,
                                               true /*add_dq_output_float*/),
                "xnnpack_qdq_test_graph_resize",
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});

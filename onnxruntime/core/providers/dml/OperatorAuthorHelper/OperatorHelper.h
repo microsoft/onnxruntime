@@ -1444,6 +1444,7 @@ using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;
 using ShapeInferenceHelper_GRU = RecurrentHelper;
 using ShapeInferenceHelper_LSTM = RecurrentHelper;
+using ShapeInferenceHelper_BiasAdd = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Gather = GatherHelper;
 using ShapeInferenceHelper_GatherElements = GetOutputShapeAsSpecificInputShapeHelper<1>;
@@ -1546,6 +1547,7 @@ using ShapeInferenceHelper_IsInf = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Mod = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_BitShift= GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Round = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_QuickGelu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_ReduceSum = ReduceHelper;
 using ShapeInferenceHelper_ReduceMean = ReduceHelper;
