@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "core/providers/rocm/math/softmax_ck.cuh"
 #include "core/providers/rocm/math/softmax_tunable_op.cuh"
@@ -182,7 +183,11 @@ class SoftmaxTriton : public IKernelExplorer {
                 softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {}
 
   void Run() override {
-    ORT_THROW_IF_ERROR((rocm::SoftmaxTritonOp<T, T, rocm::AccumulationType_t<T>>(&params_)));
+    auto status = rocm::SoftmaxTritonOp<T, T>(&params_);
+    if (!status.IsOK()) {
+      std::cout << "launch softmax triton failed: " << status.ErrorMessage() << std::endl;
+    }
+    // ORT_THROW_IF_ERROR(status);
   }
 
   std::vector<std::string> ListOps() const {

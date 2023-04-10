@@ -38,7 +38,7 @@ def compile(name_mp, lib_dir):
         if block_size >= 4096:
             num_warps = 16
 
-        ret = triton.compile(softmax_kernel, signature=sig, constants={"BLOCK_SIZE": block_size})
+        ret = triton.compile(softmax_kernel, signature=sig, num_warps=num_warps, constants={"BLOCK_SIZE": block_size})
         return ret
 
     metadata = []
@@ -61,7 +61,7 @@ def compile(name_mp, lib_dir):
 
 dtypes = ['fp32', 'fp16']
 onnx_types = ['float', 'half']
-blocks = [1024, 2048, 4096]
+blocks = [1024, 2048, 4096, 8192, 16384]
 name_pattern = 'softmax_{}_{}'
 sig_pattern = '*{},*{},i32,i32,i32'
 

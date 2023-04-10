@@ -214,7 +214,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   OverrideTunableOpInfoByEnv(info_);
 
 #ifdef ENABLE_TRITON_LIB
-  onnxruntime::rocm::LoadRocmTritonKernel();
+  ORT_THROW_IF_ERROR(onnxruntime::rocm::LoadRocmTritonKernel());
 #endif
 }
 
