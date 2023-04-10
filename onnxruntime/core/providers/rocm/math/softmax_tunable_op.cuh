@@ -11,7 +11,7 @@
 #include "core/providers/rocm/math/softmax_warpwise_impl.cuh"
 #include "core/providers/rocm/math/softmax_blockwise_impl.cuh"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
-#include "core/providers/rocm/match/softmax_triton.cuh"
+#include "core/providers/rocm/math/softmax_triton.cuh"
 
 namespace onnxruntime {
 namespace rocm {
@@ -132,7 +132,7 @@ class SoftmaxTunableOp : public tunable::TunableOp<SoftmaxParams<InputT, OutputT
 #endif  // USE_COMPOSABLE_KERNEL
 
 #ifdef ENABLE_TRITON_LIB
-    this->RegisterOp(SoftmaxTritonOp<InputT>);
+    this->RegisterOp(SoftmaxTritonOp<InputT, OutputT>);
 #endif
   }
 };

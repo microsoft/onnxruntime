@@ -1,16 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/rocm/triton_kernel.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/rocm/rocm_common.h"
+#include "core/framework/tunable.h"
 #include "hip/hip_runtime_api.h"
+#include <fstream>
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
 
 namespace onnxruntime {
 namespace rocm {
 namespace {
-
 
 #define HIP_CHECK(status)                                       \
 	if (status != hipSuccess) {                             \
@@ -29,17 +31,22 @@ const std::string GetRocmTritonKernelPath() {
 
 }  // end of namespace
 
-int GetTritonKernelBlockSize(std::string fname) {
-  auto metadata = rocm_triton_kernel_map[fname];
-  return metadata.block_size;
+int NextPowerOf2(int size) {
+  int pow = 0;
+  while (size > 2) {
+    size /= 2;
+    pow++;
+  }
+  return pow + 1;
 }
 
 Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void *args, size_t args_size) {
   if (rocm_triton_kernel_map.count(fname) == 0) {
+    // return unsupported status for tunable op
     std::ostringstream message_stream;
     message_stream << "can't find triton kernel name: " << fname;
     std::string message = message_stream.str();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, message);
   }
   auto metadata = rocm_triton_kernel_map[fname];
   void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, args, HIP_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
@@ -51,7 +58,7 @@ Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int 
                                   metadata.shared_mem_size,
                                   stream,
                                   nullptr,
-                                  (void**)&config);
+                                  (void**)&config));
   return Status::OK();
 }
 
@@ -61,19 +68,20 @@ Status LoadRocmTritonKernel() {
   ORT_TRY {
     // get kernel lib metadata
     const auto path = GetRocmTritonKernelPath();
-    auto metadata_file = path + FILE_SP + META_FILENAME;
+    std::string metadata_file = path + FILE_SP + META_FILENAME;
+
     std::ifstream meta_fd(metadata_file);
-    json j = json.parse(meta_fd);
+    json j = json::parse(meta_fd);
     auto num_meta = j.size();
     for (int i = 0; i < num_meta; ++i) {
       auto j_m = j[i];
       std::string lib_path = path + FILE_SP + std::string(j_m["lib_file"]);
       // try to load hasco module
       hipModule_t module;
-	  hipFunction_t munction;
-	  HIP_CHECK(hipModuleLoad(&module, lib_path.c_str()));
+      hipFunction_t function;
+      HIP_CALL_THROW(hipModuleLoad(&module, lib_path.c_str()));
       std::string fname = j_m["func_name"];
-	  HIP_CHECK(hipModuleGetFunction(&function, module, fname.c_str()));
+      HIP_CALL_THROW(hipModuleGetFunction(&function, module, fname.c_str()));
 
       // setup kernel metadata
       TritonKernelMetaData metadata;
@@ -82,7 +90,7 @@ Status LoadRocmTritonKernel() {
       metadata.block_size = j_m["BLOCK_SIZE"];
       metadata.func = function;
       fname = j_m["name"];  // name is not same as func_name
-	  rocm_triton_kernel_map[fname] = metadata;
+      rocm_triton_kernel_map[fname] = metadata;
       LOGS_DEFAULT(VERBOSE) << "loaded rocm triton kernel: " << fname;
     }
   }
