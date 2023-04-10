@@ -245,7 +245,9 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("do_copy_in_default_stream", [0, 1])
 
-                test_get_and_set_option_with_values("tunable_op_enabled", ["1", "0"])
+                test_get_and_set_option_with_values("tunable_op_enable", ["1", "0"])
+
+                test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
 
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
@@ -379,7 +381,9 @@ class TestInferenceSession(unittest.TestCase):
                             str(option_value),
                         )
 
-                test_get_and_set_option_with_values("tunable_op_enabled", ["1", "0"])
+                test_get_and_set_option_with_values("tunable_op_enable", ["1", "0"])
+
+                test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
 
             runRocmOptionsTest()
 

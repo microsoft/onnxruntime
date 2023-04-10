@@ -60,7 +60,7 @@ class FastGeluTunable : public IKernelExplorer {
   FastGeluTunable(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length)
       : params_(TuningContext(), Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<T*>(output.ptr()), input_length, bias_length) {
-    params_.TuningContext()->EnableTunableOp();
+    params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   void Run() override {

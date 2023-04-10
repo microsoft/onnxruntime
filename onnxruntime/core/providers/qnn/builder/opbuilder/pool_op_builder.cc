@@ -33,11 +33,11 @@ class PoolOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status SetParamForMaxPool(const NodeAttrHelper& node_helper, std::vector<uint32_t>& filter_size,
-                            std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& stride,
-                            int32_t& ceil_mode,
-                            std::vector<uint32_t>&& input_shape,
-                            std::vector<uint32_t>&& output_shape) const;
+  Status SetCommonPoolParams(const NodeAttrHelper& node_helper, std::vector<uint32_t>& filter_size,
+                             std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& stride,
+                             int32_t& ceil_mode,
+                             std::vector<uint32_t>&& input_shape,
+                             std::vector<uint32_t>&& output_shape) const;
 };
 
 // Pool ops are sensitive with data layout, no special validation so far
@@ -76,12 +76,12 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-Status PoolOpBuilder::SetParamForMaxPool(const NodeAttrHelper& node_helper,
-                                         std::vector<uint32_t>& filter_size,
-                                         std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& stride,
-                                         int32_t& ceil_mode,
-                                         std::vector<uint32_t>&& input_shape,
-                                         std::vector<uint32_t>&& output_shape) const {
+Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
+                                          std::vector<uint32_t>& filter_size,
+                                          std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& stride,
+                                          int32_t& ceil_mode,
+                                          std::vector<uint32_t>&& input_shape,
+                                          std::vector<uint32_t>&& output_shape) const {
   auto kernel_shape = node_helper.Get("kernel_shape", std::vector<int32_t>{1, 1});
   ORT_RETURN_IF_NOT(kernel_shape.size() == 2, "QNN only support kernel_shape with shape[2].");
   filter_size.clear();
@@ -149,12 +149,13 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   std::vector<uint32_t> pad_amount{0, 0, 0, 0};
   std::vector<uint32_t> pad_amount_dim{2, 2};
   int32_t ceil_mode = 0;
-  if (node_unit.OpType() == "MaxPool") {
+  if (node_unit.OpType() == "MaxPool" || node_unit.OpType() == "AveragePool") {
     const auto& outputs = node_unit.Outputs();
     std::vector<uint32_t> output_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(outputs[0].node_arg, output_shape), "Cannot get shape");
 
-    ORT_RETURN_IF_ERROR(SetParamForMaxPool(node_helper, filter_size, pad_amount, stride, ceil_mode, std::move(input_shape), std::move(output_shape)));
+    ORT_RETURN_IF_ERROR(SetCommonPoolParams(node_helper, filter_size, pad_amount, stride, ceil_mode,
+                                            std::move(input_shape), std::move(output_shape)));
   }
 
   std::vector<std::string> param_tensor_names;
@@ -202,8 +203,18 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                               scalar_param);
     param_tensor_names.push_back(count_pad_for_edges_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param));
+  } else if (node_unit.OpType() == "AveragePool") {
+    Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
+    scalar_param.dataType = QNN_DATATYPE_BOOL_8;
+    scalar_param.bool8Value = static_cast<uint8_t>(node_helper.Get("count_include_pad", static_cast<int64_t>(0)) != 0);
+    QnnParamWrapper count_pad_for_edges_param(node_unit.Index(),
+                                              node_unit.Name(),
+                                              qnn_def::count_pad_for_edges,
+                                              scalar_param);
+    param_tensor_names.push_back(count_pad_for_edges_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param));
   }
-  output_count_ = 1;
+
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
