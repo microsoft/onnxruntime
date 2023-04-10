@@ -193,7 +193,8 @@ class Session:
                 missing_input_names.append(input.name)
         if missing_input_names:
             raise ValueError(
-                f"Required inputs ({missing_input_names}) are missing from input feed ({feed_input_names}).")
+                f"Required inputs ({missing_input_names}) are missing from input feed ({feed_input_names})."
+            )
 
     def run(self, output_names, input_feed, run_options=None):
         """
