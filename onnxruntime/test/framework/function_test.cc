@@ -366,7 +366,7 @@ TEST(FunctionTest, VariadicsNonInputOutput) {
     func (a) => (y) {
       b = Identity(a)
       z = Concat <axis = 0> (b, a, b)
-      w, y = Split (z)
+      y, w = Split (z)
     }
   )";
 
