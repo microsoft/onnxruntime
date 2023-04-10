@@ -37,27 +37,27 @@ resources:
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 stages:
-# - template: templates/web-ci.yml
-#   parameters:
-#     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-#     IsReleasePipeline: true
-#     PoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
-#     PackageName: 'onnxruntime-web'
-#     ExtraBuildArgs: ''
+- template: templates/web-ci.yml
+  parameters:
+    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+    IsReleasePipeline: true
+    PoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    PackageName: 'onnxruntime-web'
+    ExtraBuildArgs: ''
 
-# - template: templates/react-native-ci.yml
-#   parameters:
-#     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-#     BuildConfig: 'Release'
-#     PoolName: 'Linux-CPU'
-#     PackageName: 'onnxruntime-react-native'
-#     BuildAndroidAARStageDependsOn: 'Extract_commit'
+- template: templates/react-native-ci.yml
+  parameters:
+    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+    BuildConfig: 'Release'
+    PoolName: 'Linux-CPU'
+    PackageName: 'onnxruntime-react-native'
+    BuildAndroidAARStageDependsOn: 'Extract_commit'
 
 - stage: Download_Node_Package_And_Publish_Validation_Script
-  # dependsOn:
-  # - ReactNative_CI
-  # - Build_web_Release
-  # - Build_web_Debug
+  dependsOn:
+  - ReactNative_CI
+  - Build_web_Release
+  - Build_web_Debug
   jobs:
   - job: Download_Node_Package_And_Publish_Validation_Script
     pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
