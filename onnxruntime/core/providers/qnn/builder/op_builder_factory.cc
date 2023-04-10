@@ -131,6 +131,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateInstanceNormOpBuilder("InstanceNormalization", *this);
   }
+
+  {
+    CreateBatchNormOpBuilder("BatchNormalization", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {

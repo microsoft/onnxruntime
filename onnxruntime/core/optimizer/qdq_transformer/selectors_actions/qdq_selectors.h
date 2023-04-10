@@ -147,6 +147,20 @@ class InstanceNormalizationNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 };
 
+// DQ nodes for X, W and optionally B, not used for mean, var -> node -> Q
+class BatchNormalizationNodeGroupSelector : public NodeGroupSelector {
+ public:
+  // default to 'true'
+  BatchNormalizationNodeGroupSelector(bool int8_allowed = true) : int8_allowed_(int8_allowed) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+
+  bool int8_allowed_;
+};
+
 /*
  * NodeSelector instances for use in the QDQ::SelectorActionTransformer.
  */
@@ -244,6 +258,13 @@ class InstanceNormalizationSelector : public BaseSelector {
  public:
   InstanceNormalizationSelector()
       : BaseSelector(std::make_unique<InstanceNormalizationNodeGroupSelector>()) {}
+};
+
+// DQ nodes for X, W and optionally B, (mean, var not required) -> node -> Q
+class BatchNormalizationSelector : public BaseSelector {
+ public:
+  BatchNormalizationSelector(bool int8_allowed = false)
+      : BaseSelector(std::make_unique<BatchNormalizationNodeGroupSelector>(int8_allowed)) {}
 };
 
 }  // namespace QDQ
