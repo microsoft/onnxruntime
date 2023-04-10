@@ -31,14 +31,6 @@ const std::string GetRocmTritonKernelPath() {
 
 }  // end of namespace
 
-int NextPowerOf2(int size) {
-  int pow = 0;
-  while (size > 2) {
-    size /= 2;
-    pow++;
-  }
-  return pow + 1;
-}
 
 Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void *args, size_t args_size) {
   if (rocm_triton_kernel_map.count(fname) == 0) {
@@ -87,9 +79,22 @@ Status LoadRocmTritonKernel() {
       TritonKernelMetaData metadata;
       metadata.num_warps = j_m["num_warps"];
       metadata.shared_mem_size = j_m["shared"];
-      metadata.block_size = j_m["BLOCK_SIZE"];
       metadata.func = function;
       fname = j_m["name"];  // name is not same as func_name
+
+      // parse constants
+      if (j_m.contains("constants")) {
+        auto constants = j_m["constants"];
+	for (auto &el : constants.items()) {
+          auto k = el.key();
+	  auto v = el.value();
+	  if (!v.is_number_integer()) {
+            // only support k is str and v is integer
+	    continue;
+	  }
+	  metadata.constants[k] = v;
+	}
+      }
       rocm_triton_kernel_map[fname] = metadata;
       LOGS_DEFAULT(VERBOSE) << "loaded rocm triton kernel: " << fname;
     }
