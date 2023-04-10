@@ -464,46 +464,6 @@ inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const
   return *this;
 }
 
-inline Env& Env::CreateAndRegisterExecutionProvider(bool use_arena, const char* provider_type, std::unordered_map<std::string, std::string> provider_options, int* provider_global_index) {
-  auto num_entries = provider_options.size();
-  std::vector<const char*> keys, values;
-  if (num_entries > 0) {
-    keys.reserve(num_entries);
-    values.reserve(num_entries);
-    for (const auto& entry : provider_options) {
-      keys.push_back(entry.first.c_str());
-      values.push_back(entry.second.c_str());
-    }
-  }
-  ThrowOnError(GetApi().CreateAndRegisterExecutionProvider(p_, use_arena, provider_type, keys.data(), values.data(), num_entries, provider_global_index));
-  return *this;
-}
-
-inline Env& Env::CreateAndRegisterExecutionProvider_CPU(bool use_arena, int* provider_global_index) {
-  ThrowOnError(GetApi().CreateAndRegisterExecutionProvider_CPU(p_, use_arena, provider_global_index));
-  return *this;
-}
-
-inline Env& Env::CreateAndRegisterExecutionProvider_XNNPACK(std::unordered_map<std::string, std::string> provider_options, int* provider_global_index) {
-  auto num_entries = provider_options.size();
-  std::vector<const char*> keys, values;
-  if (num_entries > 0) {
-    keys.reserve(num_entries);
-    values.reserve(num_entries);
-    for (const auto& entry : provider_options) {
-      keys.push_back(entry.first.c_str());
-      values.push_back(entry.second.c_str());
-    }
-  }
-  ThrowOnError(GetApi().CreateAndRegisterExecutionProvider_XNNPACK(p_, keys.data(), values.data(), num_entries, provider_global_index));
-  return *this;
-}
-
-inline Env& Env::CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options, int* provider_global_index) {
-  ThrowOnError(GetApi().CreateAndRegisterExecutionProvider_CUDA_V2(p_, &provider_options, provider_global_index));
-  return *this;
-}
-
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }
@@ -997,10 +957,6 @@ inline Session::Session(const Env& env, const void* model_data, size_t model_dat
                         const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container) {
   ThrowOnError(GetApi().CreateSessionFromArrayWithPrepackedWeightsContainer(env, model_data, model_data_length, options,
                                                                             prepacked_weights_container, &this->p_));
-}
-
-inline Session::Session(const Env& env, const ORTCHAR_T* model_path, int* provider_global_index, size_t global_index_length) {
-  ThrowOnError(GetApi().CreateSessionWithProviderGlobalIndex(env, model_path, provider_global_index, global_index_length, &this->p_));
 }
 
 inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {

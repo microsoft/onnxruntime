@@ -106,10 +106,8 @@ struct TensorrtFuncState {
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
   nvinfer1::IOptimizationProfile* trt_profile = nullptr;
-  AllocatorPtr scratch_allocator;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
-  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable = false;
   int (*engine_decryption)(const char*, char*, size_t*) = nullptr;

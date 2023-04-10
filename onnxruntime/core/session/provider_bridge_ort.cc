@@ -32,7 +32,6 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
-#include "core/session/ort_env.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -1703,20 +1702,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
 
   options->provider_factories.push_back(factory);
   return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterExecutionProvider_CUDA_V2, _Inout_ OrtEnv* env, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Out_ int* provider_global_index) {
-  API_IMPL_BEGIN
-  ORT_THROW_IF_ERROR(env->CreateAndRegisterExecutionProvider_CUDA_V2(cuda_options, provider_global_index));
-  return nullptr;
-//  auto factory = onnxruntime::CudaProviderFactoryCreator::Create(cuda_options);
-//  if (!factory) {
-//    return OrtApis::CreateStatus(ORT_FAIL, "CreateAndRegisterExecutionProvider_CUDA_V2: Failed to load shared library");
-//  }
-//
-//  options->provider_factories.push_back(factory);
-//  return nullptr;
   API_IMPL_END
 }
 

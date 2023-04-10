@@ -221,8 +221,7 @@ namespace python {
 
 using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*,
                                                            const std::vector<std::string>&,
-                                                           const ProviderOptionsMap&,
-                                                           const std::vector<int>&)>;
+                                                           const ProviderOptionsMap&)>;
 
 // TODO remove deprecated global config
 extern OrtDevice::DeviceId cuda_device_id;

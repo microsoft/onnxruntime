@@ -26,17 +26,6 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
-#include "core/providers/cpu/cpu_provider_factory_creator.h"
-#include "core/framework/ort_value.h"
-#ifdef USE_XNNPACK
-#include "core/providers/xnnpack/xnnpack_provider_factory_creator.h"
-#endif
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
-#endif  // USE_CUDA
-
-
-
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
 #endif
@@ -51,12 +40,18 @@
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
-
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
+#endif
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
+#ifdef USE_CUDA
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
+#endif  // USE_CUDA
 
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                            std::unique_ptr<Environment>& environment,
@@ -88,12 +83,6 @@ static bool AreOrtMemoryInfosEquivalent(
 Status Environment::RegisterAllocator(AllocatorPtr allocator) {
   const auto& mem_info = allocator->Info();
 
-  if (mem_info.device.Type() != OrtDevice::CPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Only CPU allocators can be shared between "
-                           "multiple sessions for now.");
-  }
-
   // We don't expect millions of allocators getting registered. Hence linear search should be fine.
   auto ite = std::find_if(std::begin(shared_allocators_),
                           std::end(shared_allocators_),
@@ -120,63 +109,69 @@ Status Environment::RegisterAllocator(AllocatorPtr allocator) {
 }
 
 Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg) {
-  // TODO should we allow sharing of non-CPU allocators?
-  if (mem_info.device.Type() != OrtDevice::CPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only CPU devices are supported for now.");
-  }
-
-  // determine if arena should be used
-  bool create_arena = mem_info.alloc_type == OrtArenaAllocator;
+  AllocatorPtr allocator_ptr;
+  if (mem_info.device.Type() == OrtDevice::CPU) {
+    // determine if arena should be used
+    bool create_arena = mem_info.alloc_type == OrtArenaAllocator;
 
 #if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
-  // We use these allocators instead of the arena
-  create_arena = false;
+    // We use these allocators instead of the arena
+    create_arena = false;
 #elif !(defined(__amd64__) || defined(_M_AMD64))
-  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
-  create_arena = false;
+    // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+    create_arena = false;
 #endif
 
-  AllocatorPtr allocator_ptr;
-  // create appropriate DeviceAllocatorRegistrationInfo and allocator based on create_arena
-  if (create_arena) {
-    // defaults in case arena_cfg is nullptr (not supplied by the user)
-    size_t max_mem = 0;
-    int arena_extend_strategy = -1;
-    int initial_chunk_size_bytes = -1;
-    int max_dead_bytes_per_chunk = -1;
-    int initial_growth_chunk_size_bytes = -1;
+    // create appropriate DeviceAllocatorRegistrationInfo and allocator based on create_arena
+    if (create_arena) {
+      // defaults in case arena_cfg is nullptr (not supplied by the user)
+      size_t max_mem = 0;
+      int arena_extend_strategy = -1;
+      int initial_chunk_size_bytes = -1;
+      int max_dead_bytes_per_chunk = -1;
+      int initial_growth_chunk_size_bytes = -1;
 
-    // override with values from the user supplied arena_cfg object
-    if (arena_cfg) {
-      max_mem = arena_cfg->max_mem;
+      // override with values from the user supplied arena_cfg object
+      if (arena_cfg) {
+        max_mem = arena_cfg->max_mem;
 
-      arena_extend_strategy = arena_cfg->arena_extend_strategy;
-      // validate the value here
-      if (!(arena_extend_strategy == -1 || arena_extend_strategy == 0 || arena_extend_strategy == 1)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Received invalid value for arena extend strategy."
-                               " Valid values can be either 0, 1 or -1.");
+        arena_extend_strategy = arena_cfg->arena_extend_strategy;
+        // validate the value here
+        if (!(arena_extend_strategy == -1 || arena_extend_strategy == 0 || arena_extend_strategy == 1)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Received invalid value for arena extend strategy."
+                                 " Valid values can be either 0, 1 or -1.");
+        }
+
+        initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
+        max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
+        initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes;
       }
 
-      initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
-      max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
-      initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes;
+      OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
+                              initial_growth_chunk_size_bytes};
+      AllocatorCreationInfo alloc_creation_info{
+          [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
+          0,
+          create_arena,
+          l_arena_cfg};
+      allocator_ptr = CreateAllocator(alloc_creation_info);
+    } else {
+      AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<CPUAllocator>(); },
+                                                0, create_arena};
+      allocator_ptr = CreateAllocator(alloc_creation_info);
     }
-
-    OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
-                            initial_growth_chunk_size_bytes};
-    AllocatorCreationInfo alloc_creation_info{
-        [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
-        0,
-        create_arena,
-        l_arena_cfg};
-    allocator_ptr = CreateAllocator(alloc_creation_info);
-  } else {
-    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<CPUAllocator>(); },
-                                              0, create_arena};
-    allocator_ptr = CreateAllocator(alloc_creation_info);
+  } else if (mem_info.device.Type() == OrtDevice::GPU) {
+#ifdef USE_CUDA
+      if (mem_info.device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
+        allocator_ptr = GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(0, "CUDAPinnedAllocator"); // TODO(leca): Do we support creating CUDA pinned allocator from environment?
+      } else if (mem_info.device.Type() == OrtDevice::GPU) {
+        CUDAExecutionProviderExternalAllocatorInfo external_info{};  // TODO(leca): how to support external alloctor
+        allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(static_cast<int16_t>(mem_info.device.Id()), arena_cfg->max_mem, static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy), external_info, const_cast<OrtArenaCfg*>(arena_cfg));
+      }
+#endif  // USE_CUDA
   }
-
+  ORT_ENFORCE(allocator_ptr != nullptr, "Create Allocator failed");
   return RegisterAllocator(allocator_ptr);
 }
 
@@ -337,72 +332,6 @@ Internal copy node
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION};
   }
   return status;
-}
-
-Status Environment::CreateAndRegisterExecutionProvider(bool use_arena, std::string provider_type, ProviderOptions provider_options, int* provider_global_index) {
-  *provider_global_index = -1;
-  std::unique_ptr<IExecutionProvider> ep;
-  if (provider_type == kCpuExecutionProvider) {
-    ep = onnxruntime::CPUProviderFactoryCreator::Create(use_arena)->CreateProvider();
-  } else if (provider_type == kXnnpackExecutionProvider) {
-#ifdef USE_XNNPACK
-    SessionOptions so{};
-    so.enable_cpu_mem_arena = use_arena;
-    ep = onnxruntime::XnnpackProviderFactoryCreator::Create(provider_options, &so)->CreateProvider();
-#endif  // USE_XNNPACK
-  }
-
-  if (ep) {
-    ORT_THROW_IF_ERROR(execution_providers_.Add(provider_type, std::move(ep)));
-    *provider_global_index = static_cast<int>(execution_providers_.NumProviders())-1;
-  }
-  return Status::OK();
-}
-
-Status Environment::CreateAndRegisterExecutionProvider_CPU(bool use_arena, int* provider_global_index) {
-  *provider_global_index = -1;
-  std::unique_ptr<IExecutionProvider> ep = onnxruntime::CPUProviderFactoryCreator::Create(use_arena)->CreateProvider();
-  if (ep) {
-    ORT_THROW_IF_ERROR(execution_providers_.Add(kCpuExecutionProvider, std::move(ep)));
-    *provider_global_index = static_cast<int>(execution_providers_.NumProviders()) - 1;
-  }
-
-  return Status::OK();
-}
-
-Status Environment::CreateAndRegisterExecutionProvider_XNNPACK(ProviderOptions provider_options, int* provider_global_index) {
-#ifdef USE_XNNPACK
-  *provider_global_index = -1;
-  SessionOptions so{};
-  std::unique_ptr<IExecutionProvider> ep =  onnxruntime::XnnpackProviderFactoryCreator::Create(provider_options, &so)->CreateProvider();
-  if (ep) {
-    ORT_THROW_IF_ERROR(execution_providers_.Add(kXnnpackExecutionProvider, std::move(ep)));
-    *provider_global_index = static_cast<int>(execution_providers_.NumProviders()) - 1;
-  }
-
-  return Status::OK();
-#else
-  ORT_UNUSED_PARAMETER(provider_options);
-  ORT_UNUSED_PARAMETER(provider_global_index);
-  return Status::Status();
-#endif  // USE_XNNPACK
-}
-
-
-Status Environment::CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2* provider_options, int* provider_global_index) {
-#ifdef USE_CUDA
-  *provider_global_index = -1;
-  std::unique_ptr<IExecutionProvider> ep = onnxruntime::CudaProviderFactoryCreator::Create(provider_options)->CreateProvider();
-  if (ep) {
-    ORT_THROW_IF_ERROR(execution_providers_.Add(kXnnpackExecutionProvider, std::move(ep)));
-    *provider_global_index = static_cast<int>(execution_providers_.NumProviders()) - 1;
-  }
-  return Status::OK();
-#else
-  ORT_UNUSED_PARAMETER(provider_options);
-  ORT_UNUSED_PARAMETER(provider_global_index);
-  return Status::Status();
-#endif
 }
 
 }  // namespace onnxruntime

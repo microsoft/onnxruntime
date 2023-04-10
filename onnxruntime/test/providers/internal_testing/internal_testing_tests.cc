@@ -250,37 +250,6 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
 
 // This test can be deprecated now as the code logic has been changed so the model is not applicable
 //TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
-//  auto init_session = [](std::vector<std::shared_ptr<IExecutionProvider>>& eps,
-//                         InferenceSessionWrapper& session) {
-//    for (const auto& ep : eps) {
-//      ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep));
-//    }
-//
-//    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model.onnx";
-//    ASSERT_STATUS_OK(session.Load(ort_model_path));
-//    ASSERT_STATUS_OK(session.Initialize());
-//  };
-//
-//  // create 2 sessions
-//  SessionOptions so;
-//  InferenceSessionWrapper session1(so, GetEnvironment());
-//  InferenceSessionWrapper session2(so, GetEnvironment());
-//
-//  // and use the same EP instances in both
-//  const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
-//  std::vector<std::shared_ptr<IExecutionProvider>> eps{
-//      std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
-//                                                         DataLayout::NHWC),
-//      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator registration to allow sharing */)};
-//
-//  // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
-//  init_session(eps, session1);
-//  init_session(eps, session2);
-//
-//  // check that allocator sharing worked. the internal testing EP should be using the CPU EP allocator
-//  ASSERT_EQ(eps[0]->GetAllocator(OrtMemType::OrtMemTypeDefault),
-//            eps[1]->GetAllocator(OrtMemType::OrtMemTypeDefault))
-//      << "EPs do not have the same default allocator";
 //}
 
 // make sure allocators returned by SessionState::GetAllocator are valid when IExecutionProvider::ReplaceAllocator

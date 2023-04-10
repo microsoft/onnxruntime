@@ -69,14 +69,6 @@ struct OrtEnv {
   onnxruntime::common::Status CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
                                                          const OrtArenaCfg* arena_cfg = nullptr);
 
-  onnxruntime::common::Status CreateAndRegisterExecutionProvider(bool use_arena, const char* provider_type, std::unordered_map<std::string, std::string> provider_options,
-                                                                 int* provider_global_index);
-
-  onnxruntime::common::Status CreateAndRegisterExecutionProvider_CPU(bool use_arena, int* provider_global_index);
-
-  onnxruntime::common::Status CreateAndRegisterExecutionProvider_XNNPACK(std::unordered_map<std::string, std::string> provider_options, int* provider_global_index);
-
-  onnxruntime::common::Status CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2* provider_options, int* provider_global_index);
   /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
    */

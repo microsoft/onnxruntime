@@ -311,7 +311,7 @@ class InferenceSession(Session):
     This is the main class used to run a model.
     """
 
-    def __init__(self, path_or_bytes, sess_options=None, providers=None, provider_options=None, global_providers=None, **kwargs):
+    def __init__(self, path_or_bytes, sess_options=None, providers=None, provider_options=None, **kwargs):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
         :param sess_options: session options
@@ -354,9 +354,6 @@ class InferenceSession(Session):
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
 
-        if global_providers is not None and (providers is not None or provider_options is not None):
-            raise TypeError("You can use execution providers either in session or environment level, but not both")
-
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
         self._enable_fallback = True
@@ -366,18 +363,18 @@ class InferenceSession(Session):
         disabled_optimizers = kwargs["disabled_optimizers"] if "disabled_optimizers" in kwargs else None
 
         try:
-            self._create_inference_session(providers, provider_options, global_providers, disabled_optimizers)
+            self._create_inference_session(providers, provider_options, disabled_optimizers)
         except ValueError:
             if self._enable_fallback:
                 print("EP Error using {}".format(providers))
                 print("Falling back to {} and retrying.".format(self._fallback_providers))
-                self._create_inference_session(self._fallback_providers, None, None)
+                self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
                 self.disable_fallback()
             else:
                 raise
 
-    def _create_inference_session(self, providers, provider_options, global_providers, disabled_optimizers=None):
+    def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
@@ -392,7 +389,7 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(
             providers, provider_options, available_providers
         )
-        if global_providers is None and providers == [] and len(available_providers) > 1:
+        if providers == [] and len(available_providers) > 1:
             self.disable_fallback()
             raise ValueError(
                 "This ORT build has {} enabled. ".format(available_providers)
@@ -413,13 +410,8 @@ class InferenceSession(Session):
             # convert to set. assumes iterable
             disabled_optimizers = set(disabled_optimizers)
 
-        if global_providers is None:
-            global_providers = []
-        elif not isinstance(global_providers, list):
-            global_providers = list(global_providers)
-
         # initialize the C++ InferenceSession
-        sess.initialize_session(providers, provider_options, disabled_optimizers, global_providers)
+        sess.initialize_session(providers, provider_options, disabled_optimizers)
 
         self._sess = sess
         self._sess_options = self._sess.session_options

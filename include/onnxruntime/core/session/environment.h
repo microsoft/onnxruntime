@@ -10,7 +10,6 @@
 #include "core/platform/threadpool.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
-#include "core/framework/execution_providers.h"
 
 struct OrtThreadingOptions;
 namespace onnxruntime {
@@ -68,14 +67,6 @@ class Environment {
    */
   Status CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr);
 
-  Status CreateAndRegisterExecutionProvider(bool use_arena, std::string provider_type, ProviderOptions provider_options, int* provider_global_index);
-
-  Status CreateAndRegisterExecutionProvider_CPU(bool use_arena, int* provider_global_index);
-
-  Status CreateAndRegisterExecutionProvider_XNNPACK(ProviderOptions provider_options, int* provider_global_index);
-
-  Status CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2* provider_options, int* provider_global_index);
-
   /**
    * Returns the list of registered allocators in this env.
    */
@@ -83,20 +74,12 @@ class Environment {
     return shared_allocators_;
   }
 
-  void AddExecutionProvider(const std::shared_ptr<IExecutionProvider>& exec_provider) {
-    ORT_THROW_IF_ERROR(execution_providers_.Add(exec_provider->Type(), exec_provider));
-  }
-
-  size_t GetExecutionProviderCount() { return execution_providers_.NumProviders(); }
-
   /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
    */
   Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
 
   Environment() = default;
-
-  IExecutionProvider* GetExecutionProvider(int index) const { return execution_providers_.Get(index); }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
@@ -109,6 +92,5 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
   std::vector<AllocatorPtr> shared_allocators_;
-  ExecutionProviders execution_providers_;
 };
 }  // namespace onnxruntime

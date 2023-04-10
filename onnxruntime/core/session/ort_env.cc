@@ -113,28 +113,6 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryIn
   return status;
 }
 
-onnxruntime::common::Status OrtEnv::CreateAndRegisterExecutionProvider(bool use_arena, const char* provider_type, std::unordered_map<std::string, std::string> provider_options,
-                                                                       int* provider_global_index) {
-  std::string provider_type_str(provider_type);
-  auto status = value_->CreateAndRegisterExecutionProvider(use_arena, provider_type_str, provider_options, provider_global_index);
-  return status;
-}
-
-onnxruntime::common::Status OrtEnv::CreateAndRegisterExecutionProvider_CPU(bool use_arena, int* provider_global_index) {
-  auto status = value_->CreateAndRegisterExecutionProvider_CPU(use_arena, provider_global_index);
-  return status;
-}
-
-onnxruntime::common::Status OrtEnv::CreateAndRegisterExecutionProvider_XNNPACK(std::unordered_map<std::string, std::string> provider_options, int* provider_global_index) {
-  auto status = value_->CreateAndRegisterExecutionProvider_XNNPACK(provider_options, provider_global_index);
-  return status;
-}
-
-onnxruntime::common::Status OrtEnv::CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2* provider_options, int* provider_global_index) {
-  auto status = value_->CreateAndRegisterExecutionProvider_CUDA_V2(provider_options, provider_global_index);
-  return status;
-}
-
 onnxruntime::common::Status OrtEnv::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
   return value_->UnregisterAllocator(mem_info);
 }
