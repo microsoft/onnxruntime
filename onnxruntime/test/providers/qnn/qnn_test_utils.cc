@@ -16,7 +16,7 @@ namespace test {
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
-                     const char* test_description) {
+                     const char* test_description, float fp32_abs_err) {
 
   std::function<void(const Graph&)> graph_verify = [num_nodes_in_ep, test_description](const Graph& graph) -> void {
     ASSERT_EQ(graph.NumberOfNodes(), num_nodes_in_ep) << test_description;
@@ -25,6 +25,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
   EPVerificationParams verification_params;
   verification_params.ep_node_assignment = expected_ep_assignment;
   verification_params.graph_verifier = &graph_verify;
+  verification_params.fp32_abs_err = fp32_abs_err;
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}};
 
   onnxruntime::Model model(test_description, false, ModelMetaData(), PathString(),

@@ -29,7 +29,7 @@ jobs:
   variables:
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wasm --use_xnnpack --emsdk_version releases-29ad1037cd6b99e5d8a1bd75bc188c1e9a6fda8d-64bit ${{ parameters.ExtraBuildArgs }} --path_to_protoc_exe $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed\bin\protoc.exe'
+    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "MinGW Makefiles" --build_wasm --use_xnnpack --emsdk_version releases-29ad1037cd6b99e5d8a1bd75bc188c1e9a6fda8d-64bit ${{ parameters.ExtraBuildArgs }}'
     runCodesignValidationInjection: false
   timeoutInMinutes: ${{ parameters.TimeoutInMinutes }}
   workspace:
@@ -62,23 +62,14 @@ jobs:
   - task: NodeTool@0
     inputs:
       versionSpec: '16.x'
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
-  - script: |
-     python -m pip install -q setuptools wheel numpy ninja
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Install python modules'
+  - template: download-deps.yml
 
-  - task: PowerShell@2
-    displayName: 'Install ONNX'
+  - task: PythonScript@0
+    displayName: 'Update deps.txt'
     inputs:
-      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_protoc.ps1'
-      workingDirectory: '$(Build.BinariesDirectory)'
-      arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }}
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+      arguments: --new_dir $(Build.BinariesDirectory)/deps
+      workingDirectory: $(Build.BinariesDirectory)
 
   - task: PythonScript@0
     displayName: 'Build and test (node)'

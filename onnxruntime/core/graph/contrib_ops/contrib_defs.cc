@@ -424,16 +424,14 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   auto& input_ids_dims = input_ids_shape.dim();
   auto model_type_attr = ctx.getAttribute("model_type");
   int64_t model_type = model_type_attr ? static_cast<int64_t>(model_type_attr->i()) : -1;
-  if (model_type ==  onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper) {
-     if (input_ids_dims.size() != 3)
-     {
+  if (model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper) {
+    if (input_ids_dims.size() != 3) {
       fail_shape_inference("Inputs 0 shall be 3 dimensions in whisper graph");
-     }
+    }
     if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value() && input_ids_dims[2].has_dim_value())) {
       return;
     }
-  }
-  else if (input_ids_dims.size() != 2) {
+  } else if (input_ids_dims.size() != 2) {
     fail_shape_inference("Inputs 0 shall be 2 dimensions", model_type);
   }
   if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
@@ -1104,8 +1102,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                         "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
                                         "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
                                         "T", OpSchema::Optional)
-                                .TypeConstraint("T", {"tensor(float)"}, "Constrain to float tensors.")
-                                .TypeConstraint("F", {"tensor(float)", "tensor(int32)"}, "Constrain input type to float or int tensors.")
+                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
+                                .TypeConstraint("F", {"tensor(float)", "tensor(int32)", "tensor(float16)"}, "Constrain input type to float or int tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -2720,6 +2718,89 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
       .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
       .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
                       "Allow inputs and outputs to be any kind of tensor.");
+#endif
+
+#ifdef ENABLE_TRAINING_OPS
+  // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+  // 2). this is needed by inference for other purpose.
+
+  static const char* ShrunkenGather_ver1_doc = R"DOC(
+    This op is a specialised case of Gather-13, adding additional constraint including: indices being 1D,
+and indices count < input element count on the specified axis.
+
+Having this op allows runtime to do operator re-ordering to reduce compute FLOPs.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ShrunkenGather)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(ShrunkenGather_ver1_doc)
+      .AllowUncheckedAttributes()
+      .Attr(
+          "axis",
+          "Which axis to gather on. Negative value means "
+          "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(0, "data", "Tensor of rank r >= 1.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(
+          1,
+          "indices",
+          "Tensor of int64 indices, with rank = 1. All index values are expected to be within bounds [-s, s-1] "
+          "along axis of size s. It is an error if any of the index values are out of bounds."
+          "The number of elements in indices must be less than the number of elements in the input tensor,"
+          "which is the reason why this op is called ShrunkenGather.",
+          "Tind",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(0, "output", "Tensor of rank r.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types_with_bfloat(),
+          "Constrain input and output types to any tensor type.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        if (!hasNInputShapes(ctx, 2)) {
+          return;
+        }
+
+        const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
+        const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        int r = data_shape.dim_size();
+        if (r < 1) {
+          fail_shape_inference("data tensor must have rank >= 1");
+        }
+        int q = indices_shape.dim_size();
+        int axis = static_cast<int>(getAttribute(ctx, "axis", 0));
+        if (axis < -r || axis >= r) {
+          fail_shape_inference("axis must be in [-r, r-1]");
+        }
+        if (axis < 0) {
+          axis += r;
+        }
+
+        int out_rank = q + r - 1;
+        auto final_output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        int i = 0;
+        for (; i < axis; ++i) {
+          *final_output_shape->add_dim() = data_shape.dim(i);
+        }
+
+        for (; i < axis + q; ++i) {
+          *final_output_shape->add_dim() = indices_shape.dim(i - axis);
+        }
+
+        for (; i < out_rank; ++i) {
+          *final_output_shape->add_dim() = data_shape.dim(i - q + 1);
+        }
+      });
+
 #endif
 
 #ifndef _OPSCHEMA_LIB_

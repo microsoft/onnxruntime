@@ -41,27 +41,26 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
-    PoolName: 'Win-CPU-2021'
+    PoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
     PackageName: 'onnxruntime-web'
+    ExtraBuildArgs: ''
 
-- stage: Build_React_Native
-  dependsOn: Extract_commit
-  jobs:
-  - template: templates/react-native-ci.yml
-    parameters:
-      NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-      BuildConfig: 'Release'
-      PoolName: 'Linux-CPU'
-      PackageName: 'onnxruntime-react-native'
+- template: templates/react-native-ci.yml
+  parameters:
+    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+    BuildConfig: 'Release'
+    PoolName: 'Linux-CPU'
+    PackageName: 'onnxruntime-react-native'
+    BuildAndroidAARStageDependsOn: 'Extract_commit'
 
 - stage: Download_Node_Package
   dependsOn:
-  - Build_React_Native
+  - ReactNative_CI
   - Build_web_Release
   - Build_web_Debug
   jobs:
   - job: Download_Node_Package
-    pool: 'Win-CPU-2021'
+    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 10

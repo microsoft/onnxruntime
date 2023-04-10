@@ -304,7 +304,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   int ti_end = ((tlength + K_PER_WARP - 1) / K_PER_WARP) * K_PER_WARP;
 
   // Iterate over the keys/timesteps to compute the various (Q*K^T)_{ti} values.
-  bool has_beams = params.cache_indir != nullptr;
+  bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
