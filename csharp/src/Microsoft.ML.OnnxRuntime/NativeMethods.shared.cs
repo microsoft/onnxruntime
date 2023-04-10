@@ -286,6 +286,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CastTypeInfoToOptionalTypeInfo;
         public IntPtr GetOptionalContainedTypeInfo;
         public IntPtr GetResizedStringTensorElementBuffer;
+        public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO_V2;
     }
 
     internal static class NativeMethods
@@ -982,6 +983,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_OpenVINO(IntPtr /*(OrtSessionOptions*)*/ options, byte[] /*(const char*)*/ device_id);
+
+        [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_OpenVINO_V2(IntPtr /*(OrtSessionOptions*)*/ options, IntPtr /*(const char*)*/ device_id);
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tensorrt(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);

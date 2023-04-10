@@ -10,6 +10,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/openvino/openvino_provider_options.h"
 #include "asserts.h"
 #include <core/platform/path_lib.h>
 #include "default_providers.h"
@@ -705,8 +706,8 @@ TEST_P(ModelTest, Run) {
         OrtMIGraphXProviderOptions ep_options;
         ortso.AppendExecutionProvider_MIGraphX(ep_options);
       } else if (provider_name == "openvino") {
-        OrtOpenVINOProviderOptions ep_options;
-        ortso.AppendExecutionProvider_OpenVINO(ep_options);
+        OrtOpenVINOProviderOptionsV2 ep_options;
+        ortso.AppendExecutionProvider_OpenVINO_V2(ep_options);
       }
 #ifdef USE_NNAPI
       else if (provider_name == "nnapi") {

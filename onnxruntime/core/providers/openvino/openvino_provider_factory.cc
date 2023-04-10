@@ -5,6 +5,7 @@
 #include "core/providers/openvino/openvino_provider_factory.h"
 #include "openvino_execution_provider.h"
 #include "openvino_provider_factory_creator.h"
+#include "core/providers/openvino/openvino_provider_options.h"
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
@@ -49,6 +50,18 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVI
                                                                 enable_dynamic_shapes);
 }
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptionsV2 &params) {
+  return std::make_shared<onnxruntime::OpenVINOProviderFactory>(
+    params.device_type,
+    params.enable_vpu_fast_compile,
+    params.device_id,
+    params.num_of_threads,
+    params.cache_dir,
+    params.context,
+    params.enable_opencl_throttling,
+    params.enable_dynamic_shapes);
+}
+
 }  // namespace onnxruntime
 
 namespace onnxruntime {
@@ -63,9 +76,11 @@ struct OpenVINO_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-    auto& params = *reinterpret_cast<const OrtOpenVINOProviderOptions*>(void_params);
-    return std::make_shared<OpenVINOProviderFactory>(params.device_type, params.enable_vpu_fast_compile,
-                                                     params.device_id, params.num_of_threads,
+    auto& params = *reinterpret_cast<const OrtOpenVINOProviderOptionsV2*>(void_params);
+    return std::make_shared<OpenVINOProviderFactory>(params.device_type,
+                                                     params.enable_vpu_fast_compile,
+                                                     params.device_id,
+                                                     params.num_of_threads,
                                                      params.cache_dir,
                                                      params.context, params.enable_opencl_throttling,
                                                      params.enable_dynamic_shapes);
