@@ -16,7 +16,7 @@ jobs:
   - template: templates/mac-build-step-with-cache.yml
     parameters:
       WithCache: true
-      TODAY: $(TODAY)
+      Today: $(TODAY)
       AdditionalKey: coreml
       CacheDir: $(CCACHE_DIR)
       BuildStep:
