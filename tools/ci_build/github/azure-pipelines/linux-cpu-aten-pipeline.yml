@@ -82,7 +82,7 @@ jobs:
                 --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON \
                 --use_cache; \
                 ccache -sv; \
-                ccache -z; \"
+                ccache -z"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2

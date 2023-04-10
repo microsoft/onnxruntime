@@ -79,7 +79,7 @@ jobs:
               --use_cache \
               --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=75; \
                 ccache -sv; \
-                ccache -z; \"
+                ccache -z"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2

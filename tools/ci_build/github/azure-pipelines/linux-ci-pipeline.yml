@@ -85,7 +85,7 @@ stages:
                   --use_cache \
                   --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
                 ccache -sv; \
-                ccache -z; \"
+                ccache -z"
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CmdLine@2
