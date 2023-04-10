@@ -10,7 +10,7 @@ eligible operator nodes.
 A use case is to debug quantization induced accuracy drop. An AI engineer can
 run the original float32 model and the quantized model with the same inputs,
 then compare the corresponding activations between the two models to find
-where the divergence is. 
+where the divergence is.
 
 Example Usage:
 

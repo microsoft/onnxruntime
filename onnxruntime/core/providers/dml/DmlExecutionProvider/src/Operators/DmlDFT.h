@@ -290,7 +290,7 @@ public:
             ORT_THROW_IF_FAILED(outputUnknown.As(&outputResource));
 
             // Get optional dft_length input
-            uint32_t dftLength = inputDims[m_axis];
+            uint32_t dftLength = inputDims[onnxruntime::narrow<size_t>(m_axis)];
             ComPtr<IMLOperatorTensor> dftLengthTensor;
             if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)) && dftLengthTensor != nullptr)
             {

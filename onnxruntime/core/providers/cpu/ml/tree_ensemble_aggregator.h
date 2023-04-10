@@ -82,13 +82,15 @@ struct TreeNodeElement {
   // In case of a leaf, these attributes are used to indicate the position of the weight
   // in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one,
   // the weight is also stored in `value_or_unique_weight`.
-  // This implementation assumes a tree has less than 2^21 nodes,
-  // and the total number of leave in the set of trees is below 2^21.
-  uint32_t truenode_inc_or_first_weight;
+  // This implementation assumes a tree has less than 2^31 nodes,
+  // and the total number of leave in the set of trees is below 2^31.
+  // A node cannot point to itself.
+  int32_t truenode_inc_or_first_weight;
   // In case of a leaf, the following attribute indicates the number of weights
   // in array `TreeEnsembleCommon::weights_`. If not a leaf, it indicates
   // `this + falsenode_inc_or_n_weights` is the false node.
-  uint32_t falsenode_inc_or_n_weights;
+  // A node cannot point to itself.
+  int32_t falsenode_inc_or_n_weights;
   uint8_t flags;
 
   inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
@@ -193,7 +195,7 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
                                  const TreeNodeElement<ThresholdType>& root,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_inc_or_first_weight;
-    for (uint32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
+    for (int32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
       ORT_ENFORCE(it->i < (int64_t)predictions.size());
       predictions[onnxruntime::narrow<size_t>(it->i)].score += it->value;
       predictions[onnxruntime::narrow<size_t>(it->i)].has_score = 1;
@@ -298,7 +300,7 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
                                  const TreeNodeElement<ThresholdType>& root,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_inc_or_first_weight;
-    for (uint32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
+    for (int32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
           (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value < predictions[onnxruntime::narrow<size_t>(it->i)].score)
               ? it->value
@@ -356,7 +358,7 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
                                  const TreeNodeElement<ThresholdType>& root,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_inc_or_first_weight;
-    for (uint32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
+    for (int32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
           (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value > predictions[onnxruntime::narrow<size_t>(it->i)].score)
               ? it->value

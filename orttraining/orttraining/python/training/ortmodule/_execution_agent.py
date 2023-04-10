@@ -6,7 +6,7 @@
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
-from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue
+from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue  # noqa: F401
 
 
 class ExecutionAgentOutput:  # pylint: disable=R0903
@@ -81,7 +81,7 @@ class InferenceAgent:
         return ExecutionAgentOutput(ortvalues)
 
 
-class TrainingAgent(object):
+class TrainingAgent:
     """
     This is the main class used to run an ORTModule model training.
     """

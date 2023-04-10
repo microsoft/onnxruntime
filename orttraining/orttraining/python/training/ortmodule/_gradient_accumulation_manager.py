@@ -2,11 +2,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-from . import _utils
 from onnxruntime.capi import _pybind_state as C
 
+from . import _utils
 
-class GradientAccumulationManager(object):
+
+class GradientAccumulationManager:
     """Handles Gradient accumulation optimization during training
 
     This feature must be enabled once before training and cannot be turned off within a training run.

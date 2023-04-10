@@ -129,12 +129,47 @@ Status AllGather::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_KERNEL_EX(AllReduce, kMSDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
-                            .AllocateInputsContiguously()
-                            .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
-                        AllReduce);
+AllToAll::AllToAll(const OpKernelInfo& info) : NcclKernel(info) {
+  info.GetAttrOrDefault("group_size", &group_size_, static_cast<int64_t>(1));
+}
+
+Status AllToAll::ComputeInternal(OpKernelContext* context) const {
+  const ncclComm_t comm = nccl_->Comm();
+  auto input_tensor = context->Input<Tensor>(0);
+  const char* input_data = static_cast<const char *>(input_tensor->DataRaw());
+  const auto in_shape = input_tensor->Shape();
+  const int64_t input_count = in_shape.Size();
+  auto out_shape = in_shape;
+  const int64_t element_size = input_tensor->DataType()->Size();
+  const int64_t rank_stride = input_count / group_size_;
+  const ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
+
+  char* output_data = static_cast<char *>(context->Output(0, out_shape)->MutableDataRaw());
+
+#ifdef ORT_USE_NCCL
+  NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  for (int32_t r = 0; r < group_size_; r++) {
+    NCCL_RETURN_IF_ERROR(ncclSend(input_data, rank_stride, dtype, r, comm, Stream(context)));
+    NCCL_RETURN_IF_ERROR(ncclRecv(output_data, rank_stride, dtype, r, comm, Stream(context)));
+    input_data += (rank_stride * element_size);
+    output_data += (rank_stride * element_size);
+  }
+  NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+#endif
+
+  return Status::OK();
+}
+
+ONNX_OPERATOR_KERNEL_EX(
+    AllReduce,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
+        .AllocateInputsContiguously()
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+    AllReduce);
 
 ONNX_OPERATOR_KERNEL_EX(
     AllGather,
@@ -145,6 +180,17 @@ ONNX_OPERATOR_KERNEL_EX(
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     AllGather);
+
+ONNX_OPERATOR_KERNEL_EX(
+    AllToAll,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
+        .AllocateInputsContiguously()
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+    AllToAll);
 
 }  // namespace cuda
 }  // namespace contrib

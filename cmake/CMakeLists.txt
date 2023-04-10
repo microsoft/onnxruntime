@@ -22,6 +22,7 @@ include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
+include(CheckFunctionExists)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -542,6 +543,7 @@ else()
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
   check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
   check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
+  check_function_exists(reallocarray HAS_REALLOCARRAY)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -746,7 +748,7 @@ endif()
 
 function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
-      onnxruntime_add_include_to_target(${target_name} cpuinfo)
+      onnxruntime_add_include_to_target(${target_name} cpuinfo::cpuinfo)
     endif()
     if(onnxruntime_ENABLE_EAGER_MODE)
       target_compile_definitions(${target_name} PRIVATE ENABLE_EAGER_MODE)
@@ -789,7 +791,7 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-        target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
+        target_compile_options(${target_name} PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
       endforeach()
       foreach(onnxruntime_external_lib IN LISTS onnxruntime_EXTERNAL_LIBRARIES)
         #TODO: the list contains cmake keywords like "debug". We should exclude them.
@@ -800,11 +802,11 @@ function(onnxruntime_set_compile_flags target_name)
               if(onnxruntime_external_lib_include_dir MATCHES "^\\$<BUILD_INTERFACE:([^>]+)>$")
                 string(REGEX REPLACE "^\\$<BUILD_INTERFACE:([^>]+)>$" "\\1" onnxruntime_external_lib_include_dir_cmake "${onnxruntime_external_lib_include_dir}")
                 cmake_path(NATIVE_PATH onnxruntime_external_lib_include_dir_cmake NORMALIZE onnxruntime_external_lib_include_dir_native)
-                target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${onnxruntime_external_lib_include_dir_native}>")
+                target_compile_options(${target_name} PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/external:I${onnxruntime_external_lib_include_dir_native}>")
               endif()
             else()
               cmake_path(NATIVE_PATH onnxruntime_external_lib_include_dir NORMALIZE onnxruntime_external_lib_include_dir_native)
-              target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${onnxruntime_external_lib_include_dir_native}>")
+              target_compile_options(${target_name} PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/external:I${onnxruntime_external_lib_include_dir_native}>")
             endif()
           endforeach()
         endif()
@@ -813,13 +815,13 @@ function(onnxruntime_set_compile_flags target_name)
       if (onnxruntime_ENABLE_MEMLEAK_CHECKER)
         target_compile_definitions(${target_name} PUBLIC -DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
       endif()
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/utf-8>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/sdl>")
       set_target_properties(${target_name}
                       PROPERTIES VS_GLOBAL_CAExcludePath "${ORT_BINARY_DIR};${ORT_SOURCE_DIR}")
       if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze>")
-        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze:external->" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze:external->")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze>" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/analyze>")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze:external->" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/analyze:external->")
       endif()
     else()
       # Enable warning
@@ -830,7 +832,7 @@ function(onnxruntime_set_compile_flags target_name)
         target_compile_options(${target_name} PRIVATE "-Wno-unused-parameter")
       endif()
       target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
-      target_include_directories(${target_name} PRIVATE "${google_nsync_SOURCE_DIR}/public")
+      onnxruntime_add_include_to_target(${target_name} nsync::nsync_cpp)
     endif()
     foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
@@ -1270,16 +1272,20 @@ if (onnxruntime_USE_CUDA)
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
       endif()
-      # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
+	# 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
+	set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
+	set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
+      endif()
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_75,code=sm_75") # T series
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
+      endif()
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_90,code=sm_90") # H series
       endif()
     endif()
   endif()
@@ -1463,7 +1469,7 @@ if (WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB})
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync::nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 

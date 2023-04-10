@@ -175,7 +175,12 @@ inline __device__ float4 add(float4 a, float4 b)
 
 inline __device__ Float8_ add(Float8_ a, Float8_ b)
 {
-    return;
+    Float8_ c;
+    c.x = add(a.x, b.x);
+    c.y = add(a.y, b.y);
+    c.z = add(a.z, b.z);
+    c.w = add(a.w, b.w);
+    return c;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -7,4 +7,4 @@ $BUILD_SOURCESDIRECTORY:/onnxruntime_src --volume $BUILD_BINARIESDIRECTORY:/buil
 python3 /onnxruntime_src/tools/ci_build/build.py --build_java --build_dir /build --config Release \
 --skip_submodule_sync  --parallel --build_shared_lib --use_cuda --cuda_version=$CUDA_VERSION \
 --cuda_home=/usr/local/cuda-$CUDA_VERSION --cudnn_home=/usr/local/cuda-$CUDA_VERSION \
---cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+--cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80'

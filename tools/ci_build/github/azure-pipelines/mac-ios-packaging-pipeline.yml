@@ -19,7 +19,7 @@ jobs:
   displayName: "iOS Packaging"
 
   pool:
-    vmImage: "macOS-11"
+    vmImage: "macOS-12"
 
   timeoutInMinutes: 300
 
@@ -174,13 +174,6 @@ jobs:
         --build-dir $(Build.BinariesDirectory)/app_center_test_full/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
         --token $(app_center_api_token)
     displayName: "[Full] Run E2E tests on App Center"
-
-  - bash: |
-      set -e
-      gem install jazzy
-      jazzy --config objectivec/docs/jazzy_config.yaml \
-        --output "$(Build.BinariesDirectory)/staging/objc_api_docs"
-    displayName: "Generate Objective-C API docs"
 
   - task: AzureCLI@2
     inputs:

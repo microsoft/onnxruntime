@@ -70,6 +70,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Gemm", GetGemmGradient);
   REGISTER_GRADIENT_BUILDER("MaxPool", GetMaxPoolGradient);
   REGISTER_GRADIENT_BUILDER("Gather", GetGatherGradient);
+  REGISTER_GRADIENT_BUILDER("ShrunkenGather", GetShrunkenGatherGradient);
   REGISTER_GRADIENT_BUILDER("Conv", GetConvGradient);
   REGISTER_GRADIENT_BUILDER("Squeeze", GetSqueezeGradient);
   REGISTER_GRADIENT_BUILDER("Unsqueeze", GetUnsqueezeGradient);
@@ -114,6 +115,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("ScatterElements", GetScatterElementsGradient);
   REGISTER_GRADIENT_BUILDER("Trilu", GetTriluGradient);
   REGISTER_GRADIENT_BUILDER("FakeQuant", GetFakeQuantGradient);
+  REGISTER_GRADIENT_BUILDER("LSTMTraining", GetLSTMGradient);
 
   REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };

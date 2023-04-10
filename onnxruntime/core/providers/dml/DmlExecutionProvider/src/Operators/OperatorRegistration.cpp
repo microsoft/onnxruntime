@@ -213,6 +213,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(SkipLayerNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(EmbedLayerNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(LRN);
 DML_OP_EXTERN_CREATION_FUNCTION(MeanVarianceNormalization);
+DML_OP_EXTERN_CREATION_FUNCTION(GroupNorm);
 DML_OP_EXTERN_CREATION_FUNCTION(LpNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(RNN);
 DML_OP_EXTERN_CREATION_FUNCTION(GRU);
@@ -380,6 +381,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Shape);
 DML_OP_EXTERN_CREATION_FUNCTION(Size);
 DML_OP_EXTERN_CREATION_FUNCTION(Attention);
 DML_OP_EXTERN_CREATION_FUNCTION(NonZero);
+DML_OP_EXTERN_CREATION_FUNCTION(QuickGelu);
 
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
@@ -390,6 +392,7 @@ DML_OP_EXTERN_QUERY_FUNCTION(RecurrentNeuralNetwork);
 DML_OP_EXTERN_QUERY_FUNCTION(BatchNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(Pad);
 DML_OP_EXTERN_QUERY_FUNCTION(LayerNormalization);
+DML_OP_EXTERN_QUERY_FUNCTION(SkipLayerNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(QLinearSigmoid);
 DML_OP_EXTERN_QUERY_FUNCTION(Attention);
 
@@ -413,6 +416,7 @@ constexpr static std::array<const char*, 2> typeNameListWhere = { "B", "T" };
 constexpr static std::array<const char*, 2> typeNameListEyeLike = { "T1", "T2" };
 constexpr static std::array<const char*, 2> typeNameShape = { "T", "T1" };
 constexpr static std::array<const char*, 2> typeNameSize = { "T", "T1" };
+constexpr static std::array<const char*, 2> typeNameListGroupNorm = {"T", "M"};
 
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListAll = {SupportedTensorDataTypes::All};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListFloat32 = {SupportedTensorDataTypes::Float32};
@@ -463,6 +467,7 @@ constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListShape 
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListSize = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListQLinearSigmoid = {SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListAttention = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32};
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListGroupNorm = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
 
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQLinearMatMul = {
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
@@ -872,8 +877,10 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO(     11,  DynamicQuantizeLinear,              typeNameListTwo,                supportedTypeListDynamicQuantizeLinear, DmlGraphSupport::Supported)},
     {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNormContrib,   supportedTypeListLayerNormalizationContrib, DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
-    {REG_INFO_MS(   1,  SkipLayerNormalization,             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  SkipLayerNormalization,             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QuerySkipLayerNormalization)},
     {REG_INFO_MS(   1,  EmbedLayerNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  QuickGelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
 };
 
 template<typename T>

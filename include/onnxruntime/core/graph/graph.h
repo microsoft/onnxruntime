@@ -407,6 +407,12 @@ class Node {
   bool ClearAttribute(const std::string& attr_name);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+  /**
+  * Clears removable attributes. These are no longer needed after the initialization
+  * of the session. The function returns the number of removed attributes.
+  */
+  int PruneRemovableAttributes(gsl::span<const std::string> removable_attributes);
+
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's mutable attributes. */
   NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
@@ -560,7 +566,7 @@ class Node {
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
-  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph) {}
+  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
@@ -651,6 +657,9 @@ class Node {
 
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
+
+  // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
+  bool can_be_saved_;  
 };
 
 /**

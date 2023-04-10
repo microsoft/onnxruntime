@@ -31,14 +31,19 @@ include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime/core/session)
 include_directories(${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
 
 # source files
-file(GLOB SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
+file(GLOB ORT_NODEJS_BINDING_SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
 
-add_library(onnxruntime_binding SHARED ${SOURCE_FILES} ${CMAKE_JS_SRC})
+add_library(onnxruntime_binding SHARED ${ORT_NODEJS_BINDING_SOURCE_FILES} ${CMAKE_JS_SRC})
 set_target_properties(onnxruntime_binding PROPERTIES
   PREFIX "" SUFFIX ".node"
   BUILD_WITH_INSTALL_RPATH TRUE
   INSTALL_RPATH_USE_LINK_PATH FALSE)
 target_link_libraries(onnxruntime_binding PRIVATE ${CMAKE_JS_LIB})
+
+if(MSVC AND CMAKE_JS_NODELIB_DEF AND CMAKE_JS_NODELIB_TARGET)
+  # Generate node.lib
+  execute_process(COMMAND ${CMAKE_AR} /def:${CMAKE_JS_NODELIB_DEF} /out:${CMAKE_JS_NODELIB_TARGET} ${CMAKE_STATIC_LINKER_FLAGS})
+endif()
 
 # add libraries
 if (WIN32)

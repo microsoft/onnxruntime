@@ -52,5 +52,12 @@ __device__ __forceinline__ void atomic_add(BFloat16* address, BFloat16 value) {
   } while (assumed != old);
 }
 
+// This function is added to speed up atomic add for half/bf16 type on CUDA. For ROCM, use default implementation.
+template <typename T>
+__device__ __forceinline__ void AtomicAdd(T *start_addr, size_t index, const size_t numel, T value) {
+  ORT_UNUSED_PARAMETER(numel);
+  atomic_add(start_addr + index, value);
+}
+
 }  // namespace rocm
 }  // namespace onnxruntime

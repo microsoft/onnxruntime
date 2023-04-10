@@ -45,8 +45,67 @@ class PythonOpBase {
   void Clear();
 
  protected:
-  std::vector<int64_t> const_arg_positions_;
-  std::vector<void*> const_args_;
+  class ConstantArgSet {
+   private:
+    class ConstantArg {
+     public:
+      ConstantArg(int64_t position, void* data_ptr, bool is_owned)
+          : position(position), data_ptr(data_ptr), is_owned(is_owned) {}
+      int64_t position;  // input offset in the input lists
+      void* data_ptr;    // pointer to the data
+      bool is_owned;     // whether the data is owned by this PythonOp kernel.
+    };
+
+   public:
+    // Append new constant argument. Fail when called after Finalize() got called.
+    void Add(int64_t position, void* data_ptr, bool owned) {
+      ORT_ENFORCE(positions_.empty() && data_ptrs_.empty(),
+                  "Cannot add constant arg after Finalize()");
+      args_.emplace_back(ConstantArg(position, data_ptr, owned));
+    }
+
+    // Finalize the constant arg set. This is called after all constant args are added.
+    // Fail when called more than once.
+    void Finalize() {
+      ORT_ENFORCE(positions_.empty() && data_ptrs_.empty());
+      positions_.reserve(args_.size());
+      for (auto& arg : args_) {
+        positions_.push_back(arg.position);
+      }
+
+      data_ptrs_.reserve(args_.size());
+      for (auto& arg : args_) {
+        data_ptrs_.push_back(arg.data_ptr);
+      }
+    }
+
+    size_t Size() const {
+      return args_.size();
+    }
+
+    const std::vector<ConstantArg>& GetArgs() const {
+      return args_;
+    }
+
+    const std::vector<int64_t>& GetPositions() const {
+      return positions_;
+    }
+
+    const std::vector<void*>& GetDataPtrs() const {
+      return data_ptrs_;
+    }
+
+   private:
+    std::vector<ConstantArg> args_;
+    std::vector<int64_t> positions_;
+    std::vector<void*> data_ptrs_;
+  };
+
+  // A collection for all non-tensor input arguments, we treated them all as constants, including primitive types and
+  // tuples, and also string or other user defined data types (represented in pointer in the attribute
+  // "input_pointer_scalars").
+  ConstantArgSet const_arg_set_;
+
   std::vector<int64_t> arg_positions_;
 
   // Name of containing class. For example, MyReLU.

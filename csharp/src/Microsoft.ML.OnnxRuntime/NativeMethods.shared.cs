@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using static Microsoft.ML.OnnxRuntime.NativeMethods;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -269,12 +270,18 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate ref OrtApi DOrtGetApi(UInt32 version);
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtGetVersionString();
+
+        public static DOrtGetVersionString OrtGetVersionString;
+
         static NativeMethods()
         {
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 
             // TODO: Make this save the pointer, and not copy the whole structure across
             api_ = (OrtApi)OrtGetApi(4 /*ORT_API_VERSION*/);
+            OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetVersionString, typeof(DOrtGetVersionString));
 
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
             OrtReleaseEnv = (DOrtReleaseEnv)Marshal.GetDelegateForFunctionPointer(api_.ReleaseEnv, typeof(DOrtReleaseEnv));

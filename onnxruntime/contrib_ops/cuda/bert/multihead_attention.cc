@@ -42,6 +42,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+
   disable_fused_self_attention_ = sizeof(T) != 2 ||
                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
 
@@ -73,6 +75,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(3);
   const Tensor* key_padding_mask = context->Input<Tensor>(4);
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* past_key = context->Input<Tensor>(6);
+  const Tensor* past_value = context->Input<Tensor>(7);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
@@ -82,9 +86,14 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       bias,
                                                                       key_padding_mask,
                                                                       relative_position_bias,
+                                                                      past_key,
+                                                                      past_value,
+                                                                      nullptr, // past_seq_len
                                                                       &parameters,
                                                                       num_heads_,
                                                                       mask_filter_value_,
+                                                                      scale_,
+                                                                      false, // past_present_share_buffer
                                                                       device_prop.maxThreadsPerBlock));
 
   int sequence_length = parameters.sequence_length;
@@ -95,6 +104,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
+  std::vector<int64_t> present_dims{
+      parameters.batch_size, parameters.num_heads, parameters.total_sequence_length, parameters.head_size};
+  TensorShape present_shape(present_dims);
+  Tensor* present_key = context->Output(1, present_shape);
+  Tensor* present_value = context->Output(2, present_shape);
+
   MHARunner* fused_runner = nullptr;
 
   const FusedMultiHeadCrossAttentionKernel* fused_cross_attention_kernel = nullptr;
@@ -103,10 +118,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int sm = device_prop.major * 10 + device_prop.minor;
 
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+  bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
 
   bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
                                    nullptr == relative_position_bias &&
+                                   (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
                                    key != nullptr &&
                                    (value != nullptr || bias == nullptr) &&  // TODO: new kernel for adding bias to packed KV
                                    parameters.hidden_size == parameters.v_hidden_size &&
@@ -128,6 +145,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           fused_cross_attention_kernel == nullptr &&
                           nullptr == relative_position_bias &&
                           (value != nullptr || key == nullptr) &&
+                          (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
@@ -137,8 +155,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
       constexpr bool is_unidirectional = false;
-      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(
-          num_heads_, parameters.head_size, sm, is_unidirectional, enable_trt_flash_attention_, parameters.scale));
+      fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(
+          num_heads_, parameters.head_size, sm, is_unidirectional, enable_trt_flash_attention_, parameters.scale);
     }
 
     // In case some kernel not loaded due to shared memory limit, we need to double check here.
@@ -153,12 +171,14 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32 ||
                           parameters.kv_sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32;
 
+  bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
+
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         fused_cross_attention_kernel == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         is_long_sequence &&
-                                        nullptr == key_padding_mask &&  // TODO: support 1D mask
-                                        nullptr == relative_position_bias &&
+                                        (relative_position_bias == nullptr || is_good_for_rpb) &&
+                                        (nullptr == key_padding_mask || is_mask_1d_key_seq_len_start) &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
 #else
   constexpr bool use_memory_efficient_attention = false;
@@ -195,16 +215,25 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.gemm_buffer = nullptr;
   data.bias = (nullptr == bias) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
-  data.key = (nullptr == key) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
-  data.value = (nullptr == value) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.key = (nullptr == key || parameters.pass_past_in_kv) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
+  data.value = (nullptr == value || parameters.pass_past_in_kv) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past = nullptr;
+  const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
+  data.past_key = pass_key_value_as_past  ? reinterpret_cast<const CudaT*>(key->Data<T>())
+                  : (nullptr == past_key) ? nullptr
+                                          : reinterpret_cast<const CudaT*>(past_key->Data<T>());
+  data.past_value = pass_key_value_as_past    ? reinterpret_cast<const CudaT*>(value->Data<T>())
+                    : (nullptr == past_value) ? nullptr
+                                              : reinterpret_cast<const CudaT*>(past_value->Data<T>());
   data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.has_qkv_workspace = !no_qkv_workspace;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = nullptr;
+  data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
+  data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = fused_cross_attention_kernel;
   data.use_memory_efficient_attention = use_memory_efficient_attention;

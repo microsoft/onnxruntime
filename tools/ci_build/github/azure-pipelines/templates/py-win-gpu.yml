@@ -47,10 +47,16 @@ jobs:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.6
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Install python modules'
+      - task: PythonScript@0
+        inputs:
+          scriptSource: inline
+          script: |
+            import sys
+            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+            import subprocess
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Install python modules'
 
       - template: download-deps.yml
 
@@ -150,10 +156,10 @@ jobs:
         workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
         displayName: 'Run Python Tests'
 
-      - ${{ if eq(parameters.PYTHON_VERSION, '3.7') }}:
+      - ${{ if eq(parameters.PYTHON_VERSION, '3.8') }}:
           - task: DeleteFiles@1
             displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-            condition: and (succeeded(), eq(variables['$'], '3.7'))
+            condition: and (succeeded(), eq(variables['$'], '3.8'))
             inputs:
               SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
               Contents: |

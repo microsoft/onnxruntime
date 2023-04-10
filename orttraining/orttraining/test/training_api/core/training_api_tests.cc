@@ -114,9 +114,9 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
 
 #if defined(USE_CUDA)
 
-const int64_t total_step_count = 100;
-const float initial_lr = 1e-3f;
-const int64_t resume_step = total_step_count / 2;
+constexpr int64_t total_step_count = 100;
+constexpr float initial_lr = 1e-3f;
+constexpr int64_t resume_step = total_step_count / 2;
 
 void CompareValue(float expected, float output, float rtol = 1e-4, float atol = 1e-5) {
   ASSERT_NEAR(expected, output, atol);
