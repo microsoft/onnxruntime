@@ -15,10 +15,6 @@ if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
   string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
 endif()
 
-if (onnxruntime_ENABLE_EAGER_MODE)
-  string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI}")
-endif()
-
 if (onnxruntime_BUILD_WEBASSEMBLY)
   string(APPEND CMAKE_C_FLAGS " -s STRICT=1 -s DEFAULT_TO_CXX=1")
   string(APPEND CMAKE_CXX_FLAGS " -s STRICT=1 -s DEFAULT_TO_CXX=1")
@@ -257,10 +253,6 @@ if (MSVC)
 
     string(APPEND CMAKE_CXX_FLAGS " /wd26812")
     string(APPEND CMAKE_C_FLAGS " /wd26812")
-    # warning C4805: '|': unsafe mix of type 'uintptr_t' and type 'bool' in operation (from c10/core/TensorImpl.h)
-    if (onnxruntime_ENABLE_EAGER_MODE)
-      string(APPEND CMAKE_CXX_FLAGS " /wd4805")
-    endif()
   endif()
   # We do not treat 3rd-party libraries' warnings as errors. In order to do that, we need to add their header files locations to /external:I.
   # However, if a 3rd-party library was installed to a non-standard location and cmake find it and use it from there, you may see build errors
