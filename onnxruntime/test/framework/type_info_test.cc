@@ -42,6 +42,24 @@ TEST(TypeInfoTests, SequenceWithTensorElement) {
   ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), tensor_type_info.data->shape.GetDims()));
 }
 
+TEST(TypeInfoTests, OptionalWithTensorProto) {
+  mb::Type tensor_type = {1, 2, 3, 4};
+  auto optional_proto = mb::Type::MakeOptional(tensor_type.value);
+
+  auto optional_type_info = OrtTypeInfo::FromTypeProto(optional_proto.value);
+
+  ASSERT_EQ(ONNX_TYPE_OPTIONAL, optional_type_info->type);
+  ASSERT_NE(nullptr, optional_type_info->optional_type_info);
+  ASSERT_NE(nullptr, optional_type_info->optional_type_info->contained_type_);
+
+  const auto& contained_type = *optional_type_info->optional_type_info->contained_type_;
+  ASSERT_EQ(ONNX_TYPE_TENSOR, contained_type.type);
+  ASSERT_NE(nullptr, contained_type.data);
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, contained_type.data->type);
+  ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), contained_type.data->shape.GetDims()));
+}
+
+#if !defined(DISABLE_ML_OPS)
 TEST(TypeInfoTests, MapWithTensorValue) {
   mb::Type value_type = {1, 2, 3, 4};
   auto map_proto = mb::Type::MakeMap(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, value_type.value);
@@ -60,23 +78,7 @@ TEST(TypeInfoTests, MapWithTensorValue) {
   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_type_info.data->type);
   ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), tensor_type_info.data->shape.GetDims()));
 }
-
-TEST(TypeInfoTests, OptionalWithTensorProto) {
-  mb::Type tensor_type = {1, 2, 3, 4};
-  auto optional_proto = mb::Type::MakeOptional(tensor_type.value);
-
-  auto optional_type_info = OrtTypeInfo::FromTypeProto(optional_proto.value);
-
-  ASSERT_EQ(ONNX_TYPE_OPTIONAL, optional_type_info->type);
-  ASSERT_NE(nullptr, optional_type_info->optional_type_info);
-  ASSERT_NE(nullptr, optional_type_info->optional_type_info->contained_type_);
-
-  const auto& contained_type = *optional_type_info->optional_type_info->contained_type_;
-  ASSERT_EQ(ONNX_TYPE_TENSOR, contained_type.type);
-  ASSERT_NE(nullptr, contained_type.data);
-  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, contained_type.data->type);
-  ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), contained_type.data->shape.GetDims()));
-}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
