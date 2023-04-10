@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder.h"
 #include "core/framework/allocator.h"
@@ -142,9 +143,11 @@ class BaseOpBuilder : public IOpBuilder {
         {"Conv", "Conv2d"},
 
         {"GlobalAveragePool", "PoolAvg2d"},
+        {"AveragePool", "PoolAvg2d"},
         {"MaxPool", "PoolMax2d"},
 
         {"Reshape", "Reshape"},
+        {"Resize", "Resize"},
         {"Flatten", "Reshape"},
         {"Squeeze", "Reshape"},
         {"Unsqueeze", "Reshape"},
@@ -257,6 +260,18 @@ class BaseOpBuilder : public IOpBuilder {
   const std::vector<size_t> nchw2hwcn_perm{2, 3, 1, 0};
   const std::vector<size_t> cnhw2hwcn_perm{2, 3, 0, 1};
 };
+
+// Type that holds information about an ONNX attribute.
+template <typename ValType>
+struct OnnxAttrInfo {
+  std::string name;     // Attribute's name.
+  ValType default_val;  // Attribute's default value.
+};
+
+template <typename ValType>
+inline ValType GetOnnxAttr(const NodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
+  return node_helper.Get(attr_info.name, attr_info.default_val);
+}
 
 }  // namespace qnn
 }  // namespace onnxruntime

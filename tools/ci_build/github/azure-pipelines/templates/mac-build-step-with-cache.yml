@@ -10,33 +10,35 @@ parameters:
 - name: AdditionalKey
   type: string
 
-- name: CACHE_DIR
+- name: CacheDir
   type: string
+
+- name: ChangeEveryCommit
+  type: boolean
+  default: true
 
 steps:
   - script: |
-      brew install ccache
+      which ccache || brew install ccache
       echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
-      mkdir -p "${{ parameters.CACHE_DIR }}"
+      mkdir -p "${{ parameters.CacheDir }}"
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
 
   - task: Cache@2
     inputs:
-      key:  ' "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}} | "$(Build.SourceVersion)" '
-      path: ${{ parameters.CACHE_DIR }}
-      restoreKeys: |
-        "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}}
+      ${{ if eq(parameters.ChangeEveryCommit, true) }}:
+        key:  ' "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}} | "$(Build.SourceVersion)" '
+        restoreKeys: |
+          "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}}
+      ${{ else }}:
+        key:  ' ${{parameters.AdditionalKey}} '
+        restoreKeys: |
+          ${{parameters.AdditionalKey}}
+      path: ${{ parameters.CacheDir }}
     displayName: ccache task
 
   - ${{ parameters.BuildStep }}
 
-  - script: |
-      set -ex
-      ccache -s
-      ccache -z
-      ls -l "${{ parameters.CACHE_DIR }}"
-      du -sh "${{ parameters.CACHE_DIR }}"
-    displayName: Show Cache stats and Clear stats.
-    env:
-      CCACHE_DIR: ${{parameters.CACHE_DIR}}
-    condition: always()
+  - template: check-cache-stats.yml
+    parameters:
+      CacheDir: ${{ parameters.CacheDir }}
