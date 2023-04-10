@@ -24,6 +24,7 @@ class T5DecoderSubgraph : public Subgraph {
 
   // Create inputs for first inference of decoder subgraph.
   Status CreateInitialFeeds(
+      AllocatorPtr cpu_allocator,
       gsl::span<const int32_t> beam_next_tokens,
       const std::vector<const OrtValue*>& implicit_inputs,
       const std::vector<OrtValue>& encoder_feeds,
@@ -37,7 +38,9 @@ class T5DecoderSubgraph : public Subgraph {
       Stream* stream,
       bool use_sequence_as_input_ids,
       int cur_len,
-      transformers::Sequences& sequences);
+      transformers::Sequences& sequences,
+      int past_present_share_buffer_max_seq_len = -1,
+      bool need_cache_indir = false);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
