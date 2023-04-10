@@ -142,7 +142,6 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   const AttentionParameters* attention;
   const hipDeviceProp_t* device_prop;
 
-  float scale;
   const T* q_buffer;
   const T* k_buffer;
   const T* v_buffer;
@@ -197,7 +196,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         blas::BlasOp::NonTrans, blas::BlasOp::Trans,
         m, n, k,
         // For raw attention mask, the scalar is moved to softmax computation.
-        /*alpha=*/UseRawAttentionMask(params) ? 1.0f : params->scale,
+        /*alpha=*/UseRawAttentionMask(params) ? 1.0f : params->attention->scale,
         params->q_buffer, k, m * k,
         params->k_buffer, k, n * k,
         /*beta=*/0.0f,
@@ -215,7 +214,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     return ComputeSoftmaxWithRawMask<T>(
         params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
         strides, buffer, nullptr, params->bias_buffer, gemm1_out, softmax_out,
-        attn->is_unidirectional, /* FIXME: this must not be attn.scale! */ params->scale,
+        attn->is_unidirectional, attn->scale,
         use_persistent_softmax, persistent_softmax_workspace, attn->mask_filter_value);
   }
 
@@ -486,7 +485,7 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
           {},
           Nop{},
           Nop{},
-          Acc0ElementOp{params->scale},
+          Acc0ElementOp{attn->scale},
           Nop{},
           Nop{});
 

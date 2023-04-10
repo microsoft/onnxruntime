@@ -257,7 +257,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0 && past != nullptr);
     output_parameters->do_rotary = do_rotary_;
     output_parameters->mask_filter_value = mask_filter_value_;
-    output_parameters->scale = scale_;
+    output_parameters->scale = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(output_parameters->head_size)) : scale_;
     output_parameters->mask_type = mask_type;
     output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
     output_parameters->pass_past_in_kv = false;

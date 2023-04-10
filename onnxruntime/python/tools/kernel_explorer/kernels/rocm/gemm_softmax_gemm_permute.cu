@@ -72,7 +72,6 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
     params_.handle = rocblas_handle_;
     params_.attention = &attn_;
     params_.device_prop = &device_prop;
-    params_.scale = scale;
 
     params_.q_buffer = reinterpret_cast<T*>(Q.ptr());
     params_.k_buffer = reinterpret_cast<T*>(K.ptr());

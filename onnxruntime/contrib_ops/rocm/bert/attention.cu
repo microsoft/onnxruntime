@@ -150,8 +150,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     params.handle = rocblas;
     params.attention = &attn;
     params.device_prop = &device_prop;
-    // FIXME: the params.scale seems to be different from AttentionParameters::scale;
-    params.scale = 1.0f / sqrt(static_cast<float>(attn.head_size));
     params.q_buffer = q_buffer;
     params.k_buffer = k_buffer;
     params.v_buffer = v_buffer;
