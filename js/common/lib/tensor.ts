@@ -286,7 +286,7 @@ export interface TensorFromImageOptions {
    */
   dataType?: 'float32'|'uint8';
   /**
-   * Tensor channel layout - default is 'NHWC'
+   * Tensor channel layout - default is 'NCHW' - TODO: add support for 'NHWC'
    */
   tensorLayout?: 'NHWC'|'NCHW';
   /**

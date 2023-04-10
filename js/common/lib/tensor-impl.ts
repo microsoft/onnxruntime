@@ -195,32 +195,20 @@ export class Tensor implements TensorInterface {
 
     const {height, width} = options;
 
-    const norm = options.norm;
+    const norm = options.norm ?? {mean:255, bias:0};
     let normMean: [number, number, number, number];
     let normBias: [number, number, number, number];
-    if (norm === undefined || norm.mean === undefined) {
-      normMean = [255, 255, 255, 255];
+
+    if (typeof (norm.mean) === 'number') {
+      normMean = [norm.mean, norm.mean, norm.mean, norm.mean];
     } else {
-      if (typeof (norm.mean) === 'number') {
-        normMean = [norm.mean, norm.mean, norm.mean, norm.mean];
-      } else {
-        normMean = [norm.mean[0], norm.mean[1], norm.mean[2], 0];
-        if (norm.mean[3] !== undefined) {
-          normMean[3] = norm.mean[3];
-        }
-      }
+      normMean = [norm.mean![0], norm.mean![1], norm.mean![2], norm.mean![3] ?? 255];
     }
-    if (norm === undefined || norm.bias === undefined) {
-      normBias = [0, 0, 0, 0];
+
+    if (typeof (norm.bias) === 'number') {
+      normBias = [norm.bias, norm.bias, norm.bias, norm.bias];
     } else {
-      if (typeof (norm.bias) === 'number') {
-        normBias = [norm.bias, norm.bias, norm.bias, norm.bias];
-      } else {
-        normBias = [norm.bias[0], norm.bias[1], norm.bias[2], 0];
-        if (norm.bias[3] !== undefined) {
-          normBias[3] = norm.bias[3];
-        }
-      }
+      normBias = [norm.bias![0], norm.bias![1], norm.bias![2], norm.bias![3] ?? 0];
     }
 
     const inputformat = options.bitmapFormat !== undefined ? options.bitmapFormat : 'RGBA';
@@ -289,11 +277,7 @@ export class Tensor implements TensorInterface {
     const isString = typeof (String) !== 'undefined' && (image instanceof String || typeof image === 'string');
 
     let data: Uint8ClampedArray|undefined;
-    let tensorConfig: TensorFromImageOptions = {};
-
-    if (options !== undefined) {
-      tensorConfig = options;
-    }
+    let tensorConfig: TensorFromImageOptions = options ?? {};
 
     // filling and checking image configuration options
     if (isHTMLImageEle) {
