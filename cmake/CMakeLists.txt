@@ -168,9 +168,6 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL "Enable this option
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
-# build eager mode
-option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
-
 # build Pytorch's LazyTensor support
 cmake_dependent_option(onnxruntime_ENABLE_LAZY_TENSOR "Enable ORT as a LazyTensor backend in Pytorch." ON "onnxruntime_ENABLE_TRAINING" OFF)
 
@@ -463,12 +460,12 @@ endif()
 if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if (onnxruntime_ENABLE_PYTHON)
     if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OR onnxruntime_REQUIRE_PYTHON_EMBED_LIB)
-      find_package(Python 3.6 COMPONENTS Interpreter Development NumPy)
+      find_package(Python 3.8 COMPONENTS Interpreter Development NumPy)
     else()
-      find_package(Python 3.6 COMPONENTS Interpreter Development.Module NumPy)
+      find_package(Python 3.8 COMPONENTS Interpreter Development.Module NumPy)
     endif()
   else()
-    find_package(Python 3.6 COMPONENTS Interpreter)
+    find_package(Python 3.8 COMPONENTS Interpreter)
   endif()
 endif()
 
@@ -487,7 +484,7 @@ if (WIN32)
     # issued by thrust nonstandard extension used: nameless struct/union
     list(APPEND ORT_WARNING_FLAGS "/wd4201")
     # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
-    if (onnxruntime_USE_OPENVINO OR onnxruntime_ENABLE_EAGER_MODE)
+    if (onnxruntime_USE_OPENVINO)
        list(APPEND ORT_WARNING_FLAGS "/wd4800")
     endif()
     # operator 'operator-name': deprecated between enumerations of different types
@@ -711,14 +708,6 @@ if (onnxruntime_USE_AZURE)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
 endif()
 
-if (onnxruntime_ENABLE_EAGER_MODE)
-  if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
-    message(
-        FATAL_ERROR
-        "Option onnxruntime_ENABLE_EAGER_MODE can only be used when onnxruntime_ENABLE_TRAINING and onnxruntime_ENABLE_PYTHON are enabled")
-  endif()
-  set(ONNXRUNTIME_EAGER_CMAKE_FILE_NAME onnxruntime_eager)
-endif()
 
 if (onnxruntime_ENABLE_LAZY_TENSOR)
   # To support LazyTensor, ORT needs to call Python function from C/C++.
@@ -749,9 +738,6 @@ endif()
 function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
       onnxruntime_add_include_to_target(${target_name} cpuinfo::cpuinfo)
-    endif()
-    if(onnxruntime_ENABLE_EAGER_MODE)
-      target_compile_definitions(${target_name} PRIVATE ENABLE_EAGER_MODE)
     endif()
     if(onnxruntime_ENABLE_LAZY_TENSOR)
       target_compile_definitions(${target_name} PRIVATE ENABLE_LAZY_TENSOR)
