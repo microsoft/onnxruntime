@@ -33,7 +33,7 @@ jobs:
         ChangeEveryCommit: true
         BuildStep:
           - script: |
-              sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
+              sudo xcode-select --switch /Applications/Xcode_14.2.app/Contents/Developer
               python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
                 --skip_submodule_sync \
                 --build_dir $(Build.BinariesDirectory)/iOS \
