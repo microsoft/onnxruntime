@@ -261,6 +261,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->mask_type = mask_type;
     output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
     output_parameters->pass_past_in_kv = false;
+    output_parameters->qkv_format = Q_K_V_BNSH;
   }
 
   return Status::OK();
