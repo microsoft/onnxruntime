@@ -29,10 +29,10 @@ bool IsSupportedDataType(int32_t data_type) {
 
 using SupportedTypeList = boost::mp11::mp_list<MLFloat16, float, double, int32_t, int64_t>;
 
-static constexpr int32_t MAX_SIZE_PER_VALUE = 8;
+static constexpr int64_t MAX_SIZE_PER_VALUE = 8;
 static constexpr char SHARED_INITIALIZER_PREFIX[] = "ortshared_";
 
-bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape, size_t& num_elements) {
+bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape, int64_t& num_elements) {
   if (input_shape == nullptr) return false;
 
   size_t dim_size = static_cast<size_t>(input_shape->dim_size());
@@ -46,6 +46,10 @@ bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape, size_
       return false;
     }
     num_elements *= input_shape->dim(i).dim_value();
+
+    if (num_elements > MAX_SIZE_PER_VALUE) {
+      return false;
+    }
   }
 
   if (num_elements > 0 && num_elements <= MAX_SIZE_PER_VALUE) {
@@ -187,7 +191,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // and it will be hard to read. Instead, a constant value store is maintained, then the value index is used as the
   // value unique id when construct pattern key.
   InlinedHashMap<std::string, InlinedVector<std::unique_ptr<InitializerValue>>> const_value_store;
-  size_t num_elements = 1;
+  int64_t num_elements = 1;
   for (const auto& initializer_name : original_initializer_names) {
     NodeArg* origin_initializer_node_arg = graph.GetNodeArg(initializer_name);
     if (origin_initializer_node_arg == nullptr ||
