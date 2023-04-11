@@ -193,16 +193,15 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::move(rule_transformer));
       }
 
-      // We need to remove the duplicated QDQ Pairs before all other GraphTransformation.
-
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
 
+      if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableDoubleQDQRemover, "0") == "0") {
+        // We need to remove the duplicated QDQ Pairs before all other GraphTransformation.
+        transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
+      }
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
       // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
-      if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableDoubleQDQRemover, "0") == "0"){
-        transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
-      }
       transformers.emplace_back(std::make_unique<ConstantSharing>());
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
@@ -316,7 +315,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 #endif
 
-#endif // !defined(DISABLE_CONTRIB_OPS)
+#endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
       // fusions might be prevented if this one removes a Q/DQ node too early.
       transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
