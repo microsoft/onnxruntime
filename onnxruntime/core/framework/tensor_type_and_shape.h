@@ -44,6 +44,10 @@ struct OrtTensorTypeAndShapeInfo {
       const std::vector<std::string>* dim_params,
       const ONNX_NAMESPACE::TypeProto&);
 
+  // We provide Clone() here to satisfy the existing coding pattern
+  // as we need copies made on the heap even though we achieve that
+  // via a copy __ctor which can not be made private due to make_unique
+  // which is a requirement.
   std::unique_ptr<OrtTensorTypeAndShapeInfo> Clone() const {
     return std::make_unique<OrtTensorTypeAndShapeInfo>(*this);
   }

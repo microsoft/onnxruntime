@@ -25,7 +25,7 @@ struct OrtMapTypeInfo {
   OrtMapTypeInfo(ONNXTensorElementDataType map_key_type, std::unique_ptr<OrtTypeInfo> map_value_type) noexcept;
   ~OrtMapTypeInfo();
 
-   OrtMapTypeInfo(const OrtMapTypeInfo& other) = delete;
+  OrtMapTypeInfo(const OrtMapTypeInfo& other) = delete;
   OrtMapTypeInfo& operator=(const OrtMapTypeInfo& other) = delete;
 
 };

@@ -75,9 +75,8 @@ ToONNXTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType data_type) {
 std::unique_ptr<OrtMapTypeInfo> OrtMapTypeInfo::FromTypeProto(
     const ONNX_NAMESPACE::TypeProto& type_proto) {
   auto value_case = type_proto.value_case();
-  if (value_case != ONNX_NAMESPACE::TypeProto::kMapType) {
-    ORT_THROW("type_proto is not of type map!");
-  }
+
+  ORT_ENFORCE(value_case == ONNX_NAMESPACE::TypeProto::kMapType, "type_proto is not of type map!");
 
   // Get the key type of the map
   const auto& type_proto_map = type_proto.map_type();
