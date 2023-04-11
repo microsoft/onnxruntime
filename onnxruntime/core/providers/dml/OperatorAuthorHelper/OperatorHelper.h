@@ -1427,6 +1427,13 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class BiasSplitGeluHelper {
+public:
+    template <typename Info_t, typename Shape_t>
+    BiasSplitGeluHelper(const Info_t& info, const Shape_t& shapeInfo) { }
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_NhwcConv = NhwcConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
@@ -1652,5 +1659,6 @@ using ShapeInferenceHelper_DmlFusedSum = GetBroadcastedOutputShapeHelper;
 
 using ShapeInferenceHelper_Shape = ShapeHelper;
 using ShapeInferenceHelper_Size = SizeHelper;
+using ShapeInferenceHelper_BiasSplitGelu = BiasSplitGeluHelper;
 
 }  // namespace OperatorHelper
