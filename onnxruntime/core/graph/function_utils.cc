@@ -125,7 +125,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
     for (int i = 0; i < node.input_size(); ++i) {
       if (node_op_schema && variadic_arg_idx == -1) {
         // The check is applied only if we have not seen a variadic parameter so far:
-        ORT_ENFORCE(i < node_op_schema->inputs().size(),
+        ORT_ENFORCE(static_cast<size_t>(i) < node_op_schema->inputs().size(),
                     "Too many inputs for op " + node.op_type());
       }
 
