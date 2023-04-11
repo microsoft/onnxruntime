@@ -537,7 +537,7 @@ TEST_P(BatchTest, BatchSupport) {
         }
     }
 }
-// TODO: Reenable failing test combinations
+// TODO: Reenable failing tests (Bug 299)
 INSTANTIATE_TEST_SUITE_P(BatchTest, BatchTest,
     testing::Combine(
         testing::Values(
