@@ -10,9 +10,6 @@
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 
-#include <iostream>
-#include "core/framework/print_tensor_utils.h"
-
 namespace onnxruntime {
 namespace contrib {
 
@@ -39,20 +36,6 @@ class AttentionCPUBase : public AttentionBase {
                         const Tensor* relative_position_bias, // bias addition in QK. Its size is BxNxSxT
                         bool separate_present_kv,             // whether to separate present KV into present K and present V
                         OpKernelContext* context) const {
-
-    // std::cout << "Q (in apply):" << std::endl;
-    // for(int i = 0; i < 1; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* q_tensor = Q + (i * num_heads_ * sequence_length * v_head_size);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(q_tensor, num_heads_, sequence_length, v_head_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
-
-    // std::cout << "K (in apply):" << std::endl;
-    // for(int i = 0; i < 1; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* k_tensor = K + (i * num_heads_ * kv_sequence_length * v_head_size);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(k_tensor, num_heads_, kv_sequence_length, v_head_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
 
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -132,27 +115,7 @@ class AttentionCPUBase : public AttentionBase {
     if (separate_present_kv) {
       SeparatePresentKV(present_data, present_k->MutableData<T>(), present_v->MutableData<T>(), 
                         batch_size, total_sequence_length, qk_head_size, v_head_size, context);
-      // std::cout << "Present K (in apply):" << std::endl;
-      // for(int i = 0; i < 2; i++) {
-      //   std::cout << "[" << i << "]:" << std::endl;
-      //   const T* present_k_tensor = present_k->MutableData<T>() + (i * num_heads_ * total_sequence_length * qk_head_size);
-      //   onnxruntime::utils::PrintCpuTensorSnippet<T>(present_k_tensor, num_heads_, total_sequence_length, qk_head_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-      // }
-
-      // std::cout << "Present V (in apply):" << std::endl;
-      // for(int i = 0; i < 2; i++) {
-      //   std::cout << "[" << i << "]:" << std::endl;
-      //   const T* present_v_tensor = present_v->MutableData<T>() + (i * num_heads_ * total_sequence_length * v_head_size);
-      //   onnxruntime::utils::PrintCpuTensorSnippet<T>(present_v_tensor, num_heads_, total_sequence_length, v_head_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-      // }
     }
-
-    // std::cout << "Output (in apply):" << std::endl;
-    // for(int i = 0; i < 2; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* output_tensor = output->MutableData<T>() + (i * sequence_length * v_hidden_size);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(output_tensor, sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
 
     return Status::OK();
   }
@@ -262,12 +225,6 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     // attention_probs(B, N, S, T) = Softmax(attention_probs)
-    // std::cout << "Q x K' + mask:" << std::endl;
-    // for(int i = 0; i < 1; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* probs_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(probs_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
     {
       const int N = batch_size * num_heads_ * sequence_length;
       const int D = total_sequence_length;
@@ -294,20 +251,6 @@ class AttentionCPUBase : public AttentionBase {
     const ptrdiff_t q_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * v_head_size;        // S x H_v
     const ptrdiff_t kv_input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;    // L x H_v
     const ptrdiff_t present_chunk_length = past_chunk_length + kv_input_chunk_length;                // T x H_v
-
-    // std::cout << "Softmax (in score):" << std::endl;
-    // for(int i = 0; i < 1; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* softmax_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(softmax_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
-
-    // std::cout << "V (in score):" << std::endl;
-    // for(int i = 0; i < 1; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* v_tensor = V + (i * num_heads_ * kv_sequence_length * v_head_size);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(v_tensor, num_heads_, kv_sequence_length, v_head_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
 
     // Move the pointer of past and present to start of v values.
     if (nullptr != past) {

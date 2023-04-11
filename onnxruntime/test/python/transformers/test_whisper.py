@@ -39,27 +39,6 @@ class TestFusion(unittest.TestCase):
                 f.close()
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
-    # Note: The test cases where the initial LayerNorm is (Add + LayerNorm) have been temporarily
-    # skipped since they only occur once at the beginning of the model. The initial LayerNorm is
-    # always SkipLayerNorm thereafter. The test case below is an example for how to write the 
-    # (Add + LayerNorm) test cases.
-    #
-    # The (Add + LayerNorm) case happens for attention types #1, #2, and #3 in onnx_models_bart.py
-
-    # def test_encoder_attention_fusion_with_layernorm_(self):
-    #     num_heads = 4
-    #     hidden_size = 64
-    #     model = create_whisper_encoder_attention(num_heads=num_heads, hidden_size=hidden_size)
-    #     dir = "."
-    #     model_path = os.path.join(dir, "whisper_encoder_attention_ln.onnx")
-    #     onnx.save(model, model_path)
-    #     options = FusionOptions("bart")
-    #     optimized_model = optimize_model(model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size, 
-    #                                      optimization_options=options)
-    #     optimized_model.save_model_to_file("encoder_attention_with_ln_fused_actual.onnx", use_external_data_format=True)
-    #     # os.remove(model_path)
-    #     self.verify_fusion(optimized_model, "encoder_attention_with_ln_fused.onnx")
-
     # Attention type #1 in onnx_model_bart.py
     def test_encoder_attention_fusion_with_skiplayernorm(self):
         num_heads = 4
@@ -71,7 +50,6 @@ class TestFusion(unittest.TestCase):
         options = FusionOptions("bart")
         optimized_model = optimize_model(model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size, 
                                          optimization_options=options)
-        # optimized_model.save_model_to_file("encoder_attention_with_sln_fused_actual.onnx", use_external_data_format=True)
         os.remove(model_path)
         self.verify_fusion(optimized_model, "encoder_attention_with_sln_fused.onnx")
 
@@ -86,7 +64,6 @@ class TestFusion(unittest.TestCase):
         options = FusionOptions("bart")
         optimized_model = optimize_model(model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size, 
                                          optimization_options=options)
-        # optimized_model.save_model_to_file("decoder_attention_with_sln_fused_actual.onnx", use_external_data_format=True)
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_attention_with_sln_fused.onnx")
 
@@ -102,7 +79,6 @@ class TestFusion(unittest.TestCase):
         options.use_multi_head_attention = True
         optimized_model = optimize_model(model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size,
                                          optimization_options=options)
-        # optimized_model.save_model_to_file("decoder_mha_fused_actual.onnx", use_external_data_format=True)
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_mha_fused.onnx")
 
@@ -118,7 +94,6 @@ class TestFusion(unittest.TestCase):
         options.use_multi_head_attention = True
         optimized_model = optimize_model(model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size,
                                          optimization_options=options)
-        # optimized_model.save_model_to_file("decoder_self_mha_fused_actual.onnx", use_external_data_format=True)
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_with_past_self_mha_fused.onnx")
 
@@ -134,7 +109,6 @@ class TestFusion(unittest.TestCase):
         options.use_multi_head_attention = True
         optimized_model = optimize_model(model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size,
                                          optimization_options=options)
-        # optimized_model.save_model_to_file("decoder_cross_mha_fused_actual.onnx", use_external_data_format=True)
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_with_past_cross_mha_fused.onnx")
 

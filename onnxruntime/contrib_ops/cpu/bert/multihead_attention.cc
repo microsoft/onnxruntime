@@ -16,7 +16,6 @@
 
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
-#include <iostream>
 
 using onnxruntime::concurrency::ThreadPool;
 
@@ -141,18 +140,9 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
 
   // Reshape Q from BxSxD to BxSxNxH
   ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(qkv_with_bias.GetMutable<Tensor>(), batch_size, sequence_length, num_heads, head_size));
-  // std::vector<int64_t> reshape_dims({batch_size, sequence_length, num_heads, head_size});
-  // gsl::span<const int64_t> reshape_dims_span{reshape_dims};
-  // TensorShape qkv_bsnh(reshape_dims_span);
-  // qkv_with_bias.GetMutable<Tensor>()->Reshape(qkv_bsnh);
 
   // Transpose Q from BxSxNxH to BxNxSxH
   return Transpose_BSNH_to_BNSH(qkv_with_bias.GetMutable<Tensor>(), qkv_with_bias_transposed);
-  // std::vector<size_t> permutations({0, 2, 1, 3});
-  // gsl::span<const size_t> permutations_span{permutations};
-  // size_t from = 2, to = 1;
-  // SingleAxisTranspose(permutations_span, *qkv_with_bias.GetMutable<Tensor>(), *qkv_with_bias_transposed.GetMutable<Tensor>(), from, to);
-  // return Status::OK();
 }
 
 // Add bias + reshape for each of Q/K/V or packed QKV
@@ -272,19 +262,6 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       num_heads_,
                                                                       scale,
                                                                       mask_filter_value_));
-
-  // std::cout << "Parameters: ";
-  // std::cout << "batch size: " << parameters.batch_size << ", ";
-  // std::cout << "q seq len: " << parameters.sequence_length << ", ";
-  // std::cout << "kv seq len: " << parameters.kv_sequence_length << ", ";
-  // std::cout << "past seq len: " << parameters.past_sequence_length << ", ";
-  // std::cout << "total seq len: " << parameters.total_sequence_length << ", ";
-  // std::cout << "qk hidden size: " << parameters.hidden_size << ", ";
-  // std::cout << "v hidden size: " << parameters.v_hidden_size << ", ";
-  // std::cout << "qk head size: " << parameters.head_size << ", ";
-  // std::cout << "v head size: " << parameters.v_head_size << ", ";
-  // std::cout << "num heads: " << parameters.num_heads << ", ";
-  // std::cout << "pass_past_in_kv: " << parameters.pass_past_in_kv << std::endl;
 
   const int batch_size = parameters.batch_size;
   const int q_sequence_length = parameters.sequence_length;

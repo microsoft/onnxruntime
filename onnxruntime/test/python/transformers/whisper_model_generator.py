@@ -25,17 +25,10 @@ def get_tensor_and_weight(name: str, shape: List[int], random=False, zeros=False
 
 def create_whisper_encoder_attention(hidden_size=768, num_heads=12, epsilon=0.000009999999747378752,
                                      add_before_layernorm=False, add_k=False, fused=False):
-                                     #encoder=False, decoder=False, decoder_with_past=False,
-                                     #past_kv=False, present_kv=False, k_bias=False,
-                                     #self_attn=False, cross_attn=False, multihead_attn=False):
 
     # Get head size and ensure head size is an integer
     assert hidden_size % num_heads == 0
     head_size = hidden_size // num_heads
-
-    # # Create one type of attention at a time
-    # assert encoder + decoder + decoder_with_past == 1
-    # assert self_attn + cross_attn + multihead_attn == 1
 
     # Construct input and output nodes
     inputs = [

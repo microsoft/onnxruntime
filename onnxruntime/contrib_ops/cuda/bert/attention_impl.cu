@@ -43,8 +43,6 @@ limitations under the License.
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
-#include <iostream>
-
 using namespace onnxruntime::cuda;
 using namespace cub;
 

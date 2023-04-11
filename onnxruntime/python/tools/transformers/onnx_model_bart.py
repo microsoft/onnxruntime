@@ -95,10 +95,6 @@ class FusionBartAttention(FusionAttention):
             ) = qkv_nodes
         else:
             return
-
-        # import os
-        # if not os.path.exists('temp.onnx'):
-        #    self.model.save_model_to_file('temp.onnx', use_external_data_format=True)
         
         other_inputs = []
         for i, input in enumerate(normalize_node.input):
