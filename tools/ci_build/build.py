@@ -53,13 +53,12 @@ class UsageError(BaseError):
 
 
 def _check_python_version():
-    # According to the BUILD.md, python 3.5+ is required:
-    # Python 2 is definitely not supported and it should be safer to consider
-    # it won't run with python 4:
-    if sys.version_info[0] != 3:  # noqa: YTT201
-        raise BuildError("Bad python major version: expecting python 3, found version " "'{}'".format(sys.version))
-    if sys.version_info[1] < 6:  # noqa: YTT203
-        raise BuildError("Bad python minor version: expecting python 3.6+, found version " "'{}'".format(sys.version))
+    required_major, required_minor = 3, 8
+    if (sys.version_info.major, sys.version_info.minor) < (required_major, required_minor):
+        raise UsageError(
+            f"Invalid Python version. At least Python {required_major}.{required_minor} is required. "
+            f"Actual Python version: {sys.version}"
+        )
 
 
 def _str_to_bool(s):
@@ -104,7 +103,7 @@ def _openvino_verify_device_type(device_read):
                 break
 
     def invalid_hetero_build():
-        print("\n" + "If trying to build Hetero/Multi/Auto, specifiy the supported devices along with it." + +"\n")
+        print("\n" + "If trying to build Hetero/Multi/Auto, specifiy the supported devices along with it." + "\n")
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build" + "\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
@@ -132,7 +131,10 @@ def _openvino_verify_device_type(device_read):
 def parse_arguments():
     class Parser(argparse.ArgumentParser):
         # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
-        def convert_arg_line_to_args(self, arg_line):
+        def convert_arg_line_to_args(self, arg_line: str):
+            # skip comment lines starting with "#"
+            if arg_line.lstrip().startswith("#"):
+                return []
             return shlex.split(arg_line)
 
     parser = Parser(
@@ -707,15 +709,19 @@ def is_reduced_ops_build(args):
     return args.include_ops_by_config is not None
 
 
-def resolve_executable_path(command_or_path):
-    """Returns the absolute path of an executable."""
-    if command_or_path and command_or_path.strip():
-        executable_path = shutil.which(command_or_path)
-        if executable_path is None:
-            raise BuildError("Failed to resolve executable path for " "'{}'.".format(command_or_path))
-        return os.path.abspath(executable_path)
-    else:
-        return None
+def resolve_executable_path(command_or_path: str, resolution_failure_allowed: bool = False):
+    """
+    Returns the absolute path of an executable.
+    If `resolution_failure_allowed` is True, returns None if the executable path cannot be found.
+    """
+    executable_path = shutil.which(command_or_path)
+    if executable_path is None:
+        if resolution_failure_allowed:
+            return None
+        else:
+            raise BuildError("Failed to resolve executable path for '{command_or_path}'.")
+
+    return os.path.abspath(executable_path)
 
 
 def get_linux_distro():
@@ -1982,7 +1988,7 @@ def build_nuget_package(
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
-            "Currently csharp builds and nuget package creation is only supportted " "on Windows and Linux platforms."
+            "Currently csharp builds and nuget package creation is only supported on Windows and Linux platforms."
         )
 
     csharp_build_dir = os.path.join(source_dir, "csharp")
@@ -2061,16 +2067,12 @@ def build_nuget_package(
             ]
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
-        if is_windows():
-            if not use_winml:
-                # user needs to make sure nuget is installed and added to the path variable
-                nuget_exe = "nuget.exe"
-            else:
-                # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
-                nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+        if is_windows() and use_winml:
+            # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
+            nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
         else:
             # user needs to make sure nuget is installed and can be found
-            nuget_exe = "nuget"
+            nuget_exe = resolve_executable_path("nuget")
 
         nuget_exe_arg = '/p:NugetExe="' + nuget_exe + '"'
 
@@ -2175,15 +2177,18 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     if (args.arm or args.arm64 or args.arm64ec) and not (is_windows() or is_cross_compiling_on_apple(args)):
         raise BuildError(
             "Currently only support building protoc for Windows host while "
-            "cross-compiling for ARM/ARM64/Store and linux cross-compiling iOS"
+            "cross-compiling for ARM/ARM64/Store or linux cross-compiling iOS"
         )
 
     rid = get_protobuf_rid()
     if rid is None:
         return None
+
+    nuget = resolve_executable_path("nuget")
+
     run_subprocess(
         [
-            "nuget.exe",
+            nuget,
             "restore",
             os.path.join(source_dir, "packages.config"),
             "-ConfigFile",
@@ -2370,8 +2375,8 @@ def main():
     # setup paths and directories
     # cmake_path and ctest_path can be None. For example, if a person only wants to run the tests, he/she doesn't need
     # to have cmake/ctest.
-    cmake_path = resolve_executable_path(args.cmake_path)
-    ctest_path = resolve_executable_path(args.ctest_path)
+    cmake_path = resolve_executable_path(args.cmake_path, resolution_failure_allowed=True)
+    ctest_path = resolve_executable_path(args.ctest_path, resolution_failure_allowed=True)
     build_dir = args.build_dir
     script_dir = os.path.realpath(os.path.dirname(__file__))
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
