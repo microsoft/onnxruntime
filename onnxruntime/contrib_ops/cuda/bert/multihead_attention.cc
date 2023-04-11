@@ -171,7 +171,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                         fused_cross_attention_kernel == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         is_long_sequence &&
-                                        !parameters.pass_past_in_kv &&
                                         nullptr == key_padding_mask &&  // TODO: support 1D mask
                                         nullptr == relative_position_bias &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
