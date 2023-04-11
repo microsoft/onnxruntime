@@ -135,6 +135,16 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+#define REGISTER_QUANTIZELINEAR(T)                                    \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
+      QuantizeLinear,                                                 \
+      19,                                                             \
+      T,                                                              \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
+      QuantizeLinear<T>);
+
 #define REGISTER_QUANTIZELINEAR_VERSIONED(T)                          \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
       QuantizeLinear,                                                 \
@@ -150,16 +160,6 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
       QuantizeLinear,                                                 \
       10,                                                             \
       12,                                                             \
-      T,                                                              \
-      KernelDefBuilder()                                              \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
-      QuantizeLinear<T>);
-
-#define REGISTER_QUANTIZELINEAR(T)                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
-      QuantizeLinear,                                                 \
-      19,                                                             \
       T,                                                              \
       KernelDefBuilder()                                              \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \

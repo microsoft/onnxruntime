@@ -245,7 +245,7 @@ struct Float8E4M3FNUZ {
               // rounding
               val += 1;
             } else if (!saturate) {
-              val |= 0x80;
+              val = 0x80;
             }
           }
         } else if (saturate) {

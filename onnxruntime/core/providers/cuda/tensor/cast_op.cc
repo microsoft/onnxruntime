@@ -170,6 +170,41 @@ Status Cast<float>::ComputeInternal(OpKernelContext* context) const {
 }
 
 template <>
+Status Cast<MLFloat16>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<float>::MappedType CudaSrcT;
+  const Tensor* X = context->Input<Tensor>(0);
+  const TensorShape& shape = X->Shape();
+  Tensor* Y = context->Output(0, shape);
+  const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<MLFloat16>());
+  size_t count = shape.Size();
+
+  switch (to_) {
+    CASE(TensorProto_DataType_FLOAT16, MLFloat16)
+    CASE(TensorProto_DataType_BFLOAT16, BFloat16)
+    CASE(TensorProto_DataType_FLOAT, float)
+    CASE(TensorProto_DataType_DOUBLE, double)
+    CASE(TensorProto_DataType_INT8, int8_t)
+    CASE(TensorProto_DataType_INT16, int16_t)
+    CASE(TensorProto_DataType_INT32, int32_t)
+    CASE(TensorProto_DataType_INT64, int64_t)
+    CASE(TensorProto_DataType_UINT8, uint8_t)
+    CASE(TensorProto_DataType_UINT16, uint16_t)
+    CASE(TensorProto_DataType_UINT32, uint32_t)
+    CASE(TensorProto_DataType_UINT64, uint64_t)
+    CASE(TensorProto_DataType_BOOL, bool)
+    CASE_SAT(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
+    CASE_SAT(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
+    case TensorProto_DataType_STRING:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
+    case TensorProto_DataType_UNDEFINED:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cast op must have 'to' argument of type DataType");
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected 'to' argument value: ", to_);
+  }
+  return Status::OK();
+}
+
+template <>
 Status Cast<Float8E4M3FN>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<Float8E4M3FN>::MappedType CudaSrcT;
   const Tensor* X = context->Input<Tensor>(0);
@@ -179,10 +214,52 @@ Status Cast<Float8E4M3FN>::ComputeInternal(OpKernelContext* context) const {
   size_t count = shape.Size();
 
   switch (to_) {
-    CASE(TensorProto_DataType_FLOAT16, MLFloat16)
+    case TensorProto_DataType_FLOAT16:
+      if (count > 0) {
+        Impl_Cast<Float8E4M3FN, half>(
+            Stream(context),
+            x_data,
+            reinterpret_cast<half*>(Y->MutableData<MLFloat16>()),
+            count);
+      }
+      break;
     case TensorProto_DataType_FLOAT:
       if (count > 0) {
         Impl_Cast<Float8E4M3FN, float>(
+            Stream(context),
+            x_data,
+            reinterpret_cast<float*>(Y->MutableData<float>()),
+            count);
+      }
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected 'to' argument value: ", to_);
+  }
+  return Status::OK();
+}
+
+template <>
+Status Cast<Float8E5M2>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<Float8E5M2>::MappedType CudaSrcT;
+  const Tensor* X = context->Input<Tensor>(0);
+  const TensorShape& shape = X->Shape();
+  Tensor* Y = context->Output(0, shape);
+  const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<Float8E5M2>());
+  size_t count = shape.Size();
+
+  switch (to_) {
+    case TensorProto_DataType_FLOAT16:
+      if (count > 0) {
+        Impl_Cast<Float8E5M2, half>(
+            Stream(context),
+            x_data,
+            reinterpret_cast<half*>(Y->MutableData<MLFloat16>()),
+            count);
+      }
+      break;
+    case TensorProto_DataType_FLOAT:
+      if (count > 0) {
+        Impl_Cast<Float8E5M2, float>(
             Stream(context),
             x_data,
             reinterpret_cast<float*>(Y->MutableData<float>()),
