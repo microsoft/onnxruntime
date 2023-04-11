@@ -823,7 +823,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize", "RNN", "Roialign", "Round",
                                                     "Scatter", "ScatterElements", "ScatterND", "Selu", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Softplus",
                                                     "Softsign", "SpaceToDepth", "Split", "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh",
-                                                    "ThresholdedRelu", "Tile", "TopK", "Transpose", "Unsqueeze", "Upsample", "Where", "Xor"};
+                                                    "ThresholdedRelu", "Tile", "TopK", "Transpose", "Trilu", "Unsqueeze", "Upsample", "Where", "Xor"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
