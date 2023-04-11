@@ -992,19 +992,7 @@ TEST_F(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["BatchNormalization"] == 1);
 }
-TEST_F(GraphTransformationTests, Resnet50Fp16Fusion){
- std::basic_string<ORTCHAR_T> resnet_fp16_model =ORT_TSTR("fusion/resnet50_fp16.onnx");
- PathString model_uri = PathString(MODEL_FOLDER) + resnet_fp16_model;
- std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{99};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvAddFusion>()));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-  ASSERT_STATUS_OK(Model::Save(*p_model, "resnet50_fp16_fused.onnx", *logger_));
-}
+
 TEST_F(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   std::vector<std::basic_string<ORTCHAR_T>> test_models = {ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.onnx"),
                                                            ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.negative_axes.onnx"),
