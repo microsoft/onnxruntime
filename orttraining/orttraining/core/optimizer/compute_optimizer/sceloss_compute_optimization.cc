@@ -92,7 +92,8 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     auto& node = *node_ptr;
 
     bool is_onnx_sce = graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLoss", {12, 13});
-    bool is_internal_sce = graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLossInternal", {1}, kMSDomain);
+    bool is_internal_sce = graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLossInternal", {1},
+                                                                          kMSDomain);
 
     if ((!is_onnx_sce && !is_internal_sce) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
@@ -139,15 +140,14 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
       if (node.InputDefs().size() < 4 || !graph_utils::IsConstantInitializer(
                                              graph, node.InputDefs()[3]->Name(), /* check_outer_scope */ false)) {
         LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                   ") due to target padding idx is non-constant initializer. Input count: "
-                                   + std::to_string(node.InputDefs().size()));
+                                   ") due to target padding idx is non-constant initializer. Input count: " + std::to_string(node.InputDefs().size()));
         continue;
       }
       ignore_index_node_arg = node.MutableInputDefs()[3];
     } else {
       const auto ignore_index_attr = node.GetAttributes().find("ignore_index");
       if (ignore_index_attr != node.GetAttributes().end()) {
-        int ignore_index_value = (*ignore_index_attr).second.i();
+        int64_t ignore_index_value = (*ignore_index_attr).second.i();
         ignore_index_node_arg = onnxruntime::optimizer::compute_optimizer::CreateInitializerFromVector(
             graph, {}, {ignore_index_value}, graph.GenerateNodeArgName("ignore_index"));
       } else {
