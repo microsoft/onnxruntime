@@ -12,6 +12,12 @@ namespace test {
 #if !defined(DISABLE_CONTRIB_OPS)
 using namespace std;
 
+#if defined(USE_ROCM)
+#define ROCM_GTEST_SKIP(message) GTEST_SKIP_(message)
+#else
+#define ROCM_GTEST_SKIP(message)
+#endif
+
 struct ConvOpAndTestAttributes {
   string auto_pad;
   vector<int64_t> dilations;
@@ -61,6 +67,8 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "",
                 bool use_float16 = false) {
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+
   OpTester test("FusedConv", 1, onnxruntime::kMSDomain);
   test.AddAttribute("group", attributes.group);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
@@ -89,20 +97,16 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
 
   const char* szNames[] = {"X", "W", "B", "Z"};
 
-  if (use_float16) {
+  if (use_float16 && enable_rocm) {
     // Only ROCm EP supports float16.
-    bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
-
-    if (enable_rocm) {
-      test.AddInput<MLFloat16>(szNames[0], input_shapes[0], ToFloat16(inputs[0]));
-      test.AddInput<MLFloat16>(szNames[1], input_shapes[1], ToFloat16(inputs[1]), weight_is_initializer);
-      if (inputs.size() >= 3)
-        test.AddInput<MLFloat16>(szNames[2], input_shapes[2], ToFloat16(inputs[2]));
-      if (inputs.size() >= 4)
-        test.AddInput<MLFloat16>(szNames[3], input_shapes[3], ToFloat16(inputs[3]));
-      test.AddOutput<MLFloat16>("Y", expected_output_shape, ToFloat16(expected_output));
-      test.Run(expect_result, err_str, excluded_provider_types);
-    }
+    test.AddInput<MLFloat16>(szNames[0], input_shapes[0], ToFloat16(inputs[0]));
+    test.AddInput<MLFloat16>(szNames[1], input_shapes[1], ToFloat16(inputs[1]), weight_is_initializer);
+    if (inputs.size() >= 3)
+      test.AddInput<MLFloat16>(szNames[2], input_shapes[2], ToFloat16(inputs[2]));
+    if (inputs.size() >= 4)
+      test.AddInput<MLFloat16>(szNames[3], input_shapes[3], ToFloat16(inputs[3]));
+    test.AddOutput<MLFloat16>("Y", expected_output_shape, ToFloat16(expected_output));
+    test.Run(expect_result, err_str, excluded_provider_types);
   } else {
     test.AddInput<float>(szNames[0], input_shapes[0], inputs[0]);
     test.AddInput<float>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
@@ -134,6 +138,7 @@ void RunConvOp(const ConvOpAndTestAttributes& attributes,
 }
 
 TEST(FusedConvTest, Conv2D_HardSigmoid) {
+  ROCM_GTEST_SKIP("ROCm does not support Conv2D_HardSigmoid");
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
@@ -239,6 +244,7 @@ TEST(FusedConvTest, Conv2D_Bias_Z_Relu) {
 #endif
 
 TEST(FusedConvTest, Cpu_Conv2D_Bias_Z_Relu) {
+  ROCM_GTEST_SKIP("ROCm skip Cpu_Conv2D_Bias_Z_Relu");
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
