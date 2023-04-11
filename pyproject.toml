@@ -43,7 +43,7 @@ reportMissingImports = false
 
 [tool.ruff]
 # NOTE: Do not create an exclude list. Edit .lintrunner.toml instead
-target-version = "py37"
+target-version = "py38"
 select = [
     "E", # pycodestyle
     "F", # Pyflakes

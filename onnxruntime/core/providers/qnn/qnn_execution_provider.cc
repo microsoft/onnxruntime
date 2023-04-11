@@ -204,9 +204,17 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
 
   const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(), logger);
+
   if (supported_nodes.empty()) {
     LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
     return result;
+  } else if (supported_nodes.size() == 1) {
+    const auto* node = *supported_nodes.begin();
+    if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
+      LOGS(logger, INFO) << "It doesn't make sense just run a Q/DQ node on HTP.";
+      LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
+      return result;
+    }
   }
 
   const auto gen_metadef_name = [&]() {

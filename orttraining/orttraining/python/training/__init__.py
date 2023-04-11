@@ -10,8 +10,7 @@ from onnxruntime.capi.training.training_session import TrainingSession
 # Options need to be imported before `ORTTrainer`.
 from .orttrainer_options import ORTTrainerOptions
 from .orttrainer import ORTTrainer, TrainStepInfo
-from . import amp, checkpoint, model_desc_validation, optim
-
+from . import amp, artifacts, checkpoint, model_desc_validation, optim
 
 try:  # noqa: SIM105
     from .ortmodule import ORTModule

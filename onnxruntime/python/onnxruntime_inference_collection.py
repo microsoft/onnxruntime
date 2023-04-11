@@ -2,15 +2,22 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from __future__ import annotations
+
 import collections
 import collections.abc
 import os
+import typing
 import warnings
+from typing import Any, Sequence
 
 from onnxruntime.capi import _pybind_state as C
 
+if typing.TYPE_CHECKING:
+    import onnxruntime
 
-def get_ort_device_type(device_type, device_index):
+
+def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
     if device_type == "cuda":
         return C.OrtDevice.cuda()
     elif device_type == "cpu":
@@ -21,7 +28,11 @@ def get_ort_device_type(device_type, device_index):
         raise Exception("Unsupported device type: " + device_type)
 
 
-def check_and_normalize_provider_args(providers, provider_options, available_provider_names):
+def check_and_normalize_provider_args(
+    providers: Sequence[str, tuple[str, dict[Any, Any]]] | None,
+    provider_options: Sequence[dict[Any, Any]] | None,
+    available_provider_names: Sequence[str],
+):
     """
     Validates the 'providers' and 'provider_options' arguments and returns a
         normalized version.
@@ -205,8 +216,7 @@ class Session:
                 # Fallback only once.
                 self.disable_fallback()
                 return self._sess.run(output_names, input_feed, run_options)
-            else:
-                raise
+            raise
 
     def run_with_ort_values(self, output_names, input_dict_ort_values, run_options=None):
         """
@@ -251,8 +261,7 @@ class Session:
                 # Fallback only once.
                 self.disable_fallback()
                 return invoke(self._sess, output_names, input_dict_ort_values, run_options)
-            else:
-                raise
+            raise
 
     def end_profiling(self):
         """
@@ -310,10 +319,17 @@ class InferenceSession(Session):
     This is the main class used to run a model.
     """
 
-    def __init__(self, path_or_bytes, sess_options=None, providers=None, provider_options=None, **kwargs):
+    def __init__(
+        self,
+        path_or_bytes: str | bytes | os.PathLike,
+        sess_options: Sequence[onnxruntime.SessionOptions] | None = None,
+        providers: Sequence[str, tuple[str, dict[Any, Any]]] | None = None,
+        provider_options: Sequence[dict[Any, Any]] | None = None,
+        **kwargs,
+    ) -> None:
         """
-        :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
-        :param sess_options: session options
+        :param path_or_bytes: Filename or serialized ONNX or ORT format model in a byte string.
+        :param sess_options: Session options.
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
             (provider name, options dict). If not provided, then all available
@@ -341,11 +357,13 @@ class InferenceSession(Session):
         means execute a node using `CUDAExecutionProvider`
         if capable, otherwise execute using `CPUExecutionProvider`.
         """
-
-        Session.__init__(self)
+        super().__init__()
 
         if isinstance(path_or_bytes, str):
             self._model_path = path_or_bytes
+            self._model_bytes = None
+        elif isinstance(path_or_bytes, os.PathLike):
+            self._model_path = str(path_or_bytes)
             self._model_bytes = None
         elif isinstance(path_or_bytes, bytes):
             self._model_path = None
@@ -363,15 +381,15 @@ class InferenceSession(Session):
 
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)
-        except ValueError:
+        except ValueError as e:
             if self._enable_fallback:
-                print(f"EP Error using {providers}")
+                print(f"EP Error {e} when using {providers}")
                 print(f"Falling back to {self._fallback_providers} and retrying.")
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
                 self.disable_fallback()
-            else:
-                raise
+                return
+            raise
 
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
@@ -446,7 +464,7 @@ class IOBinding:
     This class provides API to bind input/output to a specified device, e.g. GPU.
     """
 
-    def __init__(self, session):
+    def __init__(self, session: Session):
         self._iobinding = C.SessionIOBinding(session._sess)
         self._numpy_obj_references = {}
 

@@ -1,4 +1,4 @@
-# it's used to check the cache stats after the build with ccache
+# it's used to check the cache stats after building with ccache
 parameters:
 - name: CacheDir
   displayName: Cache Directory

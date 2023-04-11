@@ -423,5 +423,105 @@ TEST(GatherOpTest, Gather_axis1_neg_indices2d_int8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Assertion `regionRanges != nullptr' failed
 }
 
+#ifdef ENABLE_TRAINING_OPS
+// Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+// 2). this is needed by inference for other purpose.
+
+TEST(ShrunkenGatherOpTest, ShrunkenGather_PositiveAxis) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+#ifdef USE_CUDA
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#endif
+#ifdef USE_ROCM
+  execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+  OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("axis", 0LL);
+  test.AddInput<float>("data", {3, 4},
+                       {0.0f, 1.0f, 2.0f, 3.0f,
+                        4.0f, 5.0f, 6.0f, 7.0f,
+                        8.0f, 9.0f, 10.0f, 11.0f});
+  test.AddInput<int32_t>("indices", {2}, {1LL, 0LL});
+  test.AddOutput<float>("output", {2, 4}, {4.0f, 5.0f, 6.0f, 7.0f, 0.0f, 1.0f, 2.0f, 3.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {},
+           nullptr,
+           &execution_providers);
+}
+
+TEST(ShrunkenGatherOpTest, ShrunkenGather_NegativeAxis) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+#ifdef USE_CUDA
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#endif
+#ifdef USE_ROCM
+  execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+  OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("axis", -1LL);
+  test.AddInput<float>("data", {3, 4},
+                       {0.0f, 1.0f, 2.0f, 3.0f,
+                        4.0f, 5.0f, 6.0f, 7.0f,
+                        8.0f, 9.0f, 10.0f, 11.0f});
+  test.AddInput<int32_t>("indices", {2}, {0LL, 3LL});
+  test.AddOutput<float>("output", {3, 2}, {0.0f, 3.0f, 4.0f, 7.0f, 8.0f, 11.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {},
+           nullptr,
+           &execution_providers);
+}
+
+TEST(ShrunkenGatherOpTest, ShrunkenGather_InvalidIndicesRank) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+#ifdef USE_CUDA
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#endif
+#ifdef USE_ROCM
+  execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+  OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("axis", 0LL);
+  test.AddInput<float>("data", {3, 4},
+                       {0.0f, 1.0f, 2.0f, 3.0f,
+                        4.0f, 5.0f, 6.0f, 7.0f,
+                        8.0f, 9.0f, 10.0f, 11.0f});
+  test.AddInput<int32_t>("indices", {1, 2}, {0LL, 1LL});  // invalid rank for ShrunkenGather
+  test.AddOutput<float>("output", {1, 2, 4}, {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "ShrunkenGather only support 1D indices, got 2-D indices", {},
+           nullptr,
+           &execution_providers);
+}
+
+TEST(ShrunkenGatherOpTest, ShrunkenGather_InvalidInputRank) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+#ifdef USE_CUDA
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#endif
+#ifdef USE_ROCM
+  execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+  OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("axis", 0LL);
+  test.AddInput<float>("data", {},  // invalid rank for ShrunkenGather
+                       {1.f});
+  test.AddInput<int64_t>("indices", {1}, {0LL});
+  test.AddOutput<float>("output", {}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "data tensor must have rank >= 1", {},
+           nullptr,
+           &execution_providers);
+}
+
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
