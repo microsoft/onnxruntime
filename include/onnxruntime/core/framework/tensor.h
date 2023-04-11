@@ -362,7 +362,7 @@ class Tensor final {
 #ifdef ENABLE_STRIDED_TENSORS
   bool CheckIsContiguous() const;
 #endif
-
+  auto Storage() const { return storage_; }
   std::shared_ptr<Storage> storage_;
 
   TensorShape shape_;
