@@ -11,6 +11,7 @@
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
+
 size_t GetAttentionScratchSize(
     size_t element_size,
     int batch_size,
