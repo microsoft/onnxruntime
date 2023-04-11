@@ -147,7 +147,8 @@ ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
     ORT_ENFORCE(input_shape->dim(k).has_dim_value());
     new_shape.push_back(input_shape->dim(k).dim_value());
   }
-  NodeArg* new_shape_arg = Create1DInitializerFromVector(graph, new_shape, graph.GenerateNodeArgName("new_shape"));
+  NodeArg* new_shape_arg = CreateInitializerFromVector(graph, {static_cast<int64_t>(new_shape.size())}, new_shape,
+                                                       graph.GenerateNodeArgName("new_shape"));
 
   input_args.push_back(new_shape_arg);
 

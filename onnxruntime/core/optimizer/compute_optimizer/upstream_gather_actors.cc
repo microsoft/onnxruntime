@@ -138,7 +138,8 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
               "Unsqueeze",
               "Unsqueeze node",
               {current_node.MutableInputDefs()[input_index],
-               Create1DInitializerFromVector(graph, {pair.second.non_negative_axis}, graph.GenerateNodeArgName("axes"))},
+               CreateInitializerFromVector(graph, {1}, {pair.second.non_negative_axis},
+                                           graph.GenerateNodeArgName("axes"))},
               {&graph.GetOrCreateNodeArg(
                   graph.GenerateNodeArgName("unsqueeze_adaptor"),
                   current_node.MutableInputDefs()[input_index]->TypeAsProto())},
@@ -195,7 +196,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
             "Squeeze",
             "Squeeze node",
             {consumer.MutableInputDefs()[index],
-             Create1DInitializerFromVector(graph, {slice_axis}, graph.GenerateNodeArgName("axes"))},
+             CreateInitializerFromVector(graph, {1}, {slice_axis}, graph.GenerateNodeArgName("axes"))},
             {&graph.GetOrCreateNodeArg(
                 graph.GenerateNodeArgName("squeeze_adaptor"),
                 consumer.MutableInputDefs()[index]->TypeAsProto())},
@@ -593,8 +594,8 @@ bool ReshapeGatherActor::PostProcess(
           new_values.push_back(new_shape_const_values[i]);
         }
       }
-      auto new_shape_arg = Create1DInitializerFromVector(graph, new_values,
-                                                         graph.GenerateNodeArgName(arg_to_be_replaced->Name()));
+      auto new_shape_arg = CreateInitializerFromVector(graph, {static_cast<int64_t>(new_values.size())}, new_values,
+                                                       graph.GenerateNodeArgName(arg_to_be_replaced->Name()));
       graph_utils::ReplaceNodeInput(current_node, 1, *new_shape_arg);
     } else {
       LOG_DEBUG_INFO(logger, "Reshape's shape has 0 specified for axis: " + std::to_string(slice_axis) +
@@ -607,8 +608,8 @@ bool ReshapeGatherActor::PostProcess(
   if (info_without_node.output_dim_on_axis.has_dim_value()) {
     new_shape_const_values[slice_axis] = info_without_node.output_dim_on_axis.dim_value();
     auto new_shape_arg =
-        Create1DInitializerFromVector(graph, new_shape_const_values,
-                                      graph.GenerateNodeArgName(current_node.MutableInputDefs()[1]->Name()));
+        CreateInitializerFromVector(graph, {static_cast<int64_t>(new_shape_const_values.size())}, new_shape_const_values,
+                                    graph.GenerateNodeArgName(current_node.MutableInputDefs()[1]->Name()));
     graph_utils::ReplaceNodeInput(current_node, 1, *new_shape_arg);
     return true;
   }

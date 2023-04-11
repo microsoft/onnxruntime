@@ -41,81 +41,101 @@ Test graph include multiple equivalent subgraphs as below.
                              \_____________             _______/     graph input -1, scalar (int64_t)
                                            \           /        _______/
                                             \         /        /
-                            SoftmaxCrossEntropyLossInternal, reduction = 'mean', output_type=1
+                                  SCE Node, reduction = 'mean', output_type=1
                                             |
                                             |
                                     graph output, loss, scalar (float)
 */
 TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_Allowed) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
-  auto pre_graph_checker = [](Graph& graph) -> Status {
-    auto op_count_pre = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_count_pre.size() == 1U);
-    TEST_RETURN_IF_NOT(op_count_pre["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
-    return Status::OK();
-  };
 
-  auto post_graph_checker = [](Graph& graph) {
-    auto op_count_post = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_count_post.size() == 5U);
-    TEST_RETURN_IF_NOT(op_count_post["Sub"] == 1);
-    TEST_RETURN_IF_NOT(op_count_post["NonZero"] == 1);
-    TEST_RETURN_IF_NOT(op_count_post["Squeeze"] == 1);
-    TEST_RETURN_IF_NOT(op_count_post["com.microsoft.ShrunkenGather"] == 2);
-    TEST_RETURN_IF_NOT(op_count_post["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+  for (const bool is_sce_internal : {true, false}) {
+    auto pre_graph_checker = [is_sce_internal](Graph& graph) -> Status {
+      auto op_count_pre = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_pre.size() == 1U);
 
-    const NodeArg* squeeze_output_arg = nullptr;
-    for (Node& node : graph.Nodes()) {
-      if (node.OpType() == "Squeeze") {
-        squeeze_output_arg = node.OutputDefs()[0];
-        break;
-      }
-    }
+      if (is_sce_internal)
+        TEST_RETURN_IF_NOT(op_count_pre["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+      else
+        TEST_RETURN_IF_NOT(op_count_pre["SoftmaxCrossEntropyLoss"] == 1);
+      return Status::OK();
+    };
 
-    TEST_RETURN_IF_NOT(squeeze_output_arg != nullptr);
+    auto post_graph_checker = [is_sce_internal](Graph& graph) {
+      auto op_count_post = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_post.size() == 5U);
+      TEST_RETURN_IF_NOT(op_count_post["Sub"] == 1);
+      TEST_RETURN_IF_NOT(op_count_post["NonZero"] == 1);
+      TEST_RETURN_IF_NOT(op_count_post["Squeeze"] == 1);
+      TEST_RETURN_IF_NOT(op_count_post["com.microsoft.ShrunkenGather"] == 2);
 
-    for (Node& node : graph.Nodes()) {
-      if (node.OpType() == "SoftmaxCrossEntropyLossInternal") {
-        const auto& input_defs = node.InputDefs();
+      if (is_sce_internal)
+        TEST_RETURN_IF_NOT(op_count_post["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+      else
+        TEST_RETURN_IF_NOT(op_count_post["SoftmaxCrossEntropyLoss"] == 1);
 
-        {
-          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
-          TEST_RETURN_IF_NOT(producer_node != nullptr);
-          TEST_RETURN_IF_NOT(producer_node->OpType() == "ShrunkenGather");
-          TEST_RETURN_IF_NOT(producer_node->InputDefs()[1] == squeeze_output_arg);
-        }
-
-        {
-          auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
-          TEST_RETURN_IF_NOT(producer_node != nullptr);
-          TEST_RETURN_IF_NOT(producer_node->OpType() == "ShrunkenGather");
-          TEST_RETURN_IF_NOT(producer_node->InputDefs()[1] == squeeze_output_arg);
+      const NodeArg* squeeze_output_arg = nullptr;
+      for (Node& node : graph.Nodes()) {
+        if (node.OpType() == "Squeeze") {
+          squeeze_output_arg = node.OutputDefs()[0];
+          break;
         }
       }
+
+      TEST_RETURN_IF_NOT(squeeze_output_arg != nullptr);
+
+      for (Node& node : graph.Nodes()) {
+        if (node.OpType() == "SoftmaxCrossEntropyLossInternal" || node.OpType() == "SoftmaxCrossEntropyLoss") {
+          const auto& input_defs = node.InputDefs();
+
+          {
+            auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+            TEST_RETURN_IF_NOT(producer_node != nullptr);
+            TEST_RETURN_IF_NOT(producer_node->OpType() == "ShrunkenGather");
+            TEST_RETURN_IF_NOT(producer_node->InputDefs()[1] == squeeze_output_arg);
+          }
+
+          {
+            auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+            TEST_RETURN_IF_NOT(producer_node != nullptr);
+            TEST_RETURN_IF_NOT(producer_node->OpType() == "ShrunkenGather");
+            TEST_RETURN_IF_NOT(producer_node->InputDefs()[1] == squeeze_output_arg);
+          }
+        }
+      }
+      return Status::OK();
+    };
+
+    auto build_test_case = [is_sce_internal](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{32, 256}});
+      auto* input2_arg = builder.MakeInput<int64_t>({{32}});
+      auto* sce_out1 = builder.MakeOutput();
+      NodeArg* empty = builder.MakeEmptyInput();
+      auto* sce_out2 = builder.MakeIntermediate();
+
+      if (is_sce_internal) {
+        auto* ignore_index_arg = builder.MakeScalarInitializer<int64_t>(-100);
+        Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
+                                    {input1_arg, input2_arg, empty, ignore_index_arg},
+                                    {sce_out1, sce_out2}, kMSDomain);
+        sce.AddAttribute("reduction", "mean");
+        sce.AddAttribute("output_type", static_cast<int64_t>(1));
+      } else {
+        Node& sce = builder.AddNode("SoftmaxCrossEntropyLoss",
+                                    {input1_arg, input2_arg, empty},
+                                    {sce_out1, sce_out2});
+        sce.AddAttribute("reduction", "mean");
+        sce.AddAttribute("ignore_index", static_cast<int64_t>(-100));
+      }
+    };
+
+    std::vector<int> opsets{12, 13, 14, 15};
+    for (auto opset : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<InsertGatherBeforeSceLoss>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
     }
-    return Status::OK();
-  };
-
-  auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input1_arg = builder.MakeInput<float>({{32, 256}});
-    auto* input2_arg = builder.MakeInput<int64_t>({{32}});
-    auto* sce_out1 = builder.MakeOutput();
-    auto* ignore_index_arg = builder.MakeScalarInitializer<int64_t>(-100);
-    NodeArg* empty = builder.MakeEmptyInput();
-    auto* sce_out2 = builder.MakeIntermediate();
-    Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
-                                {input1_arg, input2_arg, empty, ignore_index_arg},
-                                {sce_out1, sce_out2}, kMSDomain);
-    sce.AddAttribute("reduction", "mean");
-    sce.AddAttribute("output_type", static_cast<int64_t>(1));
-  };
-
-  std::vector<int> opsets{12, 13, 14, 15};
-  for (auto opset : opsets) {
-    std::unique_ptr<GraphTransformer> transformer = std::make_unique<InsertGatherBeforeSceLoss>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
-                                          TransformerLevel::Level1,
-                                          1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -126,47 +146,66 @@ Test graph include multiple equivalent subgraphs as below.
                              \_____________             _______/     graph input -1, scalar (int64_t)
                                            \           /        _______/
                                             \         /        /
-                            SoftmaxCrossEntropyLossInternal, reduction = 'none', output_type=1
+                             SCE Node, reduction = 'none', output_type=1
                                             |
                                             |
                             graph output, loss, [32] (float)
 */
 TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_ReduceNone) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
-  auto pre_graph_checker = [](Graph& graph) -> Status {
-    auto op_count_pre = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_count_pre.size() == 1U);
-    TEST_RETURN_IF_NOT(op_count_pre["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
-    return Status::OK();
-  };
 
-  auto post_graph_checker = [](Graph& graph) {
-    auto op_count_post = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_count_post.size() == 1U);
-    TEST_RETURN_IF_NOT(op_count_post["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
-    return Status::OK();
-  };
+  for (const bool is_sce_internal : {true, false}) {
+    auto pre_graph_checker = [is_sce_internal](Graph& graph) -> Status {
+      auto op_count_pre = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_pre.size() == 1U);
+      if (is_sce_internal)
+        TEST_RETURN_IF_NOT(op_count_pre["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+      else
+        TEST_RETURN_IF_NOT(op_count_pre["SoftmaxCrossEntropyLoss"] == 1);
+      return Status::OK();
+    };
 
-  auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input1_arg = builder.MakeInput<float>({{32, 256}});
-    auto* input2_arg = builder.MakeInput<int64_t>({{32}});
-    auto* sce_out1 = builder.MakeOutput();
-    auto* ignore_index_arg = builder.MakeScalarInitializer<int64_t>(-100);
-    NodeArg* empty = builder.MakeEmptyInput();
-    auto* sce_out2 = builder.MakeIntermediate();
-    Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
-                                {input1_arg, input2_arg, empty, ignore_index_arg},
-                                {sce_out1, sce_out2}, kMSDomain);
-    sce.AddAttribute("reduction", "none");
-    sce.AddAttribute("output_type", static_cast<int64_t>(1));
-  };
+    auto post_graph_checker = [is_sce_internal](Graph& graph) {
+      auto op_count_post = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_post.size() == 1U);
+      if (is_sce_internal)
+        TEST_RETURN_IF_NOT(op_count_post["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+      else
+        TEST_RETURN_IF_NOT(op_count_post["SoftmaxCrossEntropyLoss"] == 1);
+      return Status::OK();
+    };
 
-  std::vector<int> opsets{12, 13, 14, 15};
-  for (auto opset : opsets) {
-    std::unique_ptr<GraphTransformer> transformer = std::make_unique<InsertGatherBeforeSceLoss>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
-                                          TransformerLevel::Level1,
-                                          1, pre_graph_checker, post_graph_checker));
+    auto build_test_case = [is_sce_internal](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{32, 256}});
+      auto* input2_arg = builder.MakeInput<int64_t>({{32}});
+      auto* sce_out1 = builder.MakeOutput();
+
+      NodeArg* empty = builder.MakeEmptyInput();
+      auto* sce_out2 = builder.MakeIntermediate();
+
+      if (is_sce_internal) {
+        auto* ignore_index_arg = builder.MakeScalarInitializer<int64_t>(-100);
+        Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
+                                    {input1_arg, input2_arg, empty, ignore_index_arg},
+                                    {sce_out1, sce_out2}, kMSDomain);
+        sce.AddAttribute("reduction", "none");
+        sce.AddAttribute("output_type", static_cast<int64_t>(1));
+      } else {
+        Node& sce = builder.AddNode("SoftmaxCrossEntropyLoss",
+                                    {input1_arg, input2_arg, empty},
+                                    {sce_out1, sce_out2});
+        sce.AddAttribute("reduction", "none");
+        sce.AddAttribute("ignore_index", static_cast<int64_t>(-100));
+      }
+    };
+
+    std::vector<int> opsets{12, 13, 14, 15};
+    for (auto opset : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<InsertGatherBeforeSceLoss>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
   }
 }
 
@@ -177,47 +216,62 @@ Test graph include multiple equivalent subgraphs as below.
                              \_____________             _______/     graph input -1, scalar (int64_t)
                                            \           /        _______/
                                             \         /        /
-                            SoftmaxCrossEntropyLossInternal, reduction = 'none', output_type=1
-                                            |                    \
-                                            |                     \
-               graph output, loss, scalar (float)        graph output, logits_out [32, 256] (float)
+                            SCE Node, reduction = 'none', output_type=1
+                                            |
+                                            |
+               graph output, loss, scalar (float)
 */
-TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_2ndOutputUsed) {
+TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_NoIgnoreIndex) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
-  auto pre_graph_checker = [](Graph& graph) -> Status {
-    auto op_count_pre = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_count_pre.size() == 1U);
-    TEST_RETURN_IF_NOT(op_count_pre["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
-    return Status::OK();
-  };
 
-  auto post_graph_checker = [](Graph& graph) {
-    auto op_count_post = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_count_post.size() == 1U);
-    TEST_RETURN_IF_NOT(op_count_post["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
-    return Status::OK();
-  };
+  for (const bool is_sce_internal : {true, false}) {
+    auto pre_graph_checker = [is_sce_internal](Graph& graph) -> Status {
+      auto op_count_pre = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_pre.size() == 1U);
+      if (is_sce_internal)
+        TEST_RETURN_IF_NOT(op_count_pre["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+      else
+        TEST_RETURN_IF_NOT(op_count_pre["SoftmaxCrossEntropyLoss"] == 1);
+      return Status::OK();
+    };
 
-  auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input1_arg = builder.MakeInput<float>({{32, 256}});
-    auto* input2_arg = builder.MakeInput<int64_t>({{32}});
-    auto* sce_out1 = builder.MakeOutput();
-    auto* ignore_index_arg = builder.MakeScalarInitializer<int64_t>(-100);
-    NodeArg* empty = builder.MakeEmptyInput();
-    auto* sce_out2 = builder.MakeOutput();
-    Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
-                                {input1_arg, input2_arg, empty, ignore_index_arg},
-                                {sce_out1, sce_out2}, kMSDomain);
-    sce.AddAttribute("reduction", "sum");
-    sce.AddAttribute("output_type", static_cast<int64_t>(1));
-  };
+    auto post_graph_checker = [is_sce_internal](Graph& graph) {
+      auto op_count_post = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_post.size() == 1U);
+      if (is_sce_internal)
+        TEST_RETURN_IF_NOT(op_count_post["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+      else
+        TEST_RETURN_IF_NOT(op_count_post["SoftmaxCrossEntropyLoss"] == 1);
+      return Status::OK();
+    };
 
-  std::vector<int> opsets{12, 13, 14, 15};
-  for (auto opset : opsets) {
-    std::unique_ptr<GraphTransformer> transformer = std::make_unique<InsertGatherBeforeSceLoss>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
-                                          TransformerLevel::Level1,
-                                          1, pre_graph_checker, post_graph_checker));
+    auto build_test_case = [is_sce_internal](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{32, 256}});
+      auto* input2_arg = builder.MakeInput<int64_t>({{32}});
+      auto* sce_out1 = builder.MakeOutput();
+      auto* sce_out2 = builder.MakeIntermediate();
+
+      if (is_sce_internal) {
+        Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
+                                    {input1_arg, input2_arg},
+                                    {sce_out1, sce_out2}, kMSDomain);
+        sce.AddAttribute("reduction", "sum");
+        sce.AddAttribute("output_type", static_cast<int64_t>(1));
+      } else {
+        Node& sce = builder.AddNode("SoftmaxCrossEntropyLoss",
+                                    {input1_arg, input2_arg},
+                                    {sce_out1, sce_out2});
+        sce.AddAttribute("reduction", "sum");
+      }
+    };
+
+    std::vector<int> opsets{12, 13, 14, 15};
+    for (auto opset : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<InsertGatherBeforeSceLoss>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
   }
 }
 

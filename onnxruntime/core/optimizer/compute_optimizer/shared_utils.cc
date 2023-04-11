@@ -169,12 +169,22 @@ int GetONNXOpSetVersion(const Graph& graph) {
   return onnx_opset;
 }
 
-NodeArg* Create1DInitializerFromVector(Graph& graph, const InlinedVector<int64_t>& values,
-                                       const std::string& name) {
+NodeArg* CreateInitializerFromVector(Graph& graph,
+                                     const InlinedVector<int64_t>& dims,
+                                     const InlinedVector<int64_t>& values,
+                                     const std::string& name) {
   ONNX_NAMESPACE::TensorProto const_tensor;
   const_tensor.set_name(name);
   const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  const_tensor.add_dims(values.size());
+
+  int64_t total_count = 1;
+  for (const int64_t dim : dims) {
+    const_tensor.add_dims(dim);
+    total_count *= dim;
+  }
+
+  ORT_ENFORCE(total_count == static_cast<int64_t>(values.size()));
+
   const_tensor.set_raw_data(values.data(), values.size() * sizeof(int64_t));
   return &graph_utils::AddInitializer(graph, const_tensor);
 }

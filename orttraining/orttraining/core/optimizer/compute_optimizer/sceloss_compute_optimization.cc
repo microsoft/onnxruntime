@@ -55,8 +55,8 @@ NodeArg* InsertNodesForValidLabelIndices(Graph& graph, Node& node, NodeArg* labe
   if (opset_lower_than_13) {
     attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{0});
   } else {
-    squeeze_input_args.push_back(onnxruntime::optimizer::compute_optimizer::Create1DInitializerFromVector(
-        graph, {0}, graph.GenerateNodeArgName("axes")));
+    squeeze_input_args.push_back(onnxruntime::optimizer::compute_optimizer::CreateInitializerFromVector(
+        graph, {1}, {0}, graph.GenerateNodeArgName("axes")));
   }
 
   auto squeeze_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("squeeze_adaptor"),
@@ -91,56 +91,76 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
 
     auto& node = *node_ptr;
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLossInternal", {1}, kMSDomain) ||
+    bool is_onnx_sce = graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLoss", {12, 13});
+    bool is_internal_sce = graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLossInternal", {1}, kMSDomain);
+
+    if ((!is_onnx_sce && !is_internal_sce) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       continue;
     }
 
-    // Found SoftmaxCrossEntropyLossInternal, check all requirements.
-
-    auto logits_shape = node.MutableInputDefs()[0]->Shape();
-    auto labels_shape = node.MutableInputDefs()[1]->Shape();
-    if (logits_shape == nullptr || labels_shape == nullptr) {
-      LOG_DEBUG_INFO(logger, "Skip SoftmaxCrossEntropyLossInternal node " + node.Name() +
-                                 " due to undefined input shapes.");
-      continue;
-    }
-
-    if (logits_shape->dim_size() != 2 || labels_shape->dim_size() != 1) {
-      LOG_DEBUG_INFO(logger, "Skip SoftmaxCrossEntropyLossInternal node " + node.Name() +
-                                 " due to unsupported input shape ranks.");
-      continue;
-    }
-
-    std::string reduction = node.GetAttributes().at("reduction").s();
-    if (reduction.compare("mean") == 0 || reduction.compare("sum") == 0) {
-      // loss output is a scalar, don't need reset shape.
-    } else {
-      LOG_DEBUG_INFO(logger, "Skip SoftmaxCrossEntropyLossInternal node " + node.Name() +
-                                 " due to loss [reduction=" + reduction + "].");
-      continue;
-    }
-
-    std::vector<const Node*> sce_out1_consumers = graph.GetConsumerNodes(node.OutputDefs()[1]->Name());
-    if (sce_out1_consumers.size() != 0 || graph.IsOutput(node.OutputDefs()[1])) {
-      LOG_DEBUG_INFO(logger, "Skip SoftmaxCrossEntropyLossInternal node " + node.Name() +
-                                 " due to log_prob output is graph output or consumed by other nodes.");
-      continue;
-    }
-
+    // Check whether this SCE node is handled or not.
     const Node* labels_producer = graph.GetProducerNode(node.MutableInputDefs()[1]->Name());
     // Skip if already inserted a ShrunkenGather node.
     if (labels_producer && graph_utils::IsSupportedOptypeVersionAndDomain(
                                *labels_producer, "ShrunkenGather", {1}, kMSDomain)) {
-      LOG_DEBUG_INFO(logger, "Skip SoftmaxCrossEntropyLossInternal node " + node.Name() +
-                                 " due to labels input is already consumed by a ShrunkenGather node.");
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                 ") due to labels input is already consumed by a ShrunkenGather node.");
       continue;
     }
 
-    if (node.InputDefs().size() >= 4 && !graph_utils::IsConstantInitializer(
-                                            graph, node.InputDefs()[3]->Name(), /* check_outer_scope */ false)) {
-      LOG_DEBUG_INFO(logger, "Skip SoftmaxCrossEntropyLossInternal node " + node.Name() +
-                                 " due to target padding idx is non-constant initializer.");
+    // Check shape requirements.
+    auto logits_shape = node.MutableInputDefs()[0]->Shape();
+    auto labels_shape = node.MutableInputDefs()[1]->Shape();
+    if (logits_shape == nullptr || labels_shape == nullptr) {
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                 ") due to undefined input shapes.");
+      continue;
+    }
+
+    if (logits_shape->dim_size() != 2 || labels_shape->dim_size() != 1) {
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                 ") due to unsupported input shape ranks.");
+      continue;
+    }
+
+    // Check attribute and input requirements.
+    std::string reduction = node.GetAttributes().at("reduction").s();
+    if (reduction.compare("mean") == 0 || reduction.compare("sum") == 0) {
+      // loss output is a scalar, don't need reset shape.
+    } else {
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                 ") due to loss [reduction=" + reduction + "].");
+      continue;
+    }
+
+    NodeArg* ignore_index_node_arg = nullptr;
+    if (is_internal_sce) {
+      if (node.InputDefs().size() < 4 || !graph_utils::IsConstantInitializer(
+                                             graph, node.InputDefs()[3]->Name(), /* check_outer_scope */ false)) {
+        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                   ") due to target padding idx is non-constant initializer. Input count: "
+                                   + std::to_string(node.InputDefs().size()));
+        continue;
+      }
+      ignore_index_node_arg = node.MutableInputDefs()[3];
+    } else {
+      const auto ignore_index_attr = node.GetAttributes().find("ignore_index");
+      if (ignore_index_attr != node.GetAttributes().end()) {
+        int ignore_index_value = (*ignore_index_attr).second.i();
+        ignore_index_node_arg = onnxruntime::optimizer::compute_optimizer::CreateInitializerFromVector(
+            graph, {}, {ignore_index_value}, graph.GenerateNodeArgName("ignore_index"));
+      } else {
+        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                   ") due to missing ignore_index attribute.");
+        continue;
+      }
+    }
+
+    std::vector<const Node*> sce_out1_consumers = graph.GetConsumerNodes(node.OutputDefs()[1]->Name());
+    if (sce_out1_consumers.size() != 0 || graph.IsOutput(node.OutputDefs()[1])) {
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                 ") due to log_prob output is graph output or consumed by other nodes.");
       continue;
     }
 
@@ -153,12 +173,10 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     // subgraph retrieving valid tokens for each SoftmaxCrossEntropyLossInternal node.
     // The duplication will be removed by CSE graph transformers.
     NodeArg* valid_labels_input_arg =
-        InsertNodesForValidLabelIndices(graph, node, node.MutableInputDefs()[1], node.MutableInputDefs()[3]);
+        InsertNodesForValidLabelIndices(graph, node, node.MutableInputDefs()[1], ignore_index_node_arg);
 
     // Insert the ShrunkenGather node on the two inputs.
     for (int i = 0; i < 2; ++i) {
-      LOG_DEBUG_INFO(logger, "Inserting ShrunkenGather node on SoftmaxCrossEntropyLossInternal node's " +
-                                 std::to_string(i) + "-th input");
       InlinedVector<NodeArg*> input_args;
       input_args.reserve(2);
       input_args.push_back(node.MutableInputDefs()[i]);
@@ -199,7 +217,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
   }
 
   LOG_DEBUG_INFO(logger, "Exit InsertGatherBeforeSceLoss, handled " + std::to_string(handled_sce_node_count) +
-                             " SoftmaxCrossEntropyLossInternal nodes");
+                             " SCE nodes");
 
   return Status::OK();
 }
