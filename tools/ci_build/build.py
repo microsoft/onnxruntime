@@ -700,11 +700,8 @@ def parse_arguments():
         # doesn't make sense to catch if no one throws
         args.enable_wasm_exception_throwing_override = True
 
-    if args.cmake_generator is None:
-        if args.build_wasm:
-            args.cmake_generator = "Ninja"
-        elif is_windows():
-            args.cmake_generator = "Visual Studio 16 2019"
+    if args.cmake_generator is None and is_windows():
+        args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 16 2019"
 
     return args
 
