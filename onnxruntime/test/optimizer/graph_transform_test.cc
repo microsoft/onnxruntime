@@ -6414,15 +6414,15 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
 
 /*
 Test graph include multiple equivalent subgraphs as below.
-           graph input [1, 1, 256, 8] (float)
+           graph input [1, 1, 8, 8] (float)
                  |
                 Div ______________________________
-            /    |                 |              |
-           /     |  float          |  half        |  half
-          / ...  |  / ...          |  /   ...     |  /   ...
-        Mul      Mul              Add            Add
-         |       |                     \          /
- graph out [1, 1, 256, 8](float)   graph out [1, 1, 256, 8](MLFloat16)
+            /    |    \_______     |              |
+           /     |  float  |  |    |  half        |  half
+          / ...  |  / ...  |  |    |  /   ...     |  /   ...
+        Mul      Mul      Sub Sub Add            Add
+         |       |         |  |        \          /
+ graph out [1, 1, 8, 8](float)   graph out [1, 1, 8, 8](MLFloat16)
 
 Be noted:
  the Mul's input initializer is a 2D float tensor.
@@ -6431,19 +6431,21 @@ Be noted:
 TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_count_pre.size() == 4U);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 5U);
     TEST_RETURN_IF_NOT(op_count_pre["Div"] == 1);
     TEST_RETURN_IF_NOT(op_count_pre["Cast"] == 1);
     TEST_RETURN_IF_NOT(op_count_pre["Mul"] == 3);
+    TEST_RETURN_IF_NOT(op_count_pre["Sub"] == 3);
     TEST_RETURN_IF_NOT(op_count_pre["Add"] == 3);
-    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 6U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 9U);
     return Status::OK();
   };
 
   auto post_graph_checker = [&](Graph& graph) {
     const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-    TEST_RETURN_IF_NOT(initialized_tensor_set.size() == 2U);
+    TEST_RETURN_IF_NOT(initialized_tensor_set.size() == 3U);
     const NodeArg* mul_initializer = nullptr;
+    const NodeArg* sub_initializer = nullptr;
     const NodeArg* add_initializer = nullptr;
     for (auto& node : graph.Nodes()) {
       if (node.OpType().compare("Mul") == 0) {
@@ -6451,34 +6453,54 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
           mul_initializer = node.InputDefs()[1];
           TEST_RETURN_IF(mul_initializer == nullptr);
           TEST_RETURN_IF_NOT(mul_initializer->Shape()->dim_size() == 2);
+          TEST_RETURN_IF_NOT(mul_initializer->Shape()->dim(0).dim_value() == 1);
+          TEST_RETURN_IF_NOT(mul_initializer->Shape()->dim(1).dim_value() == 8);
         } else {
           TEST_RETURN_IF_NOT(mul_initializer == node.InputDefs()[1]);
+        }
+      } else if (node.OpType().compare("Sub") == 0) {
+        if (!sub_initializer) {
+          sub_initializer = node.InputDefs()[1];
+          TEST_RETURN_IF(sub_initializer == nullptr);
+          TEST_RETURN_IF_NOT(sub_initializer->Shape()->dim_size() == 2);
+          TEST_RETURN_IF_NOT(sub_initializer->Shape()->dim(0).dim_value() == 8);
+          TEST_RETURN_IF_NOT(sub_initializer->Shape()->dim(1).dim_value() == 1);
+        } else {
+          TEST_RETURN_IF_NOT(sub_initializer == node.InputDefs()[1]);
         }
       } else if (node.OpType().compare("Add") == 0) {
         if (!add_initializer) {
           add_initializer = node.InputDefs()[1];
           TEST_RETURN_IF(add_initializer == nullptr);
           TEST_RETURN_IF_NOT(add_initializer->Shape()->dim_size() == 2);
+          TEST_RETURN_IF_NOT(add_initializer->Shape()->dim(0).dim_value() == 1);
+          TEST_RETURN_IF_NOT(add_initializer->Shape()->dim(1).dim_value() == 8);
         } else {
           TEST_RETURN_IF_NOT(add_initializer == node.InputDefs()[1]);
         }
       }
     }
     TEST_RETURN_IF(mul_initializer == nullptr);
+    TEST_RETURN_IF(sub_initializer == nullptr);
     TEST_RETURN_IF(add_initializer == nullptr);
     for (const auto& entry : initialized_tensor_set) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
       int32_t data_type = tensor_proto->data_type();
       onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
+      TEST_RETURN_IF_NOT(float_const.size() == 8);
       if (entry.first.compare(mul_initializer->Name()) == 0) {
-        TEST_RETURN_IF_NOT(float_const.size() == 8);
+        TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        for (int i = 0; i < 8; ++i) {
+          float float_const_value = *(float_const.data<float>() + i);
+          TEST_RETURN_IF_NOT(float_const_value == i * 1.0f);
+        }
+      } else if (entry.first.compare(sub_initializer->Name()) == 0) {
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         for (int i = 0; i < 8; ++i) {
           float float_const_value = *(float_const.data<float>() + i);
           TEST_RETURN_IF_NOT(float_const_value == i * 1.0f);
         }
       } else if (entry.first.compare(add_initializer->Name()) == 0) {
-        TEST_RETURN_IF_NOT(float_const.size() == 8);
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
         for (int i = 0; i < 8; ++i) {
           float float_const_value = math::halfToFloat((float_const.data<MLFloat16>() + i)->val);
@@ -6488,9 +6510,10 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
     }
 
     auto op_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_count.size() == 4U);
+    TEST_RETURN_IF_NOT(op_count.size() == 5U);
     TEST_RETURN_IF_NOT(op_count["Div"] == 1);
     TEST_RETURN_IF_NOT(op_count["Mul"] == 3);
+    TEST_RETURN_IF_NOT(op_count["Sub"] == 3);
     TEST_RETURN_IF_NOT(op_count["Cast"] == 1);
     TEST_RETURN_IF_NOT(op_count["Add"] == 3);
     return Status::OK();
@@ -6506,16 +6529,21 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
   }
 
   auto build_test_case_float = [&values, &values_float16](ModelTestBuilder& builder) {
-    auto* input0_arg = builder.MakeInput<float>({{1, 1, 256, 8}});
-    auto* input1_arg = builder.MakeInput<float>({{1, 1, 256, 8}});
+    auto* input0_arg = builder.MakeInput<float>({{1, 1, 8, 8}});
+    auto* input1_arg = builder.MakeInput<float>({{1, 1, 8, 8}});
     auto* div_out = builder.MakeIntermediate();
     builder.AddNode("Div", {input0_arg, input1_arg}, {div_out});
 
     for (size_t i = 0; i < 3; ++i) {
       NodeArg* mul_initializer = builder.MakeInitializer<float>({1, 8}, values);
-
       auto* mul_out = builder.MakeOutput();
       builder.AddNode("Mul", {div_out, mul_initializer}, {mul_out});
+    }
+
+    for (size_t i = 0; i < 3; ++i) {
+      NodeArg* sub_initializer = builder.MakeInitializer<float>({8, 1}, values);
+      auto* sub_out = builder.MakeOutput();
+      builder.AddNode("Sub", {div_out, sub_initializer}, {sub_out});
     }
 
     auto* cast_out = builder.MakeIntermediate();
@@ -6527,6 +6555,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
       builder.AddNode("Add", {cast_out, add_initializer}, {add_out});
     }
   };
+
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),

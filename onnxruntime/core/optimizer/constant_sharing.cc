@@ -32,21 +32,19 @@ using SupportedTypeList = boost::mp11::mp_list<MLFloat16, float, double, int32_t
 static constexpr int64_t MAX_SIZE_PER_VALUE = 8;
 static constexpr char SHARED_INITIALIZER_PREFIX[] = "ortshared_";
 
-bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape, int64_t& num_elements) {
+bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape,
+                      int64_t& num_elements) {
   if (input_shape == nullptr) return false;
 
   size_t dim_size = static_cast<size_t>(input_shape->dim_size());
-  if (dim_size == 0) {
-    return true;
-  }
-
   num_elements = 1;
   for (size_t i = 0; i < dim_size; ++i) {
     if (!utils::HasDimValue(input_shape->dim(i))) {
       return false;
     }
-    num_elements *= input_shape->dim(i).dim_value();
 
+    int64_t dim_value = input_shape->dim(i).dim_value();
+    num_elements *= dim_value;
     if (num_elements > MAX_SIZE_PER_VALUE) {
       return false;
     }
@@ -116,6 +114,12 @@ void ReplaceInputsToUseSharedInitializer(Graph& graph,
 
 /**
  * @brief Initializer value representation, which is used to store and compare initializer values.
+ *
+ * Two instances of InitializerValue are equal when:
+ * 1. data type match.
+ * 2. data rank match.
+ * 3. shape match.
+ * 4. value exactly match.
  */
 struct InitializerValue {
   InitializerValue(const ONNX_NAMESPACE::TensorProto* tensor_proto, Graph& graph)
@@ -167,7 +171,6 @@ size_t GetOrAddValueInConstantStore(
 Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                   const logging::Logger& logger) const {
   int shared_count = 0;
-
   // Accumulated map from type/value/rank to initializer:
   // > The key is a string representation of initializer's data type, value and rank.
   // > The value is newly created initializer NodeArg* to be shared.
@@ -183,7 +186,6 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
         excluded_initializers_.find(entry.first) != excluded_initializers_.end()) {
       continue;
     }
-
     original_initializer_names.push_back(entry.first);
   }
 
@@ -191,9 +193,9 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // and it will be hard to read. Instead, a constant value store is maintained, then the value index is used as the
   // value unique id when construct pattern key.
   InlinedHashMap<std::string, InlinedVector<std::unique_ptr<InitializerValue>>> const_value_store;
-  int64_t num_elements = 1;
   for (const auto& initializer_name : original_initializer_names) {
     NodeArg* origin_initializer_node_arg = graph.GetNodeArg(initializer_name);
+    int64_t num_elements = 1;
     if (origin_initializer_node_arg == nullptr ||
         !IsAllowedToShare(origin_initializer_node_arg->Shape(), num_elements)) {
       continue;
@@ -205,7 +207,6 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     if (!tensor_proto || !IsSupportedDataType(tensor_proto->data_type())) {
       continue;
     }
-
     // A map used to collect those consumers who have inputs use origin_initializer_node_arg.
     // > The key is consumer Node pointer.
     // > The value is a list of indices for the consumer Nodes' input (that used origin_initializer_node_arg).
@@ -215,7 +216,6 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     if (found_subgraph_usage || consumer_node_to_input_ports_map.size() == 0) {
       continue;
     }
-
     const std::string data_store_key = MakeString(tensor_proto->data_type(),
                                                   "_", origin_initializer_node_arg->Shape()->dim_size(),
                                                   "_", num_elements);
@@ -248,7 +248,6 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   }
 
   LOGS(logger, INFO) << "Total shared scalar initializer count: " << shared_count;
-
   return Status::OK();
 }
 
