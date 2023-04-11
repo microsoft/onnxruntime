@@ -73,7 +73,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const 
   ORT_ENFORCE(p_type != nullptr);
   const size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
   auto buffer = MakeBuffer(len, p_data, nullptr /*deleter*/, alloc_info_.location, offset);
-  Init(p_type, std::make_shared<Storage>(std::move(buffer)), shape, strides);
+  Init(p_type, std::make_unique<Storage>(std::move(buffer)), shape, strides);
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
@@ -82,7 +82,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   ORT_ENFORCE(p_type != nullptr);
   size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
   auto buffer = MakeBuffer(len, allocator, alloc_info_.location, 0L);
-  Init(p_type, std::make_shared<Storage>(std::move(buffer)), shape, strides);
+  Init(p_type, std::make_unique<Storage>(std::move(buffer)), shape, strides);
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
@@ -91,7 +91,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
   ORT_ENFORCE(p_type != nullptr);
   size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
   auto buffer = MakeBuffer(len, p_data, [deleter](void *ptr){ deleter->Free(ptr); }, alloc_info_.location, offset);
-  Init(p_type, std::make_shared<Storage>(std::move(buffer)), shape, strides);
+  Init(p_type, std::make_unique<Storage>(std::move(buffer)), shape, strides);
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
@@ -110,7 +110,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::sha
     const size_t len = Tensor::CalculateTensorStorageSize(p_type, shard, strides);
     buffers.emplace_back(MakeBuffer(len, allocator, allocator->Info().location));
   }
-  Init(p_type, std::make_shared<Storage>(std::move(buffers), std::make_optional(shardDims)), shape, strides);
+  Init(p_type, std::make_unique<Storage>(std::move(buffers), std::make_optional(shardDims)), shape, strides);
 }
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
@@ -162,7 +162,7 @@ size_t Tensor::SizeInBytes() const {
   return ret;
 }
 
-void Tensor::Init(MLDataType p_type, std::shared_ptr<Storage> storage, const TensorShape& shape,
+void Tensor::Init(MLDataType p_type, std::unique_ptr<Storage>&& storage, const TensorShape& shape,
             gsl::span<const int64_t> strides) {
   int64_t shape_size = shape.Size();
   if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
@@ -170,7 +170,7 @@ void Tensor::Init(MLDataType p_type, std::shared_ptr<Storage> storage, const Ten
   ORT_ENFORCE(dtype_ != nullptr,
               "Tensor is expected to contain one of the primitive data types. Got: ", DataTypeImpl::ToString(p_type));
   shape_ = shape;
-  storage_ = storage;
+  storage_ = std::move(storage);
 
   // for string tensors, if this tensor own the buffer (caller passed in the deleter)
   // do the placement new for strings on pre-allocated buffer.
@@ -194,13 +194,12 @@ void Tensor::Init(MLDataType p_type, std::shared_ptr<Storage> storage, const Ten
 }
 
 Tensor::Tensor(Tensor&& other) noexcept
-    : storage_(other.storage_),
+    : storage_(std::move(other.storage_)),
       shape_(other.shape_),
       dtype_(other.dtype_),
       alloc_info_(other.alloc_info_) {
   other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
   other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
-  other.storage_ = nullptr;
 }
 
 Tensor& Tensor::operator=(Tensor&& other) noexcept {
@@ -209,13 +208,12 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept {
 
     dtype_ = other.dtype_;
     shape_ = other.shape_;
-    storage_ = other.storage_;
+    storage_ = std::move(other.storage_);
     alloc_info_ = other.alloc_info_;
 
 
     other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
     other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
-    other.storage_ = nullptr;
   }
   return *this;
 }

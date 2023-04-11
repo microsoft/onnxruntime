@@ -349,11 +349,12 @@ class Tensor final {
    */
   void SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides);
 #endif
+  Storage* GetStorage() const { return storage_.get(); }
 
   // More API methods.
  private:
   void Init(MLDataType p_type,
-            std::shared_ptr<Storage> storage,
+            std::unique_ptr<Storage>&& storage,
             const TensorShape& shape,
             gsl::span<const int64_t> strides = {});
 
@@ -362,8 +363,7 @@ class Tensor final {
 #ifdef ENABLE_STRIDED_TENSORS
   bool CheckIsContiguous() const;
 #endif
-  auto Storage() const { return storage_; }
-  std::shared_ptr<Storage> storage_;
+  std::unique_ptr<Storage> storage_;
 
   TensorShape shape_;
 #ifdef ENABLE_STRIDED_TENSORS
