@@ -29,7 +29,9 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
 
   ORT_RETURN_IF(type_str_it == type_str_map.end(),
                 "Failed to find args for kernel type string '", kernel_type_str,
-                "'. If type constraint names are available, ensure that they are used in the kernel def type "
+                "' for node type '", node.OpType(), "' among ", type_str_map.size(), " registered kernels. ",
+                "If type constraint names are available, ",
+                "ensure that they are used in the kernel def type "
                 "constraints instead of op input or output names. Not doing so will result in this error.");
   resolved_args = type_str_it->second;
   return Status::OK();

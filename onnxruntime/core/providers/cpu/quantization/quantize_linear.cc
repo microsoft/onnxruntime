@@ -3,6 +3,8 @@
 
 #include <core/common/safeint.h>
 #include "core/framework/element_type_lists.h"
+#include "core/framework/float8.h"
+#include "core/framework/float16.h"
 #include "core/providers/cpu/quantization/quantize_linear.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
@@ -47,7 +49,8 @@ static void PrepareForQDQ(const TensorShape& input_shape,
       19,                                                         \
       T,                                                          \
       KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()), \
       DequantizeLinear<T>);
 
 #define REGISTER_DEQUANTIZELINEAR_VERSIONED(T)                    \
@@ -92,6 +95,41 @@ IsNull(const OutputType& value) {
   return value == OutputType(static_cast<float>(0), true);
 }
 
+template <typename T, typename OutT>
+struct DequantizeLinearApply {
+  void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+    for (size_t n = 0; n < static_cast<size_t>(N); n++) {
+      for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
+        auto zp = zero_point ? static_cast<int32_t>(zero_point[bd]) : 0;
+        auto sc = static_cast<float>(scale[bd]);
+        for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {
+          *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
+        }
+      }
+    }
+  }
+};
+
+#define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T) \
+  template <typename OutT> \
+  struct DequantizeLinearApply<T, OutT> { \
+    void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale, OutT* output, const T*) { \
+      for (size_t n = 0; n < static_cast<size_t>(N); n++) { \
+        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) { \
+          auto sc = scale[bd]; \
+          for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++, input++) { \
+            *output++ = static_cast<OutT>(input->ToFloat() * sc); \
+          } \
+        } \
+      } \
+    } \
+  };
+
+DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E4M3FN)
+DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E4M3FNUZ)
+DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2)
+DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2FNUZ)
+
 // formula is Y = (X - ZeroPoint) * Scale
 template <typename T>
 Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
@@ -108,28 +146,30 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, N, broadcast_dim, block_size);
 
-  const float* scale = x_scale.Data<float>();
-  const T* input = x.Data<T>();
-  float* output = y.MutableData<float>();
-
   const T* zero_point = x_zero_point ? x_zero_point->Data<T>() : nullptr;
   if (boost::mp11::mp_contains<TypeList<int32_t, Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ>, T>::value) {
     ORT_ENFORCE(zero_point == nullptr ||
                     std::all_of(zero_point,
                                 zero_point + x_zero_point->Shape().Size(),
                                 [](T zp) { return IsNull(zp); }),
-                "DequantizeLinear with type int32 should have no zero point or all zero points should be 0");
+                "DequantizeLinear with type int32 or float8 should have no zero point or all zero points should be 0");
   }
 
-  for (size_t n = 0; n < static_cast<size_t>(N); n++) {
-    for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
-      auto zp = zero_point ? static_cast<int32_t>(zero_point[bd]) : 0;
-      auto sc = scale[bd];
+  const auto to = x_scale.GetElementType();
+  const T* input = x.Data<T>();
 
-      for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {
-        *output++ = static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc;
-      }
-    }
+  if (to == ONNX_NAMESPACE::TensorProto::FLOAT) {
+    const float* scale = x_scale.Data<float>();
+    float* output = y.MutableData<float>();
+    DequantizeLinearApply<T, float>().op(N, broadcast_dim, block_size, input, scale, output, zero_point);
+  } else if (to == ONNX_NAMESPACE::TensorProto::FLOAT16) {
+    const MLFloat16* scale = x_scale.Data<MLFloat16>();
+    MLFloat16* output = y.MutableData<MLFloat16>();
+    DequantizeLinearApply<T, MLFloat16>().op(N, broadcast_dim, block_size, input, scale, output, zero_point);
+  } else if (to == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
+    ORT_THROW("DequantizeLinear into BFLOAT16 is not implemented yet.");
+  } else {
+    ORT_THROW("DequantizeLinear only outputs FLOAT16, FLOAT or BFLOAT16.");
   }
 
   return Status::OK();

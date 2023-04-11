@@ -81,4 +81,5 @@ unfixable = [
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.
 # Prefer inline ignores with `noqa: xxx`.
 # Eventually this list should become empty.
+"onnxruntime/onnxruntime/test/**" = ["N806"] # variable casing
 "orttraining/orttraining/test/**" = ["N802"] # Function casing
