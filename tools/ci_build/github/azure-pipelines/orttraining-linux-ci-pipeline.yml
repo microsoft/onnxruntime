@@ -13,9 +13,9 @@ jobs:
     clean: all
   variables:
     skipComponentGovernanceDetection: true
-    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    CCACHE_DIR: $(Agent.TempDirectory)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  pool: onnxruntime-Ubuntu-2004-Training-CPU
+  pool: onnxruntime-Ubuntu-2004-Training-CPU-AMD
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
@@ -44,7 +44,7 @@ jobs:
   - task: Cache@2
     inputs:
       key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: $(CCACHE_DIR)
+      path: ${{ CCACHE_DIR }}
       cacheHitVar: CACHE_RESTORED
       restoreKeys: |
         "$(TODAY)" | "$(Build.SourceBranch)"
@@ -56,13 +56,13 @@ jobs:
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        mkdir -p $(Pipeline.Workspace)/ccache
+        mkdir -p ${{ CCACHE_DIR }}
         docker run --rm \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          --volume $(Pipeline.Workspace)/ccache:/cache \
+          --volume ${{ CCACHE_DIR }}:/cache \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
