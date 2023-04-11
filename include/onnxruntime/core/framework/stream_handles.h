@@ -29,7 +29,7 @@ class Stream {
 
   virtual ~Stream() = default;
   virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) {
-    return std::make_unique<synchronize::Notification>(*this);
+    return {};
   };
   // block the host thread until all the tasks in the stream finished.
   virtual void Flush(){};
@@ -109,7 +109,8 @@ class Stream {
 };
 
 namespace synchronize {
-// an object which record the status of the stream, and can be wait on from another stream.
+// An abstraction used for synchronization between streams. See its concrete subclass (CudaNotification, etc.) how the activate
+// and wait works for a specific stream
 class Notification {
  public:
   explicit Notification(Stream& s) : stream_(s) {}
@@ -131,7 +132,7 @@ class Notification {
   }
 
  protected:
-  virtual void Activate() {};
+  virtual void Activate() = 0;
   // which stream create this notification.
   Stream& stream_;
   // TODO: use inline container.

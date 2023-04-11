@@ -101,7 +101,6 @@ class BFCArena : public IAllocator {
 
   ArenaType GetArenaType() const { return arena_type_; }
 
-  // Secure the allocated chunk on the target stream
   virtual void SecureTheChunk(Stream* /*chunk_stream*/,
                               Stream* /*target_stream*/,
                               WaitNotificationFn /*wait_fn*/) const {}

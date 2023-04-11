@@ -340,7 +340,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
                                gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
 #ifdef ORT_ENABLE_STREAM
-                               DeviceStreamCollection* device_streams,
+                               const DeviceStreamCollection* device_streams,
 #endif
                                const SessionState& session_state)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
@@ -434,7 +434,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
 #ifdef ORT_ENABLE_STREAM
               StreamAwareArena* stream_aware_alloc = AsStreamBasedAllocator(alloc);
               if (stream_aware_alloc && device_streams_) {
-                Stream* mem_pattern_stream = device_streams_->CreateMemoryPatternStream();
+                Stream* mem_pattern_stream = device_streams_->GetRootStream();
                 buffer = stream_aware_alloc->AllocOnStream(peak_size, mem_pattern_stream, nullptr);
                 for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
                   stream_aware_alloc->SecureTheChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);

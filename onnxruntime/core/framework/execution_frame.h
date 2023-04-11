@@ -142,7 +142,7 @@ class ExecutionFrame final : public IExecutionFrame {
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
 #ifdef ORT_ENABLE_STREAM
-                 DeviceStreamCollection* device_streams,
+                 const DeviceStreamCollection* device_streams,
 #endif
                  const SessionState& session_state);
   ~ExecutionFrame() override;
@@ -218,7 +218,7 @@ class ExecutionFrame final : public IExecutionFrame {
   Stream* GetValueStream(int ort_value_idx) const;
 
 #ifdef ORT_ENABLE_STREAM
-  DeviceStreamCollection* device_streams_;
+  const DeviceStreamCollection* device_streams_;
 #endif
 
   const SessionState& session_state_;

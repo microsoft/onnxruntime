@@ -7,6 +7,18 @@
 
 namespace onnxruntime {
 
+struct DummyNotification : public synchronize::Notification {
+DummyNotification(Stream& s) : Notification(s) {}
+void Activate() override {}
+};
+
+struct DummyStream : Stream {
+DummyStream(StreamHandle h, const OrtDevice& d) : Stream(h, d) {}
+std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
+  return std::make_unique<DummyNotification>(*this);
+}
+};
+
 class DeviceStreamCollectionImpl {
  public:
   DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams) {
@@ -18,6 +30,7 @@ class DeviceStreamCollectionImpl {
       eps_.push_back(ep);
     }
     is_main_graph_ = sess_state.GetGraphViewer().ParentNode() == nullptr;
+    root_stream_ = std::make_unique<DummyStream>(nullptr, OrtDevice());
   }
 
   ~DeviceStreamCollectionImpl() {
@@ -56,7 +69,7 @@ class DeviceStreamCollectionImpl {
     for (auto& stream : owned_streams_) {
       ReleaseSingleStreamBuffers(stream.get());
     }
-    ReleaseSingleStreamBuffers(memory_pattern_stream_.get());
+    ReleaseSingleStreamBuffers(root_stream_.get());
     return Status::OK();
   }
 
@@ -82,11 +95,8 @@ class DeviceStreamCollectionImpl {
 
   size_t NumStreams() { return num_streams_; }
 
-  Stream* CreateMemoryPatternStream() {
-    if (!memory_pattern_stream_) {
-      memory_pattern_stream_ = std::make_unique<Stream>(nullptr, OrtDevice());
-    }
-    return memory_pattern_stream_.get();
+  Stream* GetRootStream() {
+    return root_stream_.get();
   }
 
  private:
@@ -97,7 +107,9 @@ class DeviceStreamCollectionImpl {
   // with a different lifetime of session state, we need to hold the reference of EPs.
   InlinedVector<std::shared_ptr<IExecutionProvider>> eps_;
   bool is_main_graph_ = false;
-  std::unique_ptr<Stream> memory_pattern_stream_;
+  // This is used in ExecutionFrame when memory pattern is enabled, to allocate the peak size memory
+  // labelled this stream in the current thread, instead of the default stream which will be used in all the threads (thus caused thread safe issue)
+  std::unique_ptr<Stream> root_stream_;
   void ReleaseSingleStreamBuffers();
 };
 
@@ -130,8 +142,8 @@ Stream* DeviceStreamCollection::GetStream(size_t stream_idx) const {
   return impl_->GetStream(stream_idx);
 }
 
-Stream* DeviceStreamCollection::CreateMemoryPatternStream() {
-  return impl_->CreateMemoryPatternStream();
+Stream* DeviceStreamCollection::GetRootStream() const {
+  return impl_->GetRootStream();
 }
 
 }  // namespace onnxruntime
