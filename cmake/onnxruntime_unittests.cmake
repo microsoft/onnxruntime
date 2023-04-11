@@ -1094,47 +1094,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
-#eager mode test
-if(onnxruntime_ENABLE_EAGER_MODE)
-  file(GLOB onnxruntime_eager_mode_test_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/eager/*.cc"
-    )
-  onnxruntime_add_executable(onnxruntime_eager_mode_test ${onnxruntime_eager_mode_test_src})
-  target_include_directories(onnxruntime_eager_mode_test PRIVATE ${ONNXRUNTIME_ROOT}
-          ${onnxruntime_graph_header}
-          ${onnxruntime_exec_src_dir}
-          ${CMAKE_CURRENT_BINARY_DIR}
-          "${TEST_SRC_DIR}/util/include")
-  set(onnxruntime_eager_mode_libs
-          onnxruntime_eager
-          onnxruntime_session
-          onnxruntime_optimizer
-          onnxruntime_providers
-          onnxruntime_util
-          onnxruntime_framework
-          onnxruntime_graph
-          ${ONNXRUNTIME_MLAS_LIBS}
-          onnxruntime_common
-          onnx
-          onnx_proto
-          ${PROTOBUF_LIB}
-          GTest::gtest
-          re2::re2
-          onnxruntime_flatbuffers
-          flatbuffers::flatbuffers
-          ${CMAKE_DL_LIBS}
-          )
-  if(onnxruntime_ENABLE_TRAINING)
-    list(APPEND onnxruntime_eager_mode_libs onnxruntime_training tensorboard)
-  endif()
-  IF(NOT WIN32)
-    list(APPEND onnxruntime_eager_mode_libs nsync::nsync_cpp)
-  endif()
-  target_link_libraries(onnxruntime_eager_mode_test PRIVATE ${onnxruntime_eager_mode_libs} Threads::Threads ${onnxruntime_EXTERNAL_LIBRARIES})
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    target_link_libraries(onnxruntime_eager_mode_test PRIVATE Python::Python)
-  endif()
-endif()
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   #perf test runner

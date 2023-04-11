@@ -27,7 +27,7 @@ jobs:
       displayName: Install protobuf
 
     - script: |
-        ccache -s
+        ccache -sv
         ccache -z
       displayName: Show Cache stats and Clear protolbuf stats
 
@@ -65,6 +65,6 @@ jobs:
         CCACHE_SLOPPINESS: modules
 
     - script: |
-        ccache -s
+        ccache -sv
         ccache -z
       displayName: Show Cache stats
