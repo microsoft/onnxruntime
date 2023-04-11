@@ -143,6 +143,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Conv", "Conv2d"},
 
         {"GlobalAveragePool", "PoolAvg2d"},
+        {"AveragePool", "PoolAvg2d"},
         {"MaxPool", "PoolMax2d"},
 
         {"Reshape", "Reshape"},
@@ -161,7 +162,8 @@ class BaseOpBuilder : public IOpBuilder {
         {"ConvTranspose", "TransposeConv2d"},
         {"Tile", "Tile"},
         {"TopK", "TopK"},
-        {"InstanceNormalization", "InstanceNorm"}};
+        {"InstanceNormalization", "InstanceNorm"},
+        {"BatchNormalization", "Batchnorm"}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;
@@ -251,7 +253,32 @@ class BaseOpBuilder : public IOpBuilder {
                               int32_t& default_axis_value) const;
   Qnn_TensorType_t GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name) const;
 
-  mutable size_t output_count_ = std::numeric_limits<uint32_t>::max();
+  size_t GetInputCountQnnRequired(const NodeUnit& node_unit) const {
+    auto input_output_cout = GetInputOutputCountQnnRequired(node_unit.OpType());
+
+    return 0 == input_output_cout.first ? node_unit.Inputs().size() : input_output_cout.first;
+  }
+
+  size_t GetOutputCountQnnRequired(const NodeUnit& node_unit) const {
+    auto input_output_cout = GetInputOutputCountQnnRequired(node_unit.OpType());
+
+    return 0 == input_output_cout.second ? node_unit.Outputs().size() : input_output_cout.second;
+  }
+
+ private:
+  static const std::pair<size_t, size_t> GetInputOutputCountQnnRequired(std::string onnx_op_type) {
+    static const std::unordered_map<std::string, std::pair<size_t, size_t>> input_output_count_qnn_required = {
+        {"GlobalAveragePool", {0, 1}},
+        {"MaxPool", {0, 1}},
+        {"BatchNormalization", {3, 1}}};
+
+    auto pos = input_output_count_qnn_required.find(onnx_op_type);
+    if (pos == input_output_count_qnn_required.end()) {
+      return std::make_pair< size_t, size_t>(0, 0);
+    } else {
+      return pos->second;
+    }
+  }
 
  private:
   std::string op_builder_type_;
