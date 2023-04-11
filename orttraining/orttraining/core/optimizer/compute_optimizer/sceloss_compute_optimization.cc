@@ -3,13 +3,14 @@
 
 #include <onnx/defs/attr_proto_util.h>
 
+#include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
+
 #include "core/graph/graph_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/shared_utils.h"
 #include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
-#include "orttraining/core/optimizer/compute_optimizer/sceloss_flops_reduction.h"
 
 namespace onnxruntime {
 
@@ -82,7 +83,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
   GraphViewer graph_viewer(graph);
   size_t handled_sce_node_count = 0;  // For summary
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
-  for (auto index : order) {
+  for (const auto index : order) {
     auto* node_ptr = graph.GetNode(index);
     if (!node_ptr)
       // node was removed.
@@ -112,27 +113,18 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     }
 
     std::string reduction = node.GetAttributes().at("reduction").s();
-    bool need_reset_shape = false;
     if (reduction.compare("mean") == 0 || reduction.compare("sum") == 0) {
       // loss output is a scalar, don't need reset shape.
-    } else if (reduction.compare("none") == 0) {
-      need_reset_shape = true;
     } else {
       LOG_DEBUG_INFO(logger, "Skip SoftmaxCrossEntropyLossInternal node " + node.Name() +
-                                 " due to unsupported reduction type.");
-      continue;
-    }
-
-    if (need_reset_shape) {
-      LOG_DEBUG_INFO(logger, "Skip SoftmaxCrossEntropyLossInternal node " + node.Name() +
-                                 " due to loss [reduction=none].");
+                                 " due to loss [reduction=" + reduction + "].");
       continue;
     }
 
     std::vector<const Node*> sce_out1_consumers = graph.GetConsumerNodes(node.OutputDefs()[1]->Name());
     if (sce_out1_consumers.size() != 0 || graph.IsOutput(node.OutputDefs()[1])) {
       LOG_DEBUG_INFO(logger, "Skip SoftmaxCrossEntropyLossInternal node " + node.Name() +
-                                 " due to logit output is graph output or consumed by other nodes.");
+                                 " due to log_prob output is graph output or consumed by other nodes.");
       continue;
     }
 

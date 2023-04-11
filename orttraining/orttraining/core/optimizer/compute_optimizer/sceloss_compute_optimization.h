@@ -23,10 +23,12 @@ namespace onnxruntime {
  * > `token_count` usually equals with `batch size` x `sequence length`.
  * > `classes` usually equals with `vocabulary`.
  *
- * Only insert ShrunkGather if all following conditions are met:
- * 1. `SoftmaxCrossEntropyLossInternal`'s reduction MUST not be 'none', to make sure loss is a scalar.
+ * Only insert ShrunkGather if all following conditions are met for `SoftmaxCrossEntropyLossInternal`:
+ * 1. Its reduction attribute value is 'sum' or 'mean', to make sure loss is a scalar.
  *   Otherwise, the loss is in shape [token_count], changing on `token_count` will affect subsequent computations.
- * 2. `SoftmaxCrossEntropyLossInternal`'s 2nd output MUST not be graph output and not consumed by other other nodes.
+ * 2. Its 2nd output MUST not be graph output and not consumed by other other nodes.
+ * 3. Its 4th input ignore_index is a constant scalar value.
+ * 4. Its 2nd input label's input node is not `ShrunkGather` node (to avoid this transformer duplicated applied).
  *
  *
  * After the transformation:
@@ -34,17 +36,19 @@ namespace onnxruntime {
  *                                            \_______
  *                                             \       \
  *                                              \     Sub(ignore_index)
- *                                               \        \
- *                                                |        |
- *                                                |        |
- *                                                |      NonZero
- *                                                |        |
- *                                                |      Squeeze
- *                                                |        |
+ *                                               \          \
+ *                                                |           |
+ *                                                |           |
+ *                                                |        NonZero
+ *                                                |           |
+ *                                                |         Squeeze
+ *                                                |           |
  *                                                |   indices of valid token [valid_token_count]
  *                                                 \          |
- *  logits [token_count, classes]                    \       /
- *                      \     /                       \     /
+ *  logits [token_count, classes]  _________________\ _ _____/
+ *                      \         /                  \      /
+ *                       \       /                    \    /
+ *                        \     /                      \  /
  *                  ShrunkenGather                ShrunkenGather
  *            [valid_token_count, classes]         [valid_token_count]
  *                         \                          /

@@ -16,7 +16,7 @@
 #include "core/graph/model.h"
 #include "core/optimizer/utils.h"
 #include "core/util/math.h"
-#include "orttraining/core/optimizer/compute_optimizer/sceloss_flops_reduction.h"
+#include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
 
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"

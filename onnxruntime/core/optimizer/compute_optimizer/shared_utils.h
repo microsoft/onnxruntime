@@ -157,12 +157,12 @@ std::pair<bool, std::vector<DimCompare>> CompareInputShapeWithOutputShape(
     const ONNX_NAMESPACE::TensorShapeProto* target_shape);
 
 /**
- * @brief Get ONNX opset version.
+ * @brief Get opset version from the graph.
  */
 int GetONNXOpSetVersion(const Graph& graph);
 
 /**
- * @brief Create Initializer from given vector and name.
+ * @brief Create an 1D initializer from given vector and name.
  */
 
 NodeArg* Create1DInitializerFromVector(Graph& graph, const InlinedVector<int64_t>& values,

@@ -53,7 +53,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
-#include "orttraining/core/optimizer/compute_optimizer/sceloss_flops_reduction.h"
+#include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
