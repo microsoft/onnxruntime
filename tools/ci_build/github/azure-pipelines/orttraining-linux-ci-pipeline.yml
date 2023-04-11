@@ -45,7 +45,7 @@ jobs:
   - task: Cache@2
     inputs:
       key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: ${{ variables["CCACHE_DIR"] }}
+      path: ${{ variables.CCACHE_DIR }}
       cacheHitVar: CACHE_RESTORED
       restoreKeys: |
         "$(TODAY)" | "$(Build.SourceBranch)"
@@ -57,13 +57,13 @@ jobs:
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        mkdir -p ${{ variables["CCACHE_DIR"] }}
+        mkdir -p ${{ variables.CCACHE_DIR }}
         docker run --rm \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          --volume ${{ variables["CCACHE_DIR"] }}:/cache \
+          --volume ${{ variables.CCACHE_DIR }}:/cache \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
