@@ -665,7 +665,6 @@ Status QkvToContext(
     }
 
     if (nullptr != data.past_key || nullptr != data.present_key) {
-      // assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
       if (nullptr != data.past_key && nullptr == data.present_key) {
         k = const_cast<T*>(data.past_key);
         v = const_cast<T*>(data.past_value);
