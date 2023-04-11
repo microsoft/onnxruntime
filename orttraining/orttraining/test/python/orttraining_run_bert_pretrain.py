@@ -722,6 +722,8 @@ if __name__ == "__main__":
         # In case ORT is not built with MPI/NCCL, there are no get_mpi_context_xxx internal apis.
         from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_world_size
 
+        del get_mpi_context_local_size, get_mpi_context_world_rank  # Unused
+
         has_get_mpi_context_internal_api = True
     except ImportError:
         has_get_mpi_context_internal_api = False

@@ -1789,6 +1789,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
 
             try:
+                del onnx  # Unused
                 onnx_test = True
             except ImportError as error:
                 log.exception(error)
@@ -1847,6 +1848,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.skip_keras_test:
                 try:
+                    del keras  # Unused
+                    del onnxmltools  # Unused
                     onnxml_test = True
                 except ImportError:
                     log.warning("onnxmltools and keras are not installed. " "The keras tests will be skipped.")

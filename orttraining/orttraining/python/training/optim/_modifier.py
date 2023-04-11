@@ -30,7 +30,9 @@ class FP16OptimizerModifier:
     def check_requirements(self, required_funcs, require_apex=False, require_torch_non_finite_check=False):
         try:
             if require_apex is True:
-                pass
+
+                del amp_C  # Unused
+                del amp  # Unused
             if require_torch_non_finite_check is True:
                 _ = torch._amp_foreach_non_finite_check_and_unscale_
         except Exception:

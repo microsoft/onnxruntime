@@ -2,12 +2,11 @@
 # Licensed under the MIT License.
 
 import os
+from typing import List
 
 import numpy
-
-# -*- coding: UTF-8 -*-
 import onnx
-from onnx import GraphProto, TensorProto, helper
+from onnx import GraphProto, TensorProto, ValueInfoProto, helper
 
 if os.path.exists(
     os.path.join(
@@ -107,7 +106,7 @@ class TestSymbolicShapeInference(unittest.TestCase):
 
 
 class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
-    def _check_shapes(self, graph, inferred_graph, vis):  # type: (GraphProto, GraphProto, List[ValueInfoProto]) -> None
+    def _check_shapes(self, graph: GraphProto, inferred_graph: GraphProto, vis: List[ValueInfoProto]) -> None:
         names_in_vis = {x.name for x in vis}
         vis = list(x for x in graph.value_info if x.name not in names_in_vis) + vis
         inferred_vis = list(inferred_graph.value_info)

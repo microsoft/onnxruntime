@@ -11,6 +11,9 @@ from onnxruntime.training import orttrainer
 try:
     from onnxruntime.training.ortmodule import ORTModule
     from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
+    from onnxruntime.training.ortmodule._graph_execution_manager_factory import (  # noqa: F401
+        GraphExecutionManagerFactory,
+    )
 except ImportError:
     # Some pipelines do not contain ORTModule
     pass

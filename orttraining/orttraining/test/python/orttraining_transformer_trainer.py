@@ -21,6 +21,9 @@ import onnxruntime
 from onnxruntime.training import amp, optim, orttrainer
 
 try:
+    from torch.utils.tensorboard import SummaryWriter
+
+    del SummaryWriter  # Unused
     _has_tensorboard = True
 except ImportError:
     try:
