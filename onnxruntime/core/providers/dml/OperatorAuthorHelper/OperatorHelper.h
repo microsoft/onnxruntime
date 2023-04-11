@@ -1654,6 +1654,7 @@ using ShapeInferenceHelper_DmlFusedMeanVarianceNormalization = GetOutputShapeAsI
 using ShapeInferenceHelper_DmlFusedGemm = GemmHelper;
 using ShapeInferenceHelper_DmlFusedMatMul = MatMulHelper;
 using ShapeInferenceHelper_FusedMatMul = FusedMatMulHelper;
+using ShapeInferenceHelper_FusedMatMulActivation = FusedMatMulHelper;
 using ShapeInferenceHelper_DmlFusedAdd = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_DmlFusedSum = GetBroadcastedOutputShapeHelper;
 
