@@ -274,6 +274,11 @@ stages:
       displayName: install detox js/react_native/e2e
 
     - script: |
+        yarn add --dev jest-junit
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+      displayName: install jest junit reporter js/react_native/e2e
+
+    - script: |
        keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
          -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
@@ -298,7 +303,15 @@ stages:
         detox test --record-logs all  --configuration android.emu.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox Android e2e Tests
-
+    
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/junit.xml'
+        failTaskOnFailedTests: true
+        testRunTitle: 'React Native Detox Android e2e Test Results'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox Android e2e Test Results
+    
     - script: |
         detox build --configuration ios.sim.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
@@ -308,13 +321,21 @@ stages:
         detox test --record-logs all --configuration ios.sim.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox iOS e2e Tests
-  
+
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/junit.xml'
+        failTaskOnFailedTests: true
+        testRunTitle: 'React Native Detox iOS e2e Test Results'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox iOS e2e Test Results
+    
+    # Note: When debugging react_native/e2e tests or want to read more info from device.log/detox.log, 
+    # this step is left here and can be used to get all the log file names info, etc. in case for further investigation
     - script: |
         set -e -x
         ls -R '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
       displayName: Examine detox artifacts/ folder
-
-    # TODO: Publish Detox E2E Test Results
   
     - script: |
         python3 tools/python/run_android_emulator.py \
