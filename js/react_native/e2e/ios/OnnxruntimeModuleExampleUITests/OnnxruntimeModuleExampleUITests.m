@@ -1,2 +1,1 @@
-// NOT USING THIS TEST ANY MORE
-// Dummy UITest XCScheme placeholder file
+// Dummy UITest XCScheme placeholder file required for detox test build
