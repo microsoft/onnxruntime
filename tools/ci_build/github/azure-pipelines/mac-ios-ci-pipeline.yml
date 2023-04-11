@@ -3,7 +3,7 @@ jobs:
   pool:
     vmImage: 'macOS-12'
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.14'
+    #MACOSX_DEPLOYMENT_TARGET: '10.14'
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/proto_ccache
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
