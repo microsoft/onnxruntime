@@ -330,13 +330,12 @@ stages:
       condition: succeededOrFailed()
       displayName: Publish React Native Detox iOS e2e Test Results
     
-    # Note: When debugging react_native/e2e tests or want to read more info from device.log/detox.log, 
-    # this step is left here and can be used to get all the log file names info, etc. in case for further investigation
-    - script: |
-        set -e -x
-        ls -R '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-      displayName: Examine detox artifacts/ folder
-  
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        buildType: 'current'
+        targetPath:  '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      displayName: Download detox test results artifacts
+
     - script: |
         python3 tools/python/run_android_emulator.py \
           --android-sdk-root $(ANDROID_SDK_ROOT) \
