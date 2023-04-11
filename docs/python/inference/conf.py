@@ -2,12 +2,12 @@
 # Licensed under the MIT License.
 # pylint: disable=C0103
 
-# -*- coding: utf-8 -*-
-#
+
 # Configuration file for the Sphinx documentation builder.
 
 import os
 import shutil
+import sys
 
 import onnxruntime
 

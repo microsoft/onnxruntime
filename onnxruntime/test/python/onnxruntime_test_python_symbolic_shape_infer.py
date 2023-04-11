@@ -6,7 +6,7 @@ from typing import List
 
 import numpy
 import onnx
-from onnx import GraphProto, TensorProto, ValueInfoProto, helper
+from onnx import GraphProto, TensorProto, ValueInfoProto, helper, numpy_helper
 
 if os.path.exists(
     os.path.join(

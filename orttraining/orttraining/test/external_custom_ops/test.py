@@ -5,14 +5,14 @@
 import numpy as np
 
 # Restore dlopen flags.
-import orttraining_external_custom_ops
+import orttraining_external_custom_ops  # noqa: F401
 
-del orttraining_external_custom_ops  # Unused
+del orttraining_external_custom_ops
 
 # Expose available (onnx::* and protobuf::*) symbols from onnxruntime to resolve references in
 # the custom ops shared library. Deepbind flag is required to avoid conflicts with other
 # instances of onnx/protobuf libraries.
-import onnxruntime
+import onnxruntime  # noqa: E402
 
 so = onnxruntime.SessionOptions()
 sess = onnxruntime.InferenceSession("testdata/model.onnx", so)

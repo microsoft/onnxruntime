@@ -1789,7 +1789,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
 
             try:
-                del onnx  # Unused
+                import onnx  # noqa: F401
+
                 onnx_test = True
             except ImportError as error:
                 log.exception(error)
