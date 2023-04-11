@@ -66,6 +66,20 @@ class RandomValueGenerator {
   }
 
   // Random values generated are in the range [min, max).
+  template <typename TFloat16>
+  typename std::enable_if<
+      std::is_same_v<TFloat16, MLFloat16>,
+      std::vector<TFloat16>>::type
+  Uniform(gsl::span<const int64_t> dims, float min, float max) {
+    std::vector<TFloat16> val(detail::SizeFromDims(dims));
+    std::uniform_real_distribution<float> distribution(min, max);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = TFloat16(math::floatToHalf(distribution(generator_)));
+    }
+    return val;
+  }
+
+  // Random values generated are in the range [min, max).
   template <typename TInt>
   typename std::enable_if<
       std::is_integral<TInt>::value && !utils::IsByteType<TInt>::value,
