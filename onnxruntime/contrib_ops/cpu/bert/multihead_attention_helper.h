@@ -47,6 +47,7 @@ Status CheckInputs(const T* query,
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None
 
+  AttentionQkvFormat qkv_format;
 
   const auto& query_dims = query->Shape().GetDims();
   if (query_dims.size() != 3 && query_dims.size() != 5) {
@@ -148,6 +149,7 @@ Status CheckInputs(const T* query,
                                "Input 'query' and 'key' shall have same dim 2 (hidden_size)");
       }
 
+      qkv_format = Q_K_V_BSNH;
       kv_sequence_length = static_cast<int>(key_dims[1]);
     } else if (key_dims.size() == 5) {
       if (static_cast<int>(key_dims[2]) != num_heads || static_cast<int>(key_dims[3]) != 2 || static_cast<int>(key_dims[4]) != head_size) {
@@ -159,6 +161,7 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'value' be none when 'key' has packed kv format.");
       }
 
+      qkv_format = Q_KV_BSNH_BSN2H;
       kv_sequence_length = static_cast<int>(key_dims[1]);
     } else { // key_dims.size() == 4 (cross-attention with past_key)
       if (static_cast<int>(key_dims[1]) != num_heads || static_cast<int>(key_dims[3]) != head_size) {
@@ -167,6 +170,7 @@ Status CheckInputs(const T* query,
             "Expect 'key' shape (batch_size, num_heads, kv_sequence_length, head_size) for past_key");
       }
 
+      qkv_format = UNKNOWN;
       kv_sequence_length = static_cast<int>(key_dims[2]);
     }
   } else {  // packed QKV
@@ -179,6 +183,8 @@ Status CheckInputs(const T* query,
           ONNXRUNTIME, INVALID_ARGUMENT,
           "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed kv");
     }
+
+    qkv_format = QKV_BSN3H;
   }
 
   if (bias != nullptr) {
@@ -281,6 +287,7 @@ Status CheckInputs(const T* query,
     }
   }
 
+  // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
@@ -302,6 +309,7 @@ Status CheckInputs(const T* query,
     output_parameters->scale = scale;
     output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
     output_parameters->pass_past_in_kv = pass_past_in_kv;
+    output_parameters->qkv_format = qkv_format;
   }
 
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {

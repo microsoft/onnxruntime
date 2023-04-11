@@ -215,7 +215,6 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param));
   }
 
-  output_count_ = 1;
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
