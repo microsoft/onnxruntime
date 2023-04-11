@@ -43,6 +43,8 @@ limitations under the License.
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
+#include <iostream>
+
 using namespace onnxruntime::cuda;
 using namespace cub;
 
@@ -381,7 +383,55 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
         ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
                             max_threads_per_block, false, data.value, v));
       }
-    } else {
+      qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
+    }
+#if USE_FLASH_ATTENTION
+    else if (use_memory_efficient_attention && data.past_key != nullptr && data.past_value != nullptr && parameters.pass_past_in_kv) {
+      // Transpose past_key and past_value to use memory efficient attention
+
+      // past_key (BxNxSxH) => temp_k_workspace (BxSxNxH)
+      ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, kv_sequence_length, batch_size, qk_head_size, num_heads,
+                                         max_threads_per_block, false, data.past_key, data.temp_k_workspace));
+      // past_value (BxNxSxH_v) => temp_v_workspace (BxSxNxH_v)
+      ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, kv_sequence_length, batch_size, qk_head_size, num_heads,
+                                         max_threads_per_block, false, data.past_value, data.temp_v_workspace));
+
+      // query => q, temp_k_workspace => k, temp_v_workspace => v
+      LaunchAddBias(stream, max_threads_per_block,
+              batch_size, sequence_length, kv_sequence_length,
+              num_heads, qk_head_size, v_head_size,
+              data.bias, data.query, data.temp_k_workspace, data.temp_v_workspace, q, k, v);
+
+      DUMP_TENSOR_D("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("k(BSNH)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("v(BSNH)", v, batch_size * kv_sequence_length, num_heads, v_head_size);
+      qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+
+      data.past_key = nullptr;
+      data.past_value = nullptr;
+    }
+    else if (use_memory_efficient_attention && data.present_key != nullptr && data.present_value != nullptr) {
+      // Use memory efficient attention kernel
+      LaunchAddBias(stream, max_threads_per_block,
+                    batch_size, sequence_length, kv_sequence_length,
+                    num_heads, qk_head_size, v_head_size,
+                    data.bias, data.query, data.key, data.value, q, data.temp_k_workspace, data.temp_v_workspace);
+
+      // temp_k_workspace (BxSxNxH) => present_k (BxNxSxH)
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
+                          max_threads_per_block, false, data.temp_k_workspace, data.present_key));
+      
+      // temp_v_workspace (BxSxNxH_v) => present_v (BxNxSxH_v)
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
+                          max_threads_per_block, false, data.temp_v_workspace, data.present_value));
+
+      DUMP_TENSOR_D("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("k(BSNH)", data.present_key, batch_size * kv_sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("v(BSNH)", data.present_value, batch_size * kv_sequence_length, num_heads, v_head_size);
+      qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+    }
+#endif
+    else {
       // Use unfused kernel for Q, use unfused kernel for K and V if needed
       constexpr int format = 0;
       // Query (BxSxNxH) => Q (BxNxSxH)
@@ -390,25 +440,28 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                                 data.query, data.bias, q,
                                 true, -1);
 
-      if (data.key != nullptr && data.value != nullptr) {
+      if (!parameters.pass_past_in_kv) {
+        T* k_dest = (data.past_key == nullptr && data.present_key != nullptr) ? data.present_key : k;
+        T* v_dest = (data.past_value == nullptr && data.present_value != nullptr) ? data.present_value : v;
+
         // Key (BxLxNxH) => K (BxNxLxH)
         LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                   batch_size, kv_sequence_length, num_heads, qk_head_size,
-                                  data.key, data.bias + num_heads * qk_head_size, k,
+                                  data.key, data.bias + num_heads * qk_head_size, k_dest,
                                   true, -1);
 
-        // Value (BxLxNxH_v) => K (BxNxLxH_v)
+        // Value (BxLxNxH_v) => V (BxNxLxH_v)
         LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                   batch_size, kv_sequence_length, num_heads, v_head_size,
-                                  data.value, data.bias + 2 * num_heads * qk_head_size, v,
+                                  data.value, data.bias + 2 * num_heads * qk_head_size, v_dest,
                                   true, -1);
 
         DUMP_TENSOR_D("q(BNSH)", q, batch_size * num_heads, sequence_length, qk_head_size);
-        DUMP_TENSOR_D("k(BNSH)", k, batch_size * num_heads, kv_sequence_length, qk_head_size);
-        DUMP_TENSOR_D("v(BNSH)", v, batch_size * num_heads, kv_sequence_length, v_head_size);
-      } 
+        DUMP_TENSOR_D("k(BNSH)", k_dest, batch_size * num_heads, kv_sequence_length, qk_head_size);
+        DUMP_TENSOR_D("v(BNSH)", v_dest, batch_size * num_heads, kv_sequence_length, v_head_size);
+      }
+      qkv_format = AttentionQkvFormat::Q_K_V_BNSH; 
     }
-    qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
   } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
     assert(data.bias == nullptr);
     assert(qk_head_size == v_head_size);
@@ -614,13 +667,20 @@ Status QkvToContext(
     }
 
     if (nullptr != data.past_key || nullptr != data.present_key) {
-      assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
+      // assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
       if (nullptr != data.past_key && nullptr == data.present_key) {
         k = const_cast<T*>(data.past_key);
         v = const_cast<T*>(data.past_value);
       } else if (nullptr == data.past_key && nullptr != data.present_key) {
-        k = data.present_key;
-        v = data.present_value;
+        if (qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
+          k = data.present_key;
+          v = data.present_value;
+        }
+        else {
+          assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
+          k = data.temp_k_workspace;
+          v = data.temp_v_workspace;
+        }
       } else if (parameters.pass_past_in_kv) {
         // past_key and past_value are used directly as key and value in attention computations
         k = const_cast<T*>(data.past_key);

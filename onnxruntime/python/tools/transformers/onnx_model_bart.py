@@ -95,6 +95,10 @@ class FusionBartAttention(FusionAttention):
             ) = qkv_nodes
         else:
             return
+
+        # import os
+        # if not os.path.exists('temp.onnx'):
+        #    self.model.save_model_to_file('temp.onnx', use_external_data_format=True)
         
         other_inputs = []
         for i, input in enumerate(normalize_node.input):
@@ -120,7 +124,7 @@ class FusionBartAttention(FusionAttention):
         """
         skip_layernorm = output_name_to_node[root_input]
         # For some attention blocks, the end SkipLayerNormalization node may point to an Add node whose
-        # child is the SkipLayerNormalization node.
+        # child is the LayerNormalization node.
         if skip_layernorm.op_type == "Add":
             skip_layernorm = self.model.get_children(skip_layernorm)[0]
         for i, output in enumerate(skip_layernorm.output):
@@ -279,13 +283,21 @@ class FusionBartAttention(FusionAttention):
         # For decoder_attention, the attention mask needs to be included in the attention node
         mask_index = None
         if decoder_attention:
-            mask_nodes = self.model.match_parent_path(
+            mask_nodes_bart = self.model.match_parent_path(
+                add_qk,
+                ["Where"],
+                [1],
+            )
+            mask_nodes_whisper = self.model.match_parent_path(
                 add_qk,
                 ["Expand", "Unsqueeze", "Unsqueeze", "Where"],
                 [1, 0, 0, 0],
             )
-            mask_index = mask_nodes[0].output[-1]
-
+            if mask_nodes_whisper is not None:
+                mask_index = mask_nodes_whisper[0].output[-1]
+            elif mask_nodes_bart is not None:
+                mask_index = mask_nodes_bart[0].output[-1]
+            
         if encoder_attention or decoder_attention or decoder_attention_with_past or decoder_cross_attention or decoder_cross_attention_with_past: 
             attention_last_node = reshape_qkv_2
             num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q_1)
@@ -315,6 +327,7 @@ class FusionBartAttention(FusionAttention):
                     past_v=past_v if decoder_attention_with_past else "",
                     present_k=present_k,
                     present_v=present_v,
+                    packed_qkv=decoder_attention_with_past,
                 ) if self.use_multi_head_attention else None
             else:
                 # Temporarily set multihead attention flag to false

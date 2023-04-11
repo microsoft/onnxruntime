@@ -380,6 +380,125 @@ class FusionAttention(Fusion):
 
         return past_k_transpose, past_v_transpose
 
+    def create_packed_qkv_matmul_node(
+        self,
+        q_matmul: NodeProto,
+        k_matmul: NodeProto,
+        v_matmul: NodeProto,
+        q_add: NodeProto,
+        k_add: Union[NodeProto, None],
+        v_add: Union[NodeProto, None],
+        num_heads: int,
+    ) -> Union[NodeProto, None]:
+        """Create packed QKV MatMul node before MultiHeadAttention node. 
+           This is for the scenario where an Attention node should be created but cannot be created 
+           because past_key and past_value are separate inputs and not one concatenated input.
+
+        Args:
+            q_matmul (NodeProto): name of MatMul from Q path - (batch_size, sequence_length, hidden_size)
+            k_matmul (NodeProto): name of MatMul from K path - (batch_size, sequence_length, hidden_size)
+            v_matmul (NodeProto): name of MatMul from V path - (batch_size, sequence_length, hidden_size)
+            q_add (NodeProto): name of Add from Q path
+            k_add (NodeProto): name of Add from K path
+            v_add (NodeProto): name of Add from V path
+            num_heads (int): number of heads
+
+        Returns:
+            Union[NodeProto, None]: the node created or None if failed.
+        """
+        matmul_node_name = self.model.create_node_name("MatMul")
+
+        # Check that input for Q, K, V is the same
+        assert q_matmul.input[0] == k_matmul.input[0] and k_matmul.input[0] == v_matmul.input[0]
+
+        # Created packed QKV weight
+        q_weight = self.model.get_initializer(q_matmul.input[1])
+        k_weight = self.model.get_initializer(k_matmul.input[1])
+        v_weight = self.model.get_initializer(v_matmul.input[1])
+
+        qw = NumpyHelper.to_array(q_weight)
+        kw = NumpyHelper.to_array(k_weight)
+        vw = NumpyHelper.to_array(v_weight)
+
+        assert qw.shape == kw.shape and kw.shape == vw.shape
+        d = qw.shape[0] # hidden size
+
+        qkv_weight = np.stack((qw, kw, vw), axis=1).reshape((d, 3 * d))
+        qkv_weight_name = matmul_node_name + "_qkv_weight"
+        weight = helper.make_tensor(
+            name=qkv_weight_name,
+            data_type=TensorProto.FLOAT,
+            dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
+            vals=qkv_weight.flatten().tolist(),
+        )
+        self.model.add_initializer(weight, self.this_graph_name)
+
+        # Created packed QKV MatMul with output (B, S, 3*D)
+        # Output is of the form:
+        #
+        # [[[Q Q ... Q Q K K ... K K V V ... V V]]]
+        #   [Q Q ... Q Q K K ... K K V V ... V V]
+        #                     .
+        #                     .
+        #                     .
+        #  [[Q Q ... Q Q K K ... K K V V ... V V]
+        #   [Q Q ... Q Q K K ... K K V V ... V V]]]
+        qkv_matmul_output = matmul_node_name + "_qkv_out"
+        qkv_matmul = helper.make_node(
+            "MatMul",
+            inputs=[q_matmul.input[0], qkv_weight_name],
+            outputs=[qkv_matmul_output],
+            name=matmul_node_name,
+        )
+        self.node_name_to_graph_name[matmul_node_name] = self.this_graph_name
+
+        # Create Slice nodes to access Q, K, V
+        q_slice_name = matmul_node_name + "_q_start_index"
+        q_start_tensor = helper.make_tensor(name=q_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[0])
+        k_slice_name = matmul_node_name + "_k_start_index"
+        k_start_tensor = helper.make_tensor(name=k_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[d])
+        v_slice_name = matmul_node_name + "_v_start_index"
+        v_start_tensor = helper.make_tensor(name=v_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[2 * d])
+        end_of_qkv_name = matmul_node_name + "_end_of_qkv_index"
+        end_of_qkv_tensor = helper.make_tensor(name=end_of_qkv_name, data_type=TensorProto.INT64, dims=[1], vals=[3 * d])
+        qkv_last_axis_name = matmul_node_name + "_qkv_last_axis"
+        qkv_axis_tensor = helper.make_tensor(name=qkv_last_axis_name, data_type=TensorProto.INT64, dims=[1], vals=[-1])
+                
+        self.model.add_initializer(q_start_tensor, self.this_graph_name)
+        self.model.add_initializer(k_start_tensor, self.this_graph_name)
+        self.model.add_initializer(v_start_tensor, self.this_graph_name)
+        self.model.add_initializer(end_of_qkv_tensor, self.this_graph_name)
+        self.model.add_initializer(qkv_axis_tensor, self.this_graph_name)
+
+        q_slice_output = matmul_node_name + "_q_out"
+        q_slice = helper.make_node(
+            "Slice",
+            inputs=[qkv_matmul_output, q_slice_name, k_slice_name, qkv_last_axis_name],
+            outputs=[q_slice_output],
+            name=self.model.create_node_name("Slice")
+        )
+        self.node_name_to_graph_name[q_slice.name] = self.this_graph_name
+        k_slice_output = matmul_node_name + "_k_out"
+        k_slice = helper.make_node(
+            "Slice",
+            inputs=[qkv_matmul_output, k_slice_name, v_slice_name, qkv_last_axis_name],
+            outputs=[k_slice_output],
+            name=self.model.create_node_name("Slice")
+        )
+        self.node_name_to_graph_name[k_slice.name] = self.this_graph_name
+        v_slice_output = matmul_node_name + "_v_out"
+        v_slice = helper.make_node(
+            "Slice",
+            inputs=[qkv_matmul_output, v_slice_name, end_of_qkv_name, qkv_last_axis_name],
+            outputs=[v_slice_output],
+            name=self.model.create_node_name("Slice")
+        )
+        self.node_name_to_graph_name[v_slice.name] = self.this_graph_name
+
+        # Add nodes to graph
+        self.nodes_to_add.extend([qkv_matmul, q_slice, k_slice, v_slice])
+        return q_slice, k_slice, v_slice
+
     def create_multihead_attention_node(
         self,
         q_matmul: NodeProto,
@@ -397,6 +516,7 @@ class FusionAttention(Fusion):
         past_v: str = "",
         present_k: str = "",
         present_v: str = "",
+        packed_qkv: bool = False,
     ) -> Union[NodeProto, None]:
         """Create a MultiHeadAttention node.
 
@@ -416,6 +536,9 @@ class FusionAttention(Fusion):
             past_v (str): name of past V value - (batch_size, num_heads, past_sequence_length, head_size)
             present_k (str): name of present K value - (batch_size, num_heads, sequence_length, head_size)
             present_v (str): name of present V value - (batch_size, num_heads, sequence_length, head_size)
+            packed_qkv (bool): whether to combine MatMuls from Q, K, V paths 
+                               Note: This is for the scenario where an Attention node should be created but cannot be created
+                               because past_key and past_value are separate inputs and not one concatenated input.
             
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
@@ -432,13 +555,16 @@ class FusionAttention(Fusion):
         mha_node_name = self.model.create_node_name("Attention")
 
         # Add initial Q/K/V inputs for MHA
-        mha_inputs = [q_matmul.output[0]]
-        if type(k_matmul) == NodeProto and type(v_matmul) == NodeProto:
-            mha_inputs.extend([k_matmul.output[0], v_matmul.output[0]])
+        mha_inputs = []
+        if packed_qkv:
+            q_slice, k_slice, v_slice = self.create_packed_qkv_matmul_node(q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, num_heads)
+            mha_inputs.extend([q_slice.output[0], k_slice.output[0], v_slice.output[0]])
+        elif type(k_matmul) == NodeProto and type(v_matmul) == NodeProto:
+            mha_inputs.extend([q_matmul.output[0], k_matmul.output[0], v_matmul.output[0]])
         elif type(k_matmul) == str and type(v_matmul) == str and k_matmul in graph_input_names and v_matmul in graph_input_names:
-            mha_inputs.extend([k_matmul, v_matmul])
+            mha_inputs.extend([q_matmul.output[0], k_matmul, v_matmul])
         else:
-            mha_inputs.extend(["", ""])
+            return None
 
         # Create combined Q/K/V bias
         q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])

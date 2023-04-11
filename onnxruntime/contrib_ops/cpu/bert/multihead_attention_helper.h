@@ -39,10 +39,10 @@ Status CheckInputs(const T* query,
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None
   // When packed qkv is used:
-  //     query            (Q)       : (B, L, N, 3, H)
+  //     query            (Q)       : (B, L, N, 3, H) or (B, L, Nx3xH)
   //     key              (K)       : None
   //     value            (V)       : None
-  //     bias             (Q/K/V)   : None
+  //     bias             (Q/K/V)   : None or (D + D + D_v)
 
 
   const auto& query_dims = query->Shape().GetDims();
@@ -53,7 +53,13 @@ Status CheckInputs(const T* query,
 
   int batch_size = static_cast<int>(query_dims[0]);
   int sequence_length = static_cast<int>(query_dims[1]);
-  int hidden_size = query_dims.size() == 3 ? static_cast<int>(query_dims[2]) : (num_heads * static_cast<int>(query_dims[4]));
+  int hidden_size = 0;
+  if (query_dims.size() == 3 && key == nullptr && value == nullptr && bias != nullptr) {
+    hidden_size = static_cast<int>(query_dims[2]) / 3;
+  }
+  else {
+    hidden_size = query_dims.size() == 3 ? static_cast<int>(query_dims[2]) : (num_heads * static_cast<int>(query_dims[4]));    
+  }
   int head_size = static_cast<int>(hidden_size) / num_heads;
   int kv_sequence_length = sequence_length;
 
@@ -158,11 +164,14 @@ Status CheckInputs(const T* query,
       kv_sequence_length = static_cast<int>(key_dims[2]);
     }
   } else {  // packed QKV
-    if (query_dims.size() != 5) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 5 dimensions when key is empty, got ",
+    if (query_dims.size() == 3 && bias == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "'bias' is expected for packed qkv. ");
+    }
+    else if (query_dims.size() != 3 && query_dims.size() != 5) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 or 5 dimensions when key is empty, got ",
                              query_dims.size());
     }
-    if (static_cast<int>(query_dims[2]) != num_heads || static_cast<int>(query_dims[3]) != 3) {
+    if (query_dims.size() == 5 && (static_cast<int>(query_dims[2]) != num_heads || static_cast<int>(query_dims[3]) != 3)) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed kv");
@@ -176,10 +185,16 @@ Status CheckInputs(const T* query,
                              bias_dims.size());
     }
 
-    // Currently, bias is not allowed for packed KV. This constraint can be removed later.
-    // Here we assume that fusion tool will not include bias for packed KV.
     if (value == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "'bias' is not allowed for packed qkv or kv. ");
+      // Currently, bias is not allowed for packed KV. This constraint can be removed later.
+      // Here we assume that fusion tool will not include bias for packed KV.
+      if (query_dims.size() == 5 && query_dims[3] == 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "'bias' is not allowed for packed kv. ");
+      }
+      // Bias is allowed for packed QKV.
+      else if (query_dims.size() == 3 && query_dims[2] != bias_dims[0]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'bias' shape (hidden_size + hidden_size + v_hidden_size) for packed qkv. ");
+      }
     }
   }
 

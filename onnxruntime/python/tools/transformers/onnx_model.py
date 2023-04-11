@@ -356,6 +356,8 @@ class OnnxModel:
         current_node = node
         matched_parents = []
         for i, op_type in enumerate(parent_op_types):
+            # if current_node.name in {'add_qk', 'expand_mask_from_(b,1,m,m)_to_(b,n,m,m)', 'unsqueeze_attn_mask_2', 'unsqueeze_attn_mask_1', 'mask_filter_where'}:
+            #     print("Current node:", current_node.name, op_type, parent_input_index[i])
             matched_parent = self.match_parent(
                 current_node,
                 op_type,
@@ -364,6 +366,8 @@ class OnnxModel:
                 exclude=[],
                 return_indice=return_indice,
             )
+            # if current_node.name in {'add_qk', 'expand_mask_from_(b,1,m,m)_to_(b,n,m,m)', 'unsqueeze_attn_mask_2', 'unsqueeze_attn_mask_1', 'mask_filter_where'}:
+            #     print("Matched parent:", matched_parent)
             if matched_parent is None:
                 if parent_input_index is not None:
                     logger.debug(
@@ -812,6 +816,8 @@ class OnnxModel:
             logger.info("Removed %s", ", ".join(removed))
 
         self.update_graph()
+
+        # OnnxModel.save(self.model, "temp.onnx")
 
     def update_graph(self, verbose=False):
         graph = self.model.graph

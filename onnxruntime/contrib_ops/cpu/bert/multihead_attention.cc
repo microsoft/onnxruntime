@@ -16,6 +16,7 @@
 
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
+#include <iostream>
 
 using onnxruntime::concurrency::ThreadPool;
 
@@ -42,10 +43,33 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 }
 
+// Reshape Q/K/V from BxSxD to BxSxNxH
+Status Reshape_BSD_to_BSNH(Tensor* qkv,
+                           int batch_size,
+                           int sequence_length,
+                           int num_heads,
+                           int head_size) {
+  std::vector<int64_t> reshape_dims({batch_size, sequence_length, num_heads, head_size});
+  gsl::span<const int64_t> reshape_dims_span{reshape_dims};
+  TensorShape qkv_bsnh(reshape_dims_span);
+  qkv->Reshape(qkv_bsnh);
+  return Status::OK();
+}
+
+// Transpose Q/K/V from BxSxNxH to BxNxSxH
+Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
+                              OrtValue& qkv_transposed) {
+  std::vector<size_t> permutations({0, 2, 1, 3});
+  gsl::span<const size_t> permutations_span{permutations};
+  size_t from = 2, to = 1;
+  SingleAxisTranspose(permutations_span, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to);
+  return Status::OK();
+}
+
 // Add bias + transpose for each of Q/K/V
 template <typename T>
 Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data - query is BxSxD, key is BxLxD, value is BxLxD_v
-                        const T* qkv_bias,                  // Input: Q/K/V bias - bias is (D + D + D_v)
+                        const T* qkv_bias,                  // Input: QKV bias - bias is (D + D + D_v)
                         OrtValue& qkv_with_bias_transposed, // Output: Q/K/V data - query is BxNxSxH, key is BxNxLxH, value is BxNxLxH_v
                         int bias_offset,                    // bias offset to enter qkv_bias
                         int batch_size,                     // batch size
@@ -116,16 +140,103 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
   }
 
   // Reshape Q from BxSxD to BxSxNxH
-  std::vector<int64_t> reshape_dims({batch_size, sequence_length, num_heads, head_size});
-  gsl::span<const int64_t> reshape_dims_span{reshape_dims};
-  TensorShape qkv_bsnh(reshape_dims_span);
-  qkv_with_bias.GetMutable<Tensor>()->Reshape(qkv_bsnh);
+  ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(qkv_with_bias.GetMutable<Tensor>(), batch_size, sequence_length, num_heads, head_size));
+  // std::vector<int64_t> reshape_dims({batch_size, sequence_length, num_heads, head_size});
+  // gsl::span<const int64_t> reshape_dims_span{reshape_dims};
+  // TensorShape qkv_bsnh(reshape_dims_span);
+  // qkv_with_bias.GetMutable<Tensor>()->Reshape(qkv_bsnh);
 
   // Transpose Q from BxSxNxH to BxNxSxH
-  std::vector<size_t> permutations({0, 2, 1, 3});
-  gsl::span<const size_t> permutations_span{permutations};
-  size_t from = 2, to = 1;
-  SingleAxisTranspose(permutations_span, *qkv_with_bias.GetMutable<Tensor>(), *qkv_with_bias_transposed.GetMutable<Tensor>(), from, to);
+  return Transpose_BSNH_to_BNSH(qkv_with_bias.GetMutable<Tensor>(), qkv_with_bias_transposed);
+  // std::vector<size_t> permutations({0, 2, 1, 3});
+  // gsl::span<const size_t> permutations_span{permutations};
+  // size_t from = 2, to = 1;
+  // SingleAxisTranspose(permutations_span, *qkv_with_bias.GetMutable<Tensor>(), *qkv_with_bias_transposed.GetMutable<Tensor>(), from, to);
+  // return Status::OK();
+}
+
+// Add bias + reshape for each of Q/K/V or packed QKV
+// This is used in decoder_with_past when the sequence length is 1
+template <typename T>
+Status AddBiasReshape(const Tensor* qkv,           // Input: Q/K/V data - query is BxSxD, key is BxLxD, value is BxLxD_v - or packed QKV data
+                      const T* qkv_bias,           // Input: QKV bias - bias is (D + D + D_v)
+                      OrtValue& qkv_with_bias,     // Output: Q/K/V data - query is BxNxSxH, key is BxNxLxH, value is BxNxLxH_v - or packed QKV data
+                      int bias_offset,             // bias offset to enter qkv_bias
+                      int batch_size,              // batch size
+                      int sequence_length,         // sequence_length for Q, kv_sequence_length for K/V
+                      int num_heads,               // num heads
+                      int head_size,               // head_size for Q/K, v_head_size for V
+                      int hidden_size,             // hidden_size for Q/K, v_hidden_size for V
+                      bool packed_qkv,             // Whether the input data is packed QKV or one of Q, K, V
+                      OpKernelContext* context) {
+  
+  // Note: the comments below will refer to Q's dimensions for simplicity
+  auto element_type = DataTypeImpl::GetType<T>();
+  constexpr size_t element_size = sizeof(T);
+  ProcessBroadcastSpanFuncs add_funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
+      }}; // For element-wise add
+
+  // Get Q's bias from combined bias or QKV's bias from combined bias
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+  std::vector<int64_t> bias_dims({num_heads * head_size});
+  if (packed_qkv) {
+    bias_dims = {3 * num_heads * head_size};
+  }
+  gsl::span<const int64_t> bias_dims_span{bias_dims};
+  TensorShape bias_shape(bias_dims_span);
+  OrtValue bias;
+  Tensor::InitOrtValue(element_type, bias_shape, allocator, bias);
+  auto num_bias_elements = packed_qkv ? 3 * hidden_size * element_size : hidden_size * element_size;
+  memcpy(bias.GetMutable<Tensor>()->MutableData<T>(), qkv_bias + bias_offset, num_bias_elements);
+  
+  // Compute Q(BS, D) + bias(D) or QKV(BS, 3*D) + bias(3*D) as broadcasted element-wise add
+  {
+    InputBroadcaster input_broadcaster(*bias.GetMutable<Tensor>(), *qkv);
+    const InputBroadcaster& const_input_broadcaster = input_broadcaster;
+    Tensor& output_tensor = *qkv_with_bias.GetMutable<Tensor>();
+
+    size_t span_size = input_broadcaster.GetSpanSize();
+    size_t output_size = static_cast<ptrdiff_t>(output_tensor.Shape().Size());
+    void* user_data = nullptr;
+
+    const int loop_len = output_size / span_size;
+    double unit_cost = 1.0f;
+    const auto cost = TensorOpCost{static_cast<double>(input_broadcaster.Input0ElementSize()) * span_size,
+                                   static_cast<double>(output_tensor.DataType()->Size()) * span_size,
+                                   unit_cost * span_size};
+    auto tp = context->GetOperatorThreadPool();
+    ThreadPool::TryParallelFor(tp, loop_len, cost, \
+      [span_size, &const_input_broadcaster, &output_tensor, &add_funcs, user_data](std::ptrdiff_t first_span,
+                                                                                   std::ptrdiff_t last_span) {
+        InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
+        segment_input_broadcaster.AdvanceBy(first_span * span_size);
+
+        OutputBroadcaster segment_output_broadcaster(span_size, output_tensor,
+                                                     first_span * span_size, last_span * span_size);
+
+        BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
+        BroadcastLooper(segment_helper, add_funcs);
+    });
+  }
+
+  // Reshape Q from BxSxD to BxNxSxH or QKV from BxSx(3xD) to 3xBxNxSxH
+  std::vector<int64_t> reshape_dims({batch_size, num_heads, sequence_length, head_size});
+  if (packed_qkv) {
+    reshape_dims = {3, batch_size, num_heads, sequence_length, head_size};
+  }
+  gsl::span<const int64_t> reshape_dims_span{reshape_dims};
+  TensorShape qkv_final_dims(reshape_dims_span);
+  qkv_with_bias.GetMutable<Tensor>()->Reshape(qkv_final_dims);
+  
   return Status::OK();
 }
 
@@ -140,21 +251,12 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* past_key = context->Input<Tensor>(6);
   const Tensor* past_value = context->Input<Tensor>(7);
 
-  if (query->Shape().GetDims().size() > 3) {
-    ORT_NOT_IMPLEMENTED("Packed QKV not implemented for CPU");
+  if (query->Shape().GetDims().size() == 5 && bias == nullptr) {
+    ORT_NOT_IMPLEMENTED("Packed QKV of shape (B, L, N, 3, H) not implemented for CPU. Packed QKV of shape (B, L, N*3*H) is supported.");
   }
   if (key != nullptr && key->Shape().GetDims().size() == 5) {
     ORT_NOT_IMPLEMENTED("Packed KV not implemented for CPU");
   }
-  if (key_padding_mask != nullptr) {
-    ORT_NOT_IMPLEMENTED("Key padding mask not implemented for CPU");
-  }
-  if (extra_add_qk != nullptr) {
-    ORT_NOT_IMPLEMENTED("Addition after QxK' not implemented for CPU");
-  }
-  
-  // Check that K/V have data
-  ORT_ENFORCE(key != nullptr && value != nullptr);
   
   AttentionParameters parameters = {};
   const float scale = 1.0f;
@@ -170,6 +272,19 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       num_heads_,
                                                                       scale,
                                                                       mask_filter_value_));
+
+  // std::cout << "Parameters: ";
+  // std::cout << "batch size: " << parameters.batch_size << ", ";
+  // std::cout << "q seq len: " << parameters.sequence_length << ", ";
+  // std::cout << "kv seq len: " << parameters.kv_sequence_length << ", ";
+  // std::cout << "past seq len: " << parameters.past_sequence_length << ", ";
+  // std::cout << "total seq len: " << parameters.total_sequence_length << ", ";
+  // std::cout << "qk hidden size: " << parameters.hidden_size << ", ";
+  // std::cout << "v hidden size: " << parameters.v_hidden_size << ", ";
+  // std::cout << "qk head size: " << parameters.head_size << ", ";
+  // std::cout << "v head size: " << parameters.v_head_size << ", ";
+  // std::cout << "num heads: " << parameters.num_heads << ", ";
+  // std::cout << "pass_past_in_kv: " << parameters.pass_past_in_kv << std::endl;
 
   const int batch_size = parameters.batch_size;
   const int q_sequence_length = parameters.sequence_length;
@@ -188,14 +303,19 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   auto element_type = DataTypeImpl::GetType<T>();
-  const auto* qkv_bias = bias->Data<T>();
+  const auto* qkv_bias = (bias == nullptr) ? nullptr : bias->Data<T>();
   const int q_bias_offset = 0;
   const int k_bias_offset = qk_hidden_size;
   const int v_bias_offset = 2 * qk_hidden_size;
 
-  bool past_kv_and_current_kv = key != nullptr && past_key != nullptr && value != nullptr && past_value != nullptr;
-  bool kv_BNSH = key->Shape().GetDims().size() == 4 && value->Shape().GetDims().size() == 4;
+  const int num_q_elements = batch_size * num_heads_ * q_sequence_length * qk_head_size;
+  const int num_k_elements = batch_size * num_heads_ * kv_sequence_length * qk_head_size;
+  const int num_v_elements = batch_size * num_heads_ * kv_sequence_length * v_head_size;
+
+  bool kv_BNSH = key != nullptr && value != nullptr && key->Shape().GetDims().size() == 4 && value->Shape().GetDims().size() == 4;
+  bool packed_qkv = query->Shape().GetDims().size() == 3 && key == nullptr && value == nullptr;
   
+  // If optional outputs aren't needed, present_k and present_v will be null
   std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(qk_head_size)});
   std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(v_head_size)});
   Tensor* present_k = context->Output(1, present_k_shape);
@@ -205,15 +325,15 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   Tensor* past_kv = nullptr;
   OrtValue past;
-  if (past_kv_and_current_kv) {
+  if (past_key != nullptr && past_value != nullptr) {
     // Concatenate past_key and past_value into past_kv
     // We assume qk_head_size == v_head_size
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     std::vector<int64_t> new_dims({2, batch_size, num_heads_, past_kv_sequence_length, qk_head_size});
     gsl::span<const int64_t> new_dims_span{new_dims};
-    TensorShape past_kv_2BNSH(new_dims_span);
-    Tensor::InitOrtValue(element_type, past_kv_2BNSH, allocator, past);
+    TensorShape past_kv_2BNPH(new_dims_span);
+    Tensor::InitOrtValue(element_type, past_kv_2BNPH, allocator, past);
     
     const int num_past_k_elements = batch_size * num_heads_ * past_kv_sequence_length * qk_head_size;
     const int num_past_v_elements = batch_size * num_heads_ * past_kv_sequence_length * v_head_size;
@@ -221,6 +341,39 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     memcpy(past.GetMutable<Tensor>()->MutableData<T>() + num_past_k_elements, past_value->Data<T>(), num_past_v_elements * sizeof(T));
     past_kv = past.GetMutable<Tensor>();
   }
+
+  OrtValue QKV;
+  if (packed_qkv) {
+    // Query is of shape (B, S, 3*D)
+    // We assume q_sequence_length == kv_sequence_length and qk_head_size == v_head_size
+    AllocatorPtr allocator;
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+    std::vector<int64_t> new_dims({3, batch_size, num_heads_, kv_sequence_length, qk_head_size});
+    gsl::span<const int64_t> new_dims_span{new_dims};
+    TensorShape qkv_3BNSH(new_dims_span);
+    Tensor::InitOrtValue(element_type, qkv_3BNSH, allocator, QKV);
+    AddBiasReshape(query, qkv_bias, QKV, q_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, packed_qkv, context);
+  }
+
+  if (qkv_bias == nullptr) {
+    // We assume query, key/past_key, and value/past_value are already in the correct shape
+    return ApplyAttention(query->Data<T>(),
+                          (key != nullptr) ? key->Data<T>() : past_key->Data<T>(),
+                          (value != nullptr) ? value->Data<T>() : past_value->Data<T>(), 
+                          key_padding_mask, past_kv, output, present_k, present_v,
+                          batch_size, q_sequence_length, kv_sequence_length, 
+                          qk_head_size, v_head_size, v_hidden_size, 
+                          extra_add_qk, separate_present_kv, context);
+  }
+
+  // For each of Q/K/V, there are multiple scenarios:
+  // 1) Combined QKV bias is null
+  //    a) Q/K/V is (B, S, D)
+  //    b) Q/K/V is (B, S, N, H)
+  // 2) No packed QKV in Q
+  //    a) Q/K/V has seq_len = 1
+  //    b) Q/K/V has seq_len > 1
+  // 3) Packed QKV in Q
 
   OrtValue Q;
   {
@@ -230,7 +383,25 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     gsl::span<const int64_t> new_dims_span{new_dims};
     TensorShape q_BNSH(new_dims_span);
     Tensor::InitOrtValue(element_type, q_BNSH, allocator, Q);
-    AddBiasTranspose(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context);
+    if (qkv_bias == nullptr) {
+      Tensor* query_reshaped = nullptr;
+      if (query->Shape().GetDims().size() == 3) {
+        query_reshaped = const_cast<Tensor*>(query);
+        Reshape_BSD_to_BSNH(query_reshaped, batch_size, q_sequence_length, num_heads_, qk_head_size);
+      }
+      Transpose_BSNH_to_BNSH((query_reshaped == nullptr) ? query : query_reshaped, Q);
+    }
+    else if (!packed_qkv) {
+      if (q_sequence_length == 1) {
+        AddBiasReshape(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, packed_qkv, context);
+      }
+      else {
+        AddBiasTranspose(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context);
+      }
+    }
+    else {
+      memcpy(Q.GetMutable<Tensor>()->MutableData<T>(), QKV.GetMutable<Tensor>()->MutableData<T>(), num_q_elements * sizeof(T));
+    }
   }
 
   if (kv_BNSH) {
@@ -250,7 +421,25 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     gsl::span<const int64_t> new_dims_span{new_dims};
     TensorShape k_BNLH(new_dims_span);
     Tensor::InitOrtValue(element_type, k_BNLH, allocator, K);
-    AddBiasTranspose(key, qkv_bias, K, k_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context);
+    if (qkv_bias == nullptr) {
+      Tensor* key_reshaped = nullptr;
+      if (key->Shape().GetDims().size() == 3) {
+        key_reshaped = const_cast<Tensor*>(key);
+        Reshape_BSD_to_BSNH(key_reshaped, batch_size, kv_sequence_length, num_heads_, qk_head_size);
+      }
+      Transpose_BSNH_to_BNSH((key_reshaped == nullptr) ? key : key_reshaped, K);
+    }
+    else if (!packed_qkv) {
+      if (kv_sequence_length == 1) {
+        AddBiasReshape(key, qkv_bias, K, k_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, packed_qkv, context);
+      }
+      else {
+        AddBiasTranspose(key, qkv_bias, K, k_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context);
+      }
+    }
+    else {
+      memcpy(K.GetMutable<Tensor>()->MutableData<T>(), QKV.GetMutable<Tensor>()->MutableData<T>() + num_q_elements, num_k_elements * sizeof(T));
+    }
   }
 
   OrtValue V;
@@ -261,7 +450,25 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     gsl::span<const int64_t> new_dims_span{new_dims};
     TensorShape v_BNLH(new_dims_span);
     Tensor::InitOrtValue(element_type, v_BNLH, allocator, V);
-    AddBiasTranspose(value, qkv_bias, V, v_bias_offset, batch_size, kv_sequence_length, num_heads_, v_head_size, v_hidden_size, context);
+    if (qkv_bias == nullptr) {
+      Tensor* value_reshaped = nullptr;
+      if (value->Shape().GetDims().size() == 3) {
+        value_reshaped = const_cast<Tensor*>(value);
+        Reshape_BSD_to_BSNH(value_reshaped, batch_size, kv_sequence_length, num_heads_, v_head_size);
+      }
+      Transpose_BSNH_to_BNSH((value_reshaped == nullptr) ? value : value_reshaped, V);
+    }
+    else if (!packed_qkv) {
+      if (kv_sequence_length == 1) {
+        AddBiasReshape(value, qkv_bias, V, v_bias_offset, batch_size, kv_sequence_length, num_heads_, v_head_size, v_hidden_size, packed_qkv, context);
+      }
+      else {
+        AddBiasTranspose(value, qkv_bias, V, v_bias_offset, batch_size, kv_sequence_length, num_heads_, v_head_size, v_hidden_size, context);
+      }
+    }
+    else {
+      memcpy(V.GetMutable<Tensor>()->MutableData<T>(), QKV.GetMutable<Tensor>()->MutableData<T>() + num_q_elements + num_k_elements, num_v_elements * sizeof(T));
+    }
   }
 
   // Compute the attention score and apply the score to V
