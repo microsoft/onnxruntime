@@ -142,7 +142,9 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
   ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(qkv_with_bias.GetMutable<Tensor>(), batch_size, sequence_length, num_heads, head_size));
 
   // Transpose Q from BxSxNxH to BxNxSxH
-  return Transpose_BSNH_to_BNSH(qkv_with_bias.GetMutable<Tensor>(), qkv_with_bias_transposed);
+  ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH(qkv_with_bias.GetMutable<Tensor>(), qkv_with_bias_transposed));
+
+  return Status::OK();
 }
 
 // Add bias + reshape for each of Q/K/V or packed QKV
@@ -332,7 +334,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     gsl::span<const int64_t> new_dims_span{new_dims};
     TensorShape qkv_3BNSH(new_dims_span);
     Tensor::InitOrtValue(element_type, qkv_3BNSH, allocator, QKV);
-    AddBiasReshape(query, qkv_bias, QKV, q_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, packed_qkv, context);
+    ORT_RETURN_IF_ERROR(AddBiasReshape(query, qkv_bias, QKV, q_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, packed_qkv, context));
   }
 
   if (qkv_bias == nullptr) {
@@ -367,16 +369,16 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       Tensor* query_reshaped = nullptr;
       if (query->Shape().GetDims().size() == 3) {
         query_reshaped = const_cast<Tensor*>(query);
-        Reshape_BSD_to_BSNH(query_reshaped, batch_size, q_sequence_length, num_heads_, qk_head_size);
+        ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(query_reshaped, batch_size, q_sequence_length, num_heads_, qk_head_size));
       }
-      Transpose_BSNH_to_BNSH((query_reshaped == nullptr) ? query : query_reshaped, Q);
+      ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((query_reshaped == nullptr) ? query : query_reshaped, Q));
     }
     else if (!packed_qkv) {
       if (q_sequence_length == 1) {
-        AddBiasReshape(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, packed_qkv, context);
+        ORT_RETURN_IF_ERROR(AddBiasReshape(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, packed_qkv, context));
       }
       else {
-        AddBiasTranspose(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context);
+        ORT_RETURN_IF_ERROR(AddBiasTranspose(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context));
       }
     }
     else {
@@ -405,16 +407,16 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       Tensor* key_reshaped = nullptr;
       if (key->Shape().GetDims().size() == 3) {
         key_reshaped = const_cast<Tensor*>(key);
-        Reshape_BSD_to_BSNH(key_reshaped, batch_size, kv_sequence_length, num_heads_, qk_head_size);
+        ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(key_reshaped, batch_size, kv_sequence_length, num_heads_, qk_head_size));
       }
-      Transpose_BSNH_to_BNSH((key_reshaped == nullptr) ? key : key_reshaped, K);
+      ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((key_reshaped == nullptr) ? key : key_reshaped, K));
     }
     else if (!packed_qkv) {
       if (kv_sequence_length == 1) {
-        AddBiasReshape(key, qkv_bias, K, k_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, packed_qkv, context);
+        ORT_RETURN_IF_ERROR(AddBiasReshape(key, qkv_bias, K, k_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, packed_qkv, context));
       }
       else {
-        AddBiasTranspose(key, qkv_bias, K, k_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context);
+        ORT_RETURN_IF_ERROR(AddBiasTranspose(key, qkv_bias, K, k_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context));
       }
     }
     else {
@@ -434,16 +436,16 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       Tensor* value_reshaped = nullptr;
       if (value->Shape().GetDims().size() == 3) {
         value_reshaped = const_cast<Tensor*>(value);
-        Reshape_BSD_to_BSNH(value_reshaped, batch_size, kv_sequence_length, num_heads_, v_head_size);
+        ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(value_reshaped, batch_size, kv_sequence_length, num_heads_, v_head_size));
       }
-      Transpose_BSNH_to_BNSH((value_reshaped == nullptr) ? value : value_reshaped, V);
+      ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((value_reshaped == nullptr) ? value : value_reshaped, V));
     }
     else if (!packed_qkv) {
       if (kv_sequence_length == 1) {
-        AddBiasReshape(value, qkv_bias, V, v_bias_offset, batch_size, kv_sequence_length, num_heads_, v_head_size, v_hidden_size, packed_qkv, context);
+        ORT_RETURN_IF_ERROR(AddBiasReshape(value, qkv_bias, V, v_bias_offset, batch_size, kv_sequence_length, num_heads_, v_head_size, v_hidden_size, packed_qkv, context));
       }
       else {
-        AddBiasTranspose(value, qkv_bias, V, v_bias_offset, batch_size, kv_sequence_length, num_heads_, v_head_size, v_hidden_size, context);
+        ORT_RETURN_IF_ERROR(AddBiasTranspose(value, qkv_bias, V, v_bias_offset, batch_size, kv_sequence_length, num_heads_, v_head_size, v_hidden_size, context));
       }
     }
     else {
