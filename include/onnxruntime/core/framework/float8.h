@@ -207,7 +207,7 @@ struct Float8E4M3FNUZ {
       val = 0x80;
     } else if ((b & 0x7fffffff) == 0x7f800000) {
       if (saturate) {
-        val |= 126;
+        val |= 0x7F;
       } else {
         // infinity
         val = 0x80;
