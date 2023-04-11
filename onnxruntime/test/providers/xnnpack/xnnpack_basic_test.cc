@@ -221,7 +221,7 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   RunAndVerifyOutputsWithEP(ort_model_path, graph_name, std::move(ep), feeds, params);
 }
 
-TEST(XnnpackEP, DISABLE_TestQDQConvU8U8) {  //  [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for QuantizeLinear(19) node with name 'node_token_12'
+TEST(XnnpackEP, DISABLED_TestQDQConvU8U8) {  //  [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for QuantizeLinear(19) node with name 'node_token_12'
   RunModelTest(BuildQDQConvTestCase<uint8_t /* InputType */,
                                     uint8_t /* WeightType */,
                                     int32_t /* BiasType */,
@@ -238,7 +238,7 @@ TEST(XnnpackEP, DISABLE_TestQDQConvU8U8) {  //  [ONNXRuntimeError] : 9 : NOT_IMP
   RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_u8u8", graph_verify);
 }
 
-TEST(XnnpackEP, DISABLE_TestQDQConvS8S8) {  //  [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for QuantizeLinear(19) node with name 'node_token_12'
+TEST(XnnpackEP, DISABLED_TestQDQConvS8S8) {  //  [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for QuantizeLinear(19) node with name 'node_token_12'
   RunModelTest(BuildQDQConvTestCase<int8_t /* InputType */,
                                     int8_t /* WeightType */,
                                     int32_t /* BiasType */,
