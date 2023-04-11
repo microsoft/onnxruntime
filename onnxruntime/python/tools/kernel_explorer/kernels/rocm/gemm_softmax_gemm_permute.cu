@@ -28,9 +28,10 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
       int64_t head_size,
       int64_t mask_dim,
       double scale,
+      contrib::AttentionQkvFormat qkv_format,
       DeviceArray& Q,
-      DeviceArray& K,
-      DeviceArray& V,
+      std::optional<DeviceArray>& K,
+      std::optional<DeviceArray>& V,
       std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out) {
@@ -64,6 +65,7 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
     } else {
       ORT_ENFORCE(false, "mask type not supported");
     }
+    attn_.qkv_format = qkv_format;
 
     device_prop = GetEp()->GetDeviceProp();
 
@@ -74,9 +76,9 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
     params_.device_prop = &device_prop;
     params_.scale = scale;
 
-    params_.q_buffer = reinterpret_cast<T*>(Q.ptr());
-    params_.k_buffer = reinterpret_cast<T*>(K.ptr());
-    params_.v_buffer = reinterpret_cast<T*>(V.ptr());
+    std::tie(params_.q_buffer, params_.k_buffer, params_.v_buffer) = GetQkvBuffers<T>(
+        &attn_, Q.ptr(), K.has_value() ? K->ptr() : nullptr, V.has_value() ? V->ptr() : nullptr);
+
     if (attn_bias.has_value()) {
       params_.bias_buffer = reinterpret_cast<T*>(attn_bias->ptr());
     }
@@ -130,14 +132,15 @@ class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplor
       int64_t head_size,
       int64_t mask_dim,
       double scale,
+      contrib::AttentionQkvFormat qkv_format,
       DeviceArray& Q,
-      DeviceArray& K,
-      DeviceArray& V,
+      std::optional<DeviceArray>& K,
+      std::optional<DeviceArray>& V,
       std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
       : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, max_seqlen,
-                                                 num_heads, head_size, mask_dim, scale,
+                                                 num_heads, head_size, mask_dim, scale, qkv_format,
                                                  Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_));
   }
@@ -169,14 +172,15 @@ class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
       int64_t head_size,
       int64_t mask_dim,
       double scale,
+      contrib::AttentionQkvFormat qkv_format,
       DeviceArray& Q,
-      DeviceArray& K,
-      DeviceArray& V,
+      std::optional<DeviceArray>& K,
+      std::optional<DeviceArray>& V,
       std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
       : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, max_seqlen,
-                                                 num_heads, head_size, mask_dim, scale,
+                                                 num_heads, head_size, mask_dim, scale, qkv_format,
                                                  Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(GemmSoftmaxGemmPermuteTunableOp<T>::GetWorkspaceNumBytes(&this->attn_));
 
@@ -229,14 +233,15 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
       int64_t head_size,
       int64_t mask_dim,
       double scale,
+      contrib::AttentionQkvFormat qkv_format,
       DeviceArray& Q,
-      DeviceArray& K,
-      DeviceArray& V,
+      std::optional<DeviceArray>& K,
+      std::optional<DeviceArray>& V,
       std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
       : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, max_seqlen,
-                                                 num_heads, head_size, mask_dim, scale,
+                                                 num_heads, head_size, mask_dim, scale, qkv_format,
                                                  Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(std::max(
         GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_),
@@ -261,10 +266,10 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
 #define REGISTER_COMMON(name, type, ...)                                                          \
   py::class_<type<__VA_ARGS__>>(m, name)                                                          \
       .def(py::init<int64_t, int64_t, int64_t, std::optional<int64_t>, int64_t, int64_t, int64_t, \
-                    float,                                                                        \
+                    float, contrib::AttentionQkvFormat,                                           \
                     DeviceArray&,                                                                 \
-                    DeviceArray&,                                                                 \
-                    DeviceArray&,                                                                 \
+                    std::optional<DeviceArray>&,                                                  \
+                    std::optional<DeviceArray>&,                                                  \
                     std::optional<DeviceArray>&,                                                  \
                     std::optional<DeviceArray>&,                                                  \
                     DeviceArray&>())                                                              \
@@ -285,6 +290,14 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
   REGISTER_COMMON("GemmSoftmaxGemmPermuteTunable_" #dtype, GemmSoftmaxGemmPermuteTunable, dtype)
 
 KE_REGISTER(m) {
+  auto qkv_format = m.def_submodule("qkv_format");
+  py::enum_<contrib::AttentionQkvFormat>(qkv_format, "qkv_format")
+      .value("Q_K_V_BNSH", contrib::AttentionQkvFormat::Q_K_V_BNSH, "")
+      .value("Q_K_V_BSNH", contrib::AttentionQkvFormat::Q_K_V_BSNH, "")
+      .value("QKV_BSN3H", contrib::AttentionQkvFormat::QKV_BSN3H, "")
+      .value("Q_KV_BSNH_BSN2H", contrib::AttentionQkvFormat::Q_KV_BSNH_BSN2H, "")
+      .export_values();
+
   REGISTER_GENERIC(half);
 
 #ifdef USE_COMPOSABLE_KERNEL
