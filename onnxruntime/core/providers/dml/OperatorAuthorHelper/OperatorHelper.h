@@ -204,7 +204,8 @@ struct KernelArgs
 
 std::vector<DimensionType> InitializeKernelOutputDimensions(
     gsl::span<const DimensionType> inputDimensions,
-    const KernelArgs& args);
+    const KernelArgs& args,
+    bool isNhwc = false);
 
 std::vector<DimensionType> InitializeKernelOutputDimsTranspose(
     gsl::span<const DimensionType> inputDimensions,
@@ -219,7 +220,8 @@ KernelArgs InitializeKernel(
 
 void ResolveAutoPadding(
     KernelArgs& args,
-    gsl::span<const DimensionType> inputDimensions);
+    gsl::span<const DimensionType> inputDimensions,
+    bool isNhwc = false);
 
 void MatMulShapeMapping(
     std::vector<DimensionType>& inputShape0,
@@ -450,13 +452,15 @@ class ConvolutionHelperBase
 public:
     enum FilterDims { K };
     enum InputDims { N, C, H, W };
+    enum class NhwcInputDims { N, H, W, C };
 
 public:
     // Info_t is used to obtain attributes which will be used for calculating the output shape later.
     template<typename Info_t, typename Shape_t>
-    ConvolutionHelperBase(const Info_t& info, const Shape_t& shape, bool transpose, bool hasDynamicPads, uint32_t inputTensorIndex, uint32_t filterTensorIndex) :
+    ConvolutionHelperBase(const Info_t& info, const Shape_t& shape, bool transpose, bool hasDynamicPads, bool isNhwc, uint32_t inputTensorIndex, uint32_t filterTensorIndex) :
         m_inputTensorIndex(inputTensorIndex),
         m_filterTensorIndex(filterTensorIndex),
+        m_isNhwc(isNhwc),
         m_kernel(InitializeKernel(info, shape.GetInputTensorDimensionCount(inputTensorIndex), shape.GetInputTensorShape(filterTensorIndex)))
     {
         m_groupCount = info.template GetOptionalAttribute<uint32_t>(AttrName::Group, 1);
@@ -487,6 +491,7 @@ protected:
     uint32_t m_groupCount;
     uint32_t m_inputTensorIndex;
     uint32_t m_filterTensorIndex;
+    bool m_isNhwc;
     KernelArgs m_kernel;
     std::vector<EdgeShapes> m_outputShapes;
 };
@@ -495,28 +500,35 @@ class ConvHelper : public ConvolutionHelperBase
 {
 public:
     template<typename Info_t, typename Shape_t>
-    ConvHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, false, false, 0, 1) {}
+    ConvHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, false, false, false, 0, 1) {}
+};
+
+class NhwcConvHelper : public ConvolutionHelperBase
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    NhwcConvHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, false, false, true, 0, 1) {}
 };
 
 class ConvTransposeHelper : public ConvolutionHelperBase
 {
 public:
     template<typename Info_t, typename Shape_t>
-    ConvTransposeHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true, false, 0, 1) {}
+    ConvTransposeHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true, false, false, 0, 1) {}
 };
 
 class ConvTransposeWithDynamicPadsHelper : public ConvolutionHelperBase
 {
 public:
     template<typename Info_t, typename Shape_t>
-    ConvTransposeWithDynamicPadsHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true, true, 0, 1) {}
+    ConvTransposeWithDynamicPadsHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true, true, false, 0, 1) {}
 };
 
 class QLinearConvHelper : public ConvolutionHelperBase
 {
 public:
     template<typename Info_t, typename Shape_t>
-    QLinearConvHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, false, false, 0, 3) {}
+    QLinearConvHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, false, false, false, 0, 3) {}
 };
 
 class GemmHelper
@@ -1415,7 +1427,15 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class BiasSplitGeluHelper {
+public:
+    template <typename Info_t, typename Shape_t>
+    BiasSplitGeluHelper(const Info_t& info, const Shape_t& shapeInfo) { }
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
+using ShapeInferenceHelper_NhwcConv = NhwcConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
 using ShapeInferenceHelper_ConvInteger = ConvHelper;
@@ -1634,10 +1654,12 @@ using ShapeInferenceHelper_DmlFusedMeanVarianceNormalization = GetOutputShapeAsI
 using ShapeInferenceHelper_DmlFusedGemm = GemmHelper;
 using ShapeInferenceHelper_DmlFusedMatMul = MatMulHelper;
 using ShapeInferenceHelper_FusedMatMul = FusedMatMulHelper;
+using ShapeInferenceHelper_FusedMatMulActivation = FusedMatMulHelper;
 using ShapeInferenceHelper_DmlFusedAdd = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_DmlFusedSum = GetBroadcastedOutputShapeHelper;
 
 using ShapeInferenceHelper_Shape = ShapeHelper;
 using ShapeInferenceHelper_Size = SizeHelper;
+using ShapeInferenceHelper_BiasSplitGelu = BiasSplitGeluHelper;
 
 }  // namespace OperatorHelper
