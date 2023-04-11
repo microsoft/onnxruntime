@@ -3,6 +3,7 @@
 
 #include <unordered_set>
 #include <unordered_map>
+#include "core/common/status.h"
 #include "core/providers/rocm/nn/conv.h"
 #include "core/providers/rocm/rocm_common.h"
 
@@ -81,41 +82,28 @@ struct FNVHash {
     // miopenConvolutionDescriptor_t, so we have to guess.
     // This algorithm is based on a specific behavior of miopenGetConvolutionNdDescriptor,
     //  which fails when requestedSpatialDim > the convolution's spatial dimension
-    std::vector<int> spatial_dims;
-    std::vector<int> pads;
-    std::vector<int> strides;
-    std::vector<int> dilations;
+    constexpr const int kMaxSpatialDim = 5;
+    std::vector<int> pads{kMaxSpatialDim};
+    std::vector<int> strides{kMaxSpatialDim};
+    std::vector<int> dilations{kMaxSpatialDim};
     miopenConvolutionMode_t mode;
-    while (true) {
-      spatial_dims.resize(spatial_dim);
-      pads.resize(spatial_dim);
-      strides.resize(spatial_dim);
-      dilations.resize(spatial_dim);
-
-      if (miopenStatusSuccess != miopenGetConvolutionNdDescriptor(cdesc,
-                                                                  spatial_dim,
-                                                                  spatial_dims.data(),
-                                                                  pads.data(),
-                                                                  strides.data(),
-                                                                  dilations.data(),
-                                                                  &mode)) {
-        // Remove the extra dimension
-        spatial_dims.resize(spatial_dim - 1);
-        pads.resize(spatial_dim - 1);
-        strides.resize(spatial_dim - 1);
-        dilations.resize(spatial_dim - 1);
-        (*this) << spatial_dim;
-        (*this) << spatial_dims;
-        (*this) << pads;
-        (*this) << strides;
-        (*this) << dilations;
-        break;
-      }
-      spatial_dim += 1;
-      ORT_ENFORCE(spatial_dim < 10,
-                  "miopenGetConvolutionNdDescriptor is supposed to fail before spatial_dim gets to ",
-                  spatial_dim);
+    bool spatial_dim_guessed = false;
+    for (int i=0; i<kMaxSpatialDim; i++) {
+      if (miopenStatusSuccess == miopenGetConvolutionNdDescriptor(
+        cdesc, i, &spatial_dim, pads.data(), strides.data(), dilations.data(), &mode)) {
+          spatial_dim_guessed = true;
+          break;
+        }
     }
+    ORT_ENFORCE(spatial_dim_guessed, "Failed to guess the actual spatial dimension");
+    // Remove the extra dimension
+    pads.resize(spatial_dim);
+    strides.resize(spatial_dim);
+    dilations.resize(spatial_dim);
+    (*this) << spatial_dim;
+    (*this) << pads;
+    (*this) << strides;
+    (*this) << dilations;
 #endif
   }
 
@@ -129,27 +117,22 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
   using Base = onnxruntime::rocm::Conv<T, false>;
   FusedConv(const OpKernelInfo& info) : onnxruntime::rocm::Conv<T, false>(info) {
     std::string activation;
-    if (info.GetAttr<std::string>("activation", &activation) == Status::OK() &&
-        MapMode(activation) == Status::OK() &&
-        miopenCreateActivationDescriptor(&activation_desc_) == miopenStatusSuccess) {
-      status_ = miopenSetActivationDescriptor(activation_desc_,
-                                              activation_mode_,
-                                              0.0, 0.0, 0.0);
-    }
+    ORT_THROW_IF_ERROR(info.GetAttr<std::string>("activation", &activation));
+    ORT_THROW_IF_ERROR(MapMode(activation));
+    MIOPEN_CALL_THROW(miopenCreateActivationDescriptor(&activation_desc_));
+    MIOPEN_CALL_THROW(miopenSetActivationDescriptor(activation_desc_, activation_mode_, 0.0, 0.0, 0.0));
   }
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(FusedConv);
 
   ~FusedConv() {
     if (activation_desc_) {
-      miopenDestroyActivationDescriptor(activation_desc_);
-      status_ = miopenStatusNotInitialized;
+      MIOPEN_CALL_THROW(miopenDestroyActivationDescriptor(activation_desc_));
       activation_desc_ = nullptr;
     }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    MIOPEN_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(Base::s_.mutex);
 
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
@@ -266,13 +249,12 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     if (activaton_mode == "Relu") {
       activation_mode_ = miopenActivationMode_t::miopenActivationRELU;
     } else {
-      return Status(common::StatusCategory::ONNXRUNTIME,
-                    common::StatusCode::INVALID_ARGUMENT,
-                    "unsupported conv activation mode");
+      return ORT_MAKE_STATUS(
+          StatusCategory::ONNXRUNTIME, StatusCode::INVALID_ARGUMENT,
+          "unsupported conv activation mode \"", activaton_mode, "\"");
     }
     return Status::OK();
   }
-  miopenStatus_t status_ = miopenStatusNotInitialized;
   miopenActivationMode_t activation_mode_;
   miopenActivationDescriptor_t activation_desc_ = nullptr;
 
