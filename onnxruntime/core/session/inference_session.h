@@ -19,6 +19,7 @@
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
+#include "core/framework/framework_provider_common.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
