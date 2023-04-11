@@ -7,7 +7,7 @@
 
 #include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
-#include "core/framework/provider_data_types_internal.h"
+#include "core/framework/framework_common.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/library_handles.h"
 
@@ -44,6 +44,6 @@ struct TensorrtExecutionProviderInfo {
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtTensorRTProviderOptions& info);
 
-  std::vector<OrtProviderCustomOpDomain*> custom_op_domain_list;
+  std::vector<OrtCustomOpDomain*> custom_op_domain_list;
 };
 }  // namespace onnxruntime

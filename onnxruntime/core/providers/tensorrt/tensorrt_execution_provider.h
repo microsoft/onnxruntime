@@ -153,7 +153,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
-  void GetCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list) const override;
+  void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override;
 
  private:
   TensorrtExecutionProviderInfo info_;

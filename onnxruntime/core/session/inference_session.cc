@@ -515,13 +515,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Create Custom Op if EP requests it
   std::vector<OrtCustomOpDomain*> custom_op_domains;
-  std::vector<OrtProviderCustomOpDomain*> custom_op_provider_domains;
-
-  p_exec_provider->GetCustomOpDomainList(custom_op_provider_domains);
-  for (auto domain : custom_op_provider_domains)
-  {
-    custom_op_domains.push_back(reinterpret_cast<OrtCustomOpDomain*>(domain));
-  }
+  p_exec_provider->GetCustomOpDomainList(custom_op_domains);
 
   if (custom_op_domains.size() > 0) {
     if (AddCustomOpDomains(custom_op_domains) != Status::OK()) {

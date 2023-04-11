@@ -29,7 +29,7 @@ class Node;
 #include "core/framework/allocatormgr.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
-#include "core/framework/provider_data_types_internal.h"
+#include "core/framework/framework_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
 
@@ -149,9 +149,9 @@ class IExecutionProvider {
 
   /**
      Get provider specific custom op domain list.
-     Provider has the resposibility to release OrtProviderCustomOpDomain instances it creates.
+     Provider has the resposibility to release OrtCustomOpDomain instances it creates.
    */
-  virtual void GetCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& /*provider custom op domain list*/) const {};
+  virtual void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& /*provider custom op domain list*/) const {};
 
   /**
      Returns an opaque handle whose exact type varies based on the provider

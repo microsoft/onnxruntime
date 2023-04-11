@@ -8,6 +8,11 @@
 #include <vector>
 #include "run_options.h"
 
+struct OrtCustomOpDomain {
+  std::string domain_;
+  std::vector<const OrtCustomOp*> custom_ops_;
+};
+
 namespace onnxruntime {  // forward declarations
 class Model;
 class GraphTransformer;

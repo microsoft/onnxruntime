@@ -14,8 +14,8 @@ namespace onnxruntime {
 
 common::Status LoadDynamicLibrary(onnxruntime::PathString library_name);
 common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& info);
-void ReleaseTensorRTCustomOpDomain(OrtProviderCustomOpDomain* domain);
-void ReleaseTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list);
+void ReleaseTensorRTCustomOpDomain(OrtCustomOpDomain* domain);
+void ReleaseTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list);
 
 struct TensorRTCustomKernel {
   TensorRTCustomKernel(const OrtKernelInfo* /*info*/, void* compute_stream)

@@ -36,11 +36,6 @@ namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
 
-struct OrtCustomOpDomain {
-  std::string domain_;
-  std::vector<const OrtCustomOp*> custom_ops_;
-};
-
 namespace onnxruntime {  // forward declarations
 class CustomRegistry;
 class Environment;
