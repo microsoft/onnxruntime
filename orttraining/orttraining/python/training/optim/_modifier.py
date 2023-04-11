@@ -30,6 +30,8 @@ class FP16OptimizerModifier:
     def check_requirements(self, required_funcs, require_apex=False, require_torch_non_finite_check=False):
         try:
             if require_apex is True:
+                import amp_C
+                from apex import amp
 
                 del amp_C  # Unused
                 del amp  # Unused
