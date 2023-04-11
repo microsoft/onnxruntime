@@ -24,13 +24,13 @@ Layer Norm:
 
                +-----------+
 (X) ---------->+           +----------> (Y)
-               |           |                  
+               |           |
 (G) ---------->+ LayerNorm +----------> (M)
-               |           |     
-(B) ---------->+           +----------> (I) 
-               +-----------+                     
-                                                                 
-    
+               |           |
+(B) ---------->+           +----------> (I)
+               +-----------+
+
+
 
 Skip Layer Norm:
   Inputs:
@@ -56,7 +56,7 @@ Skip Layer Norm:
                                      (E) ------->+           +----------> (I)
                                                  |           |
                                                  +-----------+
-                                 
+
 Attributes (epsilon)
 */
 void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
@@ -82,7 +82,7 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // This contains the layer norm op and its parameters
   ln_components op_comps;
   if (node.OpType() == "SkipLayerNormalization") {
-    
+
     // Check if shift is available
     shift_exists = node.Input(IN_BETA).Exists();
 
@@ -258,11 +258,6 @@ void DnnlLayerNorm::ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // define gamma and shift input position, depending on the operation
   int gamma_pos, shift_pos;
   if (node.OpType() == "SkipLayerNormalization") {
-    // For SkipLayerNorm the spec defines the input as a 3D tensor
-    if (input_dims_size != 3) {
-      // We support 2D arrays but the expected is 3D
-      ORT_THROW("Input tensor is expected to have 3 dimensions, got ", input_dims_size);
-    }
 
     // Get skip and evaluate
     auto skip_dims = sp.GetMemory(node.Input(IN_SKIP)).get_desc().get_dims();

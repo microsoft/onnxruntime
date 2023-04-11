@@ -11,7 +11,8 @@ from collections import abc
 
 import torch
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception  # noqa: F401
+from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
+from ._logger import suppress_os_stream_output
 from ._utils import warn_of_constant_inputs
 
 
@@ -216,7 +217,7 @@ def _combine_input_buffers_initializers(
                 if name != input_info.names[input_idx]:
                     # When ONNX drops unused inputs, get correct index from user input
                     # if name is not in input_info.names, ValueError will be thrown
-                    input_idx = input_info.names.index(name)
+                    input_idx = input_info.names.index(name)  # noqa: PLW2901
                 inp = non_none_inputs[input_idx]
             except (IndexError, ValueError):
                 # ONNX input name is not present in input_info.names.
@@ -552,7 +553,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
             # All positional non-*args and non-**kwargs are processed here
             name = input_parameter.name
             inp = None
-            input_idx += var_positional_idx
+            input_idx += var_positional_idx  # noqa: PLW2901
             if input_idx < len(inputs) and inputs[input_idx] is not None:
                 inp = inputs[input_idx]
             elif name in kwargs and kwargs[name] is not None:
@@ -573,12 +574,12 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
     )
 
 
-def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
+def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs, log_level):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
     is_deepcopy = False
-    with torch.no_grad():
+    with torch.no_grad(), suppress_os_stream_output(log_level=log_level):
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy, sample_kwargs_copy = deepcopy_model_input(*inputs, **kwargs)
         try:

@@ -52,7 +52,8 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return std::make_unique<CUDAExecutionProvider>(info_);
 }
 
-struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
+struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
+
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
     auto cuda_err = ::cudaGetDeviceCount(&num_devices);
@@ -109,8 +110,8 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return cuda::Impl_Cast(static_cast<cudaStream_t>(stream), input_data, output_data, count);
   }
 
-  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
-  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
+  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line); }
+  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line); }
 
   void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
     ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
@@ -250,7 +251,8 @@ struct CUDA_Provider : Provider {
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
-    info.tunable_op.enabled = params->tunable_op_enabled;
+    info.tunable_op.enable = params->tunable_op_enable;
+    info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }

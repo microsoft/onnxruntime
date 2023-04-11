@@ -64,7 +64,7 @@ jobs:
     condition: ne(variables.CACHE_RESTORED, 'true')
     displayName: Create Cache Dir
 
-  - script: ccache -z && ccache -s
+  - script: ccache -s && ccache -z
     displayName: Show Cache Stats Before Building
 
   - task: CmdLine@2
@@ -91,7 +91,9 @@ jobs:
           --skip_tests
     displayName: 'Build onnxruntime'
 
-  - script: ccache -s
+  - script: |
+      ccache -sv
+      ccache -z
     displayName: Show Cache Stats After Building
 
   - bash: |-

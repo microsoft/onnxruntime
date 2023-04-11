@@ -19,7 +19,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Abs", *this);
     CreateSimpleOpBuilder("And", *this);
     CreateSimpleOpBuilder("Ceil", *this);
-    CreateSimpleOpBuilder("Cast", *this);
     CreateSimpleOpBuilder("Cos", *this);
     CreateSimpleOpBuilder("Div", *this);
     CreateSimpleOpBuilder("Equal", *this);
@@ -55,6 +54,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateCastOpBuilder("Cast", *this);
+  }
+
+  {
     CreateReduceOpBuilder("ReduceMax", *this);
     CreateReduceOpBuilder("ReduceMean", *this);
     CreateReduceOpBuilder("ReduceMin", *this);
@@ -68,6 +71,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreatePoolOpBuilder("GlobalAveragePool", *this);
+    CreatePoolOpBuilder("AveragePool", *this);
     CreatePoolOpBuilder("MaxPool", *this);
   }
 
@@ -126,6 +130,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateInstanceNormOpBuilder("InstanceNormalization", *this);
+  }
+
+  {
+    CreateBatchNormOpBuilder("BatchNormalization", *this);
   }
 }
 

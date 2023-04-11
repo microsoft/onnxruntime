@@ -892,6 +892,19 @@ struct SequenceTypeInfo : detail::SequenceTypeInfoImpl<OrtSequenceTypeInfo> {
 
 namespace detail {
 template <typename T>
+struct OptionalTypeInfoImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+  TypeInfo GetOptionalElementType() const;  ///< Wraps OrtApi::CastOptionalTypeToContainedTypeInfo
+};
+
+}  // namespace detail
+
+// This is always owned by the TypeInfo and can only be obtained from it.
+using ConstOptionalTypeInfo = detail::OptionalTypeInfoImpl<detail::Unowned<const OrtOptionalTypeInfo>>;
+
+namespace detail {
+template <typename T>
 struct MapTypeInfoImpl : detail::Base<T> {
   using B = Base<T>;
   using B::B;
@@ -921,6 +934,7 @@ struct TypeInfoImpl : detail::Base<T> {
   ConstTensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;  ///< Wraps OrtApi::CastTypeInfoToTensorInfo
   ConstSequenceTypeInfo GetSequenceTypeInfo() const;              ///< Wraps OrtApi::CastTypeInfoToSequenceTypeInfo
   ConstMapTypeInfo GetMapTypeInfo() const;                        ///< Wraps OrtApi::CastTypeInfoToMapTypeInfo
+  ConstOptionalTypeInfo GetOptionalTypeInfo() const;              ///< wraps OrtApi::CastTypeInfoToOptionalTypeInfo
 
   ONNXType GetONNXType() const;
 };
@@ -1640,7 +1654,7 @@ struct Logger {
    * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
    * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
    *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
-   * \param args... Zero or more variadic arguments referenced by the format string.
+   * \param args Zero or more variadic arguments referenced by the format string.
    * \return A Ort::Status value to indicate error or success.
    */
   template <typename... Args>

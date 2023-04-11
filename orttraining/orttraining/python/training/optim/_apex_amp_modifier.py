@@ -100,7 +100,7 @@ class ApexAMPModifier(FP16OptimizerModifier):
                 scaler, stash.all_fp32_from_fp32_params, stash.all_fp32_from_fp32_grad_stash
             )
 
-        from apex.optimizers import FusedSGD as FusedSGD
+        from apex.optimizers import FusedSGD
 
         if not isinstance(m_self._optimizer, FusedSGD):
             m_self._optimizer._post_amp_backward = types.MethodType(

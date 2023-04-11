@@ -118,10 +118,12 @@ TEST_P(ModelTest, Run) {
     return;
   }
 
-  if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
+  if ((model_info->GetONNXOpSetVersion() == 10 || model_info->GetONNXOpSetVersion() >= 18) && provider_name == "dnnl") {
     // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
-    SkipTest(" dnnl doesn't support opset 10");
+    std::ostringstream oss;
+    oss << " dnnl doesn't support opset " << model_info->GetONNXOpSetVersion();
+    SkipTest(oss.str());
     return;
   }
 

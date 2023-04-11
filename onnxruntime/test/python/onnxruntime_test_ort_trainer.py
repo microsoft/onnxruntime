@@ -297,8 +297,8 @@ class MNISTWrapper:
     def train_with_trainer(self, learningRate, trainer, device, train_loader, epoch):
         actual_losses = []
         for batch_idx, (data, target) in enumerate(train_loader):
-            data, target = data.to(device), target.to(device)
-            data = data.reshape(data.shape[0], -1)
+            data, target = data.to(device), target.to(device)  # noqa: PLW2901
+            data = data.reshape(data.shape[0], -1)  # noqa: PLW2901
 
             loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
@@ -323,8 +323,8 @@ class MNISTWrapper:
         correct = 0
         with torch.no_grad():
             for data, target in test_loader:
-                data, target = data.to(device), target.to(device)
-                data = data.reshape(data.shape[0], -1)
+                data, target = data.to(device), target.to(device)  # noqa: PLW2901
+                data = data.reshape(data.shape[0], -1)  # noqa: PLW2901
                 output = F.log_softmax(trainer.eval_step((data), fetches=["probability"]), dim=1)
                 test_loss += F.nll_loss(output, target, reduction="sum").item()  # sum up batch loss
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability

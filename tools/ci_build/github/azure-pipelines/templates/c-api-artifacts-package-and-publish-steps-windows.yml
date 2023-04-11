@@ -10,12 +10,12 @@ parameters:
   displayName: buildConfig
   type: string
   default: 'RelWithDebInfo'
-  
+
 - name: artifactName
   displayName: artifactName，like 'onnxruntime-win-x64-1.6.0'
   type: string
   default: ''
-  
+
 - name: artifactNameNoVersionString
   type: string
   default: 'onnxruntime-win-x64'
@@ -25,8 +25,8 @@ parameters:
   type: string
   default: ''
 
-- name: trtEnabled  
-  displayName: Include TRT EP libraries? 
+- name: trtEnabled
+  displayName: Include TRT EP libraries?
   type: boolean
   default: true
 
@@ -39,7 +39,7 @@ steps:
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
 
-          echo "Directories created"            
+          echo "Directories created"
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
@@ -60,8 +60,8 @@ steps:
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\tensorrt\tensorrt_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
 
-          REM copy the README, licence and TPN
-          copy $(Build.SourcesDirectory)\README.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\README.md          
+          REM copy the README, license and TPN
+          copy $(Build.SourcesDirectory)\README.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\README.md
           copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\Privacy.md
           copy $(Build.SourcesDirectory)\LICENSE $(Build.BinariesDirectory)\${{parameters.artifactName}}\LICENSE
           copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\${{parameters.artifactName}}\ThirdPartyNotices.txt
@@ -70,22 +70,23 @@ steps:
 
         workingDirectory: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}'
 
-    - template: win-esrp-dll.yml
-      parameters:
-        FolderPath: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
-        DisplayName: 'ESRP - Sign Native dlls'
-        DoEsrp: ${{parameters.DoEsrp}}
-        Pattern: '*.dll,*.exe'
+    - ${{ if eq(parameters.DoEsrp, true) }}:
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: ${{parameters.DoEsrp}}
+          Pattern: '*.dll,*.exe'
 
     - task: ArchiveFiles@2
       inputs:
-        rootFolderOrFile: '$(Build.BinariesDirectory)\${{parameters.artifactName}}' 
+        rootFolderOrFile: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
         includeRootFolder: true
         archiveType: 'zip' # Options: zip, 7z, tar, wim
-        archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
-        replaceExistingArchive: true 
+        archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip'
+        replaceExistingArchive: true
 
     - task: PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
+        targetPath: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip'
         artifactName: '${{parameters.artifactNameNoVersionString}}'

@@ -515,7 +515,7 @@ def do_pretrain(args):
             train_iter = tqdm(train_dataloader, desc="Iteration") if is_main_process(args) else train_dataloader
             for _step, batch in enumerate(train_iter):
                 training_steps += 1
-                batch = [t.to(device) for t in batch]
+                batch = [t.to(device) for t in batch]  # noqa: PLW2901
                 input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels = batch
 
                 loss, _, _ = model.train_step(
