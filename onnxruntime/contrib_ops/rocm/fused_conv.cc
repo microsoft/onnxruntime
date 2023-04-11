@@ -143,7 +143,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     bool has_z = nullptr != Base::s_.z_data;
     bool has_b = nullptr != Base::s_.b_data;
     auto factory = [this](FusedConvFusionData& fusion) {
-      return this->DoCreateFusionDesc(fusion);
+      return this->DoCreateFusionDesc(this->Node().Name(), fusion);
     };
     auto& cached_item = plan_cache_.FindOrCreateFusionPlanCache(Hash(),
                                                                 factory);
@@ -371,17 +371,22 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
 
   static FusionPlanCache plan_cache_;
 
-  Status DoCreateFusionDesc(FusedConvFusionData& fusion) const {
+  Status DoCreateFusionDesc(const std::string node_name, FusedConvFusionData& fusion) const {
     bool has_z = nullptr != Base::s_.z_data;
     bool has_b = nullptr != Base::s_.b_data;
     MIOPEN_RETURN_IF_ERROR(miopenCreateFusionPlan(&fusion.plan,
                                                   miopenVerticalFusion,
                                                   Base::s_.x_tensor));
     MIOPEN_RETURN_IF_ERROR(miopenCreateOperatorArgs(&fusion.fusion_args));
-    MIOPEN_RETURN_IF_ERROR(miopenCreateOpConvForward(fusion.plan,
-                                                     &fusion.conv_op,
-                                                     Base::s_.conv_desc,
-                                                     Base::s_.w_desc));
+    auto status = miopenCreateOpConvForward(fusion.plan, &fusion.conv_op, Base::s_.conv_desc, Base::s_.w_desc);
+    if (status == miopenStatusUnsupportedOp) {
+      auto msg = MakeString("MIOpen does not support the conv fusion for node \"",
+                             node_name, "\", fallback to unfused implementation.");
+      LOGS_DEFAULT(WARNING) << msg;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, msg);
+    }
+    MIOPEN_RETURN_IF_ERROR(status);
+
     if (has_z) {
       MIOPEN_RETURN_IF_ERROR(miopenCreateOpBiasForward(fusion.plan,
                                                        &fusion.bias_z_op,
