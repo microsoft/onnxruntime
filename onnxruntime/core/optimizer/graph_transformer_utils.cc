@@ -10,18 +10,13 @@
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
-#include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/optimizer/conv_add_act_fusion.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
-#ifdef MLAS_TARGET_AMD64_IX86
-#include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
-#endif
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
@@ -29,6 +24,7 @@
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/constant_sharing.h"
+#include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -56,21 +52,26 @@
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#ifdef MLAS_TARGET_AMD64_IX86
+#include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
+#endif
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
 #include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
+#include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #ifdef ENABLE_TRAINING_CORE
-#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #endif
 #ifdef ENABLE_TRAINING
@@ -212,22 +213,28 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
+
+        // EnsureUniqueDQForNodeUnit is actually a required graph transformation. The unique DQ per QDQ node unit input
+        // condition that it ensures is important for the partitioning that happens after Level1 optimizers are run.
+        // It runs unconditionally in InferenceSession::TransformGraph() prior to Level1 optimizers.
+        // We also put it here with other Level1 optimizers so that it can fix things up after their changes.
+        transformers.emplace_back(std::make_unique<EnsureUniqueDQForNodeUnit>());
       }
+
+      // add __backwardpass attribute to nodes after YieldOp, ROCm-only
+      const InlinedHashSet<std::string_view> rocm_ep = {onnxruntime::kRocmExecutionProvider};
+      transformers.emplace_back(std::make_unique<RocmBlasAltImpl>(rocm_ep));
 
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.
       auto cpu_allocator = cpu_execution_provider.GetAllocator(OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
-
-      // add __backwardpass attribute to nodes after YieldOp, ROCm-only
-      const InlinedHashSet<std::string_view> rocm_ep = {onnxruntime::kRocmExecutionProvider};
-      transformers.emplace_back(std::make_unique<RocmBlasAltImpl>(rocm_ep));
     } break;
 
     case TransformerLevel::Level2: {
       const bool enable_quant_qdq_cleanup =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
-#ifndef DISABLE_CONTRIB_OPS
+#if !defined(DISABLE_CONTRIB_OPS)
       const bool qdq_is_int8_allowed =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed,
                                                             QDQIsInt8Allowed() ? "1" : "0") == "1";
@@ -292,7 +299,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_cuda_dml_rocm_eps));
 
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_cuda_dml_rocm_eps));
 
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_rocm_eps));
 
@@ -309,7 +316,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 #endif
 
-#endif
+#endif // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
       // fusions might be prevented if this one removes a Q/DQ node too early.
       transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));

@@ -98,7 +98,7 @@ import ort_test_dir_utils
 try:
     ort_test_dir_utils.run_test_dir('temp/examples/test1')
     ort_test_dir_utils.run_test_dir('temp/examples/test2/expand_elimination.onnx')
-except:
+except Exception:
     print("Exception:", sys.exc_info()[1])
 ```
 

@@ -12,13 +12,14 @@ import torch
 import onnxruntime
 import onnxruntime.training.onnxblock as onnxblock
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.training import artifacts
 
 # PyTorch Module definitions
 
 
 class SimpleNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(SimpleNet, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -34,55 +35,73 @@ class SimpleNet(torch.nn.Module):
 # onnxblock Model definitions
 
 
-class SimpleModelWithMSELoss(onnxblock.Model):
+class SimpleBlockWithMSELoss(onnxblock.ForwardBlock):
     def __init__(self):
-        super(SimpleModelWithMSELoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.MSELoss()
 
     def build(self, output_name):
         return self.loss(output_name)
 
 
-class SimpleModelWithCrossEntropyLoss(onnxblock.Model):
+class SimpleBlockWithCrossEntropyLoss(onnxblock.ForwardBlock):
     def __init__(self):
-        super(SimpleModelWithCrossEntropyLoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.CrossEntropyLoss()
 
     def build(self, output_name):
         return self.loss(output_name)
 
 
-class SimpleTrainingModelWithMSELoss(onnxblock.TrainingModel):
+class SimpleTrainingBlockWithMSELoss(onnxblock.TrainingBlock):
     def __init__(self):
-        super(SimpleTrainingModelWithMSELoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.MSELoss()
 
     def build(self, output_name):
         return self.loss(output_name)
 
 
-class SimpleTrainingModelWithCrossEntropyLoss(onnxblock.TrainingModel):
+class SimpleTrainingBlockWithCrossEntropyLoss(onnxblock.TrainingBlock):
     def __init__(self):
-        super(SimpleTrainingModelWithCrossEntropyLoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.CrossEntropyLoss()
 
     def build(self, output_name):
         return self.loss(output_name)
 
 
-class SimpleModelWithBCEWithLogitsLoss(onnxblock.Model):
+class SimpleBlockWithBCEWithLogitsLoss(onnxblock.ForwardBlock):
     def __init__(self):
-        super(SimpleModelWithBCEWithLogitsLoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.BCEWithLogitsLoss()
 
     def build(self, output_name):
         return self.loss(output_name)
 
 
-class SimpleTrainingModelWithBCEWithLogitsLoss(onnxblock.TrainingModel):
+class SimpleTrainingBlockWithBCEWithLogitsLoss(onnxblock.TrainingBlock):
     def __init__(self):
-        super(SimpleTrainingModelWithBCEWithLogitsLoss, self).__init__()
+        super().__init__()
         self.loss = onnxblock.loss.BCEWithLogitsLoss()
+
+    def build(self, output_name):
+        return self.loss(output_name)
+
+
+class SimpleBlockWithL1Loss(onnxblock.ForwardBlock):
+    def __init__(self):
+        super().__init__()
+        self.loss = onnxblock.loss.L1Loss()
+
+    def build(self, output_name):
+        return self.loss(output_name)
+
+
+class SimpleTrainingBlockWithL1Loss(onnxblock.TrainingBlock):
+    def __init__(self):
+        super().__init__()
+        self.loss = onnxblock.loss.L1Loss()
 
     def build(self, output_name):
         return self.loss(output_name)
@@ -181,41 +200,52 @@ def _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=None):
 
 
 @pytest.mark.parametrize(
-    "graph",
+    "block",
     [
-        SimpleModelWithMSELoss,
-        SimpleModelWithCrossEntropyLoss,
-        SimpleTrainingModelWithMSELoss,
-        SimpleTrainingModelWithCrossEntropyLoss,
-        SimpleModelWithBCEWithLogitsLoss,
-        SimpleTrainingModelWithBCEWithLogitsLoss,
+        SimpleBlockWithMSELoss,
+        SimpleBlockWithCrossEntropyLoss,
+        SimpleTrainingBlockWithMSELoss,
+        SimpleTrainingBlockWithCrossEntropyLoss,
+        SimpleBlockWithBCEWithLogitsLoss,
+        SimpleTrainingBlockWithBCEWithLogitsLoss,
+        SimpleBlockWithL1Loss,
+        SimpleTrainingBlockWithL1Loss,
     ],
 )
-def test_loss_composition(graph):
+def test_loss_composition(block):
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     # When / Then no error occurs
-    simple_model = graph()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = block()
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
 
 
-def test_mse_loss_execution():
+@pytest.mark.parametrize(
+    "block",
+    [
+        SimpleBlockWithMSELoss,
+        SimpleBlockWithL1Loss,
+    ],
+)
+def test_mse_loss_execution(block):
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     x = torch.randn(batch_size, input_size, device=device)
     target = torch.randn(batch_size, output_size, device=device)
 
     # Build the onnx model with loss
-    simple_model = SimpleModelWithMSELoss()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = block()
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    onnx_model = simple_block.to_model_proto()
 
     ort_output_names = [onnx_model.graph.output[0].name]
     ort_inputs = {
@@ -227,13 +257,19 @@ def test_mse_loss_execution():
         loss = torch.nn.MSELoss()
         return loss(prediction, target)
 
+    def l1_loss(prediction, target):
+        loss = torch.nn.L1Loss()
+        return loss(prediction, target)
+
+    loss = mse_loss if block == SimpleBlockWithMSELoss else l1_loss
+
     # When
     with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
         onnx.save(onnx_model, onnx_fo.name)
         ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
-        torch_outs = mse_loss(pt_model(x), target)
+        torch_outs = loss(pt_model(x), target)
 
         # Then
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
@@ -243,20 +279,22 @@ def test_crossentropy_loss_execution():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     x = torch.randn(batch_size, input_size, device=device)
     target = torch.randint(high=output_size, size=(batch_size,), dtype=torch.int64, device=device)
 
     # Build the onnx model with loss
-    simple_model = SimpleModelWithCrossEntropyLoss()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = SimpleBlockWithCrossEntropyLoss()
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    onnx_model = simple_block.to_model_proto()
 
     ort_output_names = [onnx_model.graph.output[0].name]
     ort_inputs = {
         onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target).type(torch.int32)),
+        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target).type(torch.int64)),
     }
 
     def crossentropy_loss(prediction, target):
@@ -279,15 +317,17 @@ def test_bcewithlogits_loss_execution():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     x = torch.randn(batch_size, input_size, device=device)
     target = torch.randn(batch_size, output_size, device=device)
 
     # Build the onnx model with loss
-    simple_model = SimpleModelWithBCEWithLogitsLoss()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = SimpleBlockWithBCEWithLogitsLoss()
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    onnx_model = simple_block.to_model_proto()
 
     ort_output_names = [onnx_model.graph.output[0].name]
     ort_inputs = {
@@ -315,15 +355,20 @@ def test_mse_loss_training_graph_execution():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     x = torch.randn(batch_size, input_size, device=device)
     target = torch.randn(batch_size, output_size, device=device)
 
     # Build the onnx trainingmodel with loss
-    simple_model = SimpleTrainingModelWithMSELoss()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = SimpleTrainingBlockWithMSELoss()
+    for name, _ in pt_model.named_parameters():
+        simple_block.requires_grad(name)
+
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    onnx_model, _ = simple_block.to_model_proto()
 
     ort_output_names = _get_training_ort_output_names(pt_model, onnx_model)
     ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model)
@@ -350,18 +395,23 @@ def test_crossentropy_loss_training_graph_execution():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     x = torch.randn(batch_size, input_size, device=device)
     target = torch.randint(high=output_size, size=(batch_size,), dtype=torch.int64, device=device)
 
     # Build the onnx trainingmodel with loss
-    simple_model = SimpleTrainingModelWithCrossEntropyLoss()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = SimpleTrainingBlockWithCrossEntropyLoss()
+    for name, _ in pt_model.named_parameters():
+        simple_block.requires_grad(name)
+
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    onnx_model, _ = simple_block.to_model_proto()
 
     ort_output_names = _get_training_ort_output_names(pt_model, onnx_model)
-    ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=torch.int32)
+    ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=torch.int64)
 
     def crossentropy_loss(prediction, target):
         loss = torch.nn.CrossEntropyLoss()
@@ -385,15 +435,20 @@ def test_bcewithlogits_loss_training_graph_execution():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     x = torch.randn(batch_size, input_size, device=device)
     target = torch.randn(batch_size, output_size, device=device)
 
     # Build the onnx model with loss
-    simple_model = SimpleTrainingModelWithBCEWithLogitsLoss()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = SimpleTrainingBlockWithBCEWithLogitsLoss()
+    for name, _ in pt_model.named_parameters():
+        simple_block.requires_grad(name)
+
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    onnx_model, _ = simple_block.to_model_proto()
 
     ort_output_names = _get_training_ort_output_names(pt_model, onnx_model)
     ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model)
@@ -417,24 +472,27 @@ def test_bcewithlogits_loss_training_graph_execution():
 
 
 @pytest.mark.parametrize(
-    "graph",
-    [SimpleTrainingModelWithMSELoss, SimpleTrainingModelWithCrossEntropyLoss, SimpleTrainingModelWithBCEWithLogitsLoss],
+    "block",
+    [SimpleTrainingBlockWithMSELoss, SimpleTrainingBlockWithCrossEntropyLoss, SimpleTrainingBlockWithBCEWithLogitsLoss],
 )
 @pytest.mark.parametrize("grad_clipping", [None, onnxblock.optim.ClipGradNorm(2.5)])
-def test_adamw_optimizer_composition(graph, grad_clipping):
+def test_adamw_optimizer_composition(block, grad_clipping):
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     # When / Then no error occurs
-    simple_model = graph()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = block()
+    for name, _ in pt_model.named_parameters():
+        simple_block.requires_grad(name)
+
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
 
     optimizer = onnxblock.optim.AdamW(clip_grad=grad_clipping)
-    with onnxblock.onnx_model() as accessor:
-        _ = optimizer(simple_model.parameters())
+    with onnxblock.empty_base() as accessor:
+        _ = optimizer(simple_block.parameters())
         optimizer_model = accessor.model
         assert optimizer_model
 
@@ -445,18 +503,21 @@ def test_adamw_optimizer_execution():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     x = torch.randn(batch_size, input_size, device=device)
     target = torch.randn(batch_size, output_size, device=device)
 
-    simple_model = SimpleTrainingModelWithMSELoss()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = SimpleTrainingBlockWithMSELoss()
+    for name, _ in pt_model.named_parameters():
+        simple_block.requires_grad(name)
+
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
 
     optimizer = onnxblock.optim.AdamW()
-    with onnxblock.onnx_model() as accessor:
-        output_name = optimizer(simple_model.parameters())
+    with onnxblock.empty_base() as accessor:
+        output_name = optimizer(simple_block.parameters())
         optimizer_model = accessor.model
 
     learning_rate = 0.001
@@ -497,14 +558,14 @@ def test_retrieve_parameters():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    pt_model, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    simple_model = SimpleTrainingModelWithMSELoss()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = SimpleTrainingBlockWithMSELoss()
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
 
     # When
-    trainable_params, non_trainable_params = simple_model.parameters()
+    trainable_params, non_trainable_params = simple_block.parameters()
 
     # Then
     assert not non_trainable_params
@@ -520,13 +581,13 @@ def test_retrieve_parameters_before_building_gradient_graph():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    simple_model = SimpleTrainingModelWithMSELoss()
+    simple_block = SimpleTrainingBlockWithMSELoss()
 
     # When / Then
     with pytest.raises(Exception) as ex_info:
-        _, _ = simple_model.parameters()
+        _, _ = simple_block.parameters()
     assert "Please build the training model first before trying to retrieve the parameters." in str(ex_info.value)
 
 
@@ -534,12 +595,12 @@ def test_save_checkpoint():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    simple_model = SimpleTrainingModelWithMSELoss()
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
-    trainable_params, non_trainable_params = simple_model.parameters()
+    simple_block = SimpleTrainingBlockWithMSELoss()
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+    trainable_params, non_trainable_params = simple_block.parameters()
 
     # When
     with tempfile.TemporaryDirectory() as checkpoint_dir_name:
@@ -554,8 +615,8 @@ def test_load_checkpoint():
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
     _, zero_onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size, zero_flag=True)
-    for i in range(len(zero_onnx_model.graph.initializer)):
-        zero_np = onnx.numpy_helper.to_array(zero_onnx_model.graph.initializer[i])
+    for initializer in zero_onnx_model.graph.initializer:
+        zero_np = onnx.numpy_helper.to_array(initializer)
         assert np.allclose(zero_np, np.zeros(zero_np.shape))
 
     _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
@@ -563,15 +624,15 @@ def test_load_checkpoint():
     # Copy of onnx_model for comparison
     onnx_model_copy = copy.deepcopy(onnx_model)
 
-    simple_model = SimpleTrainingModelWithMSELoss()
+    simple_block = SimpleTrainingBlockWithMSELoss()
 
     # When
-    simple_model.requires_grad("fc2.weight", False)
-    simple_model.requires_grad("fc1.bias", False)
+    simple_block.requires_grad("fc2.weight", True)
+    simple_block.requires_grad("fc1.bias", True)
 
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
-    trainable_params, non_trainable_params = simple_model.parameters()
+    with onnxblock.base(onnx_model):
+        _ = simple_block(onnx_model.graph.output[0].name)
+    trainable_params, non_trainable_params = simple_block.parameters()
 
     with tempfile.TemporaryDirectory() as checkpoint_dir_name:
         checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
@@ -584,27 +645,28 @@ def test_load_checkpoint():
         onnx_model_copy.graph.initializer.sort(key=lambda x: x.name)
         zero_onnx_model.graph.initializer.sort(key=lambda x: x.name)
 
-        for i, _ in enumerate(onnx_model_copy.graph.initializer):
-            onnx_np = onnx.numpy_helper.to_array(onnx_model_copy.graph.initializer[i])
-            zero_np = onnx.numpy_helper.to_array(zero_onnx_model.graph.initializer[i])
-            assert np.allclose(onnx_np, zero_np)
+        for i, initializer in enumerate(onnx_model_copy.graph.initializer):
+            if initializer.name in ["fc2.weight", "fc1.bias"]:
+                onnx_np = onnx.numpy_helper.to_array(onnx_model_copy.graph.initializer[i])
+                zero_np = onnx.numpy_helper.to_array(zero_onnx_model.graph.initializer[i])
+                assert np.allclose(onnx_np, zero_np)
 
 
 def test_set_requires_grad_on_parameters():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    simple_model = SimpleTrainingModelWithMSELoss()
+    simple_block = SimpleTrainingBlockWithMSELoss()
 
     # When
-    simple_model.requires_grad("fc2.weight", False)
-    simple_model.requires_grad("fc1.bias", False)
+    simple_block.requires_grad("fc2.weight", False)
+    simple_block.requires_grad("fc1.bias", False)
 
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
-    trainable_params, non_trainable_params = simple_model.parameters()
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+    trainable_params, non_trainable_params = simple_block.parameters()
 
     # Then
     expected_trainable_parameters = {"fc1.weight", "fc2.bias"}
@@ -619,30 +681,32 @@ def test_set_requires_grad_on_inputs():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     # When
-    simple_model = SimpleTrainingModelWithMSELoss()
-    simple_model.requires_grad("input-0")
-    with onnxblock.onnx_model(onnx_model):
-        _ = simple_model(onnx_model.graph.output[0].name)
+    simple_block = SimpleTrainingBlockWithMSELoss()
+    simple_block.requires_grad("input-0")
+    with onnxblock.base(base_model):
+        _ = simple_block(base_model.graph.output[0].name)
+
+    onnx_model, _ = simple_block.to_model_proto()
 
     # Then
-    expecteinput_sizeput_gradient_buffer_name = "input-0_grad.accumulation.buffer"
-    expecteinput_sizeput_gradient_output_name = "input-0_grad.accumulation.out"
+    expected_gradient_buffer_name = "input-0_grad.accumulation.buffer"
+    expectedt_gradient_output_name = "input-0_grad.accumulation.out"
     graph_input_names = {graph_input.name for graph_input in onnx_model.graph.input}
     graph_output_names = {graph_output.name for graph_output in onnx_model.graph.output}
 
-    assert expecteinput_sizeput_gradient_buffer_name in graph_input_names
-    assert expecteinput_sizeput_gradient_output_name in graph_output_names
+    assert expected_gradient_buffer_name in graph_input_names
+    assert expectedt_gradient_output_name in graph_output_names
 
 
-@pytest.mark.parametrize("model_type", [onnxblock.Model, onnxblock.TrainingModel])
+@pytest.mark.parametrize("model_type", [onnxblock.ForwardBlock, onnxblock.TrainingBlock])
 def test_weighted_average_model_composition(model_type):
     # Given
     class TwoOutputNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(TwoOutputNet, self).__init__()
+            super().__init__()
 
             self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
             self.relu1 = torch.nn.ReLU()
@@ -659,14 +723,14 @@ def test_weighted_average_model_composition(model_type):
 
     class WeightedAvg(model_type):
         def __init__(self, w1, w2):
-            super(WeightedAvg, self).__init__()
+            super().__init__()
 
             self.loss1 = onnxblock.loss.CrossEntropyLoss()
             self.loss2 = onnxblock.loss.CrossEntropyLoss()
-            self.w1 = onnxblock.building_blocks.Constant(w1)
-            self.w2 = onnxblock.building_blocks.Constant(w2)
-            self.mul = onnxblock.building_blocks.Mul()
-            self.add = onnxblock.building_blocks.Add()
+            self.w1 = onnxblock.blocks.Constant(w1)
+            self.w2 = onnxblock.blocks.Constant(w2)
+            self.mul = onnxblock.blocks.Mul()
+            self.add = onnxblock.blocks.Add()
 
         def build(self, loss_input_name1, loss_input_name2):
             return self.add(
@@ -679,12 +743,12 @@ def test_weighted_average_model_composition(model_type):
     pt_model = TwoOutputNet(input_size, hidden_size, output_size).to(device)
     x1 = torch.randn(batch_size, input_size, device=device)
     x2 = torch.randn(batch_size, input_size, device=device)
-    onnx_model = _get_onnx_model(pt_model, (x1, x2))
+    base_model = _get_onnx_model(pt_model, (x1, x2))
 
     # When / Then no error occurs
     weighted_model = WeightedAvg(random.random(), random.random())
-    with onnxblock.onnx_model(onnx_model):
-        _ = weighted_model(onnx_model.graph.output[0].name, onnx_model.graph.output[1].name)
+    with onnxblock.base(base_model):
+        _ = weighted_model(base_model.graph.output[0].name, base_model.graph.output[1].name)
 
 
 def test_grad_clipping_execution():
@@ -696,13 +760,18 @@ def test_grad_clipping_execution():
     target = torch.randn(batch_size, output_size, device=device)
 
     # Prepare the onnx model with only grad clipping
-    onnx_model = onnx.ModelProto()
-    onnx_model.graph.name = "ClipGradNorm Model"
-    onnx_model.producer_name = "grad clipping test"
-    onnx_model.opset_import.extend(onnxblock.optim.optim._OPSET_IMPORTS)
-    onnx_model.ir_version = onnx.IR_VERSION
+    base_model = onnx.ModelProto()
+    base_model.graph.name = "ClipGradNorm Model"
+    base_model.producer_name = "grad clipping test"
+    base_model.opset_import.extend(
+        [
+            onnx.helper.make_opsetid("com.microsoft", 1),
+            onnx.helper.make_opsetid("", onnx.defs.onnx_opset_version()),
+        ]
+    )
+    base_model.ir_version = onnx.IR_VERSION
 
-    class GradClippingModel(onnxblock.Model):
+    class GradClippingModel(onnxblock.ForwardBlock):
         def __init__(self, max_norm):
             super().__init__()
             self._grad_clip = onnxblock.optim.ClipGradNorm(max_norm)
@@ -710,13 +779,15 @@ def test_grad_clipping_execution():
         def build(self, grads_name):
             return self._grad_clip(grads_name)
 
-    onnx_model.graph.input.append(
+    base_model.graph.input.append(
         onnx.helper.make_tensor_sequence_value_info("gradients", onnx.TensorProto.FLOAT, None)
     )
 
     grad_clip = GradClippingModel(2.5)
-    with onnxblock.onnx_model(onnx_model):
+    with onnxblock.base(base_model):
         ort_output_names = grad_clip("gradients")
+
+    onnx_model = grad_clip.to_model_proto()
 
     onnx_model.graph.output.append(
         onnx.helper.make_tensor_sequence_value_info(ort_output_names, onnx.TensorProto.FLOAT, None)
@@ -746,3 +817,101 @@ def test_grad_clipping_execution():
         # assert all the gradients are close
         for ort_grad, pt_param in zip(ort_outs[0], pt_model.parameters()):
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
+
+
+def test_eval_model_has_no_training_mode_dropout():
+    class DropoutModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.dropout = torch.nn.Dropout(p=0.5)
+
+        def forward(self, x):
+            return self.dropout(x)
+
+    model = DropoutModel()
+    onnx_model = _get_onnx_model(model, (torch.randn(1, 3, 224, 224),))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(onnx_model, loss=artifacts.LossType.CrossEntropyLoss, artifact_directory=temp_dir)
+
+        eval_model = onnx.load(os.path.join(temp_dir, "eval_model.onnx"))
+
+        flag = False
+        for node in eval_model.graph.node:
+            if node.op_type == "Dropout":
+                assert not node.input[2]
+                flag = True
+
+        assert flag
+
+
+def test_eval_model_has_no_training_mode_batchnorm():
+    class BatchNormModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.batchnorm = torch.nn.BatchNorm2d(100)
+
+        def forward(self, x):
+            return self.batchnorm(x)
+
+    model = BatchNormModel()
+    onnx_model = _get_onnx_model(model, (torch.randn(20, 100, 35, 45),))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(onnx_model, loss=artifacts.LossType.CrossEntropyLoss, artifact_directory=temp_dir)
+
+        eval_model = onnx.load(os.path.join(temp_dir, "eval_model.onnx"))
+
+        flag = False
+        for node in eval_model.graph.node:
+            if node.op_type == "BatchNormalization":
+                for attr in node.attribute:
+                    if attr.name == "training_mode":
+                        assert attr.i == 0
+                        flag = True
+
+        assert flag
+
+
+def test_label_encoder_composition():
+    device = "cuda"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    base_model.opset_import.append(
+        onnx.helper.make_opsetid("ai.onnx.ml", onnx.defs.onnx_opset_version()),
+    )
+
+    all_nodes = [node.op_type for node in base_model.graph.node]
+    assert "LabelEncoder" not in all_nodes
+
+    class SCELossWithLabelEncoder(onnxblock.ForwardBlock):
+        def __init__(self):
+            super().__init__()
+            self._loss = onnxblock.loss.CrossEntropyLoss()
+
+        def build(self, output_name):
+            keys_int64s = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+            values_int64s = [521, 522, 523, 524, 525, 526, 527, 528, 529, 530]
+
+            # Create a new graph input for the labels
+            labels_name = "labels"
+            labels_input = copy.deepcopy(self.base.graph.output[0])
+            labels_input.type.tensor_type.elem_type = onnx.TensorProto.INT64
+            labels_input.name = labels_name
+            del labels_input.type.tensor_type.shape.dim[1]
+            self.base.graph.input.append(labels_input)
+
+            label_encoder = onnxblock.blocks.LabelEncoder(
+                default_int64=521, keys_int64s=keys_int64s, values_int64s=values_int64s
+            )
+
+            return self._loss(output_name, label_encoder(labels_name))
+
+    block = SCELossWithLabelEncoder()
+    model = None
+    with onnxblock.base(base_model):
+        _ = block(base_model.graph.output[0].name)
+        model = block.to_model_proto()
+
+    all_nodes = [node.op_type for node in model.graph.node]
+    assert "LabelEncoder" in all_nodes

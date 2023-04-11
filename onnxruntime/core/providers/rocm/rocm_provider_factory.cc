@@ -104,8 +104,8 @@ struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
     return rocm::Impl_Cast(static_cast<hipStream_t>(stream), input_data, output_data, count);
   }
 
-  Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return RocmCall<hipError_t, false>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
-  void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { RocmCall<hipError_t, true>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
+  Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return RocmCall<hipError_t, false>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg, file, line); }
+  void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { RocmCall<hipError_t, true>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg, file, line); }
 
   void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
     ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
@@ -173,7 +173,8 @@ struct ROCM_Provider : Provider {
     info.has_user_compute_stream = params->has_user_compute_stream;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
-    info.tunable_op.enabled = params->tunable_op_enabled;
+    info.tunable_op.enable = params->tunable_op_enable;
+    info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
 
     return std::make_shared<ROCMProviderFactory>(info);
   }

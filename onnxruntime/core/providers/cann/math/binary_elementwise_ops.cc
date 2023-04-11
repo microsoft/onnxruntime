@@ -11,35 +11,6 @@ using onnxruntime::common::Status;
 namespace onnxruntime {
 namespace cann {
 
-Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape,
-                          const TensorShape& rhs_shape, TensorShape& out_shape) {
-  size_t lhs_rank = lhs_shape.NumDimensions();
-  size_t rhs_rank = rhs_shape.NumDimensions();
-  size_t out_rank = std::max(lhs_rank, rhs_rank);
-
-  std::vector<int64_t> output_dims(out_rank, 0);
-  for (size_t i = 0; i < out_rank; ++i) {
-    int64_t lhs_dim = 1;
-    if (i < lhs_rank)
-      lhs_dim = lhs_shape[lhs_rank - 1 - i];
-    int64_t rhs_dim = 1;
-    if (i < rhs_rank)
-      rhs_dim = rhs_shape[rhs_rank - 1 - i];
-    int64_t max = std::max(lhs_dim, rhs_dim);
-    int64_t min = std::min(lhs_dim, rhs_dim);
-    int64_t out_dim = (min == 0 ? min : max);  // special case a dim value of 0.
-    if (lhs_dim != out_dim && lhs_dim != 1)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": left operand cannot broadcast on dim ", lhs_rank - 1 - i,
-                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
-    if (rhs_dim != out_dim && rhs_dim != 1)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": right operand cannot broadcast on dim ", rhs_rank - 1 - i,
-                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
-    output_dims[out_rank - 1 - i] = out_dim;
-  }
-  out_shape = TensorShape(output_dims);
-  return Status::OK();
-}
-
 template <typename T>
 Status BinaryElementwise::Prepare(OpKernelContext* ctx, CannPreparation& prepare) const {
   const aclDataType aclType = getACLType<T>();
@@ -56,14 +27,14 @@ Status BinaryElementwise::Prepare(OpKernelContext* ctx, CannPreparation& prepare
   void* B_data = const_cast<void*>(B->DataRaw());
 
   if (A->Shape() != C->Shape()) {
-    IAllocatorUniquePtr<void> pA = GetScratchBuffer<void>(C->SizeInBytes());
-    ORT_RETURN_IF_ERROR(Broadcast<T>(A, C, pA.get()));
+    IAllocatorUniquePtr<void> pA = GetScratchBuffer<void>(C->SizeInBytes(), ctx->GetComputeStream());
+    ORT_RETURN_IF_ERROR(Broadcast<T>(A, C, pA.get(), Stream(ctx)));
     A_data = pA.get();
   }
 
   if (B->Shape() != C->Shape()) {
-    IAllocatorUniquePtr<void> pB = GetScratchBuffer<void>(C->SizeInBytes());
-    ORT_RETURN_IF_ERROR(Broadcast<T>(B, C, pB.get()));
+    IAllocatorUniquePtr<void> pB = GetScratchBuffer<void>(C->SizeInBytes(), ctx->GetComputeStream());
+    ORT_RETURN_IF_ERROR(Broadcast<T>(B, C, pB.get(), Stream(ctx)));
     B_data = pB.get();
   }
 
@@ -85,9 +56,9 @@ Status BinaryElementwise::Prepare(OpKernelContext* ctx, CannPreparation& prepare
 
 #define REGISTER_ELEMENTWISE_TYPED_COMPUTE(x, T)                               \
   template <>                                                                  \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {               \
+  Status x<T>::ComputeInternal(OpKernelContext* ctx) const {                   \
     CannPreparation prepare;                                                   \
-    ORT_RETURN_IF_ERROR(Prepare<T>(context, prepare));                         \
+    ORT_RETURN_IF_ERROR(Prepare<T>(ctx, prepare));                             \
     CANN_RETURN_IF_ERROR(aclopCompileAndExecute(#x,                            \
                                                 prepare.inputDesc_.size(),     \
                                                 prepare.inputDesc_.data(),     \
@@ -99,7 +70,7 @@ Status BinaryElementwise::Prepare(OpKernelContext* ctx, CannPreparation& prepare
                                                 ACL_ENGINE_SYS,                \
                                                 ACL_COMPILE_SYS,               \
                                                 NULL,                          \
-                                                Stream()));                    \
+                                                Stream(ctx)));                 \
     return Status::OK();                                                       \
   }
 

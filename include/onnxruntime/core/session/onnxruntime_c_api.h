@@ -391,7 +391,8 @@ typedef struct OrtCUDAProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
-        tunable_op_enabled{false} {}
+        tunable_op_enable{false},
+        tunable_op_tuning_enable{false} {}
 #endif
 
   /** \brief CUDA device Id
@@ -442,11 +443,18 @@ typedef struct OrtCUDAProviderOptions {
    */
   OrtArenaCfg* default_memory_arena_cfg;
 
-  /** \brief Enable TunableOp.
-   *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be superseded by environment variable ORT_CUDA_TUNABLE_OP_ENABLED.
+  /** \brief Enable TunableOp for using.
+   *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
+   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_ENABLE.
    */
-  int tunable_op_enabled;
+  int tunable_op_enable;
+
+  /** \brief Enable TunableOp for tuning.
+   *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
+   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_ENABLE.
+   */
+  int tunable_op_tuning_enable;
+
 
 } OrtCUDAProviderOptions;
 
@@ -465,7 +473,8 @@ typedef struct OrtROCMProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
-        tunable_op_enabled{false} {}
+        tunable_op_enable{false},
+        tunable_op_tuning_enable{false} {}
 #endif
 
   /** \brief ROCM device Id
@@ -515,11 +524,17 @@ typedef struct OrtROCMProviderOptions {
    */
   OrtArenaCfg* default_memory_arena_cfg;
 
-  /** \brief Enable TunableOp.
-   *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
+  /** \brief Enable TunableOp for using.
+   *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
+   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_ENABLE.
    */
-  int tunable_op_enabled;
+  int tunable_op_enable;
+
+  /** \brief Enable TunableOp for tuning.
+   *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
+   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
+   */
+  int tunable_op_tuning_enable;
 
 } OrtROCMProviderOptions;
 
@@ -3974,7 +3989,6 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
 
-  /// @}
   /// \name OrtKernelInfo
   /// Custom operator APIs.
   /// @{
@@ -4026,7 +4040,7 @@ struct OrtApi {
    * Used in the KernelCompute callback of an OrtCustomOp to get a logger that can be used to log
    * messages during inference.
    *
-   * \param[in] info An instance of ::OrtKernelContext.
+   * \param[in] context An instance of ::OrtKernelContext.
    * \param[out] logger Pointer set to the kernel context's ::OrtLogger. Owned by ONNX Runtime, so do not free.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -4083,13 +4097,13 @@ struct OrtApi {
    * \param[in] info ::OrtKernelInfo instance.
    * \param[in] index The node index.
    * \param[out] is_constant Is it a constant node input or not.
-   * \param[out] out The OrtValue tensor value. 
+   * \param[out] out The OrtValue tensor value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.15.
    */
-  ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out); 
+  ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
@@ -4205,5 +4219,4 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOpt
 #ifdef __cplusplus
 }
 #endif
-
-//! @}
+/// @}

@@ -39,17 +39,17 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         # it's safe to update the version supporting list. Otherwise, or the file is moved or renamed,
         # we need to check the implementation of these functions in detail.
         ds_version = Version(deepspeed.__version__)
-        if ds_version > Version("0.8.0") or ds_version < Version("0.4.0"):
+        if ds_version > Version("0.8.3") or ds_version < Version("0.4.0"):
             warnings.warn(
                 "Skip modifying optimizer because of unsupported DeepSpeed version {}, "
-                "supported version: 0.4.0 - 0.8.0.".format(deepspeed.__version__),
+                "supported version: 0.4.0 - 0.8.3.".format(deepspeed.__version__),
                 UserWarning,
             )
             return False
 
         try:
             from deepspeed.accelerator import get_accelerator
-        except ImportError as e:
+        except ImportError:
             warnings.warn("Unable to import get_accelerator from deepspeed.accelerator", UserWarning)
         else:
             if not get_accelerator().device_name().startswith("cuda"):
