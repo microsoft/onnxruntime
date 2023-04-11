@@ -123,6 +123,12 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
     const auto* node_op_schema = schema_registry->GetSchema(node.op_type(), domain_version, node.domain());
     int variadic_arg_idx = -1;
     for (int i = 0; i < node.input_size(); ++i) {
+      if (node_op_schema && variadic_arg_idx == -1) {
+        // The check is applied only if we have not seen a variadic parameter so far:
+        ORT_ENFORCE(i < node_op_schema->inputs().size(),
+                    "Too many inputs for op " + node.op_type());
+      }
+
       auto& in_name = node.input().Get(i);
       auto iter = input_name_idx_map.find(in_name);
       if (iter != input_name_idx_map.end()) {
