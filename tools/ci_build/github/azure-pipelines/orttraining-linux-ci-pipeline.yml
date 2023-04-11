@@ -6,15 +6,16 @@ resources:
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
+variables:
+  skipComponentGovernanceDetection: true
+  CCACHE_DIR: $(Agent.TempDirectory)/ccache
+  TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+
 jobs:
 - job: Linux_Build
   timeoutInMinutes: 180
   workspace:
     clean: all
-  variables:
-    skipComponentGovernanceDetection: true
-    CCACHE_DIR: $(Agent.TempDirectory)/ccache
-    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool: onnxruntime-Ubuntu-2004-Training-CPU-AMD
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
