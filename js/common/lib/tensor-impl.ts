@@ -195,7 +195,7 @@ export class Tensor implements TensorInterface {
 
     const {height, width} = options;
 
-    const norm = options.norm ?? {mean:255, bias:0};
+    const norm = options.norm ?? {mean: 255, bias: 0};
     let normMean: [number, number, number, number];
     let normBias: [number, number, number, number];
 
@@ -417,7 +417,7 @@ export class Tensor implements TensorInterface {
         }
         const newImage = new Image();
         newImage.crossOrigin = 'Anonymous';
-        newImage.src = image as string;
+        newImage.src = image;
         newImage.onload = () => {
           canvas.width = newImage.width;
           canvas.height = newImage.height;
