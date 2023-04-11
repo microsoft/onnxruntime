@@ -6,6 +6,7 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:Abs||
 |ai.onnx:Add||
 |ai.onnx:AveragePool|Only 2D Pool is supported.|
+|ai.onnx:BatchNormalization||
 |ai.onnx:Cast||
 |ai.onnx:Clip||
 |ai.onnx:Concat||
@@ -23,6 +24,7 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
 |ai.onnx:Identity||
 |ai.onnx:Log||
+|ai.onnx:LRN||
 |ai.onnx:MatMul||
 |ai.onnx:MaxPool|Only 2D Pool is supported.|
 |ai.onnx:Max||
