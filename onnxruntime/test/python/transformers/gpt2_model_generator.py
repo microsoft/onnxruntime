@@ -5,7 +5,7 @@
 # --------------------------------------------------------------------------
 
 import math
-from typing import List
+from typing import List  # noqa: F401
 
 import numpy
 import onnx
@@ -494,9 +494,6 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
         )
         initializers.append(helper.make_tensor("axes_1", TensorProto.INT64, [1], [1]))
 
-    batch_size = 1
-    sequence_length = 3
-    past_sequence_length = 2
     graph = helper.make_graph(
         [node for node in nodes if node],
         "GPT2",  # name

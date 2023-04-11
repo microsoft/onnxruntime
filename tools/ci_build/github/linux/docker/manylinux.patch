@@ -1,9 +1,9 @@
 diff --git a/build-cpython.sh b/build-cpython.sh
-index e0a7e86..ed17dc6 100755
+index eea89e2..79c74d8 100755
 --- a/build-cpython.sh
 +++ b/build-cpython.sh
-@@ -38,7 +38,7 @@ mkdir -p ${PREFIX}/lib
- 	CFLAGS_NODIST="${MANYLINUX_CFLAGS} ${MANYLINUX_CPPFLAGS}" \
+@@ -49,7 +49,7 @@ fi
+ 	CFLAGS_NODIST="${MANYLINUX_CFLAGS} ${MANYLINUX_CPPFLAGS} ${CFLAGS_EXTRA}" \
  	LDFLAGS_NODIST="${MANYLINUX_LDFLAGS}" \
  	--prefix=${PREFIX} --disable-shared --with-ensurepip=no > /dev/null
 -make > /dev/null
@@ -12,7 +12,7 @@ index e0a7e86..ed17dc6 100755
  popd
  rm -rf Python-${CPYTHON_VERSION} Python-${CPYTHON_VERSION}.tgz Python-${CPYTHON_VERSION}.tgz.asc
 diff --git a/build-git.sh b/build-git.sh
-index a99f55a..da3a7ca 100755
+index 9c0b02d..2e2919c 100755
 --- a/build-git.sh
 +++ b/build-git.sh
 @@ -27,7 +27,7 @@ fetch_source ${GIT_ROOT}.tar.gz ${GIT_DOWNLOAD_URL}
@@ -23,12 +23,12 @@ index a99f55a..da3a7ca 100755
 +make -j$(nproc) install prefix=/usr/local NO_GETTEXT=1 NO_TCLTK=1 DESTDIR=/manylinux-rootfs CPPFLAGS="${MANYLINUX_CPPFLAGS}" CFLAGS="${MANYLINUX_CFLAGS}" CXXFLAGS="${MANYLINUX_CXXFLAGS}" LDFLAGS="${MANYLINUX_LDFLAGS}"
  popd
  rm -rf ${GIT_ROOT} ${GIT_ROOT}.tar.gz
- 
+
 diff --git a/build-openssl.sh b/build-openssl.sh
-index b93e209..49dd769 100755
+index 668deb6..5f3f5d5 100755
 --- a/build-openssl.sh
 +++ b/build-openssl.sh
-@@ -42,7 +42,7 @@ check_sha256sum ${OPENSSL_ROOT}.tar.gz ${OPENSSL_HASH}
+@@ -40,7 +40,7 @@ check_sha256sum ${OPENSSL_ROOT}.tar.gz ${OPENSSL_HASH}
  tar -xzf ${OPENSSL_ROOT}.tar.gz
  pushd ${OPENSSL_ROOT}
  ./config no-shared --prefix=/usr/local/ssl --openssldir=/usr/local/ssl CPPFLAGS="${MANYLINUX_CPPFLAGS}" CFLAGS="${MANYLINUX_CFLAGS} -fPIC" CXXFLAGS="${MANYLINUX_CXXFLAGS} -fPIC" LDFLAGS="${MANYLINUX_LDFLAGS} -fPIC" > /dev/null
@@ -38,39 +38,18 @@ index b93e209..49dd769 100755
  popd
  rm -rf ${OPENSSL_ROOT} ${OPENSSL_ROOT}.tar.gz
 diff --git a/build_utils.sh b/build_utils.sh
-index 961e34d..c1ef5a3 100755
+index 961e34d..55ae11b 100755
 --- a/build_utils.sh
 +++ b/build_utils.sh
-@@ -33,6 +33,7 @@ function fetch_source {
-     if [ -f ${file} ]; then
-         echo "${file} exists, skipping fetch"
-     else
-+        apt-get update && apt-get install -y curl gpg-agent
-         curl -fsSL -o ${file} ${url}/${file}
-     fi
- }
-@@ -52,7 +53,7 @@ function check_sha256sum {
- 
+@@ -52,7 +52,7 @@ function check_sha256sum {
+
  function do_standard_install {
      ./configure "$@" CPPFLAGS="${MANYLINUX_CPPFLAGS}" CFLAGS="${MANYLINUX_CFLAGS}" "CXXFLAGS=${MANYLINUX_CXXFLAGS}" LDFLAGS="${MANYLINUX_LDFLAGS}" > /dev/null
 -    make > /dev/null
 +    make -j$(nproc) > /dev/null
      make install > /dev/null
  }
- 
-diff --git a/install-build-packages.sh b/install-build-packages.sh
-index 344eaac..aab08a7 100755
---- a/install-build-packages.sh
-+++ b/install-build-packages.sh
-@@ -18,7 +18,7 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" ==
-     if [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
-         COMPILE_DEPS="${COMPILE_DEPS} tk-devel"
-     fi
--elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
-+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
- 	PACKAGE_MANAGER=apt
- 	COMPILE_DEPS="libbz2-dev libncurses5-dev libreadline-dev tk-dev libgdbm-dev libdb-dev libpcap-dev liblzma-dev openssl libssl-dev libkeyutils-dev libkrb5-dev comerr-dev libidn2-0-dev libcurl4-openssl-dev uuid-dev libffi-dev linux-kernel-headers"
- elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
+
 diff --git a/install-entrypoint.sh b/install-entrypoint.sh
 index 9ef1e99..ec52833 100755
 --- a/install-entrypoint.sh
@@ -86,92 +65,24 @@ index 9ef1e99..ec52833 100755
 +fi
 \ No newline at end of file
 diff --git a/install-runtime-packages.sh b/install-runtime-packages.sh
-index e599ff0..6c6f739 100755
+index 137d2e2..bd329f4 100755
 --- a/install-runtime-packages.sh
 +++ b/install-runtime-packages.sh
-@@ -34,7 +34,7 @@ source $MY_DIR/build_utils.sh
- # MANYLINUX_DEPS: Install development packages (except for libgcc which is provided by gcc install)
- if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
- 	MANYLINUX_DEPS="glibc-devel libstdc++-devel glib2-devel libX11-devel libXext-devel libXrender-devel mesa-libGL-devel libICE-devel libSM-devel zlib-devel expat-devel"
--elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
-+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
- 	MANYLINUX_DEPS="libc6-dev libstdc++-6-dev libglib2.0-dev libx11-dev libxext-dev libxrender-dev libgl1-mesa-dev libice-dev libsm-dev libz-dev libexpat1-dev"
- elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
- 	MANYLINUX_DEPS="musl-dev libstdc++ glib-dev libx11-dev libxext-dev libxrender-dev mesa-dev libice-dev libsm-dev zlib-dev expat-dev"
-@@ -51,6 +51,9 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" ==
-     fi
- elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
- 	RUNTIME_DEPS="zlib1g libbz2-1.0 libexpat1 libncurses5 libreadline7 tk libgdbm3 libdb5.3 libpcap0.8 liblzma5 libssl1.1 libkeyutils1 libkrb5-3 libcomerr2 libidn2-0 libcurl3 uuid libffi6"
-+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
-+    # remove libgdbm3
-+	RUNTIME_DEPS="zlib1g libbz2-1.0 libexpat1 libncurses5 libreadline7 tk libdb5.3 libpcap0.8 liblzma5 libssl1.1 libkeyutils1 libkrb5-3 libcomerr2 libidn2-0 libcurl3 uuid libffi6"
- elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
- 	RUNTIME_DEPS="zlib bzip2 expat ncurses5-libs readline tk gdbm db xz openssl keyutils-libs krb5-libs libcom_err libidn2 libcurl libuuid libffi"
- else
-@@ -73,22 +76,26 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
- 	yum -y update
- 	yum -y install yum-utils curl
- 	yum-config-manager --enable extras
--	TOOLCHAIN_DEPS="devtoolset-10-binutils devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-gcc-gfortran"
--	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
-+
-+
-+        if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
+@@ -73,9 +73,14 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
+ 	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
  		# Software collection (for devtoolset-10)
  		yum -y install centos-release-scl-rh
 -		# EPEL support (for yasm)
 -		yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
 -		TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
-+		if [[ -d /opt/rocm ]]; then
-+		  TOOLCHAIN_DEPS="devtoolset-10-binutils devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-gcc-gfortran"
-+		else
-+		  TOOLCHAIN_DEPS="devtoolset-11-binutils devtoolset-11-gcc devtoolset-11-gcc-c++ devtoolset-11-gcc-gfortran"
-+		fi
++               if [[ -d /opt/rocm ]]; then
++                 TOOLCHAIN_DEPS="devtoolset-10-binutils devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-gcc-gfortran"
++               else
++                 # EPEL support (for yasm)
++                 yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
++                 TOOLCHAIN_DEPS="devtoolset-11-binutils devtoolset-11-gcc devtoolset-11-gcc-c++ devtoolset-11-gcc-gfortran"
++               fi
++               TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
  	elif [ "${AUDITWHEEL_ARCH}" == "aarch64" ] || [ "${AUDITWHEEL_ARCH}" == "ppc64le" ] || [ "${AUDITWHEEL_ARCH}" == "s390x" ]; then
  		# Software collection (for devtoolset-10)
  		yum -y install centos-release-scl-rh
-+		TOOLCHAIN_DEPS="devtoolset-10-binutils devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-gcc-gfortran"
- 	elif [ "${AUDITWHEEL_ARCH}" == "i686" ]; then
- 		# No yasm on i686
- 		# Install mayeut/devtoolset-10 repo to get devtoolset-10
- 		curl -fsSLo /etc/yum.repos.d/mayeut-devtoolset-10.repo https://copr.fedorainfracloud.org/coprs/mayeut/devtoolset-10/repo/custom-1/mayeut-devtoolset-10-custom-1.repo
- 	fi
--elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
-+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
- 	PACKAGE_MANAGER=apt
- 	BASETOOLS="${BASETOOLS} hardlink hostname"
- 	export DEBIAN_FRONTEND=noninteractive
-diff --git a/python-tag-abi-tag.py b/python-tag-abi-tag.py
-index 942394b..f405f03 100644
---- a/python-tag-abi-tag.py
-+++ b/python-tag-abi-tag.py
-@@ -4,7 +4,6 @@
- 
- from wheel.vendored.packaging.tags import sys_tags
- 
--
- # first tag is always the more specific tag
- tag = next(sys_tags())
- print("{0}-{1}".format(tag.interpreter, tag.abi))
-diff --git a/update-system-packages.sh b/update-system-packages.sh
-index 36a7018..fb18ec9 100755
---- a/update-system-packages.sh
-+++ b/update-system-packages.sh
-@@ -20,7 +20,7 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
- 	fi
- 	yum clean all
- 	rm -rf /var/cache/yum
--elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
-+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
- 	export DEBIAN_FRONTEND=noninteractive
- 	apt-get update -qq
- 	apt-get upgrade -qq -y
-@@ -60,7 +60,7 @@ if [ "${BASE_POLICY}" == "manylinux" ]; then
- 		if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
- 			mv -f ${LOCALE_ARCHIVE} ${LOCALE_ARCHIVE}.tmpl
- 			build-locale-archive --install-langs="en_US.utf8"
--		elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
-+		elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
- 			rm ${LOCALE_ARCHIVE}
- 			localedef -i en_US -f UTF-8 en_US.UTF-8
- 			update-locale LANG=en_US.UTF-8

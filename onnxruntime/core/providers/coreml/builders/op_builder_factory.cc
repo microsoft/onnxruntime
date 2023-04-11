@@ -24,6 +24,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateActivationOpBuilder("Tanh", op_registrations);
     CreateActivationOpBuilder("Relu", op_registrations);
     CreateActivationOpBuilder("PRelu", op_registrations);
+    CreateActivationOpBuilder("LeakyRelu", op_registrations);
   }
 
   {  // Transpose
@@ -88,6 +89,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // LRN
     CreateLRNOpBuilder("LRN", op_registrations);
+  }
+
+  {  // Pad
+    CreatePadOpBuilder("Pad", op_registrations);
   }
 
   return op_registrations;

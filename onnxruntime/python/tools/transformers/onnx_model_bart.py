@@ -97,7 +97,7 @@ class FusionBartAttention(FusionAttention):
             return
         
         other_inputs = []
-        for i, input in enumerate(normalize_node.input):
+        for _i, input in enumerate(normalize_node.input):
             if input not in output_name_to_node:
                 continue
             if input == qkv_nodes[0].output[0]:

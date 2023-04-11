@@ -28,6 +28,7 @@ class AttentionMask:
         self.mask_casted = {}
         self.utils = FusionUtils(model)
         self.mask_format = AttentionMaskFormat.MaskIndexEnd
+        self.opset_version = model.get_opset_version()
 
     def set_mask_format(self, mask_format: AttentionMaskFormat):
         self.mask_format = mask_format
@@ -65,13 +66,34 @@ class AttentionMask:
 
         # Add a mask processing node to convert attention mask to mask index (1D)
         output_name = self.model.create_node_name("mask_index")
-        mask_index_node = helper.make_node(
-            "ReduceSum",
-            inputs=[input_name],
-            outputs=[output_name],
-            name=self.model.create_node_name("ReduceSum", "MaskReduceSum"),
-        )
-        mask_index_node.attribute.extend([helper.make_attribute("axes", [1]), helper.make_attribute("keepdims", 0)])
+        if self.opset_version < 13:
+            mask_index_node = helper.make_node(
+                "ReduceSum",
+                inputs=[input_name],
+                outputs=[output_name],
+                name=self.model.create_node_name("ReduceSum", "MaskReduceSum"),
+            )
+            mask_index_node.attribute.extend([helper.make_attribute("axes", [1]), helper.make_attribute("keepdims", 0)])
+        else:
+            # ReduceSum-13: axes is moved from attribute to input
+            axes_name = "ort_const_1_reduce_sum_axes"
+            if self.model.get_initializer(axes_name) is None:
+                self.model.add_initializer(
+                    helper.make_tensor(
+                        name=axes_name,
+                        data_type=TensorProto.INT64,
+                        dims=[1],
+                        vals=[1],
+                    )
+                )
+            mask_index_node = helper.make_node(
+                "ReduceSum",
+                inputs=[input_name, axes_name],
+                outputs=[output_name],
+                name=self.model.create_node_name("ReduceSum", "MaskReduceSum"),
+            )
+            mask_index_node.attribute.extend([helper.make_attribute("keepdims", 0)])
+
         self.model.add_node(mask_index_node)
 
         self.mask_indice[input] = output_name
@@ -90,7 +112,7 @@ class FusionAttention(Fusion):
         num_heads: int,
         attention_mask: AttentionMask,
         use_multi_head_attention: bool = False,
-        search_op_types: List[str] = ["SkipLayerNormalization", "LayerNormalization"],
+        search_op_types: List[str] = ["SkipLayerNormalization", "LayerNormalization"],  # noqa: B006
     ):
         attention_op_name = "MultiHeadAttention" if use_multi_head_attention else "Attention"
         super().__init__(model, attention_op_name, search_op_types)
@@ -900,7 +922,7 @@ class FusionAttention(Fusion):
                 return
 
         other_inputs = []
-        for i, input in enumerate(start_node.input):
+        for _i, input in enumerate(start_node.input):
             if input not in output_name_to_node:
                 continue
 
@@ -938,6 +960,23 @@ class FusionAttention(Fusion):
                 if child.op_type == "LayerNormalization":
                     root_input = child.output[0]
 
+        """
+        When Add before the LayerNormalization produces an output
+        that is consumed by some other nodes other than the LayerNormalization itself,
+        fused SkipLayerNormalization will have several outputs.
+        In this case we need to pick the one used in Attention
+
+        For example, this is the case for ViT
+
+        SkipLayerNormalization --> Attention --> MatMul --> Add --> SkipLayerNormalization
+         |                                                                     |
+         |                                                                     |
+         +---------------------------------------------------------------------+
+        """
+        parent_node = output_name_to_node[root_input]
+        if parent_node.op_type == "SkipLayerNormalization" and len(parent_node.output) == 4:
+            root_input = parent_node.output[0]
+
         children = input_name_to_nodes[root_input]
         children_types = [child.op_type for child in children]
         if children_types.count("MatMul") != 3:
@@ -951,11 +990,13 @@ class FusionAttention(Fusion):
 
         is_distill = False
         is_distill_add = False
+        is_no_mask_attention = False
         qk_paths = {
             "path1": (["Softmax", "Add", "Div", "MatMul"], [0, 0, None, 0]),
             "path2": (["Softmax", "Add", "Mul", "MatMul"], [0, 0, None, 0]),
             "path3": (["Softmax", "Where", "MatMul", "Div"], [0, 0, 2, 0]),
             "path4": (["Softmax", "Add", "Where", "MatMul"], [0, 0, 0, 2]),
+            "path5": (["Softmax", "Div", "MatMul"], [0, 0, 0]),
         }
 
         qk_nodes = None
@@ -967,6 +1008,8 @@ class FusionAttention(Fusion):
                 is_distill = True
             if k == "path4":
                 is_distill_add = True
+            if k == "path5":
+                is_no_mask_attention = True
             break
 
         if qk_nodes is None:
@@ -980,6 +1023,8 @@ class FusionAttention(Fusion):
             (_, where_qk, matmul_qk, _) = qk_nodes
         elif is_distill_add:
             (_, add_qk, where_qk, matmul_qk) = qk_nodes
+        elif is_no_mask_attention:
+            (_, _, matmul_qk) = qk_nodes
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
@@ -1037,6 +1082,8 @@ class FusionAttention(Fusion):
                 if add_qk_str is None:
                     logger.debug(f"fuse_attention: failed to verify shape inference of {add_qk}")
                     return
+        elif is_no_mask_attention:
+            pass
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk,
@@ -1049,17 +1096,17 @@ class FusionAttention(Fusion):
                 ],
                 output_name_to_node,
             )
-        if mask_nodes is None:
+        if not is_no_mask_attention and mask_nodes is None:
             logger.debug("fuse_attention: failed to match mask path")
             return
-        
-        if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
+
+        if not is_no_mask_attention and len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
             _, mul_val = self.model.get_constant_input(mask_nodes[0])
             if mul_val != -10000:
                 self.mask_filter_value = mul_val
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
-            mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
+            mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0]) if not is_no_mask_attention else None
 
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 

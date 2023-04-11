@@ -20,11 +20,13 @@ Status CheckInputs(const T* query,
                    const T* relative_position_bias,
                    const T* past_key,
                    const T* past_value,
+                   const T* past_seq_len,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
-                   float scale) {
-  //     key_padding_mask (K/V)     : (B) or (B, L) or None
+                   float scale,
+                   bool past_present_share_buffer) {
+  //     key_padding_mask (K/V)     : (B) or (2*B + 1) or (B, L) or None
   //     relative_position_bias     : (B, 1, S, L)
   //     past_key                   : (B, N, S*, H)
   //     past_value                 : (B, N, S*, H)
@@ -44,6 +46,7 @@ Status CheckInputs(const T* query,
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None or (D + D + D_v)
 
+  AttentionQkvFormat qkv_format;
 
   const auto& query_dims = query->Shape().GetDims();
   if (query_dims.size() != 3 && query_dims.size() != 5) {
@@ -64,6 +67,7 @@ Status CheckInputs(const T* query,
   int kv_sequence_length = sequence_length;
 
   int past_sequence_length = 0;
+  int max_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     const auto& past_key_dims = past_key->Shape().GetDims();
     const auto& past_value_dims = past_value->Shape().GetDims();
@@ -115,6 +119,14 @@ Status CheckInputs(const T* query,
                              past_value_dims[3]);
     }
     past_sequence_length = static_cast<int>(past_key_dims[2]);
+    max_sequence_length = static_cast<int>(past_key_dims[2]);
+    if (past_present_share_buffer) {
+      if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
+      }
+      past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+    }
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
@@ -142,6 +154,7 @@ Status CheckInputs(const T* query,
                                "Input 'query' and 'key' shall have same dim 2 (hidden_size)");
       }
 
+      qkv_format = Q_K_V_BSNH;
       kv_sequence_length = static_cast<int>(key_dims[1]);
     } else if (key_dims.size() == 5) {
       if (static_cast<int>(key_dims[2]) != num_heads || static_cast<int>(key_dims[3]) != 2 || static_cast<int>(key_dims[4]) != head_size) {
@@ -153,6 +166,7 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'value' be none when 'key' has packed kv format.");
       }
 
+      qkv_format = Q_KV_BSNH_BSN2H;
       kv_sequence_length = static_cast<int>(key_dims[1]);
     } else { // key_dims.size() == 4 (cross-attention with past_key)
       if (static_cast<int>(key_dims[1]) != num_heads || static_cast<int>(key_dims[3]) != head_size) {
@@ -161,6 +175,7 @@ Status CheckInputs(const T* query,
             "Expect 'key' shape (batch_size, num_heads, kv_sequence_length, head_size) for past_key");
       }
 
+      qkv_format = UNKNOWN;
       kv_sequence_length = static_cast<int>(key_dims[2]);
     }
   } else {  // packed QKV
@@ -176,6 +191,8 @@ Status CheckInputs(const T* query,
           ONNXRUNTIME, INVALID_ARGUMENT,
           "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed kv");
     }
+
+    qkv_format = QKV_BSN3H;
   }
 
   if (bias != nullptr) {
@@ -202,8 +219,12 @@ Status CheckInputs(const T* query,
   if (key_padding_mask != nullptr) {
     mask_type = AttentionMaskType::MASK_UNKNOWN;
     const auto& mask_dims = key_padding_mask->Shape().GetDims();
-    if (mask_dims.size() == 1 && mask_dims[0] == static_cast<int64_t>(batch_size)) {
-      mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+    if (mask_dims.size() == 1) {
+      if (mask_dims[0] == static_cast<int64_t>(batch_size)) {
+        mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+      } else if (mask_dims[0] == static_cast<int64_t>(3) * static_cast<int64_t>(batch_size) + static_cast<int64_t>(2)) {
+        mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
+      }
     } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
     }
@@ -280,6 +301,7 @@ Status CheckInputs(const T* query,
     }
   }
 
+  // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
@@ -287,7 +309,7 @@ Status CheckInputs(const T* query,
     output_parameters->past_sequence_length = past_sequence_length;
     output_parameters->kv_sequence_length = kv_sequence_length;
     output_parameters->total_sequence_length = total_sequence_length;
-    output_parameters->max_sequence_length = 0;
+    output_parameters->max_sequence_length = max_sequence_length;
     output_parameters->input_hidden_size = 0;
     output_parameters->hidden_size = hidden_size;
     output_parameters->v_hidden_size = v_hidden_size;
@@ -295,12 +317,13 @@ Status CheckInputs(const T* query,
     output_parameters->v_head_size = v_hidden_size / num_heads;
     output_parameters->num_heads = num_heads;
     output_parameters->is_unidirectional = false;
-    output_parameters->past_present_share_buffer = false;
+    output_parameters->past_present_share_buffer = past_present_share_buffer;
     output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
     output_parameters->scale = scale;
     output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
     output_parameters->pass_past_in_kv = pass_past_in_kv;
+    output_parameters->qkv_format = qkv_format;
   }
 
   return Status::OK();
@@ -315,18 +338,20 @@ Status CheckInputs(const T* query,
                    const T* relative_position_bias,
                    const T* past_key,
                    const T* past_value,
+                   const T* past_seq_len,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
                    float scale,
+                   bool past_present_share_buffer,
                    int max_threads_per_block) {
 
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, 
-                     past_key, past_value, parameters, num_heads, mask_filter_value, scale);
+  return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value,
+                     past_seq_len, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer);
 }
 
 }  // namespace multihead_attention_helper

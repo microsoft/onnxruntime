@@ -250,6 +250,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   
   AttentionParameters parameters = {};
   const float scale = 1.0f;
+  bool past_present_share_buffer = false;
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,
@@ -258,10 +259,12 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       extra_add_qk,
                                                                       past_key,
                                                                       past_value,
+                                                                      nullptr,
                                                                       &parameters,
                                                                       num_heads_,
                                                                       scale,
-                                                                      mask_filter_value_));
+                                                                      mask_filter_value_,
+                                                                      past_present_share_buffer));
 
   const int batch_size = parameters.batch_size;
   const int q_sequence_length = parameters.sequence_length;

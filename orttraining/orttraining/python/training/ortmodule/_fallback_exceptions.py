@@ -3,7 +3,7 @@
 # _fallback_exceptions.py
 
 
-class ORTModuleFallbackException(Exception):
+class ORTModuleFallbackException(Exception):  # noqa: N818
     """Base exception class for fallback
 
     Although it must be specialized for specific scenarios,

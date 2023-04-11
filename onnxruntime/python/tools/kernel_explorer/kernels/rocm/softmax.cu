@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/rocm/softmax.h"
-
 #include <hip/hip_fp16.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -108,7 +106,7 @@ class SoftmaxTunable : public IKernelExplorer {
                  int input_stride, int output_stride, int batch_count, bool is_log_softmax)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {
-    params_.TuningContext()->EnableTunableOp();
+    params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   void Run() override {
@@ -198,7 +196,7 @@ class CKSoftmax : public IKernelExplorer {
       .def("ListOps", &name<type>::ListOps)                                  \
       .def("SelectOp", &name<type>::SelectOp);
 
-void InitSoftmax(py::module m) {
+KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_VEC_SIZE(SoftmaxBlockwise, half);
   REGISTER_OP_FOR_ALL_VEC_SIZE(SoftmaxBlockwise, float);
 
@@ -210,11 +208,13 @@ void InitSoftmax(py::module m) {
 
   REGISTER_OP_TYPED(SoftmaxTunable, half);
   REGISTER_OP_TYPED(SoftmaxTunable, float);
+}
 
 #ifdef USE_COMPOSABLE_KERNEL
+KE_REGISTER(m) {
   REGISTER_OP_TYPED(CKSoftmax, half);
   REGISTER_OP_TYPED(CKSoftmax, float);
-#endif  // USE_COMPOSABLE_KERNEL
 }
+#endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace onnxruntime

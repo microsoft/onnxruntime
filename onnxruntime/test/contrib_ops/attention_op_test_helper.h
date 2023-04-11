@@ -66,6 +66,8 @@ void GetCrossAttentionData_DiffSequenceLengths(AttentionTestData& data);
 void GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(AttentionTestData& data);
 void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& data);
 
+void GetAttentionDataCutlassRelPosBias(AttentionTestData& data);
+
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type);
 }  // namespace test
 }  // namespace onnxruntime

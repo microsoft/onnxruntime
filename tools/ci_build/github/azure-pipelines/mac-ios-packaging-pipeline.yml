@@ -175,13 +175,6 @@ jobs:
         --token $(app_center_api_token)
     displayName: "[Full] Run E2E tests on App Center"
 
-  - bash: |
-      set -e
-      gem install jazzy
-      jazzy --config objectivec/docs/jazzy_config.yaml \
-        --output "$(Build.BinariesDirectory)/staging/objc_api_docs"
-    displayName: "Generate Objective-C API docs"
-
   - task: AzureCLI@2
     inputs:
       azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'

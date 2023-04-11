@@ -94,7 +94,7 @@ class BeamSearchScorer : public IBeamScorer {
 
   gsl::span<float>& GetNextScores() { return next_beam_scores_; }
   gsl::span<int32_t>& GetNextTokens() { return next_beam_tokens_; }
-  gsl::span<int32_t>& GetNextIndices() { return next_beam_indices_; }
+  gsl::span<int32_t>& GetNextIndices() override { return next_beam_indices_; }
 
  private:
   size_t batch_size_;
