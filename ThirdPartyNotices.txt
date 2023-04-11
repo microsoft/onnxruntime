@@ -5422,8 +5422,8 @@ _____
 
 Tencent/rapidjson, https://github.com/Tencent/rapidjson
 
-Tencent is pleased to support the open source community by making RapidJSON available. 
- 
+Tencent is pleased to support the open source community by making RapidJSON available.
+
 Copyright (C) 2015 THL A29 Limited, a Tencent company, and Milo Yip.  All rights reserved.
 
 If you have downloaded a copy of the RapidJSON binary from Tencent, please note that the RapidJSON binary is licensed under the MIT License.
@@ -5435,13 +5435,13 @@ Other dependencies and licenses:
 Open Source Software Licensed Under the BSD License:
 --------------------------------------------------------------------
 
-The msinttypes r29 
-Copyright (c) 2006-2013 Alexander Chemeris 
+The msinttypes r29
+Copyright (c) 2006-2013 Alexander Chemeris
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 
-* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer. 
+* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
 * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 * Neither the name of  copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 
@@ -5450,7 +5450,7 @@ THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND ANY EXPR
 Open Source Software Licensed Under the JSON License:
 --------------------------------------------------------------------
 
-json.org 
+json.org
 Copyright (c) 2002 JSON.org
 All Rights Reserved.
 
@@ -5514,7 +5514,7 @@ libb64/libb64, https://github.com/libb64/libb64
 
 Copyright-Only Dedication (based on United States law) or Public Domain Certification
 
-The person or persons who have associated work with this document (the "Dedicator" or "Certifier") hereby either (a) certifies that, to the best of his knowledge, the work of authorship identified is in the public domain of the country from which the work is published, or (b) hereby dedicates whatever copyright the dedicators holds in the work of authorship identified below (the "Work") to the public domain. A certifier, moreover, dedicates any copyright interest he may have in the associated work, and for these purposes, is described as a "dedicator" below.
+The person or persons who have associated work with this document (the "Dedicator" or "Certifier") hereby either (a) certifies that, to the best of his knowledge, the work of authorship identified is in the public domain of the area from which the work is published, or (b) hereby dedicates whatever copyright the dedicators holds in the work of authorship identified below (the "Work") to the public domain. A certifier, moreover, dedicates any copyright interest he may have in the associated work, and for these purposes, is described as a "dedicator" below.
 
 A certifier has taken reasonable steps to verify the copyright status of this work. Certifier recognizes that his good faith efforts may not shield him from liability if in fact the work certified is not in the public domain.
 
