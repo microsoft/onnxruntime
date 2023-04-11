@@ -2183,7 +2183,7 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
         return None
     run_subprocess(
         [
-            "nuget.exe",
+            "nuget.exe" if is_windows() else "nuget",
             "restore",
             os.path.join(source_dir, "packages.config"),
             "-ConfigFile",
