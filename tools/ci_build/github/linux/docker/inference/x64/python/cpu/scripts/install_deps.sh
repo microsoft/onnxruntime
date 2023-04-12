@@ -15,4 +15,11 @@ do
   ${PYTHON_EXE} -m pip install -r requirements.txt
 done
 
-
+if ! [ -x "$(command -v ccache)" ]; then
+  echo "Installing CCache"
+  mkdir -p /tmp/ccache
+  CCACHE_URL="https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz"
+  curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o /tmp/src/ccache-4.7.4-linux-x86_64.tar.xz  ${CCACHE_URL}
+  tar --strip 1 -xf /tmp/src/ccache-4.7.4-linux-x86_64.tar.xz -C /tmp/ccache
+  cp /tmp/ccache/ccache /usr/bin
+fi
