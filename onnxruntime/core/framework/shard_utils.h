@@ -83,7 +83,7 @@ struct ShardUtils {
 
     static uint64_t Index(ShardDim const& offsets, ShardDim const& shardDims)
     {
-        ShardDim shardStride;
+        //ShardDim shardStride;
         auto accumulator = 1u;
         auto offset = 0u;
         for (int64_t i = shardDims.size() - 1; i >= 0; --i)
