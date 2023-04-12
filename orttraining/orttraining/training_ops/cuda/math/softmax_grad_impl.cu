@@ -229,7 +229,11 @@ template <typename T>
 Status SoftmaxGradImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* input_grad, const T* output_grad,
                        const T* softmax_output, int element_count, int batch_count, bool is_log_softmax) {
   if (element_count == 0) return Status::OK();
+#ifdef USE_ROCM
+  if (element_count <= 1024 && element_count * sizeof(T) <= 4096) {
+#else
   if (element_count <= 2048 && element_count * sizeof(T) <= 4096) {
+#endif
     typedef AccumulationType_t<T> AccT;
     int log2_elements = log2_ceil(element_count);
     const int next_power_of_two = 1 << log2_elements;
