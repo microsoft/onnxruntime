@@ -14,3 +14,28 @@ for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   ${PYTHON_EXE} -m pip install -r requirements.txt
 done
+
+ARCH=$(uname -m)
+echo $ARCH
+
+if ! [ -x "$(command -v ccache)" ]; then
+  echo "Installing CCache"
+  mkdir -p /tmp/ccache
+  if [ "$ARCH" == "x86_64" ] ; then
+    CCACHE_URL="https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz"
+    curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o /tmp/src/ccache-4.7.4-linux-x86_64.tar.xz  ${CCACHE_URL}
+    tar --strip 1 -xf /tmp/src/ccache-4.7.4-linux-x86_64.tar.xz -C /tmp/ccache
+    cp /tmp/ccache/ccache /usr/bin
+  fi
+  if [ "$ARCH" = "aarch64" ]; then
+    git clone --recursive --branch v4.7.4 https://github.com/ccache/ccache
+    pushd .
+    cd ccache
+    mkdir build
+    cd build
+    cmake -DCMAKE_INSTALL_PREFIX=/usr/local _DCMAKE_BUILD_TYPE=Releae ..
+    make
+    make install
+    which ccache
+  fi
+fi
