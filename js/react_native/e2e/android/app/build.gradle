@@ -185,7 +185,7 @@ repositories {
 }
 
 dependencies {
-    androidTestImplementation('com.wix:detox:20.0.0')
+    androidTestImplementation('com.wix:detox:+')
     implementation 'androidx.appcompat:appcompat:1.1.0'
     
     implementation fileTree(dir: "libs", include: ["*.jar"])
