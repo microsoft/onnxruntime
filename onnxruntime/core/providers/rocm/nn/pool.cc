@@ -2,16 +2,17 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/providers/rocm/nn/pool.h"
 #include "core/providers/rocm/miopen_common.h"
+#include "core/providers/rocm/nn/pool.h"
 #include "core/providers/rocm/nn/max_pool_with_index.h"
 #include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
+#include "core/providers/rocm/reduction/reduction_ops.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace rocm {
 
-#define POOLING_KERNEL(op_name, data_type, pool_type, since_version)                               \
+#define POOLING_KERNEL_(op_name, data_type, pool, pool_type, since_version)                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                   \
       op_name,                                                                                     \
       kOnnxDomain,                                                                                 \
@@ -19,7 +20,13 @@ namespace rocm {
       data_type,                                                                                   \
       kRocmExecutionProvider,                                                                      \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
-      Pool<data_type, pool_type>);
+      pool<data_type, pool_type>);
+
+#define POOLING_KERNEL(op_name, data_type, pool_type, since_version) \
+  POOLING_KERNEL_(op_name, data_type, Pool, pool_type, since_version)
+
+#define GLOBAL_POOLING_KERNEL(op_name, data_type, pool_type, since_version) \
+  POOLING_KERNEL_(op_name, data_type, GlobalPool, pool_type, since_version)
 
 #define POOLING_KERNEL_VERSIONED(op_name, data_type, pool_type, since_version, end_version) \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                  \
@@ -86,12 +93,12 @@ POOLING_KERNEL_WITH_INDICES(MaxPool, MLFloat16, MaxPool<8>, 12)
 POOLING_KERNEL_WITH_INDICES(MaxPool, int8_t, MaxPool<8>, 12)
 POOLING_KERNEL_WITH_INDICES(MaxPool, uint8_t, MaxPool<8>, 12)
 
-POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1)
-POOLING_KERNEL(GlobalAveragePool, double, AveragePool, 1)
-POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1)
-POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1)
-POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 1)
-POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1)
+GLOBAL_POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1)
+GLOBAL_POOLING_KERNEL(GlobalAveragePool, double, AveragePool, 1)
+GLOBAL_POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1)
+GLOBAL_POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1)
+GLOBAL_POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 1)
+GLOBAL_POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1)
 
 class MiopenPoolingDescriptor final {
  public:
@@ -162,9 +169,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   auto strides = pool_attrs_.strides;
 
   if (pool_attrs_.global_pooling) {
-    kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
-    pads.assign(kernel_shape.size(), 0);
-    strides.assign(kernel_shape.size(), 1);
+    ORT_ENFORCE("unreachable");
   }
 
   auto y_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
@@ -233,7 +238,6 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToHipType<T>::MappedType HipT;
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
-  const auto& x_dims = x_shape.GetDims();
 
   if (x_shape.NumDimensions() < 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
@@ -244,9 +248,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   auto strides = this->pool_attrs_.strides;
 
   if (this->pool_attrs_.global_pooling) {
-    kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
-    pads.assign(kernel_shape.size(), 0);
-    strides.assign(kernel_shape.size(), 1);
+    ORT_ENFORCE("unreachable");
   }
 
   auto y_dims = this->pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
@@ -277,6 +279,73 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   } else {
     ORT_RETURN_IF_ERROR((Pool<T, MaxPool<1>>::ComputeInternal(context)));
   }
+  return Status::OK();
+}
+
+template <typename T, typename PoolType>
+Status GlobalPool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
+  using HipT = typename ToHipType<T>::MappedType;
+  const Tensor* X = context->Input<Tensor>(0);
+  const TensorShape& x_shape = X->Shape();
+
+  if (x_shape.NumDimensions() < 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
+  }
+
+  ORT_ENFORCE(this->pool_attrs_.global_pooling);
+
+  miopenReduceTensorOp_t reduce_op;
+  if constexpr (PoolType::type == onnxruntime::PoolType::kAveragePool) {
+    reduce_op = MIOPEN_REDUCE_TENSOR_AVG;
+  } else if (PoolType::type == onnxruntime::PoolType::kMaxPool) {
+    reduce_op = MIOPEN_REDUCE_TENSOR_MAX;
+  } else {
+    ORT_NOT_IMPLEMENTED();
+  }
+
+  miopenDataType_t miopen_type_X = MiopenTensor::GetDataType<HipT>();
+
+  MiopenReduceDescriptor reduce_desc;
+  if constexpr (std::is_same<T, MLFloat16>::value) {
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(
+        reduce_op, MiopenTensor::GetDataType<float>(), MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES));
+  } else {
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(reduce_op, miopen_type_X, MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES));
+  }
+
+  ORT_ENFORCE(x_shape.NumDimensions() >= 3);
+  auto x_dims = x_shape.AsShapeVector();
+  TensorShapeVector y_dims;
+  y_dims.resize(x_dims.size(), 1);
+  y_dims[0] = x_dims[0];
+  y_dims[1] = x_dims[1];
+
+  Tensor* Y = context->Output(0, y_dims);
+
+  MiopenTensor input_tensor;
+  MiopenTensor output_tensor;
+  ORT_RETURN_IF_ERROR(input_tensor.Set(x_dims, miopen_type_X));
+  ORT_RETURN_IF_ERROR(output_tensor.Set(y_dims, miopen_type_X));
+
+  auto miopen_handle = this->GetMiopenHandle(context);
+  size_t workspace_bytes{};
+  MIOPEN_RETURN_IF_ERROR(miopenGetReductionWorkspaceSize(
+      miopen_handle, reduce_desc, input_tensor, output_tensor, &workspace_bytes));
+  auto workspace_buffer = RocmKernel::GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
+
+  size_t indices_bytes{};
+  MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(
+      miopen_handle, reduce_desc, input_tensor, output_tensor, &indices_bytes));
+  auto indices_buffer = RocmKernel::GetScratchBuffer<void>(indices_bytes, context->GetComputeStream());
+
+  const auto one = ReduceConsts<HipT>::One;
+  const auto zero = ReduceConsts<HipT>::Zero;
+
+  MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
+      miopen_handle, reduce_desc, indices_buffer.get(), indices_bytes, workspace_buffer.get(), workspace_bytes,
+      &one, input_tensor, reinterpret_cast<const HipT*>(X->DataRaw()),
+      &zero, output_tensor, reinterpret_cast<HipT*>(Y->MutableDataRaw())));
+
   return Status::OK();
 }
 

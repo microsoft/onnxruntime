@@ -26,5 +26,13 @@ class Pool<T, MaxPool<8>> final : public Pool<T, MaxPool<1>> {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T, typename PoolType>
+class GlobalPool final : public Pool<T, PoolType> {
+ public:
+  GlobalPool(const OpKernelInfo& info) : Pool<T, PoolType>(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace rocm
 }  // namespace onnxruntime
