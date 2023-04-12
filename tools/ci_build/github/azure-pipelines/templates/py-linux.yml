@@ -21,6 +21,10 @@ parameters:
   type: string
   default: '-d CPU'
 
+- name: with_cache
+  type: boolean
+  default: false
+
 jobs:
 - job: Linux_py_Wheels_${{ parameters.arch }}
   timeoutInMinutes: 240
@@ -30,7 +34,13 @@ jobs:
   variables:
     # The build machine pool doesn't have dotnet, so it can't run CG.
     skipComponentGovernanceDetection: true
+    ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   steps:
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+
     - checkout: self
       clean: true
       submodules: none
@@ -46,12 +56,20 @@ jobs:
         ${{ if eq(parameters.arch, 'aarch64') }}:
             UpdateDepsTxt: false
 
-    - task: Bash@3
-      displayName: 'Build Python Wheel'
-      inputs:
-        targetType: filePath
-        filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-        arguments: -i onnxruntimecpubuilpython${{ parameters.arch }} -x "${{ parameters.device }}"
+    - template: linux-build-step-with-cache.yml
+      parameters:
+        WithCache: ${{parameters.with_cache}}
+        Today: $(TODAY)
+        AdditionalKey: onnxruntime
+        CacheDir: $(ORT_CACHE_DIR)
+        ChangeEveryCommit: true
+        BuildStep:
+          - task: Bash@3
+            displayName: 'Build Python Wheel'
+            inputs:
+              targetType: filePath
+              filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
+              arguments: -a "--volume $(ORT_CCACHE_DIR):/cache -e CCACHE_DIR=/cache" -i onnxruntimecpubuilpython${{ parameters.arch }} -x "${{ parameters.device }}"
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
@@ -64,8 +82,3 @@ jobs:
       inputs:
         artifactName: 'drop-linux-cpu-${{ parameters.arch }}'
         targetPath: '$(Build.BinariesDirectory)/Release'
-
-
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()

@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e -x
-while getopts "x:i:" parameter_Option
+while getopts "a:x:i:" parameter_Option
 do case "${parameter_Option}"
 in
+a) ADDITIONAL_DOCKER_PARAMETER=${OPTARG};;
 i) DOCKER_IMAGE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 esac
@@ -18,6 +19,7 @@ docker run --rm \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
+    $ADDITIONAL_DOCKER_PARAMETER \
     $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_arm64_python_package.sh $BUILD_EXTR_PAR
 
 sudo rm -rf $BUILD_BINARIESDIRECTORY/Release/onnxruntime $BUILD_BINARIESDIRECTORY/Release/pybind11 \
