@@ -1,9 +1,8 @@
 #!/bin/bash
 set -e -x
-while getopts "a:x:i:" parameter_Option
+while getopts "x:i:" parameter_Option
 do case "${parameter_Option}"
 in
-a) ADDITIONAL_DOCKER_PARAMETER=${OPTARG};;
 i) DOCKER_IMAGE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 esac
