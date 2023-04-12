@@ -12,6 +12,7 @@
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/common/path_string.h"
 #include "core/framework/murmurhash3.h"
+#include "tensorrt_execution_provider_type_def.h"
 
 namespace fs = std::experimental::filesystem;
 
@@ -288,5 +289,132 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
 
   // return the current unique id
   return model_hash;
+}
+
+int GetNumProfile(std::string name, std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
+
+  if (profile_shapes.find(name) != profile_shapes.end()) {
+    return profile_shapes[name].size();
+  }
+  return 0;
+}
+
+bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
+                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
+                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
+
+  if (profile_min_shapes.empty() && profile_min_shapes.empty() && profile_opt_shapes.empty()) {
+    return true;
+  }
+
+  if ((profile_min_shapes.size() != profile_max_shapes.size()) &&
+      (profile_min_shapes.size() != profile_opt_shapes.size()) &&
+      (profile_max_shapes.size() != profile_opt_shapes.size())) {
+    return false;
+  }
+
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::iterator it;
+  for (it = profile_min_shapes.begin(); it != profile_min_shapes.end(); it++)
+  {
+    auto input_name = it->first;
+    auto num_profile = it->second.size();
+
+    // input_name must also be in max/opt profile
+    if ((profile_max_shapes.find(input_name) == profile_max_shapes.end()) ||
+        (profile_opt_shapes.find(input_name) == profile_opt_shapes.end())) {
+      return false;
+    }
+
+    // number of profiles should be the same
+    if ((num_profile != profile_max_shapes[input_name].size()) ||
+        (num_profile != profile_opt_shapes[input_name].size())) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/* Make input-name and shape as a pair.
+ * This helper function is being used by ParseProfileShapes().  
+ *
+ * For example:
+ * The input string is "input_id:32x1",
+ * after the string is being parsed, the pair object is returned as below.
+ * pair("input_id", [32, 1])
+ */
+bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std::vector<int64_t>>& pair) {
+  if (pair_string.empty()) {
+    return true;
+  }
+
+  std::cout << pair_string << std::endl;
+
+  std::stringstream input_string_stream(pair_string);
+  char first_delim = ':';
+  char second_delim = 'x';
+  std::string input_name;
+  std::string shape;
+  std::getline(input_string_stream, input_name, first_delim);
+  std::getline(input_string_stream, shape, first_delim);
+
+  std::cout << input_name << std::endl;
+  std::cout << shape << std::endl;
+
+  std::vector<int64_t> shapes;
+  std::stringstream shape_string_stream(shape);
+  std::string value;
+  while(std::getline(shape_string_stream, value, second_delim)) {
+    shapes.push_back(std::stoi(value));
+  }
+
+  // wrong input string
+  if (input_name.empty() || shapes.empty()) {
+    return false;
+  }
+
+  pair.first = input_name;
+  pair.second = shapes;
+
+  return true;
+}
+
+/* Parse explicit profile min/max/opt shapes from TensorRT EP provider options
+ *
+ * For example:
+ * The provider option is --trt_profile_min_shapes="input_id:32x1,attention_mask:32x1,input_id:32x41,attention_mask:32x41",
+ * after string is being parsed, the profile shapes has two profiles and is being represented as below.
+ * {"input_id": [[32, 1], [32, 41]], "attention_mask": [[32, 1], [32, 41]]} 
+ *
+ */
+bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
+  if (profile_shapes_string.empty()) {
+    return true;
+  }
+
+  std::stringstream input_string_stream(profile_shapes_string);
+  char delim = ',';
+  std::string input_name_with_shape; // input_name:shape
+  while (std::getline(input_string_stream, input_name_with_shape, delim)) {
+    std::pair<std::string, std::vector<int64_t>> pair;
+    if (!MakeInputNameShapePair(input_name_with_shape, pair)) {
+      return false;
+    }
+
+    std::string input_name = pair.first;
+    if (profile_shapes.find(input_name) == profile_shapes.end()) {
+      std::vector<std::vector<int64_t>> profile_shape_vector;
+      profile_shapes[input_name] = profile_shape_vector;
+    }
+    profile_shapes[input_name].push_back(pair.second);
+
+    std::cout << input_name << std::endl;
+    for (auto v: pair.second) {
+      std::cout << v << ", ";
+    }
+    std::cout << std::endl;
+  }
+
+  return true;
 }
 }  // namespace onnxruntime

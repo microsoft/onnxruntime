@@ -22,6 +22,7 @@
 #include <memory>
 // TODO: find a better way to share this
 #include "core/providers/cuda/cuda_stream_handle.h"
+#include <iostream>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -143,6 +144,55 @@ inline void saveTimingCacheFile(const std::string outFileName, const nvinfer1::I
   oFile.write((char*)blob->data(), blob->size());
   oFile.close();
 }
+
+// Note: support multiple-profiles
+bool ApplyProfileShapes(nvinfer1::IBuilderConfig* trt_config,
+                        nvinfer1::IBuilder* trt_builder,
+                        nvinfer1::ITensor* input,
+                        std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes,
+                        std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes,
+                        std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes) {
+
+  // Assume ValidateProfileShapes() is performed
+  const std::string& input_name = input->getName();
+  int num_profile = GetNumProfile(input_name, profile_min_shapes);
+
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Begin to set engine profile shapes ...";
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] input name is '" << input_name << "', number of profile found is " << num_profile;
+
+  if (num_profile == 0) {
+    return false;
+  }
+
+  for (int i = 0; i < num_profile; i++) {
+    nvinfer1::IOptimizationProfile* trt_profile = trt_builder->createOptimizationProfile();
+    nvinfer1::Dims dims = input->getDimensions();
+    int nb_dims = dims.nbDims;
+
+    nvinfer1::Dims dims_min, dims_opt, dims_max;
+    dims_min.nbDims = nb_dims;
+    dims_max.nbDims = nb_dims;
+    dims_opt.nbDims = nb_dims;
+
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] nb_dims is " << nb_dims;
+
+    for (int j = 0; j < nb_dims; j++) {
+      dims_min.d[j] = profile_min_shapes[input_name][i][j]; 
+      dims_max.d[j] = profile_max_shapes[input_name][i][j]; 
+      dims_opt.d[j] = profile_opt_shapes[input_name][i][j]; 
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_min.d[" << j << "] is " << dims_min.d[j];
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_max.d[" << j << "] is " << dims_max.d[j];
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_opt.d[" << j << "] is " << dims_opt.d[j];
+    }
+
+    trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+    trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+    trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+    trt_config->addOptimizationProfile(trt_profile);
+  }
+  return true;
+}
+
 }  // namespace
 
 namespace google {
@@ -321,6 +371,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream_)));
   }
 
+  std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
+
   // Get environment variables
   if (info.has_trt_options) {
     max_partition_iterations_ = info.max_partition_iterations;
@@ -353,6 +405,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (fp16_enable_) {
       layer_norm_fp32_fallback_ = info.layer_norm_fp32_fallback;
     }
+
+    profile_min_shapes = info.profile_min_shapes;
+    profile_max_shapes = info.profile_max_shapes;
+    profile_opt_shapes = info.profile_opt_shapes;
   } else {
     const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
@@ -462,6 +518,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (!layer_norm_fp32_fallback_env.empty()) {
       layer_norm_fp32_fallback_ = (std::stoi(layer_norm_fp32_fallback_env) == 0 ? false : true);
     }
+
+    profile_min_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMinShapes);
+    profile_max_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMaxShapes);
+    profile_opt_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesOptShapes);
   }
 
   // Validate setting
@@ -508,6 +568,29 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
   }
 
+  //Parse explicit profile min/max/opt shapes if there is any
+  bool status;
+  status = ParseProfileShapes(profile_min_shapes, profile_min_shapes_);
+  if (!status) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_min_shapes' is wrong, please follow the format of 'input1:dim1xdimd2,input2:dim1xdim2 ...'";
+  }
+  status = ParseProfileShapes(profile_max_shapes, profile_max_shapes_);
+  if (!status) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_max_shapes' is wrong, please follow the format of 'input1:dim1xdimd2,input2:dim1xdim2 ...'";
+  }
+  status = ParseProfileShapes(profile_opt_shapes, profile_opt_shapes_);
+  if (!status) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_opt_shapes' is wrong, please follow the format of 'input1:dim1xdimd2,input2:dim1xdim2 ...'";
+  }
+
+  status = ValidateProfileShapes(profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
+  if (!status) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Profile shapes validation failed. Make sure 'trt_profile_min_shapes', 'trt_profile_max_shapes' and 'trt_profile_opt_shapes' have same input names and number of profiles.";
+    profile_min_shapes_.clear();
+    profile_max_shapes_.clear();
+    profile_opt_shapes_.clear();
+  }
+
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
                         << ", trt_max_partition_iterations: " << max_partition_iterations_
@@ -527,7 +610,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
                         << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
                         << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_
-                        << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_;
+                        << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_
+                        << ", trt_profile_min_shapes: " << profile_min_shapes
+                        << ", trt_profile_max_shapes: " << profile_max_shapes
+                        << ", trt_profile_opt_shapes: " << profile_opt_shapes;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -1327,23 +1413,47 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     std::unordered_map<std::string, size_t> output_indexes(num_outputs);
     std::unordered_map<std::string, size_t> output_types(num_outputs);
 
-    // Initialize shape range for dynamic shape tensors
+    /*
+     * Initialize shape range for dynamic shape tensors.
+     * 
+     * 1. If user explicitly specifies engine profile shapes, TRT EP will only apply thoses profile values during EP compile time. 
+     *    It won't make adjustment for profile values during compute time.
+     *
+     * 2. If no explicit profile shapes being set, TRT EP will firstly set default shape range to [INT_MAX, INT_MIN],
+     *    so later in compute time, the shape range will be adjusted to [min_input_shape, max_input_shape] for every shape dimension.  
+     */
     bool has_dynamic_shape = false;
+    bool has_explicit_profile_shapes = false;
+    bool set_explicit_profile_shapes = false;
+
+    if ((!profile_min_shapes_.empty()) && (!profile_max_shapes_.empty()) && (!profile_opt_shapes_.empty())) {
+      has_explicit_profile_shapes = true; 
+    }
+
     for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
       auto input = trt_network->getInput(i);
       const std::string& input_name = input->getName();
       nvinfer1::Dims dims = input->getDimensions();
       int nb_dims = dims.nbDims;
-      if (input->isShapeTensor()) {
-        // Shape tensor
-        input_shape_ranges[input_name][0] = std::make_pair(INT_MAX, INT_MIN);
-        has_dynamic_shape = true;
-      } else {
-        // Execution tensor
-        for (int j = 0, end = nb_dims; j < end; ++j) {
-          if (dims.d[j] == -1) {
-            input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);
-            has_dynamic_shape = true;
+
+      if(has_explicit_profile_shapes) {
+        // Apply explicit engine profiles
+        std::cout << "Apply explicit engine profiles ..." << std::endl; 
+        set_explicit_profile_shapes = ApplyProfileShapes(trt_config.get(), trt_builder.get(), input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
+      } 
+
+      if(!set_explicit_profile_shapes) {
+        if (input->isShapeTensor()) {
+          // Shape tensor
+          input_shape_ranges[input_name][0] = std::make_pair(INT_MAX, INT_MIN);
+          has_dynamic_shape = true;
+        } else {
+          // Execution tensor
+          for (int j = 0, end = nb_dims; j < end; ++j) {
+            if (dims.d[j] == -1) {
+              input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);
+              has_dynamic_shape = true;
+            }
           }
         }
       }
@@ -1414,7 +1524,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // be built at runtime
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
     std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
-    if (!has_dynamic_shape) {
+    if (!has_dynamic_shape || set_explicit_profile_shapes) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       std::string timing_cache_path = "";

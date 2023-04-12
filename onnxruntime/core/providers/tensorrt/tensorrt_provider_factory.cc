@@ -73,6 +73,9 @@ struct Tensorrt_Provider : Provider {
     info.timing_cache_enable = options.trt_timing_cache_enable != 0;
     info.force_timing_cache = options.trt_force_timing_cache != 0;
     info.detailed_build_log = options.trt_detailed_build_log != 0;
+    info.profile_min_shapes = options.trt_profile_min_shapes == nullptr ? "" : options.trt_profile_min_shapes;
+    info.profile_max_shapes = options.trt_profile_max_shapes == nullptr ? "" : options.trt_profile_max_shapes;
+    info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 

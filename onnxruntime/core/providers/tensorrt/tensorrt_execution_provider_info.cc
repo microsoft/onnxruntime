@@ -33,6 +33,9 @@ constexpr const char* kLayerNormFP32Fallback = "trt_layer_norm_fp32_fallback";
 constexpr const char* kTimingCacheEnable = "trt_timing_cache_enable";
 constexpr const char* kForceTimingCacheMatch = "trt_force_timing_cache_match";
 constexpr const char* kDetailedBuildLog = "trt_detailed_build_log";
+constexpr const char* kProfilesMinShapes = "trt_profile_min_shapes";
+constexpr const char* kProfilesMaxShapes = "trt_profile_max_shapes";
+constexpr const char* kProfilesOptShapes = "trt_profile_opt_shapes";
 }  // namespace provider_option_names
 }  // namespace tensorrt
 
@@ -72,6 +75,9 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kTimingCacheEnable, info.timing_cache_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kForceTimingCacheMatch, info.force_timing_cache)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDetailedBuildLog, info.detailed_build_log)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kProfilesMinShapes, info.profile_min_shapes)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kProfilesMaxShapes, info.profile_max_shapes)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kProfilesOptShapes, info.profile_opt_shapes)
           .Parse(options)); // add new provider option here.
 
   return info;
@@ -102,6 +108,9 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kTimingCacheEnable, MakeStringWithClassicLocale(info.timing_cache_enable)},
       {tensorrt::provider_option_names::kForceTimingCacheMatch, MakeStringWithClassicLocale(info.force_timing_cache)},
       {tensorrt::provider_option_names::kDetailedBuildLog, MakeStringWithClassicLocale(info.detailed_build_log)},
+      {tensorrt::provider_option_names::kProfilesMinShapes, MakeStringWithClassicLocale(info.profile_min_shapes)},
+      {tensorrt::provider_option_names::kProfilesMaxShapes, MakeStringWithClassicLocale(info.profile_max_shapes)},
+      {tensorrt::provider_option_names::kProfilesOptShapes, MakeStringWithClassicLocale(info.profile_opt_shapes)},
   };
   return options;
 }

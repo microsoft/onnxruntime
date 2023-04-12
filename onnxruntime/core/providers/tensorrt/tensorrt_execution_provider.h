@@ -33,6 +33,9 @@ static const std::string kLayerNormFP32Fallback = "ORT_TENSORRT_LAYER_NORM_FP32_
 static const std::string kTimingCacheEnable = "ORT_TENSORRT_TIMING_CACHE_ENABLE";
 static const std::string kForceTimingCache = "ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE";
 static const std::string kDetailedBuildLog = "ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE";
+static const std::string kProfilesMinShapes = "ORT_TENSORRT_PROFILES_MIN_SHAPES";
+static const std::string kProfilesMaxShapes = "ORT_TENSORRT_PROFILES_MAX_SHAPES";
+static const std::string kProfilesOptShapes = "ORT_TENSORRT_PROFILES_OPT_SHAPES";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -194,6 +197,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::INetworkDefinition>> networks_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes_;
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes_;
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture

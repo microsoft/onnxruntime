@@ -36,6 +36,9 @@ struct TensorrtExecutionProviderInfo {
   bool timing_cache_enable{false};
   bool force_timing_cache{false};
   bool detailed_build_log{false};
+  std::string profile_min_shapes{""};
+  std::string profile_max_shapes{""};
+  std::string profile_opt_shapes{""};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

@@ -34,4 +34,7 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_timing_cache_enable;                  // enable TensorRT timing cache. Default 0 = false, nonzero = true
   int trt_force_timing_cache;                   // force the TensorRT cache to be used even if device profile does not match. Default 0 = false, nonzero = true
   int trt_detailed_build_log;                   // Enable detailed build step logging on TensorRT EP with timing for each engine build. Default 0 = false, nonzero = true
+  const char* trt_profile_min_shapes;          // Specify the range of the input shapes to build the engine with
+  const char* trt_profile_max_shapes;          // Specify the range of the input shapes to build the engine with
+  const char* trt_profile_opt_shapes;          // Specify the range of the input shapes to build the engine with
 };
