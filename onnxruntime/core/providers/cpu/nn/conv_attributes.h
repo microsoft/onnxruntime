@@ -44,7 +44,12 @@ struct ConvAttributes {
       // Pads are explicitly provided, make sure that auto_pad is NOTSET
       ORT_ENFORCE(auto_pad == AutoPadType::NOTSET,
                   "A Conv/ConvTranspose node has both 'auto_pad' and 'pads' attributes");
-      pads.assign(pads_span.begin(), pads_span.end());
+      pads.resize(pads_span.size());
+      for (size_t i = 0; i != pads_span.size(); ++i) {
+        // ONNX spec says pad values must be non-negative
+        ORT_ENFORCE(pads_span[i] >= 0 && static_cast<size_t>(pads_span[i]) <= std::numeric_limits<size_t>::max());
+        pads[i] = pads_span[i];
+      }
     }
 
     status = info.GetAttrs("dilations", dilations);

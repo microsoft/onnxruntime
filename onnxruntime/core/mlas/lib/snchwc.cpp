@@ -15,8 +15,8 @@ Abstract:
 
 --*/
 
+#include "core/common/safeint.h"
 #include "mlasi.h"
-
 //
 // Define the base thread context for NCWHc convolution or pooling operations.
 //
@@ -109,15 +109,13 @@ Return Value:
 }
 
 void
-MlasNchwcPrepareWorkBlock(
-    MLAS_NCHWC_WORK_BLOCK* WorkBlock,
-    const int64_t* InputShape,
-    const int64_t* KernelShape,
-    const int64_t* DilationShape,
-    const int64_t* Padding,
-    const int64_t* StrideShape,
-    const int64_t* OutputShape
-    )
+MlasNchwcPrepareWorkBlock(_In_ MLAS_NCHWC_WORK_BLOCK* WorkBlock,
+                          _In_reads_(4) const int64_t* InputShape,
+                          _In_reads_opt_(2) const int64_t* KernelShape,
+                          _In_reads_opt_(2) const int64_t* DilationShape,
+                          _In_reads_opt_(4) const int64_t* Padding,
+                          _In_reads_opt_(2) const int64_t* StrideShape,
+                          _In_reads_(4) const int64_t* OutputShape)
 /*++
 
 Routine Description:
@@ -343,15 +341,9 @@ struct MLAS_NCHWC_NN_ALGORITHM
     }
 };
 
-constexpr size_t MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex;
-constexpr size_t MLAS_NCHWC_NN_ALGORITHM::WidthShapeIndex;
-
-template<typename AlgorithmType>
+template <typename AlgorithmType>
 void
-MlasNchwcThreaded(
-    void* Context,
-    ptrdiff_t Index
-    )
+MlasNchwcThreaded(_In_ void* Context, ptrdiff_t Index)
 {
     AlgorithmType((decltype(AlgorithmType::WorkBlock))Context).Execute(Index);
 }
@@ -442,43 +434,40 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         return KernelFlags;
     }
 
-    void
-    ComputeEffectiveKernel(
-        size_t ph,
-        size_t FilterStride,
-        const float** filter,
-        size_t* ih,
-        size_t* EffectiveKernelHeight
-        )
+    void ComputeEffectiveKernel(size_t ph,
+                                size_t FilterStride,
+                                const float** filter,
+                                _Out_ size_t* ih,
+                                _Out_ size_t* EffectiveKernelHeight)
     {
         //
         // Compute the first input row and kernel height. If this output row
         // uses padding from one or more input padding rows, then adjust the
         // kernel parameters to keep within the input bounds.
         //
-
-        *ih = ph * StrideHeight - PaddingLeftY;
-        *EffectiveKernelHeight = KernelHeight;
+        SafeInt<size_t> ihOut = ph;
+        SafeInt<size_t> EffectiveKernelHeightOut = *EffectiveKernelHeight;
+        ihOut = ihOut * StrideHeight - PaddingLeftY;
 
         if ((ph - OutputCountLeftPadY) >= OutputCountY) {
-
-            size_t ihStep = *ih;
+            size_t ihStep = ihOut;
 
             for (size_t kh = 0; kh < KernelHeight; kh++) {
 
                 if (ihStep >= InputHeight) {
-
-                    if (ihStep == *ih) {
-                        *ih += DilationHeight;
+                    if (ihStep == ihOut) {
+                        ihOut += DilationHeight;
                         *filter += FilterStride;
                     }
 
-                    *EffectiveKernelHeight -= 1;
+                    EffectiveKernelHeightOut -= 1;
                 }
 
                 ihStep += DilationHeight;
             }
         }
+        *ih = ihOut;
+        *EffectiveKernelHeight = EffectiveKernelHeightOut;
     }
 
     void
@@ -638,8 +627,6 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     }
 };
 
-constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::FilterSetSize;
-
 //
 // Implementation of the direct convolution algorithm where the input buffer is
 // in NCHWc format.
@@ -663,16 +650,18 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         //
         // Loop until all of the work has been completed.
         //
-
-        const size_t StrideWidthBytes = BlockSize * StrideWidth * sizeof(float);
-        const size_t DilationWidthBytes = BlockSize * DilationWidth * sizeof(float);
-        const size_t FilterStrideBytes = BlockSize * InputChannels * KernelSize * sizeof(float);
-        const size_t OutputStrideBytes = BlockSize * OutputSize * sizeof(float);
-        const size_t InputWidthBytes = BlockSize * InputWidth * sizeof(float);
-        const size_t DilatedInputWidthBytes = BlockSize * DilationHeight * InputWidth * sizeof(float);
+        SafeInt<size_t> BlockSizeLocal = BlockSize;
+        const size_t StrideWidthBytes = BlockSizeLocal * StrideWidth * sizeof(float);
+        const size_t DilationWidthBytes = BlockSizeLocal * DilationWidth * sizeof(float);
+        const size_t FilterStrideBytes =
+            BlockSizeLocal * InputChannels * KernelSize * sizeof(float);
+        const size_t OutputStrideBytes = BlockSizeLocal * OutputSize * sizeof(float);
+        const size_t InputWidthBytes = BlockSizeLocal * InputWidth * sizeof(float);
+        const size_t DilatedInputWidthBytes =
+            BlockSizeLocal * DilationHeight * InputWidth * sizeof(float);
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
 
-        const size_t BlockedOutputWidth = BlockSize * OutputWidth;
+        const size_t BlockedOutputWidth = BlockSizeLocal * OutputWidth;
 
 #if defined(MLAS_TARGET_AMD64)
         MLAS_CONV_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvNchwcFloatKernel;
@@ -692,9 +681,8 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             // Walk over each input image organized as a set of NCHWc blocks.
             //
 
-            for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
-
-                unsigned KernelFlags = ComputeKernelFlags(ic, BlockSize);
+            for (size_t ic = 0; ic < InputChannels; ic += BlockSizeLocal) {
+                unsigned KernelFlags = ComputeKernelFlags(ic, BlockSizeLocal);
 
                 //
                 // Apply the convolution kernel to each row of the output batch.
@@ -710,24 +698,26 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                     // uses one or more input padding rows.
                     //
 
-                    const float* filter = Filter + BlockSize * ic * KernelSize;
+                    const float* filter =
+                        Filter + static_cast<size_t>(BlockSizeLocal * ic * KernelSize);
                     size_t ih;
                     size_t EffectiveKernelHeight;
 
-                    ComputeEffectiveKernel(ph + work, BlockSize * BlockSize * KernelWidth,
-                        &filter, &ih, &EffectiveKernelHeight);
+                    ComputeEffectiveKernel(ph + work, BlockSizeLocal * BlockSizeLocal * KernelWidth,
+                                           &filter, &ih, &EffectiveKernelHeight);
 
                     //
                     // Invoke the convolution kernel.
                     //
 
-                    Kernel(input + BlockSize * (ih * InputWidth - PaddingLeftX),
-                        filter, output, StrideWidthBytes, DilationWidthBytes,
-                        FilterCount, InputStrideBytes, FilterStrideBytes,
-                        OutputStrideBytes, EffectiveKernelHeight, KernelWidth,
-                        input + BlockSize * (ih * InputWidth), InputWidthBytes,
-                        DilatedInputWidthBytes, OutputCountLeftPadX, OutputCountX,
-                        OutputCountRightPadX, Bias, KernelFlags);
+                    Kernel(input + static_cast<size_t>(BlockSizeLocal *
+                                                       (ih * InputWidth - PaddingLeftX)),
+                           filter, output, StrideWidthBytes, DilationWidthBytes, FilterCount,
+                           InputStrideBytes, FilterStrideBytes, OutputStrideBytes,
+                           EffectiveKernelHeight, KernelWidth,
+                           input + static_cast<size_t>(BlockSizeLocal * (ih * InputWidth)),
+                           InputWidthBytes, DilatedInputWidthBytes, OutputCountLeftPadX,
+                           OutputCountX, OutputCountRightPadX, Bias, KernelFlags);
 
                     //
                     // Test for fused non-ReLU activation.
@@ -773,16 +763,17 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         //
         // Loop until all of the work has been completed.
         //
-
+        SafeInt<size_t> BlockSizeLocal = BlockSize;
         const size_t StrideWidthBytes = StrideWidth * sizeof(float);
         const size_t DilationWidthBytes = DilationWidth * sizeof(float);
-        const size_t FilterStrideBytes = BlockSize * InputChannels * KernelSize * sizeof(float);
-        const size_t OutputStrideBytes = BlockSize * OutputSize * sizeof(float);
+        const size_t FilterStrideBytes =
+            BlockSizeLocal * InputChannels * KernelSize * sizeof(float);
+        const size_t OutputStrideBytes = BlockSizeLocal * OutputSize * sizeof(float);
         const size_t InputWidthBytes = InputWidth * sizeof(float);
         const size_t DilatedInputWidthBytes = DilationHeight * InputWidth * sizeof(float);
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
 
-        const size_t BlockedOutputWidth = BlockSize * OutputWidth;
+        const size_t BlockedOutputWidth = BlockSizeLocal * OutputWidth;
 
 #if defined(MLAS_TARGET_AMD64)
         MLAS_CONV_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvNchwFloatKernel;
@@ -801,15 +792,15 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             size_t ih;
             size_t EffectiveKernelHeight;
 
-            ComputeEffectiveKernel(ph, BlockSize * KernelWidth, &filter, &ih,
-                &EffectiveKernelHeight);
+            ComputeEffectiveKernel(ph, BlockSizeLocal * KernelWidth, &filter, &ih,
+                                   &EffectiveKernelHeight);
 
             //
             // Apply the convolution kernel to each channel of the input tensor.
             //
 
             const float* input = Input;
-            float* output = Output + BlockSize * ph * OutputWidth;
+            float* output = Output + static_cast<size_t>(BlockSizeLocal * ph * OutputWidth);
 
             for (size_t ic = 0; ic < InputChannels; ic += 1) {
 
@@ -835,7 +826,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 }
 
                 input += InputSize;
-                filter += BlockSize * KernelSize;
+                filter += BlockSizeLocal * KernelSize;
             }
 
             //
@@ -873,11 +864,11 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         //
         // Loop until all of the work has been completed.
         //
-
-        const size_t StrideWidthBytes = BlockSize * StrideWidth * sizeof(float);
-        const size_t InputStrideBytes = BlockSize * InputSize * sizeof(float);
-        const size_t FilterStrideBytes = BlockSize * InputChannels * sizeof(float);
-        const size_t OutputStrideBytes = BlockSize * OutputSize * sizeof(float);
+        SafeInt<size_t> BlockSizeLocal = BlockSize;
+        const size_t StrideWidthBytes = BlockSizeLocal * StrideWidth * sizeof(float);
+        const size_t InputStrideBytes = BlockSizeLocal * InputSize * sizeof(float);
+        const size_t FilterStrideBytes = BlockSizeLocal * InputChannels * sizeof(float);
+        const size_t OutputStrideBytes = BlockSizeLocal * OutputSize * sizeof(float);
 
 #if defined(MLAS_TARGET_AMD64)
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvPointwiseFloatKernel;
@@ -913,9 +904,10 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             // the batch sizes causes a slowdown from processor cache thrashing.
             //
 
-            const float* input = Input + BlockSize * (ph * StrideHeight * InputWidth);
+            const float* input =
+                Input + static_cast<size_t>(BlockSizeLocal * (ph * StrideHeight * InputWidth));
             const float* filter = Filter;
-            float* output = Output + BlockSize * ph * OutputWidth;
+            float* output = Output + static_cast<size_t>(BlockSizeLocal * ph * OutputWidth);
 
             size_t InputChannelBatch;
 
@@ -931,20 +923,20 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 // Invoke the convolution kernel.
                 //
 
-                Kernel(input, filter, output, StrideWidthBytes, InputChannelBatch /
-                    BlockSize, FilterCount, InputStrideBytes, FilterStrideBytes,
-                    OutputStrideBytes, OutputThisIteration, Bias, KernelFlags);
+                Kernel(input, filter, output, StrideWidthBytes, InputChannelBatch / BlockSizeLocal,
+                       FilterCount, InputStrideBytes, FilterStrideBytes, OutputStrideBytes,
+                       OutputThisIteration, Bias, KernelFlags);
 
                 //
                 // Test for fused non-ReLU activation.
                 //
 
                 if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
-                    DoActivation(output, FilterCount, BlockSize * OutputThisIteration);
+                    DoActivation(output, FilterCount, BlockSizeLocal * OutputThisIteration);
                 }
 
                 input += MaximumInputChannelBatch * InputSize;
-                filter += BlockSize * MaximumInputChannelBatch;
+                filter += BlockSizeLocal * MaximumInputChannelBatch;
             }
 
             //
@@ -972,7 +964,8 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
     void Execute(ptrdiff_t Index)
     {
-        const size_t GroupBlockCount = ((GroupCount + BlockSize - 1) / BlockSize);
+        SafeInt<size_t> BlockSizeLocal = BlockSize;
+        const size_t GroupBlockCount = ((GroupCount + BlockSizeLocal - 1) / BlockSizeLocal);
 
         const size_t TotalWork = BatchCount * GroupBlockCount * OutputHeight;
 
@@ -996,25 +989,26 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         // computed above.
         //
 
-        Input += BatchGroup * BlockSize * InputSize;
-        Output += WorkIndex * BlockSize * OutputWidth;
-        Filter += Group * BlockSize * KernelSize;
+        Input += BatchGroup * BlockSizeLocal * InputSize;
+        Output += WorkIndex * BlockSizeLocal * OutputWidth;
+        Filter += Group * BlockSizeLocal * KernelSize;
 
         if (Bias != nullptr) {
-            Bias += BlockSize * Group;
+            Bias += BlockSizeLocal * Group;
         }
 
         //
         // Loop until all of the work has been completed.
         //
 
-        const size_t StrideWidthBytes = BlockSize * StrideWidth * sizeof(float);
-        const size_t DilationWidthBytes = BlockSize * DilationWidth * sizeof(float);
-        const size_t InputWidthBytes = BlockSize * InputWidth * sizeof(float);
-        const size_t DilatedInputWidthBytes = BlockSize * DilationHeight * InputWidth * sizeof(float);
+        const size_t StrideWidthBytes = BlockSizeLocal * StrideWidth * sizeof(float);
+        const size_t DilationWidthBytes = BlockSizeLocal * DilationWidth * sizeof(float);
+        const size_t InputWidthBytes = BlockSizeLocal * InputWidth * sizeof(float);
+        const size_t DilatedInputWidthBytes =
+            BlockSizeLocal * DilationHeight * InputWidth * sizeof(float);
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
 
-        const size_t BlockedOutputWidth = BlockSize * OutputWidth;
+        const size_t BlockedOutputWidth = BlockSizeLocal * OutputWidth;
 
 #if defined(MLAS_TARGET_AMD64)
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvDepthwiseFloatKernel;
@@ -1035,17 +1029,18 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
             size_t ih;
             size_t EffectiveKernelHeight;
 
-            ComputeEffectiveKernel(ph, BlockSize * KernelWidth, &filter, &ih, &EffectiveKernelHeight);
+            ComputeEffectiveKernel(ph, BlockSizeLocal * KernelWidth, &filter, &ih,
+                                   &EffectiveKernelHeight);
 
             //
             // Invoke the convolution kernel.
             //
-
-            Kernel(Input + BlockSize * (ih * InputWidth - PaddingLeftX), filter,
-                Output, StrideWidthBytes, DilationWidthBytes, InputStrideBytes,
-                EffectiveKernelHeight, KernelWidth, Input + BlockSize * (ih * InputWidth),
-                InputWidthBytes, DilatedInputWidthBytes, OutputCountLeftPadX,
-                OutputCountX, OutputCountRightPadX, Bias, KernelFlags);
+            size_t InputOffset = BlockSizeLocal * (SafeInt<size_t>(ih) * InputWidth - PaddingLeftX);
+            size_t InputBaseOffset = BlockSizeLocal * (SafeInt<size_t>(ih) * InputWidth);
+            Kernel(Input + InputOffset, filter, Output, StrideWidthBytes, DilationWidthBytes,
+                   InputStrideBytes, EffectiveKernelHeight, KernelWidth, Input + InputBaseOffset,
+                   InputWidthBytes, DilatedInputWidthBytes, OutputCountLeftPadX, OutputCountX,
+                   OutputCountRightPadX, Bias, KernelFlags);
 
             //
             // Test for fused non-ReLU activation.
@@ -1208,24 +1203,21 @@ MLAS_POOL_FLOAT_KERNEL* const MLAS_NCHWC_POOL_ALGORITHM::PoolKernels[] =
 
 #endif
 
-void
-MLASCALL
-MlasNchwcConv(
-    const int64_t* InputShape,
-    const int64_t* KernelShape,
-    const int64_t* DilationShape,
-    const int64_t* Padding,
-    const int64_t* StrideShape,
-    const int64_t* OutputShape,
-    size_t GroupCount,
-    const float* Input,
-    const float* Filter,
-    const float* Bias,
-    float* Output,
-    const MLAS_ACTIVATION* Activation,
-    bool ZeroMode,
-    MLAS_THREADPOOL* ThreadPool
-    )
+void MLASCALL
+MlasNchwcConv(_In_reads_(4) const int64_t* InputShape,
+              _In_reads_opt_(2) const int64_t* KernelShape,
+              _In_reads_opt_(2) const int64_t* DilationShape,
+              _In_reads_opt_(4) const int64_t* Padding,
+              _In_reads_opt_(2) const int64_t* StrideShape,
+              _In_reads_(4) const int64_t* OutputShape,
+              size_t GroupCount,
+              const float* Input,
+              const float* Filter,
+              const float* Bias,
+              float* Output,
+              const MLAS_ACTIVATION* Activation,
+              bool ZeroMode,
+              MLAS_THREADPOOL* ThreadPool)
 /*++
 
 Routine Description:

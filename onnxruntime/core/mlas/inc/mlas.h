@@ -1149,24 +1149,21 @@ MlasNchwcGetBlockSize(
     void
     );
 
-void
-MLASCALL
-MlasNchwcConv(
-    const int64_t* InputShape,
-    const int64_t* KernelShape,
-    const int64_t* DilationShape,
-    const int64_t* Padding,
-    const int64_t* StrideShape,
-    const int64_t* OutputShape,
-    size_t GroupCount,
-    const float* Input,
-    const float* Filter,
-    const float* Bias,
-    float* Output,
-    const MLAS_ACTIVATION* Activation,
-    bool ZeroMode,
-    MLAS_THREADPOOL* ThreadPool
-    );
+void MLASCALL
+MlasNchwcConv(_In_reads_(4) const int64_t* InputShape,
+              _In_reads_opt_(2) const int64_t* KernelShape,
+              _In_reads_opt_(2) const int64_t* DilationShape,
+              _In_reads_opt_(4) const int64_t* Padding,
+              _In_reads_opt_(2) const int64_t* StrideShape,
+              _In_reads_(4) const int64_t* OutputShape,
+              size_t GroupCount,
+              const float* Input,
+              const float* Filter,
+              const float* Bias,
+              float* Output,
+              const MLAS_ACTIVATION* Activation,
+              bool ZeroMode,
+              MLAS_THREADPOOL* ThreadPool);
 
 void
 MLASCALL
