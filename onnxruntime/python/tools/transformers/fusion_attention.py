@@ -288,7 +288,7 @@ class FusionAttention(Fusion):
         # Create initializer for reshaping past_k and past_v
         new_dims_name = "kv_4d_to_3d"
         new_dims = self.model.get_initializer(new_dims_name)
-        if new_dims == None:
+        if new_dims is None:
             new_dims = numpy_helper.from_array(np.array([0, -1, self.model.hidden_size], dtype='int64'), name=new_dims_name)
             self.model.add_initializer(new_dims, self.this_graph_name)
 
@@ -332,10 +332,10 @@ class FusionAttention(Fusion):
         k_index, v_index = "index_0", "index_1"
         k_dim = self.model.get_initializer(k_index)
         v_dim = self.model.get_initializer(v_index)
-        if k_dim == None:
+        if k_dim is None:
             k_dim = numpy_helper.from_array(np.array(0, dtype='int64'), name=k_index)
             self.model.add_initializer(k_dim, self.this_graph_name)
-        if v_dim == None:
+        if v_dim is None:
             v_dim = numpy_helper.from_array(np.array(1, dtype='int64'), name=v_index)
             self.model.add_initializer(v_dim, self.this_graph_name)
 
@@ -591,17 +591,14 @@ class FusionAttention(Fusion):
         # Create combined Q/K/V bias
         q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
         qb = NumpyHelper.to_array(q_bias)
-        kb, vb = None, None
+        kb = np.zeros_like(qb)
+        vb = np.zeros_like(qb)
         if k_add is not None:
             k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
             kb = NumpyHelper.to_array(k_bias)
-        else:
-            kb = np.zeros_like(qb)
         if v_add is not None:
             v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])            
             vb = NumpyHelper.to_array(v_bias)
-        else:
-            vb = np.zeros_like(qb)
 
         qkv_bias = np.stack((qb, kb, vb), axis=0)
         qkv_bias_dim = 3 * np.prod(qb.shape)

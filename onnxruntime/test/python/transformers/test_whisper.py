@@ -9,17 +9,16 @@ import unittest
 
 import onnx
 from whisper_model_generator import *
-from model_loader import get_test_data_path
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
     from fusion_options import FusionOptions
     from onnx_model import OnnxModel
-    from optimizer import optimize_by_fusion, optimize_model
+    from optimizer import optimize_model
 else:
     from onnxruntime.transformers.fusion_options import FusionOptions
     from onnxruntime.transformers.onnx_model import OnnxModel
-    from onnxruntime.transformers.optimizer import optimize_by_fusion, optimize_model
+    from onnxruntime.transformers.optimizer import optimize_model
 
 
 class TestFusion(unittest.TestCase):

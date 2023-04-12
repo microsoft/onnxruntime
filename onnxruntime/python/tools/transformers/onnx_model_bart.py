@@ -151,6 +151,7 @@ class FusionBartAttention(FusionAttention):
             [1],
         )
         past_v, present_v = "", ""
+        add_v = None
         if v_nodes is not None:
             (reshape_v_2, transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes
             present_v = transpose_v.output[0] # For initial pass through encoder-decoder_with_past to get starting past values (beam search)
@@ -214,6 +215,7 @@ class FusionBartAttention(FusionAttention):
             [1, 0],
         )
         past_k, present_k = "", ""
+        reshape_k_1, matmul_k = None, None
         if k_nodes_with_bias is not None:
             _, reshape_k_2, transpose_k_1, reshape_k_1, add_k, matmul_k = k_nodes_with_bias
             k_nodes = k_nodes_with_bias
@@ -243,7 +245,7 @@ class FusionBartAttention(FusionAttention):
             bias_dim = self.model.get_initializer(add_v.input[0]).dims[0]
             empty_bias_name = "empty_bias"
             empty_tensor = self.model.get_initializer(empty_bias_name)
-            if empty_tensor == None:
+            if empty_tensor is None:
                 empty_tensor = helper.make_tensor(empty_bias_name, TensorProto.FLOAT, [bias_dim], [0.0] * bias_dim)
                 self.model.add_initializer(empty_tensor, self.this_graph_name)
 
