@@ -21,7 +21,7 @@ class ResNet50FusionTests : public ::testing::Test {
 };
 
 TEST_F(ResNet50FusionTests, FuseConvAddRelu) {
-  std::basic_string<ORTCHAR_T> const fp32_model_path = ORT_TSTR("../models/opset10/resnet50.onnx");
+  std::basic_string<ORTCHAR_T> const fp32_model_path = ORT_TSTR("../models/opset10/Resnet50_Fusion_Testing/resnet50.onnx");
   std::shared_ptr<Model> fp32_model;
   ASSERT_STATUS_OK(Model::Load(fp32_model_path, fp32_model, nullptr, *logger));
   Graph& fp32_graph = fp32_model->MainGraph();
@@ -29,7 +29,7 @@ TEST_F(ResNet50FusionTests, FuseConvAddRelu) {
     node.SetExecutionProviderType(kCpuExecutionProvider);
   }
 
-  std::basic_string<ORTCHAR_T> const fp16_model_path = ORT_TSTR("../models/opset10/resnet50.fp16.onnx");
+  std::basic_string<ORTCHAR_T> const fp16_model_path = ORT_TSTR("../models/opset10/Resnet50_Fusion_Testing/resnet50.fp16.onnx");
   std::shared_ptr<Model> fp16_model;
   ASSERT_STATUS_OK(Model::Load(fp16_model_path, fp16_model, nullptr, *logger));
   Graph& fp16_graph = fp16_model->MainGraph();
