@@ -46,7 +46,10 @@ class ConvAddActivation : public NodeSelector {
 
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
-    if (node_ep != kCpuExecutionProvider || !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+    if (node_ep != kCpuExecutionProvider ||
+        (!HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
+         !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) )
+        ) {
       return std::nullopt;
     }
     // we can't assign `conv_node` as the producer-node, even it is, because we have to make sure

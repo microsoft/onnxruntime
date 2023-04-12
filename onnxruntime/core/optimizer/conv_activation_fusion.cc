@@ -50,7 +50,8 @@ bool ConvFusionDataTypeCheck(const Node& conv_node) {
   // only support float, remove the EP check altogether.
   const std::string_view node_ep = conv_node.GetExecutionProviderType();
   if (node_ep == kCudaExecutionProvider || node_ep == kCpuExecutionProvider) {
-    if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+    if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&  // X
+        !HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
       return false;
     }
   }
