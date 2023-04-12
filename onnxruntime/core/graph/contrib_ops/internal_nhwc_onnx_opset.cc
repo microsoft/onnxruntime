@@ -17,7 +17,9 @@ class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearConvTranspose);
 namespace internal_nhwc_onnx {
 
 using contrib::NhwcInferenceContext;
+#ifdef USE_QNN
 using contrib::NhwcResizeInferenceContext;
+#endif  // defined(USE_QNN)
 using RegistrationFunc = std::function<void(ONNX_NAMESPACE::OpSchema&&)>;
 
 namespace {
