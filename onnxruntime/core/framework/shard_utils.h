@@ -123,7 +123,7 @@ struct ShardSpec : TensorShape {
         : TensorShape(shape), shardLocations_(ShardInfo{shardDim, locations})
     {
     }
-
+    virtual ~ShardSpec() = default;
     std::optional<ShardInfo> shardInfo() const override { return std::make_optional(shardLocations_); }
 
 private:
