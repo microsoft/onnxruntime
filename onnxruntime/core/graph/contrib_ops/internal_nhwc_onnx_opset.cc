@@ -17,6 +17,7 @@ class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearConvTranspose);
 namespace internal_nhwc_onnx {
 
 using contrib::NhwcInferenceContext;
+using contrib::NhwcResizeInferenceContext;
 using RegistrationFunc = std::function<void(ONNX_NAMESPACE::OpSchema&&)>;
 
 namespace {
@@ -35,6 +36,23 @@ void RegisterNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& 
                   })
                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
 }
+
+#ifdef USE_QNN
+void RegisterResizeNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
+  // Need to copy the inferencing function from the temporary OpSchema object
+  auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
+  f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
+                  .TypeAndShapeInferenceFunction([onnx_inferencing_func](ONNX_NAMESPACE::InferenceContext& ctx) {
+                    // use the NHWC inferencing context to convert input 0 and output 0 to NCHW
+                    // so the ONNX shape inferencing can be used. Once that completes, the call to PropagateOutputShape
+                    // will convert the inferred shape from NCHW to NHWC
+                    NhwcResizeInferenceContext nhwc_ctx(ctx);
+                    onnx_inferencing_func(nhwc_ctx);
+                    nhwc_ctx.PropagateOutputShape();
+                  })
+                  .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
+}
+#endif
 
 void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
   auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
@@ -61,6 +79,14 @@ void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPAC
       RegistrationFn,                                          \
       ::ONNX_NAMESPACE::GetOpSchema<                           \
           ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>())
+
+#ifdef USE_QNN
+#define REGISTER_RESIZE_NHWC_SCHEMA(RegistrationFn, Op, SinceVersion) \
+  RegisterResizeNHWCSchema(                                          \
+      RegistrationFn,                                          \
+      ::ONNX_NAMESPACE::GetOpSchema<                           \
+          ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>())
+#endif
 
 #define REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(RegistrationFn, Op, SinceVersion) \
   RegisterNHWCSchemaWithActivation(                                            \
@@ -116,8 +142,9 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 13);
 
 #if defined(USE_QNN)
-  REGISTER_NHWC_SCHEMA(fn, Resize, 11);
-  REGISTER_NHWC_SCHEMA(fn, Resize, 13);
+   REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 11);
+   REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 13);
+   REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 18);
 #endif
 
   // internal QLinear ops
