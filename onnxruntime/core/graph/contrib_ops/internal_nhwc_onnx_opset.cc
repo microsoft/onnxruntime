@@ -17,9 +17,7 @@ class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearConvTranspose);
 namespace internal_nhwc_onnx {
 
 using contrib::NhwcInferenceContext;
-#ifdef USE_QNN
 using contrib::NhwcResizeInferenceContext;
-#endif  // defined(USE_QNN)
 using RegistrationFunc = std::function<void(ONNX_NAMESPACE::OpSchema&&)>;
 
 namespace {
@@ -39,22 +37,19 @@ void RegisterNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& 
                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
 }
 
-#ifdef USE_QNN
 void RegisterResizeNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
-  // Need to copy the inferencing function from the temporary OpSchema object
   auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
   f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
                   .TypeAndShapeInferenceFunction([onnx_inferencing_func](ONNX_NAMESPACE::InferenceContext& ctx) {
-                    // use the NHWC inferencing context to convert input 0 and output 0 to NCHW
+                    // Use the NHWC Resize inferencing context to convert input0, scales, sizes, and output0 to NCHW
                     // so the ONNX shape inferencing can be used. Once that completes, the call to PropagateOutputShape
-                    // will convert the inferred shape from NCHW to NHWC
+                    // will convert the inferred output shape from NCHW to NHWC
                     NhwcResizeInferenceContext nhwc_ctx(ctx);
                     onnx_inferencing_func(nhwc_ctx);
                     nhwc_ctx.PropagateOutputShape();
                   })
                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
 }
-#endif
 
 void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
   auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
@@ -144,9 +139,9 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 13);
 
 #if defined(USE_QNN)
-   REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 11);
-   REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 13);
-   REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 18);
+  REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 11);
+  REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 13);
+  REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 18);
 #endif
 
   // internal QLinear ops
