@@ -5,9 +5,6 @@
 
 import triton
 import triton.language as tl
-import json
-import shutil
-import os
 
 @triton.jit
 def log_softmax_kernel(
@@ -43,7 +40,7 @@ blocks = [1024, 2048, 4096]
 name_pattern = 'log_softmax_{}_{}'
 sig_pattern = '*{},*{},i32,i32,i32'
 
-def GetLogSoftmaxFunctionTable():
+def logsoftmax_function_table():
     func_table = []
     def get_num_warps(block_size):
         num_warps = 4

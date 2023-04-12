@@ -4,17 +4,17 @@
 # --------------------------------------------------------------------------
 
 import triton
-import triton.language as tl
 import json
 import shutil
 import os
-from softmax import GetSoftmaxFunctionTable
-from log_softmax import GetLogSoftmaxFunctionTable
+
+from softmax import softmax_funcion_table
+from log_softmax import logsoftmax_function_table
 
 
 kernel_table = [
-    GetSoftmaxFunctionTable,  # softmax
-    GetLogSoftmaxFunctionTable,  # log_softmax
+    softmax_funcion_table,  # softmax
+    logsoftmax_function_table,  # log_softmax
 ]
 
 
