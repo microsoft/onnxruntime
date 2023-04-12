@@ -66,14 +66,11 @@ jobs:
     parameters:
       WithCache: true
       Today: $(TODAY)
-      AdditionalKey: onnxruntime
+      AdditionalKey: onnxruntime__full
       CacheDir: $(ORT_CACHE_DIR)
       ChangeEveryCommit: true
       BuildStep:
-        - task: CmdLine@2
-          displayName: 1. Build full onnxruntime and generate ORT format test files
-          inputs:
-            script: |
+        - script: |
               docker run --rm \
                 --volume $(Build.SourcesDirectory):/onnxruntime_src \
                 --volume $(Build.BinariesDirectory):/build \
@@ -87,9 +84,11 @@ jobs:
                   /bin/bash -c "
                     /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh /build/1; \
                     ccache -sv; \
-                    ccache -z
-                    "
-            workingDirectory: $(Build.SourcesDirectory)
+                    ccache -z;"
+          displayName: 1. Build full onnxruntime and generate ORT format test files
+          workingDirectory: $(Build.SourcesDirectory)
+          env:
+            ORT_BUILD_USE_CACHE: "1"
 
 
   - template: templates/linux-build-step-with-cache.yml
@@ -100,36 +99,35 @@ jobs:
       CacheDir: $(ORT_CACHE_DIR)
       ChangeEveryCommit: true
       BuildStep:
-        - task: CmdLine@2
+        - script: |
+            # We will try to build minimal ORT with exceptions disabled and training ops enabled
+            # Only the building process is verified here, no test will be performed
+            docker run --rm \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume $(ORT_CACHE_DIR):/cache \
+              -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              -e CCACHE_DIR=/cache \
+              onnxruntimecpubuild \
+                /bin/bash -c "
+                  /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
+                    --build_dir /build/2 --cmake_generator Ninja \
+                    --config Debug \
+                    --skip_submodule_sync \
+                    --build_shared_lib \
+                    --parallel \
+                    --skip_tests \
+                    --minimal_build \
+                    --disable_exceptions \
+                    --enable_training_ops; \
+                  ccache -sv; \
+                  ccache -z;"
           displayName: 2. Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
-          inputs:
-            script: |
-              # We will try to build minimal ORT with exceptions disabled and training ops enabled
-              # Only the building process is verified here, no test will be performed
-              docker run --rm \
-                --volume $(Build.SourcesDirectory):/onnxruntime_src \
-                --volume $(Build.BinariesDirectory):/build \
-                --volume $(ORT_CACHE_DIR):/cache \
-                -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-                -e NIGHTLY_BUILD \
-                -e BUILD_BUILDNUMBER \
-                -e CCACHE_DIR=/cache \
-                onnxruntimecpubuild \
-                  /bin/bash -c "
-                    /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
-                      --build_dir /build/2 --cmake_generator Ninja \
-                      --config Debug \
-                      --skip_submodule_sync \
-                      --build_shared_lib \
-                      --parallel \
-                      --skip_tests \
-                      --minimal_build \
-                      --disable_exceptions \
-                      --enable_training_ops; \
-                    ccache -sv; \
-                    ccache -z
-                    "
-            workingDirectory: $(Build.SourcesDirectory)
+          workingDirectory: $(Build.SourcesDirectory)
+          env:
+            ORT_BUILD_USE_CACHE: "1"
 
   - task: CmdLine@2
     displayName: 3a. Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
