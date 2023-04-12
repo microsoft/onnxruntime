@@ -118,7 +118,7 @@ struct Storage {
 
     ORT_DISALLOW_COPY_AND_ASSIGNMENT(Storage);
     Storage(std::vector<Buffer>&& buffers, std::optional<ShardDim> shardDims)
-        : buffers_(std::move(buffers)), shardDims_(shardDims.value_or(ShardDim()))
+        : buffers_(std::move(buffers)), shardDims_(shardDims.value_or(ShardDim(0)))
     {
     }
     Storage(Buffer&& buffer) : buffers_(CreateBuffer(std::move(buffer)))

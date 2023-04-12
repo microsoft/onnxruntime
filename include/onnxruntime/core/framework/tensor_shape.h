@@ -39,8 +39,8 @@ using MemoryLocations = absl::InlinedVector<std::int32_t, 16>;
 //typedef std::int32_t MemoryLocations[16];
 //using MemoryLocations = std::array<MemoryLocation, 16>;
 struct ShardInfo {
-    ShardDim shardDims_;
-    MemoryLocations locations_;
+    ShardDim shardDims_{0};
+    MemoryLocations locations_{0};
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic push
