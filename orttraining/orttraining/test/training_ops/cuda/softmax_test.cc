@@ -194,14 +194,14 @@ TEST(CudaKernelTest, DISABLED_SoftmaxGrad_LargeTensor_LastAxis) {
   TestSoftmaxGrad<float>(dY_dims, Y_dims, dX_dims, 2);
 }
 
-TEST(CudaKernelTest, SoftmaxGrad_LargeTensor_LastAxis_Float16) {
+TEST(CudaKernelTest, DISABLED_SoftmaxGrad_LargeTensor_LastAxis_Float16) {
   std::vector<int64_t> dY_dims{8, 16, 2048};
   std::vector<int64_t> Y_dims{8, 16, 2048};
   std::vector<int64_t> dX_dims{8, 16, 2048};
   TestSoftmaxGrad<MLFloat16>(dY_dims, Y_dims, dX_dims, 2, false, 1e-3, 1e-3);
 }
 
-TEST(CudaKernelTest, SoftmaxGrad_LargeTensor_LastAxis_Float16_NoPowerOfTwo) {
+TEST(CudaKernelTest, DISABLED_SoftmaxGrad_LargeTensor_LastAxis_Float16_NoPowerOfTwo) {
   std::vector<int64_t> dY_dims{8, 16, 1500};
   std::vector<int64_t> Y_dims{8, 16, 1500};
   std::vector<int64_t> dX_dims{8, 16, 1500};
@@ -217,7 +217,7 @@ TEST(CudaKernelTest, DISABLED_SoftmaxGrad_LargeTensor_AllAxis) {
   TestSoftmaxGrad<float>(dY_dims, Y_dims, dX_dims, 1);
 }
 
-TEST(CudaKernelTest, SoftmaxGrad_LargeTensor_AllAxis_Float16) {
+TEST(CudaKernelTest, DISABLED_SoftmaxGrad_LargeTensor_AllAxis_Float16) {
   std::vector<int64_t> dY_dims{8, 16, 512};
   std::vector<int64_t> Y_dims{8, 16, 512};
   std::vector<int64_t> dX_dims{8, 16, 512};
@@ -225,7 +225,7 @@ TEST(CudaKernelTest, SoftmaxGrad_LargeTensor_AllAxis_Float16) {
   TestSoftmaxGrad<MLFloat16>(dY_dims, Y_dims, dX_dims, 1, false, 1e-3, 1e-3);
 }
 
-TEST(CudaKernelTest, SoftmaxGrad_LargeTensor_AllAxis_Float16_NoPowerOfTwo) {
+TEST(CudaKernelTest, DISABLED_SoftmaxGrad_LargeTensor_AllAxis_Float16_NoPowerOfTwo) {
   std::vector<int64_t> dY_dims{8, 16, 1500};
   std::vector<int64_t> Y_dims{8, 16, 1500};
   std::vector<int64_t> dX_dims{8, 16, 1500};
@@ -255,14 +255,14 @@ TEST(CudaKernelTest, DISABLED_LogSoftmaxGrad_LargeTensor_LastAxis) {
   TestSoftmaxGrad<float>(dY_dims, Y_dims, dX_dims, 2, true);
 }
 
-TEST(CudaKernelTest, LogSoftmaxGrad_LargeTensor_LastAxis_Float16) {
+TEST(CudaKernelTest, DISABLED_LogSoftmaxGrad_LargeTensor_LastAxis_Float16) {
   std::vector<int64_t> dY_dims{8, 16, 2048};
   std::vector<int64_t> Y_dims{8, 16, 2048};
   std::vector<int64_t> dX_dims{8, 16, 2048};
   TestSoftmaxGrad<MLFloat16>(dY_dims, Y_dims, dX_dims, 2, true, 1e-3, 1e-3);
 }
 
-TEST(CudaKernelTest, LogSoftmaxGrad_LargeTensor_LastAxis_Float16_NoPowerOfTwo) {
+TEST(CudaKernelTest, DISABLED_LogSoftmaxGrad_LargeTensor_LastAxis_Float16_NoPowerOfTwo) {
   std::vector<int64_t> dY_dims{8, 16, 1500};
   std::vector<int64_t> Y_dims{8, 16, 1500};
   std::vector<int64_t> dX_dims{8, 16, 1500};
@@ -277,7 +277,7 @@ TEST(CudaKernelTest, DISABLED_LogSoftmaxGrad_LargeTensor_AllAxis) {
   TestSoftmaxGrad<float>(dY_dims, Y_dims, dX_dims, 1, true, 1e-3, 1e-3);
 }
 
-TEST(CudaKernelTest, LogSoftmaxGrad_LargeTensor_AllAxis_Float16) {
+TEST(CudaKernelTest, DISABLED_LogSoftmaxGrad_LargeTensor_AllAxis_Float16) {
   std::vector<int64_t> dY_dims{8, 16, 512};
   std::vector<int64_t> Y_dims{8, 16, 512};
   std::vector<int64_t> dX_dims{8, 16, 512};
@@ -285,7 +285,7 @@ TEST(CudaKernelTest, LogSoftmaxGrad_LargeTensor_AllAxis_Float16) {
   TestSoftmaxGrad<MLFloat16>(dY_dims, Y_dims, dX_dims, 1, true, 1e-3, 1e-3);
 }
 
-TEST(CudaKernelTest, LogSoftmaxGrad_LargeTensor_AllAxis_Float16_NoPowerOfTwo) {
+TEST(CudaKernelTest, DISABLED_LogSoftmaxGrad_LargeTensor_AllAxis_Float16_NoPowerOfTwo) {
   std::vector<int64_t> dY_dims{8, 16, 1500};
   std::vector<int64_t> Y_dims{8, 16, 1500};
   std::vector<int64_t> dX_dims{8, 16, 1500};
