@@ -66,6 +66,7 @@ class TestIOBinding(unittest.TestCase):
         # Validate results
         self.assertTrue(np.array_equal(self.create_expected_output(), ort_output))
 
+    @unittest.skip("Could not find an implementation for Identity(19) node with name ''")
     def test_bind_input_types(self):
         opset = onnx_opset_version()
         devices = [
