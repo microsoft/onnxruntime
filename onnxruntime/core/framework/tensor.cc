@@ -94,26 +94,33 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
   Init(p_type, std::make_unique<Storage>(std::move(buffer)), shape, strides);
 }
 
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>>&& allocators,
                gsl::span<const int64_t> strides)
-    : Tensor(!shape.shardInfo().has_value() && allocators.size() == 1? Tensor(p_type, shape, allocators[0], strides) : Tensor()) {
-  alloc_info_ = allocators[0]->Info();
-  ORT_ENFORCE(p_type != nullptr);
-  ORT_ENFORCE(shape.shardInfo().has_value());
-  ORT_ENFORCE(allocators.size() > 1);
-  auto shardDims = shape.shardInfo()->shardDims_;
-  assert(ShardUtils::NumShards(shardDims) == allocators.size());
-  std::vector<Buffer> buffers;
-  for (auto allocator : allocators)
+    : Tensor(!shape.shardInfo().has_value()? Tensor(p_type, shape, allocators[0], strides) : Tensor()) {
+  if(!shape.shardInfo().has_value())
   {
-    TensorShape shard = ShardUtils::GetShardSize(shape, shardDims);
-    const size_t len = Tensor::CalculateTensorStorageSize(p_type, shard, strides);
-    buffers.emplace_back(MakeBuffer(len, allocator, allocator->Info().location));
+    ORT_ENFORCE(allocators.size() == 1, "Expect only one allocator for non-sharded tensor");
   }
-  Init(p_type, std::make_unique<Storage>(std::move(buffers), std::make_optional(shardDims)), shape, strides);
+  else
+  {
+    auto const& shardDims = shape.shardInfo()->shardDims_;
+    const size_t numShards = ShardUtils::NumShards(shardDims);
+    ORT_ENFORCE(numShards == allocators.size(), "The number of shards does not match the number of allocators");
+    ORT_ENFORCE(p_type != nullptr);
+    ORT_ENFORCE(strides.empty(), "Not yet support sharded tensor with strides");
+    alloc_info_ = allocators[0]->Info();
+    std::vector<Buffer> buffers;
+    for (auto allocator : allocators)
+    {
+      TensorShape shard = ShardUtils::GetShardSize(shape, shardDims);
+      const size_t len = Tensor::CalculateTensorStorageSize(p_type, shard, {});
+      buffers.emplace_back(MakeBuffer(len, allocator, allocator->Info().location));
+    }
+    Init(p_type, std::make_unique<Storage>(std::move(buffers), std::make_optional(shardDims)), shape, {});
+  }
 }
 
-void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>> allocators,
+void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>>&& allocators,
                           OrtValue& ort_value, gsl::span<const int64_t> strides) {
   auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocators), strides);
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
