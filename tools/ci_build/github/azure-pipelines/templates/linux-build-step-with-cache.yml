@@ -11,6 +11,7 @@ parameters:
   type: string
   default: ""
 
+# It'd be different in different jobs in one workflow.
 - name: AdditionalKey
   type: string
   default: ""

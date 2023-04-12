@@ -60,7 +60,7 @@ jobs:
       parameters:
         WithCache: ${{parameters.with_cache}}
         Today: $(TODAY)
-        AdditionalKey: onnxruntime
+        AdditionalKey: Linux_py_Wheels_${{ parameters.arch }}
         CacheDir: $(ORT_CACHE_DIR)
         ChangeEveryCommit: true
         BuildStep:
