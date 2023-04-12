@@ -105,6 +105,13 @@ ort_common_ver = (
     ort_node_common_ver if RELEASE_NODE else (ort_web_common_ver if RELEASE_WEB else ort_react_native_common_ver)
 )
 
+ort_common_from = (
+    "" if ort_common_ver == "" else ("node" if RELEASE_NODE else ("web" if RELEASE_WEB else "react-native"))
+)
+
+print("====== output environment variables ======")
+print(f"##vso[task.setvariable variable=ORT_COMMON_FROM]{ort_common_from}")
+
 if tag == "latest" or tag == "" or tag == "rc":
     if not RELEASE_NODE or not RELEASE_WEB or not RELEASE_REACT_NATIVE:
         raise Exception("@latest or @rc build must release all packages (node, web, react-native)")
