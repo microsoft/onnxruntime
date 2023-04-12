@@ -16,16 +16,19 @@ namespace contrib {
 /**
  * @brief Pooling operator for type FP16, layout NHWC.
  * Only max pool and average pool supported.
- * 
+ *
  * Single threadded operation for now.
- * 
+ *
  * TODO!! implemente thread partition similar with
  * fp16 conv operator
 */
 class NhwcPoolFp16 : public OpKernel {
  public:
-  explicit NhwcPoolFp16(const OpKernelInfo& info, const std::string& pooltype, bool is_max_pool)
-      : OpKernel(info), pool_attrs_(info, pooltype, info.node().SinceVersion()), is_max_pool_(is_max_pool) {}
+  explicit NhwcPoolFp16(const OpKernelInfo& info)
+      : OpKernel(info),
+      pool_attrs_(info, info.GetKernelDef().OpName(), info.node().SinceVersion()),
+      is_max_pool_(info.GetKernelDef().OpName() == "MaxPool")
+  {}
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -51,11 +54,21 @@ Status NhwcPoolFp16::Compute(OpKernelContext* context) const {
   // Compute the output size and effective padding for this pooling operation.
   TensorShapeVector output_dims({N});
   TensorShapeVector pads = pool_attrs_.pads;
+  TensorShapeVector kernel_shape = pool_attrs_.kernel_shape;
+  TensorShapeVector strides = pool_attrs_.strides;
+  TensorShapeVector dilations = pool_attrs_.dilations;
+  if (pool_attrs_.global_pooling) {
+    const auto& input_dims = input_shape.GetDims();
+    kernel_shape.assign(input_dims.begin() + 1, input_dims.end() - 1);
+    pads.resize(kernel_shape.size() * 2, 0);
+    strides.resize(kernel_shape.size(), 1);
+    dilations.resize(kernel_shape.size(), 1);
+  }
   int64_t kernel_size = 1;
   int64_t input_image_size = 1;
   int64_t output_image_size = 1;
   for (size_t dim = 0; dim < spatial_dims; ++dim) {
-    int64_t kernel = pool_attrs_.kernel_shape[dim];
+    int64_t kernel = kernel_shape[dim];
     int64_t input_dim = input_shape[dim + 1];
 
     kernel_size *= kernel;
@@ -63,11 +76,11 @@ Status NhwcPoolFp16::Compute(OpKernelContext* context) const {
 
     int64_t output_dim = 0;
     pool_attrs_.ComputeSizePadDilations(input_dim,
-                                        pool_attrs_.strides[dim],
+                                        strides[dim],
                                         kernel,
                                         &pads.at(dim),
                                         &pads.at(spatial_dims + dim),
-                                        pool_attrs_.dilations[dim],
+                                        dilations[dim],
                                         &output_dim);
     output_dims.push_back(output_dim);
 
@@ -104,9 +117,9 @@ Status NhwcPoolFp16::Compute(OpKernelContext* context) const {
           C,
           input_shape.GetDims().data() + 1,
           output_dims.data() + 1,
-          pool_attrs_.kernel_shape.data(),
-          pool_attrs_.strides.data(),
-          pool_attrs_.dilations.data(),
+          kernel_shape.data(),
+          strides.data(),
+          dilations.data(),
           pads.data(),
           static_cast<ptrdiff_t>(spatial_dims),
           output_start,
@@ -139,18 +152,6 @@ Status NhwcPoolFp16::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-class NhwcMaxPoolFp16 : public NhwcPoolFp16 {
- public:
-  explicit NhwcMaxPoolFp16(const OpKernelInfo& info)
-      : NhwcPoolFp16(info, "MaxPool", true /*maxpool*/) {}
-};
-
-class NhwcAvgPoolFp16 : public NhwcPoolFp16 {
- public:
-  explicit NhwcAvgPoolFp16(const OpKernelInfo& info)
-      : NhwcPoolFp16(info, "AveragePool", false /*not maxpool*/) {}
-};
-
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     MaxPool,
     kMSInternalNHWCDomain,
@@ -159,7 +160,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-    NhwcMaxPoolFp16);
+    NhwcPoolFp16);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     AveragePool,
@@ -169,7 +170,17 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-    NhwcAvgPoolFp16);
+    NhwcPoolFp16);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    GlobalAveragePool,
+    kMSInternalNHWCDomain,
+    1,
+    MLFloat16,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    NhwcPoolFp16);
 
 
 #endif

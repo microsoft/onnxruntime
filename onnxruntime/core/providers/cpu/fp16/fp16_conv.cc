@@ -32,18 +32,20 @@ using ConvPadVector = ConvAttributes::ConvPadVector;
  * 2. Activation
  * It takes an operator attribute 'activation', which supplies the activation info.
  *
- * Add is performed BEFORE activation.
+ * Add is performed AFTER activation.
  *
- * The implementation runs faster with NHWC. By default, it converts NCHW to NHWC
- * before processing, and convert the result back. It can take NHWC tensors directly.
- * Use operator attribute 'channels_last' to specify that the data layout is NHWC.
+ * The implementation supports both NCHW and NHWC. It runs faster with NHWC.
+ * 
+ * Currently this class implement 3 operators: onnx.Conv, ms.FusedConv and ms.NhwcFusedConv
+ * In the constructor, if we see the operator name is NhwcFusedConv, we assume the
+ * input layout to be NHWC, otherwise we assume layout is NCHW.
  *
 */
 class FusedConvFp16 final : public OpKernel {
  public:
   FusedConvFp16(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
-    channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
+    channels_last_ = (info.GetKernelDef().OpName() == "NhwcFusedConv");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -54,6 +56,9 @@ class FusedConvFp16 final : public OpKernel {
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
+
+ protected:
+  bool channels_last_{false};
 
  private:
 
@@ -89,7 +94,6 @@ class FusedConvFp16 final : public OpKernel {
 
   MLAS_ACTIVATION activation_;
   ConvAttributes conv_attrs_;
-  bool channels_last_{false};
   TensorShape W_shape_;
   BufferUniquePtr packed_W_buffer_;
   size_t packed_W_size_{0};
@@ -236,10 +240,8 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   const auto& W_shape = W ? W->Shape() : W_shape_;
   const Tensor* B = num_inputs >= 3 ? context->Input<Tensor>(2) : nullptr;
 
-  // TODO!!
-  // This tensor should be added to the result before activation is applied
-  // We need to augment the post processor to accept an addition operation.
-  // const Tensor* Sum = num_inputs >= 4 ? context->Input<Tensor>(3) : nullptr;
+  // This tensor should be added to the result AFTER activation is applied
+  const Tensor* Sum = num_inputs >= 4 ? context->Input<Tensor>(3) : nullptr;
 
   const int64_t N = X->Shape()[0];
   const int64_t M = W_shape[0];
@@ -281,6 +283,13 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   // Bail out early if one of the dimensions is zero.
   if (Y->Shape().Size() == 0) {
     return Status::OK();
+  }
+  if (Sum) {
+    if (Sum->Shape() != Y->Shape()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Z shape does not match output shape.",
+                             " Z: ", Sum->Shape().ToString().c_str(),
+                             " Output: ", Y->Shape().ToString().c_str());
+    }    
   }
 
   const int64_t input_image_size = input_shape.Size();
@@ -332,6 +341,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   const auto* Xdata = X->Data<MLFloat16>();
   const auto* Bdata = B != nullptr ? B->Data<MLFloat16>() : nullptr;
   auto* Ydata = Y->MutableData<MLFloat16>();
+  const auto* SumData = Sum != nullptr ? Sum->Data<MLFloat16>() : nullptr;
 
   BufferUniquePtr transpose_input_buffer;
   BufferUniquePtr transpose_output_buffer;
@@ -403,6 +413,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     const auto* input_data = Xdata;
     auto* output_data = Ydata;
+    const auto* add_src = SumData; 
 
     if (!channels_last_) {
       // Transpose the input from channels first (CHW) to channels last (HWC).
@@ -413,6 +424,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
           static_cast<size_t>(input_image_size));
       input_data = static_cast<MLFloat16*>(transpose_input_buffer.get());
       output_data = static_cast<MLFloat16*>(transpose_output_buffer.get());
+      add_src = nullptr;
     }
 
     // Threaded implementation of ND convolution is not yet supported, so
@@ -459,10 +471,10 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
       }
 
       auto* worker_output = output_data + output_start * M;
+      const auto* worker_addsrc = add_src == nullptr ? nullptr : add_src + output_start * M;
 
       if (is_depthwise_conv) {
-        // TODO!! add Sum tensor to activation
-        MLAS_HALF_GEMM_ACTIVATION_PROCESSOR act(activation_);
+        MLAS_HALF_GEMM_ACTIVATION_PROCESSOR act(activation_, worker_addsrc);
         MlasConvDepthwise(
             worker_indirection_buffer,
             reordered_W,
@@ -531,8 +543,8 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
             lda = static_cast<size_t>(C);
           }
 
-          // TODO!! add Sum tensor to activation
-          MLAS_HALF_GEMM_ACTIVATION_PROCESSOR act(activation_);
+          const auto* gemm_add = add_src == nullptr ? nullptr : worker_addsrc + group_id * group_output_channels;
+          MLAS_HALF_GEMM_ACTIVATION_PROCESSOR act(activation_, gemm_add);
           MLAS_HALF_GEMM_DATA_PARAMS gemm_params;
           gemm_params.A = AData;
           gemm_params.lda = lda;
@@ -567,15 +579,29 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
           Ydata,
           static_cast<size_t>(output_image_size),
           static_cast<size_t>(M));
+      if (SumData != nullptr) {
+        MLAS_ACTIVATION activation;
+        activation.ActivationKind = MlasIdentityActivation;
+        MLAS_HALF_GEMM_ACTIVATION_PROCESSOR proc(activation, SumData);
+        proc.Process(Ydata, 0, 0, static_cast<size_t>(M),
+                     static_cast<size_t>(output_image_size),
+                     static_cast<size_t>(output_image_size));
+      }
     }
 
     Xdata += X_offset;
     Ydata += Y_offset;
+    if (SumData != nullptr) {
+      SumData += Y_offset;
+    }
   }
 
   return Status::OK();
 }
 
+//
+// Operator definitions
+//
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Conv,
@@ -586,14 +612,29 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 
 
 #ifndef DISABLE_CONTRIB_OPS
+
 namespace contrib {
-    ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
-        FusedConv,
-        1,
-        MLFloat16,
-        KernelDefBuilder()
-            .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-        FusedConvFp16);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    NhwcFusedConv,
+    kMSDomain,
+    1,
+    MLFloat16,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    FusedConvFp16);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    FusedConv,
+    kMSDomain,
+    1,
+    MLFloat16,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    FusedConvFp16);
+
 }  // namespace contrib
 #endif
 
