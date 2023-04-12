@@ -39,11 +39,12 @@ bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape,
   size_t dim_size = static_cast<size_t>(input_shape->dim_size());
   num_elements = 1;
   for (size_t i = 0; i < dim_size; ++i) {
-    if (!utils::HasDimValue(input_shape->dim(i))) {
+    auto dim = input_shape->dim(static_cast<int>(i));
+    if (!utils::HasDimValue(dim)) {
       return false;
     }
 
-    int64_t dim_value = input_shape->dim(i).dim_value();
+    int64_t dim_value = dim.dim_value();
     num_elements *= dim_value;
     if (num_elements > MAX_SIZE_PER_VALUE) {
       return false;
