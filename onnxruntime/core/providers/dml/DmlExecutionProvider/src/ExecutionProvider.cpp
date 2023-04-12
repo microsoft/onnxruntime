@@ -176,6 +176,15 @@ namespace Dml
             sizeof(featureLevels)
             ));
 
+        D3D12_FEATURE_DATA_D3D12_OPTIONS4 featureOptions = {};
+        if (SUCCEEDED(d3d12Device->CheckFeatureSupport(
+            D3D12_FEATURE_D3D12_OPTIONS4,
+            &featureOptions,
+            sizeof(featureOptions))))
+        {
+            m_native16BitShaderOpsSupported = featureOptions.Native16BitShaderOpsSupported;
+        }
+
         m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE);
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
@@ -650,10 +659,28 @@ namespace Dml
         return false;
     }
 
+    bool IsCustomOpShader(const onnxruntime::Node& node)
+    {
+        auto custom_ops = std::array<char*, 2>{
+            "DFT",
+            "STFT"
+        };
+
+        for (auto& custom_op : custom_ops)
+        {
+            if (strcmp(custom_op, node.OpType().c_str()) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     bool DoesNodeContainSupportedDataTypes(
         const onnxruntime::Node& node,
         _In_opt_ const InternalRegistrationInfo* regInfo,
-        uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        bool native16BitShaderOpsSupported
         )
     {
         std::vector<onnxruntime::NodeArg const*> constantCpuInputs;
@@ -694,6 +721,14 @@ namespace Dml
                 // a legitimate case reaches here and DML needs to support a new input/output type
                 // besides tensors, then remove the assert.
                 assert(false);
+                nodeContainsSupportedDataTypes = false;
+                return;
+            }
+
+            if (onnxElementType == MLOperatorTensorDataType::Float16 &&
+                !native16BitShaderOpsSupported &&
+                IsCustomOpShader(node))
+            {
                 nodeContainsSupportedDataTypes = false;
                 return;
             }
@@ -768,7 +803,7 @@ namespace Dml
         }
 
         // Check whether the node uses any data types which are unsupported by the device.
-        if (!DoesNodeContainSupportedDataTypes(node, internalRegInfo.get(), supportedDeviceDataTypeMask))
+        if (!DoesNodeContainSupportedDataTypes(node, internalRegInfo.get(), supportedDeviceDataTypeMask, m_native16BitShaderOpsSupported))
         {
             return false;
         }

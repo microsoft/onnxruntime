@@ -1324,7 +1324,9 @@ static ORT_STATUS_PTR GetNodeDefTypeInfoHelper(const OrtSession* sess, GetDefLis
   if (p.second->size() <= index)
     return OrtApis::CreateStatus(ORT_FAIL, "out of index");
   const ONNX_NAMESPACE::TypeProto* type_proto = (*p.second)[index]->TypeAsProto();
-  return OrtTypeInfo::FromTypeProto(type_proto, out);
+  auto type_info = OrtTypeInfo::FromTypeProto(*type_proto);
+  *out = type_info.release();
+  return nullptr;
   API_IMPL_END
 }
 
@@ -2703,6 +2705,8 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::Logger_LogMessage,
     &OrtApis::Logger_GetLoggingSeverityLevel,
     &OrtApis::KernelInfoGetConstantInput_tensor,
+    &OrtApis::CastTypeInfoToOptionalTypeInfo,
+    &OrtApis::GetOptionalContainedTypeInfo
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

@@ -5,6 +5,10 @@
 
 #include "../External/D3DX12/d3dx12.h"
 
+// NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
+//       should be removed from IsCustomOpShader(...) in
+//       onnxruntime\core\providers\dml\DmlExecutionProvider\src\ExecutionProvider.cpp
+
 // The shader headers are produced using "GeneratedShaders/GenerateShaders.bat"
 namespace DFTFloat32
 {

@@ -1726,13 +1726,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         dll_path_list = []
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
-        # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
-        # This works for Python 3.7 and below, and doesn't work for Python 3.8+
-        # User will need to import torch before onnxruntime and it will work for all versions
-        if (args.enable_lazy_tensor) and is_windows():
-            import torch
-
-            dll_path_list.append(os.path.join(os.path.dirname(torch.__file__), "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:
@@ -2469,16 +2462,25 @@ def main():
                         "ARM(64) builds. Will skip test running after build."
                     )
                     args.test = False
-            elif cpu_arch == "32bit" or args.x86:
-                cmake_extra_args = ["-A", "Win32", "-T", "host=x64", "-G", args.cmake_generator]
             else:
-                if args.msvc_toolset:
-                    toolset = "host=x64,version=" + args.msvc_toolset
+                target_arch = platform.machine()
+                if target_arch == "AMD64":
+                    if cpu_arch == "32bit" or args.x86:
+                        target_arch = "Win32"
+                    else:
+                        target_arch = "x64"
+                    host_arch = "x64"
+                elif target_arch == "ARM64":
+                    host_arch = "ARM64"
                 else:
-                    toolset = "host=x64"
+                    raise BuildError("unknown python arch")
+                if args.msvc_toolset:
+                    toolset = "host=" + host_arch + ",version=" + args.msvc_toolset
+                else:
+                    toolset = "host=" + host_arch
                 if args.cuda_version:
                     toolset += ",cuda=" + args.cuda_version
-                cmake_extra_args = ["-A", "x64", "-T", toolset, "-G", args.cmake_generator]
+                cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
         elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):

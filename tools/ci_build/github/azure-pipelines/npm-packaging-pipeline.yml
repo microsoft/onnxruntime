@@ -53,13 +53,13 @@ stages:
     PackageName: 'onnxruntime-react-native'
     BuildAndroidAARStageDependsOn: 'Extract_commit'
 
-- stage: Download_Node_Package
+- stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:
   - ReactNative_CI
   - Build_web_Release
   - Build_web_Debug
   jobs:
-  - job: Download_Node_Package
+  - job: Download_Node_Package_And_Publish_Validation_Script
     pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
     variables:
       runCodesignValidationInjection: false
@@ -77,7 +77,7 @@ stages:
           artifactName: 'NPM_packages'
           targetPath: '$(Pipeline.Workspace)'
         displayName: 'Download onnxruntime-node Pipeline Artifact'
-      
+
     - ${{ if ne(parameters.NodePipelineId, 'latest') }}:
       - task: DownloadPipelineArtifact@2
         inputs:
@@ -89,17 +89,29 @@ stages:
           artifactName: 'NPM_packages'
           targetPath: '$(Pipeline.Workspace)'
         displayName: 'Download onnxruntime-node Pipeline Artifact'
-    
+
     - task: CopyFiles@2
       inputs:
         sourceFolder: $(Pipeline.Workspace)
         contents: onnxruntime-*.tgz
-        targetFolder: $(Build.ArtifactStagingDirectory)
+        targetFolder: $(Build.ArtifactStagingDirectory)\node-artifacts
       displayName: 'Copy onnxruntime-node Artifacts'
-    
+
     - task: PublishPipelineArtifact@0
       inputs:
         artifactName: 'onnxruntime-node'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+        targetPath: '$(Build.ArtifactStagingDirectory)\node-artifacts'
       displayName: 'Publish onnxruntime-node Pipeline Artifact'
-      
+
+    - task: CopyFiles@2
+      inputs:
+        sourceFolder: $(Build.SourcesDirectory)\tools\ci_build\github\js
+        contents: validate-npm-packages.py
+        targetFolder: $(Build.ArtifactStagingDirectory)\validation-scripts
+      displayName: 'Copy validation scripts'
+
+    - task: PublishPipelineArtifact@0
+      inputs:
+        artifactName: 'validation_scripts'
+        targetPath: '$(Build.ArtifactStagingDirectory)\validation-scripts'
+      displayName: 'Publish validation scripts'
