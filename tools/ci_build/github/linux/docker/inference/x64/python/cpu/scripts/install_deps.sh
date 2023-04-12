@@ -15,19 +15,8 @@ do
   ${PYTHON_EXE} -m pip install -r requirements.txt
 done
 
-ARCH=$(uname -m)
-echo $ARCH
-
+# No release binary for ccache aarch64, so we need to build it from source.
 if ! [ -x "$(command -v ccache)" ]; then
-  echo "Installing CCache"
-  mkdir -p /tmp/ccache
-  if [ "$ARCH" == "x86_64" ] ; then
-    CCACHE_URL="https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz"
-    curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o /tmp/src/ccache-4.7.4-linux-x86_64.tar.xz  ${CCACHE_URL}
-    tar --strip 1 -xf /tmp/src/ccache-4.7.4-linux-x86_64.tar.xz -C /tmp/ccache
-    cp /tmp/ccache/ccache /usr/bin
-  fi
-  if [ "$ARCH" = "aarch64" ]; then
     git clone --recursive --branch v4.7.4 https://github.com/ccache/ccache
     pushd .
     cd ccache
@@ -37,5 +26,4 @@ if ! [ -x "$(command -v ccache)" ]; then
     make
     make install
     which ccache
-  fi
 fi
