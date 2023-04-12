@@ -8,6 +8,15 @@ import Foundation
 final class SwiftOnnxRuntimeBindingsTests: XCTestCase {
     let modelPath: String = Bundle.module.url(forResource: "single_add.basic", withExtension: "ort")!.path
 
+    func testGetVersionString() throws {
+        do {
+            let version = ORTVersion()
+            XCTAssertNotNil(version)
+        } catch let error {
+            XCTFail(error.localizedDescription)
+        }
+    }
+
     func testCreateSession() throws {
         do {
             let env = try ORTEnv(loggingLevel: ORTLoggingLevel.verbose)

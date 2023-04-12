@@ -7,6 +7,19 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Gets the ORT version string in format major.minor.patch.
+ */
+NSString* ORTVersion(void);
+
+#ifdef __cplusplus
+}
+#endif
+
 /**
  * The ORT environment.
  */
@@ -25,5 +38,6 @@ NS_ASSUME_NONNULL_BEGIN
                                         error:(NSError**)error NS_DESIGNATED_INITIALIZER;
 
 @end
+
 
 NS_ASSUME_NONNULL_END
