@@ -231,9 +231,9 @@ const ONNX_NAMESPACE::TensorProto* NhwcResizeInferenceContext::getInputData(size
   // asked for it during shape inferencing as getInputData is only used to retrieve things that may have small
   // constant initializers.
   switch (index) {
-    case 2:
+    case scales_input_index:
       return &scales_input_data_;
-    case 3:
+    case sizes_input_index:
       return &sizes_input_data_;
     default:
       return ctx_.getInputData(index);

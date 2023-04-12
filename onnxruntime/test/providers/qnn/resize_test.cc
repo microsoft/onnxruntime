@@ -50,10 +50,10 @@ static GetTestModelFn BuildResizeTestCase(const std::vector<int64_t>& shape,
 }
 
 static GetTestModelFn BuildResizeTestCaseWithScales(const std::vector<int64_t>& shape,
-                                          const std::vector<float>& scales_data,
-                                          const std::string& mode = "nearest",
-                                          const std::string& coordinate_transformation_mode = "half_pixel",
-                                          const std::string& nearest_mode = "round_prefer_floor") {
+                                                    const std::vector<float>& scales_data,
+                                                    const std::string& mode = "nearest",
+                                                    const std::string& coordinate_transformation_mode = "half_pixel",
+                                                    const std::string& nearest_mode = "round_prefer_floor") {
   return [shape, scales_data, mode, coordinate_transformation_mode, nearest_mode](ModelTestBuilder& builder) {
     auto* input = builder.MakeInput<float>(shape, 0.0f, 20.0f);
     auto* roi = builder.MakeInitializer<float>({0}, {});
@@ -105,10 +105,10 @@ static void RunCPUResizeOpTest(const std::vector<int64_t>& shape, const std::vec
 }
 
 static void RunCPUResizeOpTestWithScales(const std::vector<int64_t>& shape, const std::vector<float>& scales_data,
-                               const std::string& mode, const std::string& coordinate_transformation_mode,
-                               const std::string& nearest_mode,
-                               ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
-                               int opset = 11) {
+                                         const std::string& mode, const std::string& coordinate_transformation_mode,
+                                         const std::string& nearest_mode,
+                                         ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                                         int opset = 11) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnCpu.dll";
