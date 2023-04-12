@@ -34,10 +34,9 @@
 #include "core/common/span_utils.h"
 
 namespace onnxruntime {
-using ShardDim = absl::InlinedVector<std::int32_t, 5>;
-using MemoryLocations = absl::InlinedVector<std::int32_t, 16>;
-//typedef std::int32_t MemoryLocations[16];
-//using MemoryLocations = std::array<MemoryLocation, 16>;
+using ShardDim = std::array<std::int32_t, 5>;
+using MemoryLocations = std::array<std::int32_t, 16>;
+
 struct ShardInfo {
     ShardDim shardDims_{0};
     MemoryLocations locations_{0};
