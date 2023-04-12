@@ -27,7 +27,7 @@ variables:
   ${{ if eq(parameters.NpmPublish, 'custom') }}:
     NpmPackagingMode: '$(VersionSuffix)'
 
-jobs:
+stages:
 - template: templates/react-native-ci.yml
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}

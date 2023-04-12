@@ -133,12 +133,14 @@ class TunableOp {
   virtual ~TunableOp() = default;
 
   Status operator()(const ParamsT* params) {
-    int id = default_id_;
+    int id = -1;
     ITuningContext* ctx = params->TuningContext();
     if (ctx->IsTunableOpEnabled()) {
       auto& mgr = ctx->GetTuningResultsManager();
       auto op_sig = Signature();
       auto params_sig = params->Signature();
+
+      // Usage is enabled, then we are free to use previous tuning result.
       id = mgr.Lookup(op_sig, params_sig);
       if (id > static_cast<int>(ops_.size())) {
         LOGS_DEFAULT(ERROR) << "Invalid TunableOp kernel id for " << op_sig
@@ -146,14 +148,16 @@ class TunableOp {
         mgr.Delete(op_sig, params_sig);
         id = -1;
       }
-      if (id < 0) {
+
+      // If there is not previous tuning result been found, we do the tuning iff tuning is enabled
+      if (id < 0 && ctx->IsTuningEnabled()) {
         auto maybe_proxy_params = PreTuning(params);
         id = FindFastest(maybe_proxy_params);
         PostTuning(maybe_proxy_params);
         mgr.Add(op_sig, params_sig, id);
       }
     }
-    ORT_RETURN_IF_ERROR(ops_[id](params));
+    ORT_RETURN_IF_ERROR(ops_[id < 0 ? default_id_ : id](params));
     return Status::OK();
   }
 
