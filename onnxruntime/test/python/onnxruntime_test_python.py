@@ -7,10 +7,10 @@ import gc
 import os
 import pathlib
 import platform
+import queue
 import sys
 import threading
 import unittest
-import queue
 
 import numpy as np
 from helper import get_name
@@ -55,7 +55,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def run_model_with_input(self, session_object, input_name, input_value, iter_num, queue):
-        for i in range(iter_num):
+        for _ in range(iter_num):
             predict = session_object.run(None, {input_name: input_value})[0]
             queue.put(max(predict.flatten().tolist()))
 
@@ -585,7 +585,7 @@ class TestInferenceSession(unittest.TestCase):
 
         if "CUDAExecutionProvider" in available_providers:
             cuda_options = {
-                "gpu_mem_limit": 2*1024*1024*1024,
+                "gpu_mem_limit": 2 * 1024 * 1024 * 1024,
                 "arena_extend_strategy": "kSameAsRequested",
             }
             model_path = "../models/zoo/opset7/ResNet18v2/resnet18-v2-7.onnx"
@@ -597,7 +597,10 @@ class TestInferenceSession(unittest.TestCase):
             q = queue.Queue()
             input_name = session.get_inputs()[0].name
             input_value = np.random.rand(1, 3, 224, 224).astype(np.float32)
-            workers = [threading.Thread(target=self.run_model_with_input, args=(session, input_name, input_value, iter_num, q)) for idx in range(thread_num)]
+            workers = [
+                threading.Thread(target=self.run_model_with_input, args=(session, input_name, input_value, iter_num, q))
+                for idx in range(thread_num)
+            ]
             for worker in workers:
                 worker.start()
             for worker in workers:
