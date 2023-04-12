@@ -92,7 +92,7 @@ jobs:
           displayName: 1. Build full onnxruntime and generate ORT format test files
           workingDirectory: $(Build.SourcesDirectory)
           env:
-            ORT_BUILD_USE_CACHE: "1"
+            ORT_BUILD_USE_CACHE: 1
 
 
   - template: templates/linux-build-step-with-cache.yml
@@ -125,13 +125,14 @@ jobs:
                     --skip_tests \
                     --minimal_build \
                     --disable_exceptions \
+                    --use_cache \
                     --enable_training_ops; \
                   ccache -sv; \
                   ccache -z;"
           displayName: 2. Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
           workingDirectory: $(Build.SourcesDirectory)
           env:
-            ORT_BUILD_USE_CACHE: "1"
+            ORT_BUILD_USE_CACHE: 1
 
   - task: CmdLine@2
     displayName: 3a. Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
