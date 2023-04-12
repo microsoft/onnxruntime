@@ -1,4 +1,4 @@
-ARG BASEIMAGE=nvidia/cuda:11.4.0-cudnn8-devel-centos7
+ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-centos7
 ARG POLICY=manylinux2014
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=
@@ -103,6 +103,11 @@ RUN export OPENSSL_ROOT=openssl-1.1.1q && \
 COPY build_scripts/build-cpython.sh /build_scripts/
 
 
+FROM build_cpython AS build_cpython37
+COPY build_scripts/cpython-pubkeys.txt /build_scripts/cpython-pubkeys.txt
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.7.13
+
+
 FROM build_cpython AS build_cpython38
 COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.8.13
@@ -119,15 +124,17 @@ RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.5
 
 FROM build_cpython AS build_cpython311
 COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.11.2
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.11.0b5
 
 FROM build_cpython AS all_python
 COPY build_scripts/install-pypy.sh \
      build_scripts/pypy.sha256 \
      build_scripts/finalize-python.sh \
      /build_scripts/
+RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.7 7.3.9
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.8 7.3.9
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.9 7.3.9
+COPY --from=build_cpython37 /opt/_internal /opt/_internal/
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
 COPY --from=build_cpython310 /opt/_internal /opt/_internal/
@@ -142,6 +149,7 @@ COPY --from=all_python /opt/_internal /opt/_internal/
 COPY build_scripts/finalize.sh \
      build_scripts/update-system-packages.sh \
      build_scripts/python-tag-abi-tag.py \
+     build_scripts/requirements3.7.txt \
      build_scripts/requirements3.8.txt \
      build_scripts/requirements3.9.txt \
      build_scripts/requirements3.10.txt \
@@ -157,12 +165,12 @@ CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
 
-#Install TensorRT 8.0.1.6
+#Install TensorRT 8.6.0.12
 #RUN yum install -y wget
-RUN v="8.0.1-1.cuda11.3" &&\
+RUN v="8.6.0.12-1.cuda11.8" &&\
     yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo &&\
-    yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} \
-        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v}
+    yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} libnvinfer-vc-plugin8-${v}\
+        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v} libnvinfer-vc-plugin-devel-${v}
 
 #Add our own dependencies
 ADD scripts /tmp/scripts
