@@ -200,7 +200,7 @@ Status AddBiasReshape(const Tensor* qkv,           // Input: Q/K/V data - query 
     size_t output_size = static_cast<ptrdiff_t>(output_tensor.Shape().Size());
     void* user_data = nullptr;
 
-    const int loop_len = output_size / span_size;
+    const int loop_len = static_cast<int>(output_size / span_size);
     double unit_cost = 1.0f;
     const auto cost = TensorOpCost{static_cast<double>(input_broadcaster.Input0ElementSize()) * span_size,
                                    static_cast<double>(output_tensor.DataType()->Size()) * span_size,

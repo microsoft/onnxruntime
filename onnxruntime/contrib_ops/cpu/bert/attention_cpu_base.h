@@ -48,13 +48,13 @@ class AttentionCPUBase : public AttentionBase {
     if (separate_present_kv) {
       auto element_type = DataTypeImpl::GetType<T>();
       past_sequence_length = (nullptr != past) ? static_cast<int>(past->Shape().GetDims()[3]) : 0;
-      std::array<int64_t, 5> present_dims{2, batch_size, num_heads_, static_cast<int64_t>(kv_sequence_length) + past_sequence_length, v_head_size};
+      std::array<int64_t, 5> present_dims{2, batch_size, num_heads_, kv_sequence_length + past_sequence_length, v_head_size};
       TensorShape present_shape(present_dims);
 
       // Use present_kv to store present KV instead of output
-      AllocatorPtr allocator;
-      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-      Tensor::InitOrtValue(element_type, present_shape, allocator, present_kv);
+      AllocatorPtr present_kv_allocator;
+      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&present_kv_allocator));
+      Tensor::InitOrtValue(element_type, present_shape, present_kv_allocator, present_kv);
       present = present_kv.GetMutable<Tensor>();
 
       if (nullptr != past && nullptr == present) {
