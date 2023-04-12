@@ -138,6 +138,8 @@ set(provider_excluded_files
   "nn/conv.h"
   "nn/conv_transpose.cc"
   "nn/conv_transpose.h"
+  "nn/pool.cc"
+  "nn/pool.h"
   "reduction/reduction_ops.cc"
   "rnn/cudnn_rnn_base.cc"
   "rnn/cudnn_rnn_base.h"
