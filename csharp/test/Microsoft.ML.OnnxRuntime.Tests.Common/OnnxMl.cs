@@ -3864,7 +3864,7 @@ namespace Onnx {
     /// float16 values must be bit-wise converted to an uint16_t prior
     /// to writing to the buffer.
     /// When this field is present, the data_type field MUST be
-    /// INT32, INT16, INT8, UINT16, UINT8, BOOL, or FLOAT16
+    /// INT32, INT16, INT8, UINT16, UINT8, BOOL, FLOAT16 or BFLOAT16
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]

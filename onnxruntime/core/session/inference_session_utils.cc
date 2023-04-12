@@ -245,7 +245,7 @@ Status ParseTuningResultsFromModelMetadata(const onnxruntime::ModelMetadata& met
   }
 
   key_found = true;
-  LOGS_DEFAULT(INFO) << "Found tuning results in the model file to be used while running the model";
+  LOGS_DEFAULT(INFO) << "Found tuning results in the model file to be used while loading the model";
 
   Status status;
   ORT_TRY {

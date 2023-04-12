@@ -15,8 +15,12 @@ namespace coreml {
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
-  {  // Add
+  {  // Add/Mul/Pow/Sub/Div
     CreateBinaryOpBuilder("Add", op_registrations);
+    CreateBinaryOpBuilder("Mul", op_registrations);
+    CreateBinaryOpBuilder("Pow", op_registrations);
+    CreateBinaryOpBuilder("Sub", op_registrations);
+    CreateBinaryOpBuilder("Div", op_registrations);
   }
 
   {  // Activations
@@ -93,6 +97,16 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Pad
     CreatePadOpBuilder("Pad", op_registrations);
+  }
+
+  {  // Unary
+    CreateUnaryOpBuilder("Sqrt", op_registrations);
+    CreateUnaryOpBuilder("Reciprocal", op_registrations);
+  }
+
+  { // Reduction
+    CreateReductionOpBuilder("ReduceSum", op_registrations);
+    CreateReductionOpBuilder("ReduceMean", op_registrations);
   }
 
   return op_registrations;

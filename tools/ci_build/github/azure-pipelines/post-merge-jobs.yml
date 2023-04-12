@@ -15,6 +15,15 @@ variables:
     value: 'Linux-CPU'
 
 stages:
+- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
+  - template: templates/web-ci.yml
+    parameters:
+      NpmPackagingMode: 'dev'
+      IsReleasePipeline: true
+      PoolName: 'aiinfra-Win-CPU-2022-web-beta'
+      BuildStaticLib: true
+      ExtraBuildArgs: ''
+
 # This stage is to test if the combined build works on
 # o Windows ARM64
 # o Windows ARM64EC

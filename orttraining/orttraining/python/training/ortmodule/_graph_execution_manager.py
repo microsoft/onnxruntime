@@ -180,7 +180,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Memory-aware gradient builder.
         self._use_memory_efficient_gradient = False
 
-        # Enable compute optimizer by default. Allowed to be disabled  via an environment variable for
+        # Enable compute optimizer by default. Allowed to be disabled via an environment variable for
         # convergence parity investigation.
         self._enable_compute_optimizer = (
             ortmodule._defined_from_envvar("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER", 1, warn=True) == 1
