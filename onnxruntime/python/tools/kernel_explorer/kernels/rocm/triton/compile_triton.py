@@ -1,13 +1,20 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
 import triton
 import triton.language as tl
 import json
 import shutil
 import os
 from softmax import GetSoftmaxFunctionTable
+from log_softmax import GetLogSoftmaxFunctionTable
 
 
 kernel_table = [
     GetSoftmaxFunctionTable,  # softmax
+    GetLogSoftmaxFunctionTable,  # log_softmax
 ]
 
 
@@ -45,7 +52,7 @@ def compile(function_table, lib_dir):
             compile_res['constants'] = kwargs['constants']
 
         # move tmp hsaco file into current dir
-        lib_name = f'{name}.hasco'
+        lib_name = f'{name}.hsaco'
         shutil.copyfile(ret.asm['hsaco_path'], f'{lib_dir}/{lib_name}')
         compile_res['lib_file'] = lib_name
         metadata.append(compile_res)
@@ -59,8 +66,8 @@ def main():
 
     metadata = []
     for k in kernel_table:
-        func_t = k()
-        m = compile(func_t, lib_dir)
+        func_tb = k()
+        m = compile(func_tb, lib_dir)
         metadata.extend(m)
 
     print('compile done.')

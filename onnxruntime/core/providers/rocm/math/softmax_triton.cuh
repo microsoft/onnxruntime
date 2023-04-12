@@ -18,8 +18,11 @@ namespace rocm {
 namespace {
 
 template <typename T>
-std::string GetSoftmaxTritonName(int num_elements) {
+std::string GetSoftmaxTritonName(int num_elements, bool is_log_softmax) {
   std::string ret = "softmax_";
+  if (is_log_softmax) {
+    ret = "log_softmax_";
+  }
   std::string type_name = GetDataTypeName<T>();
   ret += type_name;
   ret += "_";
@@ -44,10 +47,7 @@ std::string GetSoftmaxTritonName(int num_elements) {
 // so actually T and OutputT should be same type
 template <typename T, typename OutputT>
 Status SoftmaxTritonOp(const SoftmaxParams<T, OutputT>* params) {
-  if (params->is_log_softmax) {
-    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, "softmax triton not support log-softmax");
-  }
-  auto fname = GetSoftmaxTritonName<T>(params->softmax_elements);
+  auto fname = GetSoftmaxTritonName<T>(params->softmax_elements, params->is_log_softmax);
 
   // construct args for launch kernel
   struct {

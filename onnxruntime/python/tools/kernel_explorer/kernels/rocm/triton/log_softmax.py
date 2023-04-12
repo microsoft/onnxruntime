@@ -10,7 +10,7 @@ import shutil
 import os
 
 @triton.jit
-def softmax_kernel(
+def log_softmax_kernel(
     output_ptr, input_ptr, input_row_stride, output_row_stride, n_cols,
     BLOCK_SIZE: tl.constexpr
 ):
@@ -29,7 +29,7 @@ def softmax_kernel(
     # Note that exponentials in Triton are fast but approximate (i.e., think __expf in CUDA)
     numerator = tl.exp(row_minus_max)
     denominator = tl.sum(numerator, axis=0)
-    softmax_output = numerator / denominator
+    softmax_output = tl.log(numerator / denominator)
     # Write back output to DRAM
     output_row_start_ptr = output_ptr + row_idx * output_row_stride
     output_ptrs = output_row_start_ptr + col_offsets
@@ -39,11 +39,11 @@ def softmax_kernel(
 #function_table = {'name': name, 'func': func, 'sig'=sig, kwargs={}},
 
 dtypes = ['fp32', 'fp16']
-blocks = [1024, 2048, 4096, 8192, 16384]
-name_pattern = 'softmax_{}_{}'
+blocks = [1024, 2048, 4096]
+name_pattern = 'log_softmax_{}_{}'
 sig_pattern = '*{},*{},i32,i32,i32'
 
-def GetSoftmaxFunctionTable():
+def GetLogSoftmaxFunctionTable():
     func_table = []
     def get_num_warps(block_size):
         num_warps = 4
@@ -59,7 +59,7 @@ def GetSoftmaxFunctionTable():
             sig = sig_pattern.format(dtype, dtype)
             num_warps = get_num_warps(b)
             kwargs = {'num_warps': num_warps, 'constants': {'BLOCK_SIZE': b}}
-            func_desc = {'name':name, 'func': softmax_kernel, 'sig': sig, 'kwargs': kwargs}
+            func_desc = {'name':name, 'func': log_softmax_kernel, 'sig': sig, 'kwargs': kwargs}
             func_table.append(func_desc)
 
     return func_table
