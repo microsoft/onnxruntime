@@ -41,6 +41,10 @@ jobs:
     test_data_directory: $(Build.SourcesDirectory)/.test_data
 
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
     submodules: none
@@ -328,4 +332,4 @@ jobs:
               --skip_tests --path_to_protoc_exe /usr/bin/protoc
       workingDirectory: $(Build.SourcesDirectory)
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/explicitly-defined-final-tasks.yml
