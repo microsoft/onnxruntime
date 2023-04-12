@@ -55,8 +55,6 @@ elif [ "$BUILD_DEVICE" == "AZURE" ]; then
     fi
 fi
 
-which ccache && ccache -sv && ccache -z
-
 export CFLAGS
 export CXXFLAGS
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
@@ -66,3 +64,5 @@ do
 
   cp /build/$BUILD_CONFIG/dist/*.whl /build/dist
 done
+
+which ccache && ccache -sv && ccache -z
