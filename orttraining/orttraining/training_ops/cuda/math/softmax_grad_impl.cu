@@ -138,13 +138,9 @@ __global__ void softmax_warp_backward2(output_t* gradInput, const input_t* grad,
   // WARP_SIZE and WARP_BATCH must match the return values batches_per_warp and warp_size of method
   // warp_softmax_backward_kernel.
   constexpr int next_power_of_two = 1 << log2_elements;
-  constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
+  constexpr int WARP_SIZE = GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
-#ifdef USE_ROCM
   constexpr int WARP_BATCH = 1;
-#else
-  constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
-#endif
 
   int first_batch = (blockDim.y * blockIdx.x + threadIdx.y) * WARP_BATCH;
 
