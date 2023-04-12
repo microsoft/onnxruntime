@@ -25,6 +25,11 @@ parameters:
   default: ""
 
 steps:
+  - script: |
+      mkdir -p ${{ parameters.CacheDir }}
+    displayName: Create Cache Dir
+    condition: eq(${{ parameters.WithCache }}, true)
+
   - task: Cache@2
     inputs:
       ${{ if eq(parameters.ChangeEveryCommit, true) }}:
