@@ -103,7 +103,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::sha
   }
   else
   {
-    auto const& shardDims = shape.shardInfo().get().shardDims_;
+    auto const& shardDims = shape.shardInfo()->shardDims_;
     const size_t numShards = ShardUtils::NumShards(shardDims);
     ORT_ENFORCE(numShards == allocators.size(), "The number of shards does not match the number of allocators");
     ORT_ENFORCE(p_type != nullptr);
