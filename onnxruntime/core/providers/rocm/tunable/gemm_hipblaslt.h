@@ -19,6 +19,13 @@ namespace internal {
 
 #ifdef USE_HIPBLASLT
 
+// For large K and small M/N, K dim will be splited to multiple workgroups and buffers,
+// which will require additional workspace. Here we set the max workspace size to 32MB.
+constexpr const size_t kHipBlasLtMaxWorkSpaceSizeInBytes = 32 * 1024 * 1024;
+// We only keep one heuristic result here. Note that for tuned input sizes, the first result
+// will be the most performant one; but in untuned cases, this is not guaranteed.
+constexpr const int kHeuristicResultCount = 1;
+
 enum ActivationType {
   NONE = 0,
   RELU = 1,
@@ -26,11 +33,7 @@ enum ActivationType {
 };
 
 template <typename T>
-constexpr hipblasDatatype_t HipBlasDataTypeFor(const T*) {
-  static_assert(sizeof(T) == 0, "Unsupported data type for hipBLASLt operation.");
-  // Compiler will complain if we don't return something.
-  return HIPBLAS_R_32F;
-}
+constexpr hipblasDatatype_t HipBlasDataTypeFor(const T*);
 
 template <>
 constexpr hipblasDatatype_t HipBlasDataTypeFor(const float*) {
@@ -117,6 +120,8 @@ Status HipBlasLtMatMul(const ParamsT* params, int64_t batch, ActivationType acti
     case ActivationType::GELU:
       epilogue = enable_bias ? HIPBLASLT_EPILOGUE_GELU_BIAS : HIPBLASLT_EPILOGUE_GELU;
       break;
+    default:
+      throw std::runtime_error("Unsupported activation type for HipBlasLtMatMul");
   }
   HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescSetAttribute(
       matmul, HIPBLASLT_MATMUL_DESC_EPILOGUE, &epilogue, sizeof(epilogue)));
@@ -132,13 +137,12 @@ Status HipBlasLtMatMul(const ParamsT* params, int64_t batch, ActivationType acti
 
   hipblasLtMatmulPreference_t pref;
   void* workspace;
-  size_t max_workspace_size = 32 * 1024 * 1024;
+  size_t max_workspace_size = kHipBlasLtMaxWorkSpaceSizeInBytes;
   HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulPreferenceCreate(&pref));
   HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulPreferenceSetAttribute(
       pref, HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &max_workspace_size, sizeof(max_workspace_size)));
 
-  const int heuristic_result_count = 3;
-  hipblasLtMatmulHeuristicResult_t heuristic_result[heuristic_result_count] = {0};
+  hipblasLtMatmulHeuristicResult_t heuristic_result[kHeuristicResultCount] = {0};
   int ret_algo_count = 0;
   HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulAlgoGetHeuristic(handle,
                                                             matmul,
@@ -147,9 +151,11 @@ Status HipBlasLtMatMul(const ParamsT* params, int64_t batch, ActivationType acti
                                                             mat_c,
                                                             mat_c,
                                                             pref,
-                                                            heuristic_result_count,
+                                                            kHeuristicResultCount,
                                                             heuristic_result,
                                                             &ret_algo_count));
+
+  assert(ret_algo_count > 0);
 
   size_t workspace_size = heuristic_result[0].workspaceSize;
   if (workspace_size > 0) {
