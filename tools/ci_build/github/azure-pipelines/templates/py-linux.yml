@@ -70,7 +70,7 @@ jobs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
               arguments: -a "--volume $(ORT_CCACHE_DIR):/cache -e CCACHE_DIR=/cache" -i onnxruntimecpubuilpython${{ parameters.arch }} -x "${{ parameters.device }}"
-              if ${{ eq(parameters.with_cache, 'true') }}:
+              ${{ if eq(parameters.with_cache, 'true') }}:
                 bashEnvValue:
                   ORT_BUILD_WITH_CACHE: 1
 
