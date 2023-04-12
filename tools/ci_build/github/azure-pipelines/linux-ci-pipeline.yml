@@ -62,7 +62,7 @@ stages:
                     --volume $(Build.SourcesDirectory):/onnxruntime_src \
                     --volume $(Build.BinariesDirectory):/build \
                     --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-                    --volume $(Pipeline.Workspace)/ccache:/cache \
+                    --volume $(ORT_CACHE_DIR):/cache \
                     -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
                     -e NIGHTLY_BUILD \
                     -e BUILD_BUILDNUMBER \
