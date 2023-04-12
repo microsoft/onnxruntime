@@ -7,6 +7,7 @@
 #include "core/framework/tunable.h"
 #include "hip/hip_runtime_api.h"
 #include <fstream>
+#include <thread>
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
 
@@ -29,40 +30,20 @@ const std::string GetRocmTritonKernelPath() {
   return path;
 }
 
-}  // end of namespace
-
-
-Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void *args, size_t args_size) {
-  if (rocm_triton_kernel_map.count(fname) == 0) {
-    // return unsupported status for tunable op
-    std::ostringstream message_stream;
-    message_stream << "can't find triton kernel name: " << fname;
-    std::string message = message_stream.str();
-    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, message);
-  }
-  auto metadata = rocm_triton_kernel_map[fname];
-  void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, args, HIP_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
-                      HIP_LAUNCH_PARAM_END};
-
-  HIP_CHECK(hipModuleLaunchKernel(metadata.func,
-                                  grid0, grid1, grid2,
-                                  HIP_WARP_SIZE * metadata.num_warps, 1, 1,
-                                  metadata.shared_mem_size,
-                                  stream,
-                                  nullptr,
-                                  (void**)&config));
-  return Status::OK();
-}
-
-Status LoadRocmTritonKernel() {
+/*
+ *  Try to load HIP kernels that compiled by triton.
+ *  They are in hsaco format, and should use hipModuleLoad to load these kernels.
+ */
+void TryToLoadKernel() {
   auto status = Status::OK();
   
   ORT_TRY {
     // get kernel lib metadata
     const auto path = GetRocmTritonKernelPath();
     if (path == "") {
+      // just return, not throw error
       // in case there no meta.json or user don't want to use triton.
-      return status;
+      return;
     }
     std::string metadata_file = path + FILE_SP + META_FILENAME;
 
@@ -70,7 +51,7 @@ Status LoadRocmTritonKernel() {
     if (!meta_fd.is_open()) {
       // if open file failed, just return
       // in case there no meta.json or user don't want to use triton.
-      return status;
+      return;
     }
 
     json j = json::parse(meta_fd);
@@ -120,7 +101,39 @@ Status LoadRocmTritonKernel() {
           status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
         });
   }
-  return status;
+  ORT_THROW_IF_ERROR(status);
+}
+
+static std::once_flag load_triton_kernel_flag;
+
+}  // end of namespace
+
+void LoadRocmTritonKernel() {
+  // load kernel should be called only once
+  std::call_once(load_triton_kernel_flag, TryToLoadKernel);
+}
+
+Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void *args, size_t args_size) {
+  if (rocm_triton_kernel_map.count(fname) == 0) {
+    // return unsupported status when not found function name in registery
+    // this error status will be used by tunableOp
+    std::ostringstream message_stream;
+    message_stream << "can't find triton kernel name: " << fname;
+    std::string message = message_stream.str();
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, message);
+  }
+  auto metadata = rocm_triton_kernel_map[fname];
+  void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, args, HIP_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
+                      HIP_LAUNCH_PARAM_END};
+
+  HIP_CHECK(hipModuleLaunchKernel(metadata.func,
+                                  grid0, grid1, grid2,
+                                  HIP_WARP_SIZE * metadata.num_warps, 1, 1,
+                                  metadata.shared_mem_size,
+                                  stream,
+                                  nullptr,
+                                  (void**)&config));
+  return Status::OK();
 }
 
 }  // end of rocm

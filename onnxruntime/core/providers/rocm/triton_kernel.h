@@ -38,7 +38,7 @@ const std::string GetDataTypeName() {
 
 Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void *args, size_t args_size);
 
-Status LoadRocmTritonKernel();
+void LoadRocmTritonKernel();
 
 }  // end of rocm
 }  // end of onnxruntime
