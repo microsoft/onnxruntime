@@ -7,6 +7,7 @@
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
+#include "core/util/qmath.h"
 
 #include "base_op_builder.h"
 
@@ -34,7 +35,8 @@ class SimpleOpBuilder : public BaseOpBuilder {
                               std::vector<std::string>& param_tensor_names) const;
   Status ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
-                               const std::string input_name) const;
+                               const std::string input_name,
+                               bool is_quantized_model) const;
   Status HandleSingleTransposeNode(QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnit& node_unit,
                                    std::vector<std::string>&& input_names,
@@ -90,18 +92,33 @@ Status SimpleOpBuilder::ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-Status SimpleOpBuilder::ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit, const std::string input_name) const {
+Status SimpleOpBuilder::ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper,
+                                              const NodeUnit& node_unit,
+                                              const std::string input_name,
+                                              bool is_quantized_model) const {
   NodeAttrHelper node_helper(node_unit);
+  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+  Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   union {
     float alpha;
     uint8_t unpack[sizeof(float)];
   } tensor_data;
   tensor_data.alpha = node_helper.Get("alpha", 0.01f);
-  std::vector<uint8_t> unpacked_data(tensor_data.unpack, tensor_data.unpack + sizeof(float));
-  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(quantize_param, false);
+  std::vector<uint8_t> unpacked_data;
+  if (is_quantized_model) {
+    float scale;
+    uint8_t zero_point;
+    int64_t num_of_elements = 1;
+    concurrency::ThreadPool* thread_pool = nullptr;
+    GetQuantizationParameter(&tensor_data.alpha, num_of_elements, scale, zero_point, thread_pool);
+    unpacked_data.resize(1);
+    ParQuantizeLinear(&tensor_data.alpha, unpacked_data.data(), num_of_elements, scale, zero_point, thread_pool);
+    InitializeQuantizeParam(quantize_param, is_quantized_model, scale, static_cast<int32_t>(zero_point));
+    qnn_data_type = QNN_DATATYPE_UFIXED_POINT_8;
+  } else {
+    unpacked_data.assign(tensor_data.unpack, tensor_data.unpack + sizeof(float));
+  }
   std::vector<uint32_t> input_shape{1};
-  Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_STATIC;
   QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
                                        std::move(input_shape), std::move(unpacked_data));
@@ -205,7 +222,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   if (node_unit.OpType() == "LeakyRelu") {
     std::string input_name = "alpha";
-    ORT_RETURN_IF_ERROR(ProcessAlphaAttribute(qnn_model_wrapper, node_unit, input_name));
+    ORT_RETURN_IF_ERROR(ProcessAlphaAttribute(qnn_model_wrapper, node_unit, input_name, is_quantized_model));
     input_names.push_back(input_name);
   }
 
