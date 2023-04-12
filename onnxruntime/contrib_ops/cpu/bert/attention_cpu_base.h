@@ -114,7 +114,7 @@ class AttentionCPUBase : public AttentionBase {
 
     if (separate_present_kv) {
       SeparatePresentKV(present_data, present_k->MutableData<T>(), present_v->MutableData<T>(), 
-                        batch_size, total_sequence_length, qk_head_size, v_head_size, context);
+                        batch_size, total_sequence_length, qk_head_size, v_head_size);
     }
 
     return Status::OK();
@@ -300,8 +300,7 @@ class AttentionCPUBase : public AttentionBase {
                          int batch_size,               // batch size
                          int total_kv_sequence_length, // total sequence length (kv_sequence_length + past_kv_sequence_length)
                          int qk_head_size,             // head size of Q or K (H)
-                         int v_head_size,              // head size of V (H_v)
-                         OpKernelContext* context) const {
+                         int v_head_size) const {      // head size of V (H_v)
 
     const int num_k_elements = batch_size * num_heads_ * total_kv_sequence_length * qk_head_size;
     const int num_v_elements = batch_size * num_heads_ * total_kv_sequence_length * v_head_size;
