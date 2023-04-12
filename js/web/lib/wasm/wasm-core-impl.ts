@@ -56,7 +56,9 @@ export const createSessionFinalize =
         }
       } finally {
         wasm._free(modelData[0]);
-        wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+        if (sessionOptionsHandle !== 0) {
+          wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+        }
         allocs.forEach(wasm._free);
       }
 

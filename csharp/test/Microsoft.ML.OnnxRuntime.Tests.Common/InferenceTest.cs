@@ -588,7 +588,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var container = new List<NamedOnnxValue>();
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Contains("Invalid Feed Input", ex.Message);
+            Assert.Contains("Input name: 'wrong_name' is not in the metadata", ex.Message);
             session.Dispose();
         }
 
@@ -604,9 +604,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var tensor = new DenseTensor<int>(inputDataInt, inputMeta["data_0"].Dimensions);
             container.Add(NamedOnnxValue.CreateFromTensor<int>("data_0", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            var msg = ex.ToString().Substring(0, 101);
-            // TODO: message is diff in LInux. Use substring match
-            Assert.Equal("Microsoft.ML.OnnxRuntime.OnnxRuntimeException: [ErrorCode:InvalidArgument] Unexpected input data type", msg);
+            var msg = ex.ToString();
+            Assert.Contains("Tensor element data type discovered", msg);
             session.Dispose();
         }
 
@@ -624,7 +623,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             container.Add(nov1);
             container.Add(nov2);
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.StartsWith("[ErrorCode:InvalidArgument] Invalid Feed Input Name", ex.Message);
+            Assert.Contains("Input name: 'extra' is not in the metadata", ex.Message);
             session.Dispose();
         }
 
@@ -653,9 +652,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputTensor = tuple.Item3;
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
             var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 2 });
-            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("bad_output_name", outputTensor) };
-            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
-            Assert.Contains("Invalid Output Name", ex.Message);
+            // var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("bad_output_name", outputTensor) };
+            var bad_names = new string[] {"bad_output_name"};
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, bad_names));
+            Assert.Contains("Output name: 'bad_output_name' is not in the metadata", ex.Message);
             session.Dispose();
         }
 
@@ -1322,8 +1322,29 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
 
                 var outMeta = session.OutputMetadata;
-                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outMeta["label"].OnnxValueType);
-                Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outMeta["probabilities"].OnnxValueType);
+                var label_meta = outMeta["label"];
+                Assert.True(label_meta.IsTensor);
+                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, label_meta.OnnxValueType);
+                Assert.Equal(TensorElementType.Int64, label_meta.ElementDataType);
+                Assert.NotEmpty(label_meta.Dimensions);
+
+                // sequence<map<int64, float>>
+                var probabilities_meta = outMeta["probabilities"];
+                Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, probabilities_meta.OnnxValueType);
+                var seqElementMetata = probabilities_meta.AsSequenceMetadata().ElementMeta;
+                Assert.Equal(OnnxValueType.ONNX_TYPE_MAP, seqElementMetata.OnnxValueType);
+                var mapMetadata = seqElementMetata.AsMapMetadata();
+                // Map<int64, float tensor>
+                Assert.Equal(Tensors.TensorElementType.Int64, mapMetadata.KeyDataType);
+                var valueTensorMeta = mapMetadata.ValueMetadata;
+                Assert.True(valueTensorMeta.IsTensor);
+                Assert.Equal(Tensors.TensorElementType.Float, valueTensorMeta.ElementDataType);
+
+                // tensor<float>
+                var inputMeta = session.InputMetadata["input"];
+                Assert.True(inputMeta.IsTensor);
+                Assert.Equal(Tensors.TensorElementType.Float, inputMeta.ElementDataType);
+                Assert.Equal(2, inputMeta.Dimensions.Length);
 
                 var container = new List<NamedOnnxValue>();
                 var tensorIn = new DenseTensor<float>(new float[] { 5.8f, 2.8f }, new int[] { 1, 2 });
@@ -1392,8 +1413,31 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             using (var session = new InferenceSession(model))
             {
                 var outMeta = session.OutputMetadata;
-                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outMeta["label"].OnnxValueType);
-                Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outMeta["probabilities"].OnnxValueType);
+                var label_meta = outMeta["label"];
+                Assert.True(label_meta.IsTensor);
+                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, label_meta.OnnxValueType);
+                Assert.True(label_meta.IsString);
+                Assert.Equal(TensorElementType.String, label_meta.ElementDataType);
+                Assert.NotEmpty(label_meta.Dimensions);
+
+                // sequence<map<string, float>>
+                var probabilities_meta = outMeta["probabilities"];
+                Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, probabilities_meta.OnnxValueType);
+                var seqElementMetata = probabilities_meta.AsSequenceMetadata().ElementMeta;
+                Assert.Equal(OnnxValueType.ONNX_TYPE_MAP, seqElementMetata.OnnxValueType);
+                var mapMetadata = seqElementMetata.AsMapMetadata();
+                Assert.Equal(Tensors.TensorElementType.String, mapMetadata.KeyDataType);
+                var valueTensorMeta = mapMetadata.ValueMetadata;
+                Assert.True(valueTensorMeta.IsTensor);
+                Assert.Equal(Tensors.TensorElementType.Float, valueTensorMeta.ElementDataType);
+
+
+                // tensor<float>
+                var inputMeta = session.InputMetadata["input"];
+                Assert.True(inputMeta.IsTensor);
+                Assert.False(inputMeta.IsString);
+                Assert.Equal(Tensors.TensorElementType.Float, inputMeta.ElementDataType);
+                Assert.Equal(2, inputMeta.Dimensions.Length);
 
                 var container = new List<NamedOnnxValue>();
                 var tensorIn = new DenseTensor<float>(new float[] { 5.8f, 2.8f }, new int[] { 1, 2 });
@@ -1415,7 +1459,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     // Label 1 should have highest probability
                     Assert.Equal("1", outLabelTensor[0]);
 
-                    // second output is a sequence<map<int64, float>>
+                    // second output is a sequence<map<string, float>>
                     // try-cast to an sequence of NOV
                     var outNode1 = outputs.ElementAtOrDefault(1);
                     Assert.Equal("probabilities", outNode1.Name);
@@ -1443,7 +1487,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             using (var session = new InferenceSession(model))
             {
                 var outMeta = session.OutputMetadata;
-                Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outMeta["output_sequence"].OnnxValueType);
+                var output_seq = outMeta["output_sequence"];
+                Assert.False(output_seq.IsTensor);
+                Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, output_seq.OnnxValueType);
+                var elemMeta = output_seq.AsSequenceMetadata().ElementMeta;
+                Assert.True(elemMeta.IsTensor);
+                Assert.Equal(Tensors.TensorElementType.Int64, elemMeta.ElementDataType);
+
+                // Inputs
+                var tensor1Meta = session.InputMetadata["tensor1"];
+                Assert.True(tensor1Meta.IsTensor);
+                Assert.Equal(Tensors.TensorElementType.Int64, tensor1Meta.ElementDataType);
+                Assert.Equal(2, tensor1Meta.Dimensions.Length);
 
                 var container = new List<NamedOnnxValue>();
                 var firstInputTensor = new DenseTensor<Int64>(new Int64[] { 1, 2, 3, 4, 5, 6 }, new int[] { 2, 3 });
