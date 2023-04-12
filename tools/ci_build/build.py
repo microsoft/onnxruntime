@@ -2462,16 +2462,25 @@ def main():
                         "ARM(64) builds. Will skip test running after build."
                     )
                     args.test = False
-            elif cpu_arch == "32bit" or args.x86:
-                cmake_extra_args = ["-A", "Win32", "-T", "host=x64", "-G", args.cmake_generator]
             else:
-                if args.msvc_toolset:
-                    toolset = "host=x64,version=" + args.msvc_toolset
+                target_arch = platform.machine()
+                if target_arch == "AMD64":
+                    if cpu_arch == "32bit" or args.x86:
+                        target_arch = "Win32"
+                    else:
+                        target_arch = "x64"
+                    host_arch = "x64"
+                elif target_arch == "ARM64":
+                    host_arch = "ARM64"
                 else:
-                    toolset = "host=x64"
+                    raise BuildError("unknown python arch")
+                if args.msvc_toolset:
+                    toolset = "host=" + host_arch + ",version=" + args.msvc_toolset
+                else:
+                    toolset = "host=" + host_arch
                 if args.cuda_version:
                     toolset += ",cuda=" + args.cuda_version
-                cmake_extra_args = ["-A", "x64", "-T", toolset, "-G", args.cmake_generator]
+                cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
         elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):

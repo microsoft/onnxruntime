@@ -9,7 +9,7 @@
     <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
     <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
     <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild> 
-    <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\cmake\external\onnx\onnx</ProtoSrc>
+    <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\cmake\external\onnx;\..\cmake\external\onnx\onnx</ProtoSrc>
 
     <!-- following attributes were necessary for the migrated Tensor tests -->  
     <LangVersion>7.2</LangVersion>
@@ -76,6 +76,7 @@
   <ItemGroup>
     <!-- include common files for visibility, however they're compiled directly by the target specific test projects -->
     <None Include="InferenceTest.cs"/>
+    <None Include="OnnxData.cs"/>
     <None Include="OrtIoBindingAllocationTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\TensorTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\ArrayTensorExtensionTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
@@ -105,6 +106,10 @@
   <!-- generate OnnxMl.cs from ONNX protobuf definition -->
   <Target Name="ProtoGen" BeforeTargets="BeforeBuild" Condition="Exists('$(ProtocExe)')">
     <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
+  </Target>
+
+  <Target Name="ProtoDataGen" BeforeTargets="BeforeBuild" Condition="Exists('$(ProtocExe)')">
+    <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-data.proto3" ContinueOnError="false"></Exec>
   </Target>
 
   <ItemGroup>

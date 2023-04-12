@@ -146,7 +146,7 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
         )
 
         # convert from the ORT constant name to the domain string used in the config
-        domain = op_registration_utils.map_ort_constant_to_domain(constant_for_domain)
+        domain = op_registration_utils.map_ort_constant_to_domain(constant_for_domain, allow_unknown_constant=False)
 
         exclude = False
         reason = ""
