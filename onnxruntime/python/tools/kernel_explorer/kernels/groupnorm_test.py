@@ -11,7 +11,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_bytes
+from utils import dtype_to_bytes, dtype_to_suffix
 
 
 def get_sd_sizes():
@@ -25,8 +25,8 @@ def get_sd_sizes():
 
 def dtype_to_funcs(dtype):
     type_map = {
-        "float16": list(filter(lambda x: re.search("GroupNormNHWC.*_half", x), dir(ke))),
-        "float32": list(filter(lambda x: re.search("GroupNormNHWC.*_float", x), dir(ke))),
+        "float16": list(filter(lambda x: re.match("GroupNormNHWC.*_half", x), dir(ke))),
+        "float32": list(filter(lambda x: re.match("GroupNormNHWC.*_float", x), dir(ke))),
     }
     return type_map[dtype]
 
@@ -86,7 +86,10 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
         epsilon,
         use_swish,
     )
-    if my_op.IsSupported():
+    for impl in my_op.ListOps():
+        if not my_op.SelectOp(impl):
+            continue
+
         my_op.Run()
 
         y_d.UpdateHostNumpyArray()
@@ -100,10 +103,16 @@ dtypes = ["float32", "float16"]
 
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
-def test_skip_layer_norm(sd_sizes, dtype):
+def test_group_norm(sd_sizes, dtype):
     for func in dtype_to_funcs(dtype):
         run_group_norm(*sd_sizes, dtype, func)
 
+
+@pytest.mark.parametrize("sd_sizes", get_sd_sizes())
+@pytest.mark.parametrize("dtype", dtypes)
+def test_group_norm(sd_sizes, dtype):
+    ck_f_name = "CKGroupNormNHWC" + "_" + dtype_to_suffix(dtype)
+    run_group_norm(*sd_sizes, dtype, ck_f_name)
 
 @dataclass
 class GroupNormNHWCMetric(ke.BandwidthMetric):
@@ -156,21 +165,24 @@ def profile_group_norm_func(
         epsilon,
         use_swish,
     )
+    for impl in my_op.ListOps():
+        duration_ms = -1
+        if my_op.SelectOp(impl):
+            duration_ms = my_op.Profile()
+        total_bytes = (input_x.size * 2 + gamma.size * 2) * dtype_to_bytes(dtype)
 
-    duration_ms = -1
-    if my_op.IsSupported():
-        duration_ms = my_op.Profile()
-    total_bytes = (input_x.size * 2 + gamma.size * 2) * dtype_to_bytes(dtype)
-
-    ke.report(
-        GroupNormNHWCMetric(func, dtype, duration_ms, total_bytes, batch_size, height, width, num_channels, num_groups)
-    )
+        ke.report(
+            GroupNormNHWCMetric(func, dtype, duration_ms, total_bytes, batch_size, height, width, num_channels, num_groups)
+        )
 
 
 def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, sort=True):
     with ke.benchmark(sort):
         for func in dtype_to_funcs(dtype):
             profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, func)
+        # ck function
+        ck_f_name = "CKGroupNormNHWC" + "_" + dtype_to_suffix(dtype)
+        profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, ck_f_name)
 
 
 sd_profile_sizes = [
