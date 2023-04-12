@@ -6,11 +6,9 @@
 import triton
 import triton.language as tl
 
+
 @triton.jit
-def log_softmax_kernel(
-    output_ptr, input_ptr, input_row_stride, output_row_stride, n_cols,
-    BLOCK_SIZE: tl.constexpr
-):
+def log_softmax_kernel(output_ptr, input_ptr, input_row_stride, output_row_stride, n_cols, BLOCK_SIZE: tl.constexpr):
     # The rows of the softmax are independent, so we parallelize across those
     row_idx = tl.program_id(0)
     # The stride represents how much we need to increase the pointer to advance 1 row
@@ -20,7 +18,7 @@ def log_softmax_kernel(
     col_offsets = tl.arange(0, BLOCK_SIZE)
     input_ptrs = row_start_ptr + col_offsets
     # Load the row into SRAM, using a mask since BLOCK_SIZE may be > than n_cols
-    row = tl.load(input_ptrs, mask=col_offsets < n_cols, other=-float('inf'))
+    row = tl.load(input_ptrs, mask=col_offsets < n_cols, other=-float("inf"))
     # Substract maximum for numerical stability
     row_minus_max = row - tl.max(row, axis=0)
     # Note that exponentials in Triton are fast but approximate (i.e., think __expf in CUDA)
@@ -33,15 +31,17 @@ def log_softmax_kernel(
     tl.store(output_ptrs, softmax_output, mask=col_offsets < n_cols)
 
 
-#function_table = {'name': name, 'func': func, 'sig'=sig, kwargs={}},
+# function_table = {'name': name, 'func': func, 'sig'=sig, kwargs={}},
 
-dtypes = ['fp32', 'fp16']
-blocks = [1024, 2048, 4096]
-name_pattern = 'log_softmax_{}_{}'
-sig_pattern = '*{},*{},i32,i32,i32'
+dtypes = ["fp32", "fp16"]
+blocks = [1024, 2048, 4096, 8192, 16384]
+name_pattern = "log_softmax_{}_{}"
+sig_pattern = "*{},*{},i32,i32,i32"
+
 
 def logsoftmax_function_table():
     func_table = []
+
     def get_num_warps(block_size):
         num_warps = 4
         if block_size >= 2048:
@@ -55,9 +55,8 @@ def logsoftmax_function_table():
             name = name_pattern.format(dtype, b)
             sig = sig_pattern.format(dtype, dtype)
             num_warps = get_num_warps(b)
-            kwargs = {'num_warps': num_warps, 'constants': {'BLOCK_SIZE': b}}
-            func_desc = {'name':name, 'func': log_softmax_kernel, 'sig': sig, 'kwargs': kwargs}
+            kwargs = {"num_warps": num_warps, "constants": {"BLOCK_SIZE": b}}
+            func_desc = {"name": name, "func": log_softmax_kernel, "sig": sig, "kwargs": kwargs}
             func_table.append(func_desc)
 
     return func_table
-
