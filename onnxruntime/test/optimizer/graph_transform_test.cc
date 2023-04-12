@@ -1253,7 +1253,7 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
 
     std::map<std::string, int> op_to_count_after_fusion = CountOpsInGraph(graph);
 #if defined(USE_CUDA) || defined(USE_ROCM)
-    std::set<std::string> cuda_rocm_supported = {"Relu", "Clip"};
+    std::set<std::string> cuda_rocm_supported = {"Relu"};
     if (cuda_rocm_supported.find(model.second) == cuda_rocm_supported.end()) {
       ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
     } else {
