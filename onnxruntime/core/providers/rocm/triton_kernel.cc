@@ -25,7 +25,7 @@ const std::string META_FILENAME = "meta.json";
 static std::unordered_map<std::string, TritonKernelMetaData> rocm_triton_kernel_map;
 
 const std::string GetRocmTritonKernelPath() {
-  std::string path = onnxruntime::ParseEnvironmentVariableWithDefault<std::string>("ORT_TRITON_LIB_PATH", "./triton_lib");
+  std::string path = onnxruntime::ParseEnvironmentVariableWithDefault<std::string>("ORT_TRITON_LIB_PATH", "");
   return path;
 }
 
@@ -60,9 +60,19 @@ Status LoadRocmTritonKernel() {
   ORT_TRY {
     // get kernel lib metadata
     const auto path = GetRocmTritonKernelPath();
+    if (path == "") {
+      // in case there no meta.json or user don't want to use triton.
+      return status;
+    }
     std::string metadata_file = path + FILE_SP + META_FILENAME;
 
     std::ifstream meta_fd(metadata_file);
+    if (!meta_fd.is_open()) {
+      // if open file failed, just return
+      // in case there no meta.json or user don't want to use triton.
+      return status;
+    }
+
     json j = json::parse(meta_fd);
     auto num_meta = j.size();
     for (int i = 0; i < num_meta; ++i) {
