@@ -11,11 +11,8 @@ class Format(Enum):
 
 
 def generate_model(
-        model_format,
-        model_name,
-        multi_output_add=False,
-        add_output_in_graph_output=False,
-        with_cast=False):  # noqa: N802
+    model_format, model_name, multi_output_add=False, add_output_in_graph_output=False, with_cast=False
+):  # noqa: N802
     nodes = []  # LayerNorm subgraph
     if with_cast:
         nodes.extend(
@@ -62,7 +59,9 @@ def generate_model(
         )
         initializers.extend(
             [
-                helper.make_tensor("bias", TensorProto.FLOAT16 if with_cast else TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
+                helper.make_tensor(
+                    "bias", TensorProto.FLOAT16 if with_cast else TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]
+                ),
             ]
         )
     elif model_format is Format.Format2:
@@ -74,7 +73,9 @@ def generate_model(
         )
         initializers.extend(
             [
-                helper.make_tensor("bias", TensorProto.FLOAT16 if with_cast else TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
+                helper.make_tensor(
+                    "bias", TensorProto.FLOAT16 if with_cast else TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]
+                ),
             ]
         )
     elif model_format is Format.Format3:
@@ -103,11 +104,13 @@ def generate_model(
 
     if add_output_in_graph_output:
         extra_output = "ln_in" if model_format is Format.Format3 else "add3_out"
-        graph.output.extend([
-            helper.make_tensor_value_info(extra_output,
-                                          TensorProto.FLOAT16 if with_cast else TensorProto.FLOAT,
-                                          [16, 32, 4])
-        ])
+        graph.output.extend(
+            [
+                helper.make_tensor_value_info(
+                    extra_output, TensorProto.FLOAT16 if with_cast else TensorProto.FLOAT, [16, 32, 4]
+                )
+            ]
+        )
 
     onnxdomain = OperatorSetIdProto()
     onnxdomain.version = 12
@@ -125,50 +128,32 @@ def generate_model(
 def generate_skip_layer_norm(with_cast=False):
     suffix = "_with_cast" if with_cast else ""
 
+    generate_model(Format.Format1, f"skip_layer_norm_format1{suffix}.onnx", with_cast=with_cast)
+    generate_model(Format.Format2, f"skip_layer_norm_format2{suffix}.onnx", with_cast=with_cast)
+    generate_model(Format.Format3, f"skip_layer_norm_format3{suffix}.onnx", with_cast=with_cast)
     generate_model(
-        Format.Format1,
-        f"skip_layer_norm_format1{suffix}.onnx",
-        with_cast=with_cast)
+        Format.Format1, f"skip_layer_norm_format1_partial{suffix}.onnx", multi_output_add=True, with_cast=with_cast)
     generate_model(
-        Format.Format2,
-        f"skip_layer_norm_format2{suffix}.onnx",
-        with_cast=with_cast)
+        Format.Format2, f"skip_layer_norm_format2_partial{suffix}.onnx", multi_output_add=True, with_cast=with_cast)
     generate_model(
-        Format.Format3,
-        f"skip_layer_norm_format3{suffix}.onnx",
-        with_cast=with_cast)
-    generate_model(
-        Format.Format1,
-        f"skip_layer_norm_format1_partial{suffix}.onnx",
-        multi_output_add=True,
-        with_cast=with_cast)
-    generate_model(
-        Format.Format2,
-        f"skip_layer_norm_format2_partial{suffix}.onnx",
-        multi_output_add=True,
-        with_cast=with_cast)
-    generate_model(
-        Format.Format3,
-        f"skip_layer_norm_format3_no_fusion{suffix}.onnx",
-        multi_output_add=True,
-        with_cast=with_cast)
+        Format.Format3, f"skip_layer_norm_format3_no_fusion{suffix}.onnx", multi_output_add=True, with_cast=with_cast)
     generate_model(
         Format.Format1,
         f"skip_layer_norm_format1_graph_output{suffix}.onnx",
         add_output_in_graph_output=True,
-        with_cast=with_cast
+        with_cast=with_cast,
     )
     generate_model(
         Format.Format2,
         f"skip_layer_norm_format2_graph_output{suffix}.onnx",
         add_output_in_graph_output=True,
-        with_cast=with_cast
+        with_cast=with_cast,
     )
     generate_model(
         Format.Format3,
         f"skip_layer_norm_format3_graph_output{suffix}.onnx",
         add_output_in_graph_output=True,
-        with_cast=with_cast
+        with_cast=with_cast,
     )
 
 
