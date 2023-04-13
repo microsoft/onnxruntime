@@ -19,7 +19,7 @@
 #include "orttraining/training_ops/rocm/rocm_training_kernels.h"
 #endif
 
-#ifdef ENABLE_TRITON_LIB
+#ifdef USE_TRITON_KERNEL
 #include "core/providers/rocm/triton_kernel.h"
 #endif
 
@@ -213,7 +213,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 
   OverrideTunableOpInfoByEnv(info_);
 
-#ifdef ENABLE_TRITON_LIB
+#ifdef USE_TRITON_KERNEL
   onnxruntime::rocm::LoadRocmTritonKernel();
 #endif
 }

@@ -1399,7 +1399,6 @@ endif()
 
 if (onnxruntime_USE_ROCM)
   add_definitions(-DUSE_ROCM=1)
-  add_definitions(-DENABLE_TRITON_LIB=1)
   include(onnxruntime_rocm_hipify.cmake)
 
   list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME}/rccl ${onnxruntime_ROCM_HOME}/roctracer)
@@ -1564,6 +1563,10 @@ if (onnxruntime_USE_ROCM)
     find_package(hipblaslt REQUIRED)
     target_link_libraries(onnxruntime_providers_rocm PRIVATE roc::hipblaslt)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_HIPBLASLT)
+  endif()
+
+  if (onnxruntime_USE_TRITON_KERNEL)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_TRITON_KERNEL)
   endif()
 
   if (onnxruntime_USE_COMPOSABLE_KERNEL)

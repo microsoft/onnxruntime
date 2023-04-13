@@ -13,7 +13,7 @@
 namespace onnxruntime {
 namespace rocm {
 
-#ifdef ENABLE_TRITON_LIB
+#ifdef USE_TRITON_KERNEL
 
 namespace {
 
@@ -61,7 +61,7 @@ Status SoftmaxTritonOp(const SoftmaxParams<T, OutputT>* params) {
   // grid dim is (batch_count, 1, 1)
   return LaunchTritonKernel(params->stream, fname, params->batch_count, 1, 1, &args, sizeof(args));
 }
-#endif  // ENABLE_TRITON_LIB
+#endif  // USE_TRITON_KERNEL
 
 }  // namespace rocm
 }  // namespace onnxruntime
