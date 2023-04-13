@@ -8,7 +8,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <iostream>
 
 #include "core/providers/rocm/math/softmax_ck.cuh"
 #include "core/providers/rocm/math/softmax_tunable_op.cuh"
@@ -173,7 +172,7 @@ class CKSoftmax : public IKernelExplorer {
 };
 #endif  // USE_COMPOSABLE_KERNEL
 
-#ifdef ENABLE_TRITON_LIB
+#ifdef USE_TRITON_KERNEL
 template <typename T>
 class SoftmaxTriton : public IKernelExplorer {
  public:
@@ -202,7 +201,7 @@ class SoftmaxTriton : public IKernelExplorer {
   using ParamsT = rocm::SoftmaxParams<T, T>;
   ParamsT params_{};
 };
-#endif  // ENABLE_TRITON_LIB
+#endif  // USE_TRITON_KERNEL
 
 #define REGISTER_OP(name, type, vec_size)                                    \
   py::class_<name<type, vec_size>>(m, #name "_" #type "_" #vec_size)         \
