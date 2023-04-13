@@ -130,12 +130,12 @@ struct Storage {
         buffers.emplace_back(std::move(buffer));
         return buffers;
     }
-    void* Data(uint32_t index=0) const  { return buffers_.at(index).Data(); }
-    MemoryLocation Location(uint32_t index=0) const  { return buffers_.at(index).Location(); }
-    size_t Offset(uint32_t index=0) const  { return buffers_.at(index).Offset(); }
-    void SetOffset(ptrdiff_t byte_offset, uint32_t index=0) { buffers_.at(index).SetOffset(byte_offset); }
-    size_t Size(uint32_t index=0) const  { return buffers_.at(index).Size(); }
-    ShardAccessor Shard(uint32_t index=0) { return ShardAccessor{ buffers_.at(index), shardDims_, index }; }
+    void* Data(size_t index=0) const  { return buffers_.at(index).Data(); }
+    MemoryLocation Location(size_t index=0) const  { return buffers_.at(index).Location(); }
+    size_t Offset(size_t index=0) const  { return buffers_.at(index).Offset(); }
+    void SetOffset(ptrdiff_t byte_offset, size_t index=0) { buffers_.at(index).SetOffset(byte_offset); }
+    size_t Size(size_t index=0) const  { return buffers_.at(index).Size(); }
+    ShardAccessor Shard(size_t index=0) { return ShardAccessor{ buffers_.at(index), shardDims_, index }; }
     void Apply(std::function<void(Buffer&)> fn) { std::for_each(buffers_.begin(), buffers_.end(), fn); }
     std::optional<ShardDim> ShardDims() const { return std::make_optional(shardDims_); }
     bool OwnsBuffer() const { return buffers_[0].OwnBuffer(); }

@@ -28,7 +28,7 @@ struct ShardUtils {
     // Given shape and shardSize, returns vector of offsets in shardDims
     // For example of [4, 8, 12] and [2, 1, 2],
     // (0, 0, 0), (0, 8, 6), (2, 8, 0), (2, 8, 6)
-    static ShardDim GetShardOffset(size_t rank, ShardDim const& stride, TensorShape const& shardSize)
+    static ShardDim GetShardOffset(std::int32_t rank, ShardDim const& stride, TensorShape const& shardSize)
     {
         const auto lastShardDim = shardSize.NumDimensions() - 1;
         ShardDim offset;
@@ -63,18 +63,18 @@ struct ShardUtils {
         ShardDim stride = GetShardStride(shardDims);
         TensorShape shardSize = GetShardSize(shape, shardDims);
 
-        for (auto i=0u; i < numShards; i++)
+        for (int i=0; i < numShards; i++)
         {
             shardOffsets.emplace_back(GetShardOffset(i, stride, shardSize));
         }
         return shardOffsets;
     }
 
-    static size_t NumShards(ShardDim const& shardDims)
+    static std::int32_t NumShards(ShardDim const& shardDims)
     {
         auto numDims = shardDims.size();
-        auto accumulator = 1ul;
-      for (auto i=0u; i<numDims; i++)
+        std::int32_t accumulator = 1;
+        for (auto i=0; i<numDims; i++)
         {
             accumulator *= shardDims[i];
         }
