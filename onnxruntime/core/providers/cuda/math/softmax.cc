@@ -26,8 +26,9 @@ Status SoftMaxComputeHelper(
   int64_t D = input_shape.SizeFromDimension(axis);
   auto Y_data = reinterpret_cast<CudaT_OUT*>(Y);
   auto X_data = reinterpret_cast<const CudaT_IN*>(X);
-
-  if (D <= 2048 && D * sizeof(T) <= 4096) {
+  // according to nsigh compute, softmax_warp_forward_resource_efficient is better than dispatch_blockwise_softmax_forward when 1024 < D <=2048 and N >= 8192
+  const bool use_softmax_warp_forward_resource_efficient = 1024 < D && D <= 2048 && D * sizeof(T) <= 4096 && N >= 8192;
+  if ((D <= 1024 && D * sizeof(T) <= 4096) or use_softmax_warp_forward_resource_efficient) {
     return dispatch_warpwise_softmax_forward<
         CudaT_IN, CudaT_OUT, AccumulationType_t<CudaT_ACCUM>, is_log_softmax>(
         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
