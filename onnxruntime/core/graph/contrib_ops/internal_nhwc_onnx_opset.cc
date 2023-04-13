@@ -77,13 +77,11 @@ void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPAC
       ::ONNX_NAMESPACE::GetOpSchema<                           \
           ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>())
 
-#ifdef USE_QNN
 #define REGISTER_RESIZE_NHWC_SCHEMA(RegistrationFn, Op, SinceVersion) \
   RegisterResizeNHWCSchema(                                          \
       RegistrationFn,                                          \
       ::ONNX_NAMESPACE::GetOpSchema<                           \
           ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>())
-#endif  // defined(USE_QNN)
 
 #define REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(RegistrationFn, Op, SinceVersion) \
   RegisterNHWCSchemaWithActivation(                                            \
