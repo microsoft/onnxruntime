@@ -34,7 +34,7 @@ steps:
     inputs:
       ${{ if eq(parameters.ChangeEveryCommit, true) }}:
         ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
-          key: ' "$(TODAY)" | ccache  | merge '
+          key: ' "${{parameters.Today}}" | merge | ${{parameters.AdditionalKey}} '
         ${{else}}:
           key:  ' "${{parameters.Today}}" | ${{parameters.AdditionalKey}} | "$(Build.SourceVersion)" '
         restoreKeys: |
