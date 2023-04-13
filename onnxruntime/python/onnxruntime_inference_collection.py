@@ -383,11 +383,14 @@ class InferenceSession(Session):
             self._create_inference_session(providers, provider_options, disabled_optimizers)
         except (ValueError, RuntimeError) as e:
             if self._enable_fallback:
-                print(f"EP Error {e} when using {providers}")
-                print(f"Falling back to {self._fallback_providers} and retrying.")
-                self._create_inference_session(self._fallback_providers, None)
-                # Fallback only once.
-                self.disable_fallback()
+                try:
+                    print(f"EP Error {e} when using {providers}")
+                    print(f"Falling back to {self._fallback_providers} and retrying.")
+                    self._create_inference_session(self._fallback_providers, None)
+                    # Fallback only once.
+                    self.disable_fallback()
+                except Exception as fallback_error:
+                    raise fallback_error from e
             # Fallback is disabled. Raise the original error.
             raise e
 
