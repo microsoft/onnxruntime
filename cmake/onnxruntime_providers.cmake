@@ -1375,7 +1375,6 @@ endif()
 
 if (onnxruntime_USE_ROCM)
   add_definitions(-DUSE_ROCM=1)
-  add_definitions(-DENABLE_TRITON_LIB=1)
   include(onnxruntime_rocm_hipify.cmake)
 
   list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME}/rccl ${onnxruntime_ROCM_HOME}/roctracer)
@@ -1534,6 +1533,10 @@ if (onnxruntime_USE_ROCM)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_ROCBLAS_EXTENSION_API)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE ROCBLAS_NO_DEPRECATED_WARNINGS)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE ROCBLAS_BETA_FEATURES_API)
+  endif()
+
+  if (onnxruntime_USE_TRITON_KERNEL)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_TRITON_KERNEL)
   endif()
 
   if (onnxruntime_USE_COMPOSABLE_KERNEL)

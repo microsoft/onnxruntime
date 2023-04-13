@@ -250,11 +250,11 @@ KE_REGISTER(m) {
 }
 #endif  // USE_COMPOSABLE_KERNEL
 
-#ifdef ENABLE_TRITON_LIB
+#ifdef USE_TRITON_KERNEL
 KE_REGISTER(m) {
   REGISTER_OP_TYPED(SoftmaxTriton, half);
   REGISTER_OP_TYPED(SoftmaxTriton, float);
 }
-#endif  // ENABLE_TRITON_LIB
+#endif  // USE_TRITON_KERNEL
 
 }  // namespace onnxruntime
