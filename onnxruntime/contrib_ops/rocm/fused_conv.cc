@@ -371,7 +371,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
 
   static FusionPlanCache plan_cache_;
 
-  Status DoCreateFusionDesc(const std::string node_name, FusedConvFusionData& fusion) const {
+  Status DoCreateFusionDesc(const std::string& node_name, FusedConvFusionData& fusion) const {
     bool has_z = nullptr != Base::s_.z_data;
     bool has_b = nullptr != Base::s_.b_data;
     MIOPEN_RETURN_IF_ERROR(miopenCreateFusionPlan(&fusion.plan,
