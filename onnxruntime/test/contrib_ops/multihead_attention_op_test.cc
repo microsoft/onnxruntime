@@ -520,6 +520,7 @@ TEST(MultiHeadAttentionTest, AttentionCutlassRelPosBias) {
 
 TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths) {
   // Whisper decoder cross attention without mask and different sequence lengths for Q and K/V
+  ROCM_GTEST_SKIP("ROCm not supported");
   AttentionTestData data;
   GetCrossAttentionData_DiffSequenceLengths(data);
   RunMultiHeadAttentionTests(data);
@@ -527,6 +528,7 @@ TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths) {
 
 TEST(MultiHeadAttentionTest, SelfAttention_WithPastAndPresent_NoMask_NoRelPosBias) {
   // Whisper decoder self attention with past_kv and present_kv
+  ROCM_GTEST_SKIP("ROCm not supported");
   AttentionTestData data;
   GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(data);
   RunMultiHeadAttentionTests(data);
@@ -534,6 +536,7 @@ TEST(MultiHeadAttentionTest, SelfAttention_WithPastAndPresent_NoMask_NoRelPosBia
 
 TEST(MultiHeadAttentionTest, CrossAttention_WithPastPassedInDirectly_NoMask) {
   // Whisper decoder cross attention with past_kv in place of current KV and no present_kv
+  ROCM_GTEST_SKIP("ROCm not supported");
   AttentionTestData data;
   GetCrossAttentionData_WithPastPassedInDirectly_NoMask(data);
   RunMultiHeadAttentionTests(data);

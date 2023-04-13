@@ -8,7 +8,13 @@ import os
 import unittest
 
 import onnx
-from whisper_model_generator import *
+from whisper_model_generator import (
+    create_whisper_encoder_attention,
+    create_whisper_decoder_attention,
+    create_whisper_decoder_multihead_attention,
+    create_whisper_decoder_with_past_multihead_self_attention,
+    create_whisper_decoder_with_past_multihead_cross_attention
+)
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
@@ -29,13 +35,6 @@ class TestFusion(unittest.TestCase):
         expected_model = OnnxModel(onnx.load(expected_model_path))
         expected_model.topological_sort(is_deterministic=True)
 
-        if "sln" in expected_model_filename or "mha" in expected_model_filename:
-            with open("optimized_model.txt", "w") as f:
-                f.write(str(optimized_model.model.graph))
-                f.close()
-            with open("expected_model.txt", "w") as f:
-                f.write(str(expected_model.model.graph))
-                f.close()
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
     # Attention type #1 in onnx_model_bart.py

@@ -834,11 +834,10 @@ class FusionAttention(Fusion):
             else:
                 attention_inputs.append("")
 
-            if past_k != "" and past_v != "":
+            past_exists = past_k != "" and past_v != ""
+            if past_exists:
                 past_kv = self.concat_kv(past_k, past_v)
                 attention_inputs.append(past_kv)
-            else:
-                attention_inputs.append("") # no past
 
             if add_qk_str is not None:
                 # Convert 4d mask from (B,1,M,M) to (B,N,M,M)
@@ -857,6 +856,8 @@ class FusionAttention(Fusion):
                 self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
 
                 # Add attention mask to attention node
+                if not past_exists:
+                    attention_inputs.append("")
                 attention_inputs.append(mask_output_name)
 
             attention_outputs = [output]

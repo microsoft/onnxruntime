@@ -3293,6 +3293,7 @@ void GetCrossAttentionData_DiffSequenceLengths(AttentionTestData& data) {
     AttentionKernelType::AttentionKernel_TrtFlashAttention,
     AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
     AttentionKernelType::AttentionKernel_TrtFusedAttention,
+    AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
   };
 
   data.query_data = {
@@ -3404,6 +3405,7 @@ void GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(AttentionTestDa
     AttentionKernelType::AttentionKernel_TrtFlashAttention,
     AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
     AttentionKernelType::AttentionKernel_TrtFusedAttention,
+    AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
   };
 
   data.query_data = {
@@ -3485,6 +3487,7 @@ void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& da
     AttentionKernelType::AttentionKernel_TrtFlashAttention,
     AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
     AttentionKernelType::AttentionKernel_TrtFusedAttention,
+    AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
   };
 
   data.query_data = {
