@@ -187,9 +187,9 @@ Status AddBiasReshape(const Tensor* qkv,           // Input: Q/K/V data - query 
   TensorShape bias_shape(bias_dims_span);
   OrtValue bias;
   Tensor::InitOrtValue(element_type, bias_shape, allocator, bias);
-  auto num_bias_elements = static_cast<int64_t>(hidden_size) * static_cast<int64_t>(element_size);
+  auto num_bias_elements = SafeInt<size_t>(hidden_size) * element_size;
   if (packed_qkv) {
-    num_bias_elements *= static_cast<int64_t>(3);
+    num_bias_elements *= SafeInt<size_t>(3);
   }
   memcpy(bias.GetMutable<Tensor>()->MutableData<T>(), qkv_bias + bias_offset, num_bias_elements);
   
@@ -340,10 +340,9 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   if (qkv_bias == nullptr) {
     // We assume query, key/past_key, and value/past_value are already in the correct shape
-    if (key == nullptr && value == nullptr) {
-      // Check to prevent prefast warning
-      ORT_ENFORCE(past_key != nullptr && past_value != nullptr);
-    }
+    
+    // Check that key/value or past_key/past_value is valid
+    ORT_ENFORCE((key != nullptr && value != nullptr) || (past_key != nullptr && past_value != nullptr));
     return ApplyAttention(query->Data<T>(),
                           (key != nullptr) ? key->Data<T>() : past_key->Data<T>(),
                           (value != nullptr) ? value->Data<T>() : past_value->Data<T>(), 
