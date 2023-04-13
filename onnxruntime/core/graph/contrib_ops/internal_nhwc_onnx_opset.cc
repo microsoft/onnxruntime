@@ -37,6 +37,7 @@ void RegisterNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& 
                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
 }
 
+#ifdef USE_QNN
 void RegisterResizeNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
   auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
   f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
@@ -50,6 +51,7 @@ void RegisterResizeNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSch
                   })
                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
 }
+#endif  // defined(USE_QNN)
 
 void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
   auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
@@ -83,7 +85,7 @@ void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPAC
       RegistrationFn,                                          \
       ::ONNX_NAMESPACE::GetOpSchema<                           \
           ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>())
-#endif
+#endif  // defined(USE_QNN)
 
 #define REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(RegistrationFn, Op, SinceVersion) \
   RegisterNHWCSchemaWithActivation(                                            \
