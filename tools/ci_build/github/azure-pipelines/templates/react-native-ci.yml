@@ -120,7 +120,6 @@ stages:
               python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
                 --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
                 --staging-dir "$(Build.BinariesDirectory)/staging" \
-                --pod-version "$(cat $(Build.SourcesDirectory)/VERSION_NUMBER)-dev" \
                 --variant Full \
                 --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json \
                 -b="--path_to_protoc_exe" -b "$(Build.BinariesDirectory)/installed/bin/protoc"
