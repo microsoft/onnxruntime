@@ -1741,7 +1741,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 executables.append("onnxruntime_global_thread_pools_test")
                 executables.append("onnxruntime_api_tests_without_env")
                 executables.append("onnxruntime_customopregistration_test")
-
             for exe in executables:
                 run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
