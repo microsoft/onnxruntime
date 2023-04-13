@@ -353,6 +353,26 @@ TEST(FunctionTest, Variadics) {
   ASSERT_STATUS_OK(session_object.Initialize());
 }
 
+// A variation of the variadics issue above, where the first input/output of the
+// variadic list is NOT an input/output of the function.
+TEST(FunctionTest, VariadicsNonInputOutput) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: ["" : 17, "local" : 1]>
+    mymodel (float[2] x) => (float[3] y) {
+      y = local.func (x)
+    }
+
+    <opset_import: ["" : 17 ],  domain: "local">
+    func (a) => (y) {
+      b = Identity(a)
+      z = Concat <axis = 0> (b, a, b)
+      y, w = Split (z)
+    }
+  )";
+
+  Check(code, "x", {1.0, 2.0}, "y", {1.0, 2.0, 1.0});
+}
+
 // Test use of outer-scope names inside sub-graphs in functions that are inlined.
 TEST(FunctionTest, OuterScopeName) {
   const char* code = R"(
