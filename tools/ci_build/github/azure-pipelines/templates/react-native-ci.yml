@@ -209,6 +209,8 @@ stages:
           displayName: Run React Native Android Instrumented Tests
 
     - script: |
+        # Mobile build:
+        # ORT_MOBILE_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/staging/onnxruntime-mobile-c \
         ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/staging/onnxruntime-c \
         pod install
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
@@ -328,6 +330,11 @@ stages:
         testRunTitle: 'React Native Detox iOS e2e Test Results'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox iOS e2e Test Results
+
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath:  '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      displayName: Publish react native detox e2e test results
     
     - task: DownloadPipelineArtifact@2
       inputs:
