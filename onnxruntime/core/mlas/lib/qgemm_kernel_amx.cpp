@@ -168,9 +168,12 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_AMX>(
 // Tile configure structure
 struct tileconfig_t {
     uint8_t palette_id = 0;
-    uint8_t reserved[15] = {0};
-    uint16_t colb[16] = {0};
-    uint8_t rows[16] = {0};
+    uint8_t start_row = 0;
+    uint8_t reserved1[14] = {0};
+    uint16_t colb[8] = {0};
+    uint8_t reserved2[16] = {0};
+    uint8_t rows[8] = {0};
+    uint8_t reserved3[8] = {0};
 };
 
 template <>
@@ -201,7 +204,8 @@ MlasGemmQuantThreadInit<MLAS_GEMM_U8S8_KERNEL_AMX>()
     struct tileconfig_t current_tc = {0};
     _tile_storeconfig(&current_tc);
 
-    if (tc.palette_id == 0 || std::memcmp(&current_tc, &tc, sizeof(struct tileconfig_t)) != 0) {
+    if (tc.palette_id == 0 || (std::memcmp(&current_tc.colb, &tc.colb, sizeof(uint16_t) * 8) != 0 &&
+                               std::memcmp(&current_tc.rows, &tc.rows, sizeof(uint8_t) * 8) != 0)) {
         // Filling tile configure structure.
         tc.palette_id = 1;
         for (int t = 0; t < 8; t++) {
