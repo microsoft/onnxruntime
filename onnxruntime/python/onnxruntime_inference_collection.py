@@ -388,7 +388,7 @@ class InferenceSession(Session):
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
                 self.disable_fallback()
-                # Fallback is disabled. Raise the original error.
+            # Fallback is disabled. Raise the original error.
             raise e
 
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
