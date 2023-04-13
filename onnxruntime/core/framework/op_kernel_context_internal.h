@@ -71,7 +71,7 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
-  AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info) {
+  AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info) const {
     return session_state_.GetAllocator(memory_info);
   }
 

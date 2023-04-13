@@ -1037,7 +1037,7 @@ static void RunPartitionCorrectnessTest(std::string model_path,
                   [&generator, &distribution](float& value) { value = distribution(generator); });
 
     OrtValue ml_value;
-    CreateMLValue<float>(std::make_shared<CPUAllocator>(), dims_X, values_X, &ml_value);
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_X, values_X, &ml_value);
     feeds.insert(std::make_pair(input_names[i], ml_value));
   }
 

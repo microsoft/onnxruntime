@@ -106,6 +106,17 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
   API_IMPL_END
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* memory_info, _Outptr_ void** out) {
+  API_IMPL_BEGIN
+  onnxruntime::AllocatorPtr allocator = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetAllocator(*memory_info);
+  if (allocator)
+    *out = allocator.get();
+  else
+    *out = nullptr;
+  return nullptr;
+  API_IMPL_END
+};
+
 #ifdef _WIN32
 #pragma warning(pop)
 #endif

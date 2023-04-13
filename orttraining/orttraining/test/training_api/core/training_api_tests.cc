@@ -240,13 +240,13 @@ TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
                        {params_size},
                        reinterpret_cast<void*>(expected_param_buffer.data()),
-                       std::make_shared<CPUAllocator>()->Info(),
+                       onnxruntime::test::TestCPUExecutionProvider()->CreatePreferredAllocators()[0]->Info(),
                        input_params, 0);
   ASSERT_STATUS_OK(model->CopyBufferToParameters(input_params));
 
   OrtValue output_params;
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), {params_size},
-                       std::make_shared<CPUAllocator>(),
+                       onnxruntime::test::TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                        output_params);
   ASSERT_STATUS_OK(model->CopyParametersToBuffer(output_params));
 

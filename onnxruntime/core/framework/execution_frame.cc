@@ -362,7 +362,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
       fetches);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  session_state.GetMemoryProfiler()->GetOrtDeviceByMemType().IncreaseIteration();
+  session_state.GetMemoryProfiler()->GetMemoryInfo().IncreaseIteration();
 #endif
 
   // map the custom allocators to ort_value_idx entries

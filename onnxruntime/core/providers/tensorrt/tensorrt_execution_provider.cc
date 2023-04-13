@@ -1466,8 +1466,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
       auto trt_profile = &(trt_state->trt_profile);
-      auto alloc = trt_state->scratch_allocator;
-      auto context_memory = trt_state->context_memory;
+      auto alloc = static_cast<IAllocator*>(ctx.GetAllocator(OrtMemoryInfo("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id_)))); // TODO(leca): no need to expose C++ interface, just use api->KernelContext_GetAllocator()
+      auto context_memory = IAllocator::MakeUniquePtr<void>(allocator_, *max_context_mem_size_ptr); // TODO(leca): change the parameter of MakeUniquePtr from shared_ptr<IAllocator> to IAllocator*
       auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
       int num_inputs = static_cast<int>(input_indexes.size());
       int num_outputs = static_cast<int>(output_indexes.size());

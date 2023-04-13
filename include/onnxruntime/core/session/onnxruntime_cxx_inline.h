@@ -1465,6 +1465,12 @@ inline void* KernelContext::GetGPUComputeStream() const {
   return out;
 }
 
+inline void* KernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
+  void* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelContext_GetAllocator(ctx_, &memory_info, &out));
+  return out;
+}
+
 inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType type) {
   Ort::ThrowOnError(GetApi().CreateOpAttr(name, data, len, type, &p_));
 }
