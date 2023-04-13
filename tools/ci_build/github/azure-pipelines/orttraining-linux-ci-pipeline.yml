@@ -6,17 +6,16 @@ resources:
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
-variables:
-  skipComponentGovernanceDetection: true
-  CCACHE_DIR: $(Agent.TempDirectory)/ccache
-  TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-
 jobs:
 - job: Linux_Build
   timeoutInMinutes: 180
   workspace:
     clean: all
-  pool: onnxruntime-Ubuntu-2004-Training-CPU-AMD
+  variables:
+    skipComponentGovernanceDetection: true
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+  pool: onnxruntime-Ubuntu-2004-Training-CPU
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
@@ -45,7 +44,7 @@ jobs:
   - task: Cache@2
     inputs:
       key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: ${{ variables.CCACHE_DIR }}
+      path: $(CCACHE_DIR)
       cacheHitVar: CACHE_RESTORED
       restoreKeys: |
         "$(TODAY)" | "$(Build.SourceBranch)"
@@ -57,13 +56,13 @@ jobs:
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        mkdir -p ${{ variables.CCACHE_DIR }}
+        mkdir -p $(Pipeline.Workspace)/ccache
         docker run --rm \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          --volume ${{ variables.CCACHE_DIR }}:/cache \
+          --volume $(Pipeline.Workspace)/ccache:/cache \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
