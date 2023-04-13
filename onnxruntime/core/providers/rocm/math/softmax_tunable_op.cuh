@@ -131,7 +131,7 @@ class SoftmaxTunableOp : public tunable::TunableOp<SoftmaxParams<InputT, OutputT
     }
 #endif  // USE_COMPOSABLE_KERNEL
 
-#ifdef ENABLE_TRITON_LIB
+#ifdef USE_TRITON_KERNEL
     this->RegisterOp(SoftmaxTritonOp<InputT, OutputT>);
 #endif
   }

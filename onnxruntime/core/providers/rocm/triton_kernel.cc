@@ -115,7 +115,7 @@ void LoadRocmTritonKernel() {
 
 Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void *args, size_t args_size) {
   if (rocm_triton_kernel_map.count(fname) == 0) {
-    // return unsupported status when not found function name in registery
+    // return unsupported status when not found function name in registry
     // this error status will be used by tunableOp
     std::ostringstream message_stream;
     message_stream << "can't find triton kernel name: " << fname;
