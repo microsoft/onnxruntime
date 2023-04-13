@@ -17,6 +17,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GRE
     if (_gas_version MATCHES "GNU.[Aa]ssembler.*(2\\.[4-9][0-9])")
         set(MLAS_AMX_SUPPORTED TRUE)
     endif()
+  elseif (CMAKE_ASM_COMPILER_ID STREQUAL "GNU")
+    set(MLAS_AMX_SUPPORTED TRUE)
   endif()
 endif()
 
