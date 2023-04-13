@@ -1418,11 +1418,11 @@ INcclService& INcclService::GetInstance() {
 }  // namespace rocm
 #endif
 
-void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, const ProviderOptions& options) {
+void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptionsV2* provider_options, const ProviderOptions& options) {
   s_library_tensorrt.Get().UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
 }
 
-ProviderOptions GetProviderInfo_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
+ProviderOptions GetProviderInfo_Tensorrt(const OrtTensorRTProviderOptionsV2* provider_options) {
   return s_library_tensorrt.Get().GetProviderOptions(reinterpret_cast<const void*>(provider_options));
 }
 
@@ -1637,7 +1637,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
     provider_options_map[provider_options_keys[i]] = provider_options_values[i];
   }
 
-  onnxruntime::UpdateProviderInfo_Tensorrt(reinterpret_cast<OrtTensorRTProviderOptions*>(tensorrt_options),
+  onnxruntime::UpdateProviderInfo_Tensorrt(tensorrt_options,
                                            reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
   return nullptr;
 #else
@@ -1654,7 +1654,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtT
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
-  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt(reinterpret_cast<const OrtTensorRTProviderOptions*>(tensorrt_options));
+  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt(tensorrt_options);
   onnxruntime::ProviderOptions::iterator it = options.begin();
   std::string options_str = "";
 

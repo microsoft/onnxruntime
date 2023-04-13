@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/tensorrt/tensorrt_execution_provider_info.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 
 #include "core/common/make_string.h"
 #include "core/common/parse_string.h"
@@ -121,11 +122,12 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
   return options;
 }
 
-ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensorRTProviderOptions& info) {
+ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensorRTProviderOptionsV2& info) {
 
   auto empty_if_null = [](const char* s) { return s != nullptr ? std::string{s} : std::string{}; };
   const std::string kInt8CalibTable_ = empty_if_null(info.trt_int8_calibration_table_name);
   const std::string kCachePath_ = empty_if_null(info.trt_engine_cache_path);
+  const std::string kTacticSources_ = empty_if_null(info.trt_tactic_sources);
   const std::string kDecryptionLibPath_ = empty_if_null(info.trt_engine_decryption_lib_path);
 
   const ProviderOptions options{
@@ -145,6 +147,16 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.trt_engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, kDecryptionLibPath_},
       {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.trt_force_sequential_engine_build)},
+      {tensorrt::provider_option_names::kContextMemorySharingEnable, MakeStringWithClassicLocale(info.trt_context_memory_sharing_enable)},
+      {tensorrt::provider_option_names::kLayerNormFP32Fallback, MakeStringWithClassicLocale(info.trt_layer_norm_fp32_fallback)},
+      {tensorrt::provider_option_names::kTimingCacheEnable, MakeStringWithClassicLocale(info.trt_timing_cache_enable)},
+      {tensorrt::provider_option_names::kForceTimingCacheMatch, MakeStringWithClassicLocale(info.trt_force_timing_cache)},
+      {tensorrt::provider_option_names::kDetailedBuildLog, MakeStringWithClassicLocale(info.trt_detailed_build_log)},
+      {tensorrt::provider_option_names::kBuildHeuristics, MakeStringWithClassicLocale(info.trt_build_heuristics_enable)},
+      {tensorrt::provider_option_names::kSparsityEnable, MakeStringWithClassicLocale(info.trt_sparsity_enable)},
+      {tensorrt::provider_option_names::kBuilderOptimizationLevel, MakeStringWithClassicLocale(info.trt_builder_optimization_level)},
+      {tensorrt::provider_option_names::kAuxiliaryStreams, MakeStringWithClassicLocale(info.trt_auxiliary_streams)},
+      {tensorrt::provider_option_names::kTacticSources, kTacticSources_},
   };
   return options;
 }
