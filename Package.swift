@@ -32,8 +32,9 @@ let package = Package(
         .target(name: "OnnxRuntimeBindings",
                 dependencies: ["onnxruntime"],
                 path: "objectivec",
-                exclude: ["test", "docs"],
+                exclude: ["test", "docs", "ReadMe.md", "format_objc.sh"],
                 cxxSettings: [
+                    .define("SPM_BUILD"),
                     .unsafeFlags(["-std=c++17",
                                   "-fobjc-arc-exceptions"
                                  ]),
@@ -62,7 +63,7 @@ let package = Package(
 //
 // CI or local testing where you have built/obtained the iOS Pod archive matching the current source code.
 //    Requires the ORT_IOS_POD_LOCAL_PATH environment variable to be set to specify the location of the pod.
-if ProcessInfo.processInfo.environment["ORT_IOS_POD_LOCAL_PATH"] != nil {
+if let pod_archive_path = ProcessInfo.processInfo.environment["ORT_IOS_POD_LOCAL_PATH"] {
     // ORT_IOS_POD_LOCAL_PATH MUST be a path that is relative to Package.swift.
     //
     // To build locally, tools/ci_build/github/apple/build_and_assemble_ios_pods.py can be used
@@ -75,8 +76,8 @@ if ProcessInfo.processInfo.environment["ORT_IOS_POD_LOCAL_PATH"] != nil {
     // This should produce the pod archive in build/ios_pod_staging, and ORT_IOS_POD_LOCAL_PATH can be set to
     // "build/ios_pod_staging/pod-archive-onnxruntime-c-???.zip" where '???' is replaced by the version info in the
     // actual filename.
-    let pod_archive_path:String = ProcessInfo.processInfo.environment["ORT_IOS_POD_LOCAL_PATH"]!
     package.targets.append(Target.binaryTarget(name: "onnxruntime", path: pod_archive_path))
+
 } else {
     // When creating the release version:
     //   - remove the fatalError

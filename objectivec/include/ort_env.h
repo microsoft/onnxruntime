@@ -13,6 +13,8 @@ extern "C" {
 
 /**
  * Gets the ORT version string in format major.minor.patch.
+ *
+ * Available since 1.15.
  */
 NSString* ORTVersion(void);
 
