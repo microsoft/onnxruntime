@@ -37,7 +37,6 @@ void RegisterNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& 
                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
 }
 
-#ifdef USE_QNN
 void RegisterResizeNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
   auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
   f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
@@ -51,7 +50,6 @@ void RegisterResizeNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSch
                   })
                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
 }
-#endif  // defined(USE_QNN)
 
 void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
   auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
@@ -140,11 +138,10 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 1);
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 13);
 
-#if defined(USE_QNN)
+  // Used by QNN EP.
   REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 11);
   REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 13);
   REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 18);
-#endif
 
   // internal QLinear ops
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);
