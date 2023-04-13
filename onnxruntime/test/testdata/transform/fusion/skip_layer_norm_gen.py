@@ -10,9 +10,7 @@ class Format(Enum):
     Format3 = 3
 
 
-def generate_model(
-    model_format, model_name, multi_output_add=False, add_output_in_graph_output=False, with_cast=False
-):
+def generate_model(model_format, model_name, multi_output_add=False, add_output_in_graph_output=False, with_cast=False):
     nodes = []  # LayerNorm subgraph
     if with_cast:
         nodes.extend(
