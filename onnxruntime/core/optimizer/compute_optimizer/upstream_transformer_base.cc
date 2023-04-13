@@ -52,7 +52,7 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
 
   size_t reordered_node_count = 0;  // For summary
   size_t passthrough_count = 0;
-  for (auto index : order) {
+  for (const auto index : order) {
     auto* node_ptr = graph.GetNode(index);
     if (!node_ptr)
       // node was removed.
@@ -91,7 +91,11 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
         break;
       }
 
-      if (graph.GetConsumerNodes(input_tensor_producer_node->MutableOutputDefs()[0]->Name()).size() > 1) {
+      // This condition implies few things:
+      // 1. The node's outputs are only used once (that's the node to upstream).
+      // 2. If the node has more than one outputs, only one of the outputs has output edge
+      //   and that output is used by the node to upstream.
+      if (input_tensor_producer_node->GetOutputEdgesCount() > 1) {
         LOG_DEBUG_INFO(logger, log_prefix + " stops at node " + input_tensor_producer_node->Name() +
                                    " since multiple consumers found");
         continue;
