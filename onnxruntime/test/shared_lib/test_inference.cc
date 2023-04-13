@@ -2527,6 +2527,7 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
   ASSERT_TRUE(api.GetTensorRTProviderOptionsAsString(rel_trt_options.get(), allocator, &trt_options_str) == nullptr);
   std::string s(trt_options_str);
   ASSERT_TRUE(s.find(engine_cache_path) != std::string::npos);
+  ASSERT_TRUE(s.find(param.c_str()) != std::string::npos);
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)trt_options_str) == nullptr);
 
   Ort::SessionOptions session_options;
