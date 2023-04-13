@@ -21,26 +21,22 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape.h"
 #include "core/optimizer/utils.h"
-#include "core/platform/env.h"
-#include "core/session/inference_session.h"
 #include "core/util/math.h"
 
+#include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
 #include "test/framework/test_utils.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
-
+#include "test/optimizer/test_optimizer_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/test_environment.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
-#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -129,138 +125,6 @@ TEST(ComputeOptimizerTests, GatherND_LayerNormalization) {
 TEST(ComputeOptimizerTests, GatherND_MatMul) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   GatherNDComputationReductionTest("MatMul", *logger, SingleOpDefaultValidationFunc);
-}
-
-/**
- * @brief Class represent a input data (dimensions, data type and value).
- */
-struct TestInputData {
-  template <typename T>
-  TestInputData(const std::string& name, const TensorShapeVector& dims, const std::vector<T>& values)
-      : name_(name), dims_(dims), values_(values) {}
-
-  OrtValue ToOrtValue() {
-    OrtValue ortvalue;
-    std::vector<int64_t> dims;
-    dims.reserve(dims_.size());
-    dims.insert(dims.end(), dims_.begin(), dims_.end());
-    std::visit([&ortvalue, &dims](auto&& arg) {
-      using T = std::decay_t<decltype(arg)>;
-      if constexpr (std::is_same_v<T, std::vector<int64_t>> ||
-                    std::is_same_v<T, std::vector<float>> ||
-                    std::is_same_v<T, std::vector<MLFloat16>>)
-        CreateMLValue<typename T::value_type>(
-            TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, arg, &ortvalue);
-      else
-        static_assert("Unspported types!");
-    },
-               values_);
-
-    return ortvalue;
-  }
-
-  std::string GetName() const {
-    return name_;
-  }
-
- private:
-  std::string name_;
-  TensorShapeVector dims_;
-  std::variant<std::vector<float>, std::vector<MLFloat16>, std::vector<int64_t>> values_;
-};
-
-void RandomFillFloatVector(const TensorShapeVector& shape, std::vector<float>& data) {
-  static RandomValueGenerator random{1234};
-  data = random.Gaussian<float>(shape, 0.0f, 0.25f);
-}
-
-void RandomFillHalfVector(const TensorShapeVector& shape, std::vector<MLFloat16>& data) {
-  std::vector<float> data_float(TensorShape(shape).Size());
-  RandomFillFloatVector(shape, data_float);
-  std::transform(data_float.begin(), data_float.end(), data.begin(),
-                 [](float value) { return MLFloat16(math::floatToHalf(value)); });
-}
-
-void RandomMasks(int64_t batch, int64_t sequence_length, std::vector<int64_t>& data) {
-  static RandomValueGenerator random{5678};
-  const std::vector<int64_t> num_count_to_random{batch};
-  std::vector<int64_t> random_seq_lens = random.Uniform<int64_t>(num_count_to_random, 0, sequence_length);
-  data.resize(batch * sequence_length);  // fill with zeros first.
-  for (int64_t i = 0; i < batch; ++i) {
-    for (int64_t j = 0; j < sequence_length; ++j) {
-      if (j > random_seq_lens[i]) {
-        break;
-      }
-
-      data[i * sequence_length + j] = 1;
-    }
-  }
-}
-
-struct InputContainer {
-  InputContainer() = default;
-
-  template <typename T>
-  TestInputData& AddInput(const std::string& name, const TensorShapeVector dims, const std::vector<T>& values) {
-    inputs_.emplace_back(TestInputData(name, dims, values));
-    return inputs_.back();
-  }
-
-  template <typename T>
-  TestInputData& AddInput(const std::string& name, TensorShapeVector dims,
-                          std::function<
-                              void(const TensorShapeVector& shape, std::vector<T>& data)>
-                              func = nullptr) {
-    std::vector<T> values(TensorShape(dims).Size());
-    if (func) {
-      func(dims, values);
-    }
-
-    inputs_.emplace_back(TestInputData(name, dims, values));
-    return inputs_.back();
-  }
-
-  void ToInputMap(NameMLValMap& feeds) const {
-    for (auto input : inputs_) {
-      feeds.insert({input.GetName(), input.ToOrtValue()});
-    }
-  }
-
- private:
-  std::vector<TestInputData> inputs_;
-};
-
-static void RunModelWithData(const PathString& model_uri, const std::string session_log_id,
-                             const std::string& provider_type, const InputContainer& input_container,
-                             const std::vector<std::string>& output_names,
-                             std::vector<OrtValue>& run_results) {
-  SessionOptions so;
-  // we don't want any transformation here.
-  so.graph_optimization_level = TransformerLevel::Default;
-  so.session_logid = session_log_id;
-
-  InferenceSession session_object{so, GetEnvironment()};
-  std::unique_ptr<IExecutionProvider> execution_provider;
-  if (provider_type == onnxruntime::kCpuExecutionProvider)
-    execution_provider = DefaultCpuExecutionProvider();
-  else if (provider_type == onnxruntime::kCudaExecutionProvider)
-    execution_provider = DefaultCudaExecutionProvider();
-  else if (provider_type == onnxruntime::kRocmExecutionProvider)
-    execution_provider = DefaultRocmExecutionProvider();
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-
-  Status st;
-  ASSERT_TRUE((st = session_object.Load(model_uri)).IsOK()) << st.ErrorMessage();
-  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st.ErrorMessage();
-
-  NameMLValMap feeds;
-  input_container.ToInputMap(feeds);
-
-  // Now run
-  RunOptions run_options;
-  st = session_object.Run(run_options, feeds, output_names, &run_results);
-
-  ASSERT_TRUE(st.IsOK()) << "RunModelWithData  run graph failed with error: " << st.ErrorMessage();
 }
 
 TEST(ComputeOptimizerTests, GatherND_E2E) {
@@ -1604,6 +1468,112 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [4, 32, 256] (float)            graph input [4, 32, 256] (float)
+                            |                                |
+                             \_____________   ______________/
+                                           \ /
+                                           Add    ______ [16]
+                                            |    /
+                                      ShrunkenGather, axis = 1
+                                            |
+                                         Identity
+                                            |
+                                    graph output [4, 16, 256] (float)
+
+Add an Identity node because currently we don't allow ShrunkenGather generates graph output.
+*/
+TEST(ComputeOptimizerTests, ShrunkenGatherElementwiseOps_PropagationOnTwoBranches) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  InlinedVector<int64_t> gather_indices;
+  auto pre_graph_checker = [&gather_indices](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["com.microsoft.ShrunkenGather"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "ShrunkenGather") {
+        TEST_RETURN_IF_NOT(gather_indices.empty());
+        constexpr bool require_constant = true;
+        NodeArg* initializer_node_arg = graph.GetNodeArg(node.InputDefs()[1]->Name());
+        TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, gather_indices,
+                                                                        require_constant));
+      }
+    }
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&gather_indices](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["com.microsoft.ShrunkenGather"] == 2);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Add") {
+        const auto& input_defs = node.InputDefs();
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          TEST_RETURN_IF_NOT(producer_node != nullptr);
+          TEST_RETURN_IF_NOT(producer_node->OpType() == "ShrunkenGather");
+
+          InlinedVector<int64_t> values;
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values,
+                                                                          require_constant));
+          for (size_t i = 0; i < values.size(); i++) {
+            TEST_RETURN_IF_NOT(values[i] == gather_indices[i]);
+          }
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+          TEST_RETURN_IF_NOT(producer_node != nullptr);
+          TEST_RETURN_IF_NOT(producer_node->OpType() == "ShrunkenGather");
+
+          InlinedVector<int64_t> values;
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+          for (size_t i = 0; i < values.size(); i++) {
+            TEST_RETURN_IF_NOT(values[i] == gather_indices[i]);
+          }
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+    auto* input2_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+    auto* add_out = builder.MakeIntermediate();
+    builder.AddNode("Add", {input1_arg, input2_arg}, {add_out});
+
+    const std::vector<int64_t> slice_shape{16};
+    static RandomValueGenerator random{8888};
+    std::vector<int64_t> random_slices = random.Uniform<int64_t>(slice_shape, 0, 32);
+    auto* slice_initializer = builder.MakeInitializer<int64_t>(slice_shape, random_slices);
+    auto* gather_out = builder.MakeIntermediate();
+    builder.AddNode("ShrunkenGather", {add_out, slice_initializer}, {gather_out}, kMSDomain)
+        .AddAttribute("axis", static_cast<int64_t>(1));
+
+    auto* identity_out = builder.MakeOutput();
+    builder.AddNode("Identity", {gather_out}, {identity_out});
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer),
+                                        TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
 }
 
 /*
