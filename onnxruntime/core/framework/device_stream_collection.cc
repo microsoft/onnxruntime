@@ -7,18 +7,6 @@
 
 namespace onnxruntime {
 
-struct DummyNotification : public synchronize::Notification {
-DummyNotification(Stream& s) : Notification(s) {}
-void Activate() override {}
-};
-
-struct DummyStream : Stream {
-DummyStream(StreamHandle h, const OrtDevice& d) : Stream(h, d) {}
-std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
-  return std::make_unique<DummyNotification>(*this);
-}
-};
-
 class DeviceStreamCollectionImpl {
  public:
   DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams) {
@@ -30,7 +18,7 @@ class DeviceStreamCollectionImpl {
       eps_.push_back(ep);
     }
     is_main_graph_ = sess_state.GetGraphViewer().ParentNode() == nullptr;
-    root_stream_ = std::make_unique<DummyStream>(nullptr, OrtDevice());
+    root_stream_ = std::make_unique<Stream>(nullptr, OrtDevice());
   }
 
   ~DeviceStreamCollectionImpl() {
