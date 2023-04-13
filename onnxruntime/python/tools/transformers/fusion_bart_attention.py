@@ -147,7 +147,7 @@ class FusionBartAttention(FusionAttention):
             [1],
         )
         past_v, present_v = "", ""
-        add_v = None
+        reshape_v_2, add_v = None, None
         if v_nodes is not None:
             (reshape_v_2, transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes
             present_v = transpose_v.output[0] # For initial pass through encoder-decoder_with_past to get starting past values (beam search)
@@ -211,7 +211,7 @@ class FusionBartAttention(FusionAttention):
             [1, 0],
         )
         past_k, present_k = "", ""
-        reshape_k_1, matmul_k = None, None
+        reshape_k_2, reshape_k_1, matmul_k = None, None, None
         if k_nodes_with_bias is not None:
             _, reshape_k_2, transpose_k_1, reshape_k_1, add_k, matmul_k = k_nodes_with_bias
             k_nodes = k_nodes_with_bias
@@ -258,7 +258,7 @@ class FusionBartAttention(FusionAttention):
         ):
             return
 
-        three_root_inputs = past_k != "" and past_v != "" and matmul_k == None and "matmul_v" not in locals()
+        three_root_inputs = past_k != "" and past_v != "" and matmul_k is None and "matmul_v" not in locals()
         one_root_input = not three_root_inputs and matmul_k.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input 
         two_root_inputs = not three_root_inputs and matmul_q.input[0] == root_input and matmul_k.input[0] == matmul_v.input[0] and matmul_k.input[0] != matmul_q.input[0]
         

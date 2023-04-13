@@ -31,7 +31,7 @@ class TestFusion(unittest.TestCase):
     def verify_fusion(self, optimized_model, expected_model_filename):
         optimized_model.topological_sort(is_deterministic=True)
 
-        expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "whisper", expected_model_filename)
+        expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "models", "whisper", expected_model_filename)
         expected_model = OnnxModel(onnx.load(expected_model_path))
         expected_model.topological_sort(is_deterministic=True)
 

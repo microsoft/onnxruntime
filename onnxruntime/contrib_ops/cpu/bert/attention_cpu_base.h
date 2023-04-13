@@ -34,7 +34,6 @@ class AttentionCPUBase : public AttentionBase {
                         int v_head_size,                      // head size of V (H_v)
                         int v_hidden_size,                    // hidden size of V (D_v)
                         const Tensor* relative_position_bias, // bias addition in QK. Its size is BxNxSxT
-                        bool separate_present_kv,             // whether to separate present KV into present K and present V
                         OpKernelContext* context) const {
 
     AllocatorPtr allocator;
@@ -45,11 +44,11 @@ class AttentionCPUBase : public AttentionBase {
     int past_sequence_length = 0;
     OrtValue present_kv;
     Tensor* present = nullptr;
+    bool separate_present_kv = present_k != nullptr && present_v != nullptr;
     if (separate_present_kv) {
       auto element_type = DataTypeImpl::GetType<T>();
       past_sequence_length = (nullptr != past) ? static_cast<int>(past->Shape().GetDims()[3]) : 0;
-      std::array<int64_t, 5> present_dims{2, batch_size, num_heads_, kv_sequence_length + past_sequence_length, v_head_size};
-      TensorShape present_shape(present_dims);
+      TensorShape present_shape({2, batch_size, num_heads_, static_cast<int64_t>(kv_sequence_length) + static_cast<int64_t>(past_sequence_length), v_head_size});
 
       // Use present_kv to store present KV instead of output
       AllocatorPtr present_kv_allocator;

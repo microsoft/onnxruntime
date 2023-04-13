@@ -68,7 +68,7 @@ def create_whisper_encoder_attention(hidden_size=768, num_heads=12, epsilon=0.00
         nodes.extend([
             helper.make_node(
                 "Attention",
-                ["layernorm_output_to_matmul", "Attention_0_qkv_weight", "Attention_0_qkv_bias", "", ""],
+                ["layernorm_output_to_matmul", "Attention_0_qkv_weight", "Attention_0_qkv_bias", ""],
                 ["attn_output"],
                 "Attention_0",
                 domain="com.microsoft",
@@ -1088,28 +1088,28 @@ if __name__ == "__main__":
     onnx.save(model, "whisper_encoder_attention_sln.onnx")
 
     model = create_whisper_encoder_attention(num_heads=num_heads, hidden_size=hidden_size, fused=True)
-    onnx.save(model, "./test_data/whisper/encoder_attention_with_sln_fused.onnx")
+    onnx.save(model, "./test_data/models/whisper/encoder_attention_with_sln_fused.onnx")
 
     model = create_whisper_decoder_attention(num_heads=num_heads, hidden_size=hidden_size)
     onnx.save(model, "whisper_decoder_attention_sln.onnx")
 
     model = create_whisper_decoder_attention(num_heads=num_heads, hidden_size=hidden_size, fused=True)
-    onnx.save(model, "./test_data/whisper/decoder_attention_with_sln_fused.onnx")
+    onnx.save(model, "./test_data/models/whisper/decoder_attention_with_sln_fused.onnx")
 
     model = create_whisper_decoder_multihead_attention(num_heads=num_heads, hidden_size=hidden_size)
     onnx.save(model, "whisper_decoder_mha.onnx")
 
     model = create_whisper_decoder_multihead_attention(num_heads=num_heads, hidden_size=hidden_size, fused=True)
-    onnx.save(model, "./test_data/whisper/decoder_mha_fused.onnx")
+    onnx.save(model, "./test_data/models/whisper/decoder_mha_fused.onnx")
 
     model = create_whisper_decoder_with_past_multihead_self_attention(num_heads=num_heads, hidden_size=hidden_size)
     onnx.save(model, "whisper_decoder_with_past_self_mha.onnx")
 
     model = create_whisper_decoder_with_past_multihead_self_attention(num_heads=num_heads, hidden_size=hidden_size, fused=True)
-    onnx.save(model, "./test_data/whisper/decoder_with_past_self_mha_fused.onnx")
+    onnx.save(model, "./test_data/models/whisper/decoder_with_past_self_mha_fused.onnx")
 
     model = create_whisper_decoder_with_past_multihead_cross_attention(num_heads=num_heads, hidden_size=hidden_size)
     onnx.save(model, "whisper_decoder_with_past_cross_mha.onnx")
 
     model = create_whisper_decoder_with_past_multihead_cross_attention(num_heads=num_heads, hidden_size=hidden_size, fused=True)
-    onnx.save(model, "./test_data/whisper/decoder_with_past_cross_mha_fused.onnx")
+    onnx.save(model, "./test_data/models/whisper/decoder_with_past_cross_mha_fused.onnx")
