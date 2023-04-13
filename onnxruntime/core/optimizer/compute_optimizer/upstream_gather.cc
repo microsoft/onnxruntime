@@ -307,6 +307,44 @@ std::optional<SliceInfo> IsSupportedGather(Graph& graph, Node& node,
   return SliceInfo(graph, &node, dim_size == 0, "axis", axis, true);
 }
 
+std::optional<SliceInfo> IsSupportedShrunkenGather(Graph& graph, Node& node,
+                                                   const InlinedHashSet<std::string_view>&
+                                                       compatible_execution_providers,
+                                                   const logging::Logger& logger) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "ShrunkenGather", {1}, kMSDomain) ||
+      !graph_utils::IsSupportedProvider(node, compatible_execution_providers)) {
+    return std::nullopt;
+  }
+
+  auto data_shape = node.MutableInputDefs()[0]->Shape();
+  auto indices_shape = node.MutableInputDefs()[1]->Shape();
+  auto gather_out_shape = node.MutableOutputDefs()[0]->Shape();
+  if (data_shape == nullptr || indices_shape == nullptr || gather_out_shape == nullptr) {
+    LOG_DEBUG_INFO(logger, "Skip ShrunkenGather node " + node.Name() + " due to undefined shape." +
+                               std::to_string(data_shape == nullptr) + std::to_string(indices_shape == nullptr) +
+                               std::to_string(gather_out_shape == nullptr));
+    return std::nullopt;
+  }
+
+  const int data_rank = data_shape->dim_size();
+  if (data_rank <= 1) {
+    LOG_DEBUG_INFO(logger, "Skip ShrunkenGather node " + node.Name() + " due to data rank <= 1.");
+    return std::nullopt;
+  }
+
+  int axis = static_cast<int>(node.GetAttributes().at("axis").i());
+  axis = axis < 0 ? axis + data_rank : axis;
+  int dim_size = indices_shape->dim_size();
+
+  if (dim_size == 0) {
+    LOG_DEBUG_INFO(logger, "Skip ShrunkenGather node " + node.Name() + " due to unsupported dim size: " +
+                               std::to_string(dim_size));
+    return std::nullopt;
+  }
+
+  return SliceInfo(graph, &node, false /*is_slice_scalar*/, "axis", axis, true);
+}
+
 }  // namespace
 
 std::optional<SliceInfo> UpStreamGatherGraphTransformer::IsSupportedForUpstream(
@@ -317,7 +355,9 @@ std::optional<SliceInfo> UpStreamGatherGraphTransformer::IsSupportedForUpstream(
   if (!gather_info.has_value()) {
     gather_info = IsSupportedGather(graph, node, GetCompatibleExecutionProviders(), logger);
   }
-
+  if (!gather_info.has_value()) {
+    gather_info = IsSupportedShrunkenGather(graph, node, GetCompatibleExecutionProviders(), logger);
+  }
   return gather_info;
 }
 

@@ -543,7 +543,7 @@ def parse_arguments():
             "NMake Makefiles",
             "Xcode",
         ],
-        default="Visual Studio 16 2019" if is_windows() else None,
+        default=None,
         help="Specify the generator that CMake invokes. ",
     )
     parser.add_argument(
@@ -699,6 +699,9 @@ def parse_arguments():
     if not args.disable_wasm_exception_catching or args.enable_wasm_api_exception_catching:
         # doesn't make sense to catch if no one throws
         args.enable_wasm_exception_throwing_override = True
+
+    if args.cmake_generator is None and is_windows():
+        args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 16 2019"
 
     return args
 
@@ -2183,7 +2186,7 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
         return None
     run_subprocess(
         [
-            "nuget.exe",
+            "nuget.exe" if is_windows() else "nuget",
             "restore",
             os.path.join(source_dir, "packages.config"),
             "-ConfigFile",
