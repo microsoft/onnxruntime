@@ -209,17 +209,24 @@ class DataTypeImpl {
   static MLDataType GetDataType(const std::string&);
 
   static const std::vector<MLDataType>& AllTensorTypes();
+  static const std::vector<MLDataType>& AllTensorTypesWithFloat8();
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypesWithFloat8();
   static const std::vector<MLDataType>& AllSequenceTensorTypes();
+  static const std::vector<MLDataType>& AllSequenceTensorTypesWithFloat8();
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes();
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesWithFloat8();
   static const std::vector<MLDataType>& AllNumericTensorTypes();
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorExceptHalfTypes();
   static const std::vector<MLDataType>& AllIEEEFloatTensorExceptHalfTypes();
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesWithFloat8();
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesWithFloat8();
   static const std::vector<MLDataType>& AllOptionalTypes();
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypes();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypesWithFloat8();
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);

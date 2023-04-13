@@ -53,14 +53,22 @@ using All =
         AllFixedSize,
         std::string>;
 
-using All_float8 =
+using AllFloat8 =
     TypeList<
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
         Float8E5M2FNUZ>;
 
-using All_with_float8 =
+using AllFixedSizeWithFloat8 =
+    boost::mp11::mp_push_back<
+        AllFixedSize,
+        Float8E4M3FN,
+        Float8E4M3FNUZ,
+        Float8E5M2,
+        Float8E5M2FNUZ>;
+
+using AllWithFloat8 =
     boost::mp11::mp_push_back<
         All,
         Float8E4M3FN,

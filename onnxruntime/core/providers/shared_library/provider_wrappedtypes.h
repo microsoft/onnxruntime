@@ -547,12 +547,15 @@ class DataTypeImpl final {
   DeleteFunc GetDeleteFunc() const { return g_host->DataTypeImpl__GetDeleteFunc(this); }
 
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorTypes(); }
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypesWithFloat8() { return g_host->DataTypeImpl__AllFixedSizeTensorTypesWithFloat8(); }
   static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes(); }
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesWithFloat8() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesWithFloat8(); }
   static const std::vector<MLDataType>& AllSequenceTensorTypes() { return g_host->DataTypeImpl__AllSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypes(); }
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesWihtFloat8() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypesWithFloat8(); }
 
   const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
 

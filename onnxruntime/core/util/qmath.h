@@ -111,7 +111,7 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
  */
 
 template <typename OutputType>
-typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::All_float8, OutputType>::value, void>::type
+typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, void>::type
 ParQuantizeLinearStd(const float* Input,
                      OutputType* Output,
                      size_t N,
@@ -129,7 +129,7 @@ ParQuantizeLinearStd(const float* Input,
 }
 
 template <typename OutputFloat8Type>
-typename std::enable_if<boost::mp11::mp_contains<element_type_lists::All_float8, OutputFloat8Type>::value, void>::type
+typename std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputFloat8Type>::value, void>::type
 ParQuantizeLinearSat(const float* Input,
                      OutputFloat8Type* Output,
                      size_t N,

@@ -158,48 +158,48 @@ __global__ void DequantizeLinearKernelStd(const InT* input, OutT* output, const 
   }
 }
 
-template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
-__global__ void DequantizeLinearKernelSat(const InT*, OutT* output, const OutT*, const InT*, CUDA_LONG N) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+template <typename InT, typename OutT>
+struct DQFloat8;
 
-#pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      output[id] = (OutT)-1;  // dummy code
-      id += NumThreadsPerBlock;
-    }
+template <>
+struct DQFloat8<Float8E4M3FN, half> {
+  __device__ __forceinline__ half operator()(Float8E4M3FN v, half scale) const {
+    return __nv_cvt_fp8_to_halfraw(v.val, __NV_E4M3) * scale;
   }
-}
+};
 
-template <class InT, int NumThreadsPerBlock, int NumElementsPerThread>
-__global__ void DequantizeLinearKernelSat<InT, float, NumThreadsPerBlock, NumElementsPerThread>(const InT* input, float* output, const float* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N) {
+template <>
+struct DQFloat8<Float8E5M2, half> {
+  __device__ __forceinline__ half operator()(Float8E5M2 v, half scale) const {
+    return __nv_cvt_fp8_to_halfraw(v.val, __NV_E5M2) * scale;
+  }
+};
+
+template <>
+struct DQFloat8<Float8E4M3FN, float> {
+  __device__ __forceinline__ float operator()(Float8E4M3FN v, float scale) const {
+    return __half2float(__nv_cvt_fp8_to_halfraw(v.val, __NV_E4M3)) * scale;
+  }
+};
+
+template <>
+struct DQFloat8<Float8E5M2, float> {
+  __device__ __forceinline__ float operator()(Float8E5M2 v, float scale) const {
+    return __half2float(__nv_cvt_fp8_to_halfraw(v.val, __NV_E5M2)) * scale;
+  }
+};
+
+template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
+__global__ void DequantizeLinearKernelSat(const InT* input, OutT* output, const OutT* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
 
   float scale = *scale_ptr;
   // zero_point is unused.
   // InT zero_point = zero_point_ptr != nullptr ? *zero_point_ptr : InT(0, true);
-  auto format = std::is_same<Float8E4M3FN, InT>::value ? __NV_E4M3 : __NV_E5M2;
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      output[id] = __half2float(__nv_cvt_fp8_to_halfraw(input[id], format)) * scale;
-      id += NumThreadsPerBlock;
-    }
-  }
-}
-
-template <class InT, int NumThreadsPerBlock, int NumElementsPerThread>
-__global__ void DequantizeLinearKernelSat<InT, half, NumThreadsPerBlock, NumElementsPerThread>(const InT* input, half* output, const half* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
-
-  half scale = *scale_ptr;
-  // zero_point is unused.
-  // InT zero_point = zero_point_ptr != nullptr ? *zero_point_ptr : InT(0, true);
-  auto format = std::is_same<Float8E4M3FN, InT>::value ? __NV_E4M3 : __NV_E5M2;
-#pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      output[id] = __nv_cvt_fp8_to_halfraw(input[id], format) * scale;
+      output[id] = DQFloat8<InT, OutT>()(input[id], scale);
       id += NumThreadsPerBlock;
     }
   }

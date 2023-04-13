@@ -84,13 +84,13 @@ REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t)
 
 template <typename OutputType>
-typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::All_float8, OutputType>::value, bool>::type
+typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, bool>::type
 IsNull(const OutputType& value) {
   return value == 0;
 }
 
 template <typename OutputType>
-typename std::enable_if<boost::mp11::mp_contains<element_type_lists::All_float8, OutputType>::value, bool>::type
+typename std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, bool>::type
 IsNull(const OutputType& value) {
   return value == OutputType(static_cast<float>(0), true);
 }
@@ -218,7 +218,7 @@ REGISTER_QUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t)
 
 template <typename OutputType>
-typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::All_float8, OutputType>::value, void>::type
+typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, void>::type
 ParQuantizeLinear(const float* Input,
                   OutputType* Output,
                   size_t N,
@@ -231,7 +231,7 @@ ParQuantizeLinear(const float* Input,
 }
 
 template <typename OutputType>
-typename std::enable_if<boost::mp11::mp_contains<element_type_lists::All_float8, OutputType>::value, void>::type
+typename std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, void>::type
 ParQuantizeLinear(const float* Input,
                   OutputType* Output,
                   size_t N,

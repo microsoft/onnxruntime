@@ -1155,9 +1155,21 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
   return all_fixed_size_tensor_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypesWithFloat8() {
+  static std::vector<MLDataType> all_fixed_size_tensor_types_with_float8 =
+      GetTensorTypesFromTypeList<element_type_lists::AllFixedSizeWithFloat8>();
+  return all_fixed_size_tensor_types_with_float8;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
   static std::vector<MLDataType> all_tensor_types =
       GetTensorTypesFromTypeList<element_type_lists::All>();
+  return all_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesWithFloat8() {
+  static std::vector<MLDataType> all_tensor_types =
+      GetTensorTypesFromTypeList<element_type_lists::AllWithFloat8>();
   return all_tensor_types;
 }
 
@@ -1167,9 +1179,21 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeSequenceTensorTypes() {
   return all_fixed_size_sequence_tensor_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeSequenceTensorTypesWithFloat8() {
+  static std::vector<MLDataType> all_fixed_size_sequence_tensor_types =
+      GetSequenceTensorTypesFromTypeList<element_type_lists::AllFixedSizeWithFloat8>();
+  return all_fixed_size_sequence_tensor_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypes() {
   static std::vector<MLDataType> all_sequence_tensor_types =
       GetSequenceTensorTypesFromTypeList<element_type_lists::All>();
+  return all_sequence_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypesWithFloat8() {
+  static std::vector<MLDataType> all_sequence_tensor_types =
+      GetSequenceTensorTypesFromTypeList<element_type_lists::AllWithFloat8>();
   return all_sequence_tensor_types;
 }
 
@@ -1191,11 +1215,35 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensor
   return all_fixed_size_tensor_and_sequence_tensor_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesWithFloat8() {
+  static std::vector<MLDataType> all_fixed_size_tensor_and_sequence_tensor_types =
+      []() {
+        auto temp = AllFixedSizeTensorTypesWithFloat8();
+        const auto& seq = AllFixedSizeSequenceTensorTypesWithFloat8();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_fixed_size_tensor_and_sequence_tensor_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypes() {
   static std::vector<MLDataType> all_tensor_and_sequence_types =
       []() {
         auto temp = AllTensorTypes();
         const auto& seq = AllSequenceTensorTypes();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_tensor_and_sequence_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesWithFloat8() {
+  static std::vector<MLDataType> all_tensor_and_sequence_types =
+      []() {
+        auto temp = AllTensorTypesWithFloat8();
+        const auto& seq = AllSequenceTensorTypesWithFloat8();
         temp.insert(temp.end(), seq.begin(), seq.end());
         return temp;
       }();
@@ -1220,6 +1268,20 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorAndOption
       []() {
         auto temp = AllTensorTypes();
         const auto& seq = AllSequenceTensorTypes();
+        const auto& opt = AllOptionalTypes();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        temp.insert(temp.end(), opt.begin(), opt.end());
+        return temp;
+      }();
+
+  return all_tensor_and_sequence_types_and_optional_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesWithFloat8() {
+  static std::vector<MLDataType> all_tensor_and_sequence_types_and_optional_types =
+      []() {
+        auto temp = AllTensorTypesWithFloat8();
+        const auto& seq = AllSequenceTensorTypesWithFloat8();
         const auto& opt = AllOptionalTypes();
         temp.insert(temp.end(), seq.begin(), seq.end());
         temp.insert(temp.end(), opt.begin(), opt.end());

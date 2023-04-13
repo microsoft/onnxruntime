@@ -394,18 +394,18 @@ class TestInferenceSession(unittest.TestCase):
         zero = make_node("Constant", [], ["zero"], value=make_tensor("zero", to, [1], [0.0]))
         if castq:
             if like:
-                node1 = make_node("CastLike", ["X", "zero"], ["T"], saturate=saturate)
+                node1 = make_node("CastLike", ["X", "zero"], ["Temp"], saturate=saturate)
             else:
-                node1 = make_node("Cast", ["X"], ["T"], saturate=saturate, to=to)
+                node1 = make_node("Cast", ["X"], ["Temp"], saturate=saturate, to=to)
         else:
-            node1 = make_node("QuantizeLinear", ["X", "scale", "zero"], ["T"], saturate=saturate, axis=0)
+            node1 = make_node("QuantizeLinear", ["X", "scale", "zero"], ["Temp"], saturate=saturate, axis=0)
         if castdq:
             if like:
-                node2 = make_node("CastLike", ["T", "scale"], ["Y"], saturate=saturate)
+                node2 = make_node("CastLike", ["Temp", "scale"], ["Y"])
             else:
-                node2 = make_node("Cast", ["T"], ["Y"], to=fltype, saturate=saturate)
+                node2 = make_node("Cast", ["Temp"], ["Y"], to=fltype)
         else:
-            node2 = make_node("DequantizeLinear", ["T", "scale"], ["Y"], axis=0)
+            node2 = make_node("DequantizeLinear", ["Temp", "scale"], ["Y"], axis=0)
         graph = make_graph([scale, zero, node1, node2], "lr", [X], [Y])
         onnx_model = make_model(graph)
         check_model(onnx_model)
@@ -573,7 +573,7 @@ class TestInferenceSession(unittest.TestCase):
         x = TestInferenceSession.x.astype(TestInferenceSession.dtypes[float_name])
         expect = expected[to].astype(TestInferenceSession.dtypes[float_name])
 
-        onnx_model = self.model_qdq(to, float_name, saturate)
+        onnx_model = self.model_qdq(to, float_name, saturate, False, False)
         sess = onnxruntime.InferenceSession(
             onnx_model.SerializeToString(), so, providers=[provider], read_config_from_model=1
         )

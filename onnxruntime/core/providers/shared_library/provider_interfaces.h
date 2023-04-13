@@ -585,12 +585,15 @@ struct ProviderHost {
 #endif
   virtual DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesWithFloat8() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesWithFloat8() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypes() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesWithFloat8() = 0;
   virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
   virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
