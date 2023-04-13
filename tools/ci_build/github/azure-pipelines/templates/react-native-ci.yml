@@ -299,6 +299,11 @@ stages:
         detox build --configuration android.emu.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Build React Native Detox Android e2e Tests
+
+    - script: |
+        JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+      displayName: Set E2E Jest Junit android test results output full path
   
     - script: |
         detox test --record-logs all  --configuration android.emu.release
@@ -307,7 +312,7 @@ stages:
     
     - task: PublishTestResults@2
       inputs:
-        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/junit.xml'
+        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml'
         failTaskOnFailedTests: true
         testRunTitle: 'React Native Detox Android e2e Test Results'
       condition: succeededOrFailed()
@@ -319,13 +324,18 @@ stages:
       displayName: Build React Native Detox iOS e2e Tests
   
     - script: |
+        JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+      displayName: Set E2E Jest Junit test results ios output full path
+  
+    - script: |
         detox test --record-logs all --configuration ios.sim.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox iOS e2e Tests
 
     - task: PublishTestResults@2
       inputs:
-        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/junit.xml'
+        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml'
         failTaskOnFailedTests: true
         testRunTitle: 'React Native Detox iOS e2e Test Results'
       condition: succeededOrFailed()
