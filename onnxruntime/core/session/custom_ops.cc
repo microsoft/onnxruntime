@@ -256,7 +256,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTypeInfo, _In_ const OrtKernelIn
     return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo input does not have a type");
   }
 
-  return OrtTypeInfo::FromTypeProto(type_proto, type_info);
+  auto type_info_ret = OrtTypeInfo::FromTypeProto(*type_proto);
+  *type_info = type_info_ret.release();
+  return nullptr;
   API_IMPL_END
 }
 
@@ -277,7 +279,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelI
     return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo output does not have a type");
   }
 
-  return OrtTypeInfo::FromTypeProto(type_proto, type_info);
+  auto type_info_ret = OrtTypeInfo::FromTypeProto(*type_proto);
+  *type_info = type_info_ret.release();
+  return nullptr;
   API_IMPL_END
 }
 

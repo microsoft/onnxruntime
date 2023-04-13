@@ -2553,4 +2553,16 @@ namespace OperatorHelper
         return outputShapes;
     }
 
+    std::vector<EdgeShapes> BiasSplitGeluHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() == 2);
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetOutputCount() == 1);
+        auto outputShape = shapeInfo.GetInputTensorShape(0);
+        ML_CHECK_VALID_ARGUMENT(outputShape.size() >= 1);
+        ML_CHECK_VALID_ARGUMENT(outputShape.back() % 2 == 0);
+        outputShape.back() /= 2;
+
+        return { EdgeShapes(std::move(outputShape)) };
+    }
+
 } // namespace OperatorHelper
