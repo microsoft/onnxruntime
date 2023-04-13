@@ -170,7 +170,7 @@ template <typename input_t, typename output_t, typename acc_t, int log2_elements
 __global__ void softmax_warp_forward_resource_efficient(output_t* dst, const input_t* src, int batch_size, int stride, int element_count) {
   // 1 cuda block only processes one row and contains 1 cuda warp only.
   constexpr int next_power_of_two = 1 << log2_elements;
-  constexpr int WARP_SIZE = 32;
+  constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
 
   int local_idx = threadIdx.x;
