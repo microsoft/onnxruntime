@@ -173,7 +173,8 @@ struct ROCM_Provider : Provider {
     info.has_user_compute_stream = params->has_user_compute_stream;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
-    info.tunable_op.enabled = params->tunable_op_enabled;
+    info.tunable_op.enable = params->tunable_op_enable;
+    info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
 
     return std::make_shared<ROCMProviderFactory>(info);
   }

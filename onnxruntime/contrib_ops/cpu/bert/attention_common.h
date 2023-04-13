@@ -21,8 +21,9 @@ enum AttentionMaskType {
 };
 
 enum AttentionQkvFormat {
-  Q_K_V_BNSH,            // for unfused attention
-  Q_K_V_BSNH,            // for memory efficient attention, or format of query, key and value for MultiHeadAttention
+  UNKNOWN,               // enum value not set, or depends on qkv projection implementation details
+  Q_K_V_BNSH,            // for non-packed qkv, permuted
+  Q_K_V_BSNH,            // for non-packed qkv, not permuted, used by memory efficient attention or MultiHeadAttention
   QKV_BSN3H,             // for TRT fused attention, qkv are packed
   Q_K_V_BNSH_QKV_BS3NH,  // for TRT fused causal attention, data has two formats (qkv is 3BNSH, gemm_buffer is BS3NH)
   Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
@@ -60,6 +61,7 @@ struct AttentionParameters {
   float mask_filter_value;
   float scale;
   AttentionMaskType mask_type;
+  AttentionQkvFormat qkv_format;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

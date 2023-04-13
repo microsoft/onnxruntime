@@ -19,9 +19,9 @@ namespace test {
  * Runs a Gather op model on the QNN HTP backend. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
  *
- * \param op_type The Gather op type (e.g., ReduceSum).
  * \param opset The opset version.
  * \param test_description Description of the test for error reporting.
+ * \param scalar_indices whether the incidices input is scalar or not.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
  */
 template <typename QuantType, typename IndicesType>
