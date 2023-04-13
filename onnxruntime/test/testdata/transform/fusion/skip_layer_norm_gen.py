@@ -12,7 +12,7 @@ class Format(Enum):
 
 def generate_model(
     model_format, model_name, multi_output_add=False, add_output_in_graph_output=False, with_cast=False
-):  # noqa: N802
+):
     nodes = []  # LayerNorm subgraph
     if with_cast:
         nodes.extend(
@@ -132,11 +132,14 @@ def generate_skip_layer_norm(with_cast=False):
     generate_model(Format.Format2, f"skip_layer_norm_format2{suffix}.onnx", with_cast=with_cast)
     generate_model(Format.Format3, f"skip_layer_norm_format3{suffix}.onnx", with_cast=with_cast)
     generate_model(
-        Format.Format1, f"skip_layer_norm_format1_partial{suffix}.onnx", multi_output_add=True, with_cast=with_cast)
+        Format.Format1, f"skip_layer_norm_format1_partial{suffix}.onnx", multi_output_add=True, with_cast=with_cast
+    )
     generate_model(
-        Format.Format2, f"skip_layer_norm_format2_partial{suffix}.onnx", multi_output_add=True, with_cast=with_cast)
+        Format.Format2, f"skip_layer_norm_format2_partial{suffix}.onnx", multi_output_add=True, with_cast=with_cast
+    )
     generate_model(
-        Format.Format3, f"skip_layer_norm_format3_no_fusion{suffix}.onnx", multi_output_add=True, with_cast=with_cast)
+        Format.Format3, f"skip_layer_norm_format3_no_fusion{suffix}.onnx", multi_output_add=True, with_cast=with_cast
+    )
     generate_model(
         Format.Format1,
         f"skip_layer_norm_format1_graph_output{suffix}.onnx",
