@@ -7,6 +7,7 @@
 #include <hip/hip_runtime_api.h>
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/rocm_common.h"
+#include "contrib_ops/rocm/diffusion/group_norm_ck.cuh"
 #include "contrib_ops/rocm/diffusion/group_norm_common.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl_kernel.cuh"
@@ -160,19 +161,14 @@ Status GroupNormNHWCStaticSelection(const GroupNormNHWCParams<T>* params) {
 #define ADD_OP_FOR_ALL_VEC_SIZE(name, threads_per_block) \
   this->RegisterOp(name<T, threads_per_block, 1>{});     \
   this->RegisterOp(name<T, threads_per_block, 2>{});     \
-  this->RegisterOp(name<T, threads_per_block, 4>{});     \
-  this->RegisterOp(name<T, threads_per_block, 8>{});     \
-  this->RegisterOp(name<T, threads_per_block, 16>{});
+  this->RegisterOp(name<T, threads_per_block, 4>{});
 
 #define ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name) \
   ADD_OP_FOR_ALL_VEC_SIZE(name, 64)                         \
   ADD_OP_FOR_ALL_VEC_SIZE(name, 128)                        \
   ADD_OP_FOR_ALL_VEC_SIZE(name, 192)                        \
   ADD_OP_FOR_ALL_VEC_SIZE(name, 256)                        \
-  ADD_OP_FOR_ALL_VEC_SIZE(name, 320)                        \
-  ADD_OP_FOR_ALL_VEC_SIZE(name, 384)                        \
-  ADD_OP_FOR_ALL_VEC_SIZE(name, 448)                        \
-  ADD_OP_FOR_ALL_VEC_SIZE(name, 512)
+  ADD_OP_FOR_ALL_VEC_SIZE(name, 320)
 
 template <typename T>
 class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCParams<T>> {
@@ -180,6 +176,13 @@ class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCParams<T>> {
   GroupNormNHWCTunableOp() {
     this->RegisterOp(GroupNormNHWCStaticSelection<T>);
     ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWCOp)
+
+    // #ifdef USE_COMPOSABLE_KERNEL
+    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, float>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+    // #endif  // USE_COMPOSABLE_KERNEL
   }
 };
 

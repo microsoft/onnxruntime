@@ -86,6 +86,8 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
         epsilon,
         use_swish,
     )
+    y_ref = group_norm(input_x, gamma, beta, num_groups, epsilon, use_swish).astype(dtype)
+
     for impl in my_op.ListOps():
         if not my_op.SelectOp(impl):
             continue
@@ -94,11 +96,10 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
 
         y_d.UpdateHostNumpyArray()
 
-        y_ref = group_norm(input_x, gamma, beta, num_groups, epsilon, use_swish).astype(dtype)
         np.testing.assert_allclose(y_ref, output_y, atol=1e-02)
 
 
-dtypes = ["float32", "float16"]
+dtypes = ["float16", "float32"]
 
 
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
@@ -172,7 +173,7 @@ def profile_group_norm_func(
         total_bytes = (input_x.size * 2 + gamma.size * 2) * dtype_to_bytes(dtype)
 
         ke.report(
-            GroupNormNHWCMetric(func, dtype, duration_ms, total_bytes, batch_size, height, width, num_channels, num_groups)
+            GroupNormNHWCMetric(impl, dtype, duration_ms, total_bytes, batch_size, height, width, num_channels, num_groups)
         )
 
 

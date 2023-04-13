@@ -3,16 +3,16 @@
 
 #pragma once
 
+#include <stdio.h>
 #include <string>
 #include <utility>
 #include <vector>
 
 #ifdef USE_COMPOSABLE_KERNEL
 #include "ck/ck.hpp"
-#include "ck/library/tensor_operation_instance/gpu/normalization_swish.hpp"
-#include "ck/tensor_operation/gpu/device/device_normalization.hpp"
 #include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
+#include "contrib_ops/rocm/diffusion/group_norm_ck_impl/impl.cuh"
 #endif  // USE_COMPOSABLE_KERNEL
 
 #include "contrib_ops/rocm/diffusion/group_norm_common.h"
@@ -47,22 +47,12 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
   using InDataType = typename DataTypeAdaptor<T>::type;
   using OutDataType = typename DataTypeAdaptor<T>::type;
   using AccDataType = typename DataTypeAdaptor<AccT>::type;
-  using GammaDataType = typename DataTypeAdaptor<T>::type;
-  using BetaDataType = typename DataTypeAdaptor<T>::type;
-
-  using DeviceGroupNorm = ck::tensor_operation::device::
-      DeviceNormalization<InDataType,
-                          GammaDataType,
-                          BetaDataType,
-                          AccDataType,
-                          OutDataType,
-                          Swish,
-                          Rank,
-                          NumReduceDim>;
-  using InstanceFactory = ck::tensor_operation::device::instance::DeviceOperationInstanceFactory<DeviceGroupNorm>;
+  using GammaDataType = float;
+  using BetaDataType = float;
 
   std::vector<std::pair<std::string, onnxruntime::rocm::tunable::Op<GroupNormNHWCParams<T>>>> ret;
-  for (auto&& impl : InstanceFactory::GetInstances()) {
+  for (auto&& impl : internal::GetDeviceGroupNormInstances<InDataType, GammaDataType, BetaDataType, AccDataType,
+                                                           OutDataType, Swish, Rank, NumReduceDim>()) {
     auto type_string = onnxruntime::MakeString(impl->GetTypeString());
     auto invoker = impl->MakeInvokerPointer();
 
