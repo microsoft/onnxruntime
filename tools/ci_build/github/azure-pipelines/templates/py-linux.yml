@@ -34,7 +34,7 @@ jobs:
   variables:
     # The build machine pool doesn't have dotnet, so it can't run CG.
     skipComponentGovernanceDetection: true
-    ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
+    ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3

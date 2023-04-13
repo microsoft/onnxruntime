@@ -12,7 +12,7 @@ jobs:
   workspace:
     clean: all
   variables:
-    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    CCACHE_DIR: $(Agent.TempDirectory)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool: onnxruntime-Linux-CPU-2019
   steps:
