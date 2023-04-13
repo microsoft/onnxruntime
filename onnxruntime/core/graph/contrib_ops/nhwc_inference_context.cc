@@ -230,11 +230,14 @@ const ONNX_NAMESPACE::TensorProto* NhwcResizeInferenceContext::getInputData(size
   // For other inputs, we can't return the NHWC input data without transposing it, but wouldn't expect to be
   // asked for it during shape inferencing as getInputData is only used to retrieve things that may have small
   // constant initializers.
-  switch (index) {
+
+    switch (index) {
+    // Opset 18 allows specifying empty inputs. In this case, return nullptr.
+    // Otherwise, return the input we've transformed to NCHW.
     case scales_input_index:
-      return &scales_input_data_;
+      return ctx_.getInputData(scales_input_index) != nullptr ? &scales_input_data_ : nullptr;
     case sizes_input_index:
-      return &sizes_input_data_;
+      return ctx_.getInputData(sizes_input_index) != nullptr ? &sizes_input_data_ : nullptr;
     default:
       return ctx_.getInputData(index);
   }
