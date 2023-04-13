@@ -135,7 +135,7 @@ struct Storage {
     size_t Offset(size_t index=0) const  { return buffers_.at(index).Offset(); }
     void SetOffset(ptrdiff_t byte_offset, size_t index=0) { buffers_.at(index).SetOffset(byte_offset); }
     size_t Size(size_t index=0) const  { return buffers_.at(index).Size(); }
-    ShardAccessor Shard(size_t index=0) { return ShardAccessor{ buffers_.at(index), shardDims_, index }; }
+    ShardAccessor Shard(size_t index=0) { return ShardAccessor{ buffers_.at(index), shardDims_, static_cast<uint32_t>(index) }; }
     void Apply(std::function<void(Buffer&)> fn) { std::for_each(buffers_.begin(), buffers_.end(), fn); }
     std::optional<ShardDim> ShardDims() const { return std::make_optional(shardDims_); }
     bool OwnsBuffer() const { return buffers_[0].OwnBuffer(); }

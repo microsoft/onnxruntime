@@ -9,6 +9,8 @@
 
 namespace onnxruntime {
 
+using ShardOffsetType = std::array<std::int64_t, 16>;
+
 struct ShardUtils {
     // Given shape and shardDims, returns vector of offsets in shardDims
     // For example of [4,8,12] and [2,1,2], returns [2,8,6].
@@ -28,14 +30,14 @@ struct ShardUtils {
     // Given shape and shardSize, returns vector of offsets in shardDims
     // For example of [4, 8, 12] and [2, 1, 2],
     // (0, 0, 0), (0, 8, 6), (2, 8, 0), (2, 8, 6)
-    static ShardDim GetShardOffset(std::int32_t rank, ShardDim const& stride, TensorShape const& shardSize)
+    static ShardOffsetType GetShardOffset(std::int32_t rank, ShardDim const& stride, TensorShape const& shardSize)
     {
         const auto lastShardDim = shardSize.NumDimensions() - 1;
-        ShardDim offset;
+        ShardOffsetType offset;
 
         for (auto idx=0u; idx<=lastShardDim; idx++)
         {
-            offset[idx] = (rank / stride[idx]) * shardSize[idx];
+            offset[idx] = static_cast<std::int64_t>(rank / stride[idx]) * shardSize[idx];
             rank = rank % stride[idx];
         }
         return offset;
@@ -53,11 +55,11 @@ struct ShardUtils {
         return shardStride;
     }
 
-    static std::vector<ShardDim> GetShardOffsets(TensorShape const& shape, ShardDim const& shardDims)
+    static std::vector<ShardOffsetType> GetShardOffsets(TensorShape const& shape, ShardDim const& shardDims)
     {
         assert(shape.NumDimensions() == shardDims.size());
         const auto numShards = NumShards(shardDims);
-        std::vector<ShardDim> shardOffsets;
+        std::vector<ShardOffsetType> shardOffsets;
         shardOffsets.reserve(numShards);
 
         ShardDim stride = GetShardStride(shardDims);
@@ -74,7 +76,7 @@ struct ShardUtils {
     {
         auto numDims = shardDims.size();
         std::int32_t accumulator = 1;
-        for (auto i=0; i<numDims; i++)
+        for (auto i=0ul; i<numDims; i++)
         {
             accumulator *= shardDims[i];
         }
