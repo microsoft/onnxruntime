@@ -318,7 +318,7 @@ class FusionBartAttention(FusionAttention):
                 mask_index = mask_nodes_whisper[0].output[-1]
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
-            
+
         if (
             encoder_attention
             or decoder_attention

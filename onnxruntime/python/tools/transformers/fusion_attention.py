@@ -1169,4 +1169,3 @@ class FusionAttention(Fusion):
 
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             self.prune_graph = True
-

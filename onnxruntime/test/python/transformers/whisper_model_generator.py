@@ -420,7 +420,7 @@ def create_whisper_decoder_attention(
                     ["layernorm_output_to_matmul"],
                     "layernorm",
                     epsilon=epsilon,
-                )
+                ),
             ]
         )
     else:
@@ -792,7 +792,7 @@ def create_whisper_decoder_attention(
                     "next_skiplayernorm",
                     domain="com.microsoft",
                     epsilon=epsilon,
-                )
+                ),
             ]
         )
     else:
@@ -1708,7 +1708,7 @@ def create_whisper_decoder_with_past_multihead_cross_attention(
         helper.make_tensor_value_info("output_0", TensorProto.FLOAT, ["batch_size", 1500, hidden_size]),
         helper.make_tensor_value_info("output_1", TensorProto.FLOAT, ["batch_size", "sequence_length", hidden_size]),
     ]
-    
+
     # Create SkipLayerNorm (since there's no Add + LayerNorm variant for this attention subgraph)
     nodes = [
         helper.make_node(

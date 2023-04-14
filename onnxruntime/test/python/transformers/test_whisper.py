@@ -123,5 +123,6 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_with_past_cross_mha_fused.onnx")
 
+
 if __name__ == "__main__":
     unittest.main()
