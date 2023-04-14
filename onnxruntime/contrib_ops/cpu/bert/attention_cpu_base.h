@@ -51,9 +51,8 @@ class AttentionCPUBase : public AttentionBase {
       TensorShape present_shape({2, batch_size, num_heads_, static_cast<int64_t>(kv_sequence_length) + static_cast<int64_t>(past_sequence_length), v_head_size});
 
       // Use present_kv to store present KV instead of output
-      AllocatorPtr present_kv_allocator;
-      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&present_kv_allocator));
-      Tensor::InitOrtValue(element_type, present_shape, present_kv_allocator, present_kv);
+      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+      Tensor::InitOrtValue(element_type, present_shape, allocator, present_kv);
       present = present_kv.GetMutable<Tensor>();
 
       if (nullptr != past && nullptr == present) {

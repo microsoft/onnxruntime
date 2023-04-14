@@ -308,10 +308,10 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   Tensor* past_kv = nullptr;
   OrtValue past;
+  AllocatorPtr allocator;
   if (past_key != nullptr && past_value != nullptr) {
     // Concatenate past_key and past_value into past_kv
     // We assume qk_head_size == v_head_size
-    AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     std::vector<int64_t> new_dims({2, batch_size, num_heads_, past_kv_sequence_length, qk_head_size});
     gsl::span<const int64_t> new_dims_span{new_dims};
@@ -329,7 +329,6 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   if (packed_qkv) {
     // Query is of shape (B, S, 3*D)
     // We assume q_sequence_length == kv_sequence_length and qk_head_size == v_head_size
-    AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     std::vector<int64_t> new_dims({3, batch_size, num_heads_, kv_sequence_length, qk_head_size});
     gsl::span<const int64_t> new_dims_span{new_dims};
@@ -362,7 +361,6 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   OrtValue Q;
   {
-    AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     std::vector<int64_t> new_dims({batch_size, num_heads_, q_sequence_length, qk_head_size});
     gsl::span<const int64_t> new_dims_span{new_dims};
@@ -399,7 +397,6 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   OrtValue K;
   {
-    AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     std::vector<int64_t> new_dims({batch_size, num_heads_, kv_sequence_length, qk_head_size});
     gsl::span<const int64_t> new_dims_span{new_dims};
@@ -428,7 +425,6 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   OrtValue V;
   {
-    AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     std::vector<int64_t> new_dims({batch_size, num_heads_, kv_sequence_length, v_head_size});
     gsl::span<const int64_t> new_dims_span{new_dims};
