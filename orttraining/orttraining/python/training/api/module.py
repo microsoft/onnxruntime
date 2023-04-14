@@ -2,8 +2,9 @@
 # Licensed under the MIT License.
 
 from __future__ import annotations
-from typing import List, Optional, Union, Tuple, TYPE_CHECKING
+
 import os
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -41,7 +42,7 @@ class Module:
         self,
         train_model_uri: os.PathLike,
         state: CheckpointState,
-        eval_model_uri: Optional[os.PathLike] = None,
+        eval_model_uri: os.PathLike | None = None,
         device: str = "cpu",
     ) -> None:
         self.training = True
@@ -61,7 +62,7 @@ class Module:
             self._device,
         )
 
-    def __call__(self, *user_inputs) -> Union[Tuple[np.ndarray], np.ndarray]:
+    def __call__(self, *user_inputs) -> tuple[np.ndarray] | np.ndarray:
         """Invokes either the training or the evaluation step of the model.
 
         Args:
@@ -177,7 +178,7 @@ class Module:
         self._model.copy_buffer_to_parameters(buffer)
 
     def export_model_for_inferencing(
-        self, inference_model_uri: str | os.PathLike, graph_output_names: List[str]
+        self, inference_model_uri: str | os.PathLike, graph_output_names: list[str]
     ) -> None:
         """Exports the model for inferencing.
 
@@ -192,10 +193,10 @@ class Module:
         """
         self._model.export_model_for_inferencing(str(inference_model_uri), graph_output_names)
 
-    def input_names(self) -> List[str]:
+    def input_names(self) -> list[str]:
         """Returns the input names of the training or eval model."""
         return self._model.input_names(self.training)
 
-    def output_names(self) -> List[str]:
+    def output_names(self) -> list[str]:
         """Returns the output names of the training or eval model."""
         return self._model.output_names(self.training)

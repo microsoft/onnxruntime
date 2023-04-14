@@ -2,8 +2,9 @@
 # Licensed under the MIT License.
 
 from __future__ import annotations
-from typing import Union
+
 import os
+
 from onnxruntime.capi import _pybind_state as C
 
 
@@ -41,7 +42,7 @@ class CheckpointState:
         """
         C.save_checkpoint(state._state, str(checkpoint_uri))
 
-    def __getitem__(self, name: str) -> Union[int, float, str]:
+    def __getitem__(self, name: str) -> int | float | str:
         """Gets the property associated with the given name
 
         Args:
@@ -52,7 +53,7 @@ class CheckpointState:
         """
         return self._state.get_property(name)
 
-    def __setitem__(self, name: str, value: Union[int, float, str]) -> None:
+    def __setitem__(self, name: str, value: int | float | str) -> None:
         """Sets the property value for the given name
 
         Args:
