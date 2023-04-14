@@ -344,7 +344,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_TENSORRT
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
     // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
-    if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
+    auto tensorrt_unavailable_env = Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE");
+    if (tensorrt_unavailable_env.empty()) {
       std::string calibration_table, cache_path, lib_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
@@ -517,7 +518,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
     }
-    LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+
+    std::ostringstream ostr;
+    ostr << "Failed to create " << type;
+    if (!tensorrt_unavailable_env.empty()) {
+      ostr << " with error (" << tensorrt_unavailable_env << ")";
+    }
+    ostr << ". Please reference https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements "
+    "to ensure all dependencies are met.";
+    LOGS_DEFAULT(WARNING) << ostr.str();
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
@@ -527,7 +536,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_CUDA
     // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda. This is set by _ld_preload for the manylinux case
     // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
-    if (Env::Default().GetEnvironmentVar("ORT_CUDA_UNAVAILABLE").empty()) {
+    auto cuda_unavailable_env = Env::Default().GetEnvironmentVar("ORT_CUDA_UNAVAILABLE");
+    if (cuda_unavailable_env.empty()) {
       if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
         const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
                                                                             provider_options_map);
@@ -543,7 +553,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
     }
-    LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+    std::ostringstream ostr;
+    ostr << "Failed to create " << type;
+    if (!cuda_unavailable_env.empty()) {
+      ostr << " with error (" << cuda_unavailable_env << ")";
+    }
+    ostr << ". Please reference https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements "
+    "to ensure all dependencies are met.";
+    LOGS_DEFAULT(WARNING) << ostr.str();
 #endif
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
