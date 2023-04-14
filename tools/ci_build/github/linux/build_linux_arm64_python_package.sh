@@ -64,3 +64,5 @@ do
 
   cp /build/$BUILD_CONFIG/dist/*.whl /build/dist
 done
+
+which ccache && ccache -sv && ccache -z

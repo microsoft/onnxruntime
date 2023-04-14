@@ -2271,6 +2271,9 @@ def main():
 
     args = parse_arguments()
 
+    if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
+        args.use_cache = True
+
     if not is_windows():
         if not args.allow_running_as_root:
             is_root_user = os.geteuid() == 0
