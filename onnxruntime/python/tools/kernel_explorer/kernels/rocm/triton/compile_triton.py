@@ -36,6 +36,7 @@ def compile(function_table, lib_dir):
     metadata = []
     for func_desc in function_table:
         name = func_desc["name"]
+        group = func_desc["group"]
         sig = func_desc["sig"]
         func = func_desc["func"]
         kwargs = func_desc["kwargs"]
@@ -46,6 +47,7 @@ def compile(function_table, lib_dir):
 
         compile_res = {}
         compile_res["name"] = name
+        compile_res["group"] = group
         compile_res["func_name"] = ret.metadata["name"]
         compile_res["num_warps"] = ret.metadata["num_warps"]
         compile_res["shared"] = ret.metadata["shared"]

@@ -14,6 +14,7 @@ struct TritonKernelMetaData {
   int shared_mem_size;
   hipFunction_t func;
   std::unordered_map<std::string, int> constants;
+  std::string name;
 };
 
 namespace {

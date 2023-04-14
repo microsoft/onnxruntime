@@ -37,6 +37,7 @@ dtypes = ["fp32", "fp16"]
 blocks = [1024, 2048, 4096, 8192, 16384]
 name_pattern = "softmax_{}_{}"
 sig_pattern = "*{},*{},i32,i32,i32"
+group_pattern = "softmax_{}"
 
 
 def softmax_funcion_table():
@@ -53,10 +54,11 @@ def softmax_funcion_table():
     for dtype in dtypes:
         for b in blocks:
             name = name_pattern.format(dtype, b)
+            group = group_pattern.format(dtype)
             sig = sig_pattern.format(dtype, dtype)
             num_warps = get_num_warps(b)
             kwargs = {"num_warps": num_warps, "constants": {"BLOCK_SIZE": b}}
-            func_desc = {"name": name, "func": softmax_kernel, "sig": sig, "kwargs": kwargs}
+            func_desc = {"name": name, "group": group, "func": softmax_kernel, "sig": sig, "kwargs": kwargs}
             func_table.append(func_desc)
 
     return func_table
