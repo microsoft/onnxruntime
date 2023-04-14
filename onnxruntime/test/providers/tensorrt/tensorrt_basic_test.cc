@@ -156,7 +156,12 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
       0,
       0,
       0,
-      0};
+      0,
+      0,
+      0,
+      2,
+      -1,
+      nullptr};
 
     params.trt_engine_cache_enable = 1;
     std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
@@ -230,7 +235,12 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
       0,
       0,
       0,
-      0};
+      0,
+      0,
+      0,
+      2,
+      -1,
+      nullptr};
 
     params.trt_engine_cache_enable = 1;
     std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
@@ -397,7 +407,12 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       0,
       0,
       0,
-      0};
+      0,
+      0,
+      0,
+      2,
+      -1,
+      nullptr};
 
   if (cache_type.compare("engine") == 0) {
 
