@@ -1731,7 +1731,7 @@ def create_whisper_decoder_with_past_multihead_cross_attention(
             domain="com.microsoft",
             epsilon=epsilon,
         )
-    ])
+    ]
 
     if fused:
         nodes.extend(
