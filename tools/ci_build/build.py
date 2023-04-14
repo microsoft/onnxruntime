@@ -535,9 +535,16 @@ def parse_arguments():
     )
     parser.add_argument(
         "--cmake_generator",
-        choices=["Visual Studio 15 2017", "Visual Studio 16 2019", "Visual Studio 17 2022", "Ninja"],
-        default="Visual Studio 16 2019" if is_windows() else None,
-        help="Specify the generator that CMake invokes. " "This is only supported on Windows",
+        choices=[
+            "Visual Studio 16 2019",
+            "Visual Studio 17 2022",
+            "Ninja",
+            "MinGW Makefiles",
+            "NMake Makefiles",
+            "Xcode",
+        ],
+        default=None,
+        help="Specify the generator that CMake invokes. ",
     )
     parser.add_argument(
         "--enable_multi_device_test",
@@ -642,15 +649,6 @@ def parse_arguments():
 
     parser.add_argument("--ms_experimental", action="store_true", help="Build microsoft experimental operators.")
 
-    # eager mode
-    parser.add_argument("--build_eager_mode", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
-    parser.add_argument(
-        "--eager_customop_module", default=None, help="Module containing custom op mappings for eager mode."
-    )
-    parser.add_argument(
-        "--eager_customop_header", default=None, help="Header containing custom op definitions for eager mode."
-    )
-
     parser.add_argument(
         "--enable_external_custom_op_schemas",
         action="store_true",
@@ -660,12 +658,6 @@ def parse_arguments():
 
     parser.add_argument(
         "--external_graph_transformer_path", type=str, help="path to the external graph transformer dir."
-    )
-
-    parser.add_argument(
-        "--test_external_transformer_example",
-        action="store_true",
-        help="run the example external transformer test, mainly used in CI pipeline.",
     )
 
     parser.add_argument(
@@ -707,6 +699,9 @@ def parse_arguments():
     if not args.disable_wasm_exception_catching or args.enable_wasm_api_exception_catching:
         # doesn't make sense to catch if no one throws
         args.enable_wasm_exception_throwing_override = True
+
+    if args.cmake_generator is None and is_windows():
+        args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 16 2019"
 
     return args
 
@@ -983,7 +978,6 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
-        "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_LAZY_TENSOR=" + ("ON" if args.enable_lazy_tensor else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS="
         + ("ON" if args.enable_external_custom_op_schemas else "OFF"),
@@ -1316,7 +1310,7 @@ def generate_build_tree(
     else:
         add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
 
-    if args.build_eager_mode or args.enable_lazy_tensor:
+    if args.enable_lazy_tensor:
         import torch
 
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
@@ -1735,13 +1729,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         dll_path_list = []
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
-        # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
-        # This works for Python 3.7 and below, and doesn't work for Python 3.8+
-        # User will need to import torch before onnxruntime and it will work for all versions
-        if (args.build_eager_mode or args.enable_lazy_tensor) and is_windows():
-            import torch
-
-            dll_path_list.append(os.path.join(os.path.dirname(torch.__file__), "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:
@@ -1754,8 +1741,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 executables.append("onnxruntime_global_thread_pools_test")
                 executables.append("onnxruntime_api_tests_without_env")
                 executables.append("onnxruntime_customopregistration_test")
-                for exe in executables:
-                    run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
+            for exe in executables:
+                run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.test_all_timeout]
@@ -1803,28 +1790,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
-
-            if args.build_eager_mode:
-                # run eager mode test
-                args_list = [sys.executable, os.path.join(cwd, "eager_test")]
-                run_subprocess(args_list, cwd=cwd, dll_path=dll_path, python_path=cwd)
-                if args.test_external_transformer_example:
-                    run_subprocess(
-                        [
-                            sys.executable,
-                            os.path.join(
-                                source_dir,
-                                "orttraining",
-                                "orttraining",
-                                "test",
-                                "external_transformer",
-                                "test",
-                                "external_transformers_test.py",
-                            ),
-                        ],
-                        cwd=cwd,
-                        dll_path=dll_path,
-                    )
 
             try:
                 import onnx  # noqa: F401
@@ -1940,7 +1905,6 @@ def build_python_wheel(
     nightly_build=False,
     default_training_package_device=False,
     use_ninja=False,
-    build_eager_mode=False,
     enable_training_apis=False,
     enable_rocm_profiling=False,
 ):
@@ -1962,8 +1926,6 @@ def build_python_wheel(
             args.append("--enable_training")
         if enable_training_apis:
             args.append("--enable_training_apis")
-        if build_eager_mode:
-            args.append("--disable_auditwheel_repair")
         if enable_rocm_profiling:
             args.append("--enable_rocm_profiling")
 
@@ -2224,7 +2186,7 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
         return None
     run_subprocess(
         [
-            "nuget.exe",
+            "nuget.exe" if is_windows() else "nuget",
             "restore",
             os.path.join(source_dir, "packages.config"),
             "-ConfigFile",
@@ -2308,6 +2270,9 @@ def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
+
+    if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
+        args.use_cache = True
 
     if not is_windows():
         if not args.allow_running_as_root:
@@ -2473,11 +2438,9 @@ def main():
                 raise BuildError("The value to --path_to_protoc_exe is invalid.")
         if not args.skip_submodule_sync:
             update_submodules(source_dir)
-        if is_windows():
+        if is_windows() and not args.build_wasm:
             cpu_arch = platform.architecture()[0]
-            if args.build_wasm:
-                cmake_extra_args = ["-G", "Ninja"]
-            elif args.cmake_generator == "Ninja":
+            if args.cmake_generator == "Ninja":
                 if cpu_arch == "32bit" or args.arm or args.arm64 or args.arm64ec:
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
@@ -2505,16 +2468,25 @@ def main():
                         "ARM(64) builds. Will skip test running after build."
                     )
                     args.test = False
-            elif cpu_arch == "32bit" or args.x86:
-                cmake_extra_args = ["-A", "Win32", "-T", "host=x64", "-G", args.cmake_generator]
             else:
-                if args.msvc_toolset:
-                    toolset = "host=x64,version=" + args.msvc_toolset
+                target_arch = platform.machine()
+                if target_arch == "AMD64":
+                    if cpu_arch == "32bit" or args.x86:
+                        target_arch = "Win32"
+                    else:
+                        target_arch = "x64"
+                    host_arch = "x64"
+                elif target_arch == "ARM64":
+                    host_arch = "ARM64"
                 else:
-                    toolset = "host=x64"
+                    raise BuildError("unknown python arch")
+                if args.msvc_toolset:
+                    toolset = "host=" + host_arch + ",version=" + args.msvc_toolset
+                else:
+                    toolset = "host=" + host_arch
                 if args.cuda_version:
                     toolset += ",cuda=" + args.cuda_version
-                cmake_extra_args = ["-A", "x64", "-T", toolset, "-G", args.cmake_generator]
+                cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
         elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
@@ -2563,71 +2535,6 @@ def main():
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
 
-        if args.build_eager_mode:
-            eager_root_dir = os.path.join(source_dir, "orttraining", "orttraining", "eager")
-            if args.eager_customop_module and not args.eager_customop_header:
-                raise Exception("eager_customop_header must be provided when eager_customop_module is")
-            elif args.eager_customop_header and not args.eager_customop_module:
-                raise Exception("eager_customop_module must be provided when eager_customop_header is")
-
-            def gen_ops(gen_cpp_name: str, header_file: str, ops_module: str, custom_ops: bool):
-                gen_cpp_scratch_name = gen_cpp_name + ".working"
-                print(
-                    f"Generating ORT ATen overrides (output_file: {gen_cpp_name}, header_file: {header_file},"
-                    f"ops_module: {ops_module}), custom_ops: {custom_ops}"
-                )
-
-                cmd = [
-                    sys.executable,
-                    os.path.join(os.path.join(eager_root_dir, "opgen", "opgen.py")),
-                    "--output_file",
-                    gen_cpp_scratch_name,
-                    "--ops_module",
-                    ops_module,
-                    "--header_file",
-                    header_file,
-                ]
-
-                if custom_ops:
-                    cmd += ["--custom_ops"]
-
-                subprocess.check_call(cmd)
-
-                import filecmp
-
-                if not os.path.isfile(gen_cpp_name) or not filecmp.cmp(
-                    gen_cpp_name, gen_cpp_scratch_name, shallow=False
-                ):
-                    os.rename(gen_cpp_scratch_name, gen_cpp_name)
-                else:
-                    os.remove(gen_cpp_scratch_name)
-
-            def gen_ort_ops():
-                # generate native aten ops
-                import torch
-
-                regdecs_path = os.path.join(os.path.dirname(torch.__file__), "include/ATen/RegistrationDeclarations.h")
-
-                ops_module = os.path.join(eager_root_dir, "opgen/opgen/atenops.py")
-                gen_ops(os.path.join(eager_root_dir, "ort_aten.g.cpp"), regdecs_path, ops_module, False)
-
-                # generate custom ops
-                if not args.eager_customop_header:
-                    args.eager_customop_header = os.path.realpath(
-                        os.path.join(eager_root_dir, "opgen", "CustomOpDeclarations.h")
-                    )
-
-                if not args.eager_customop_module:
-                    args.eager_customop_module = os.path.join(eager_root_dir, "opgen/opgen/custom_ops.py")
-
-                gen_ops(
-                    os.path.join(eager_root_dir, "ort_customops.g.cpp"),
-                    args.eager_customop_header,
-                    args.eager_customop_module,
-                    True,
-                )
-
-            gen_ort_ops()
         if args.enable_external_custom_op_schemas and not is_linux():
             raise BuildError("Registering external custom op schemas is only supported on Linux.")
 
@@ -2718,7 +2625,6 @@ def main():
                 nightly_build=nightly_build,
                 default_training_package_device=default_training_package_device,
                 use_ninja=(args.cmake_generator == "Ninja"),
-                build_eager_mode=args.build_eager_mode,
                 enable_training_apis=args.enable_training_apis,
                 enable_rocm_profiling=args.enable_rocm_profiling,
             )

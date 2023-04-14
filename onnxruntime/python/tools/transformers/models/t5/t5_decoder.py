@@ -47,6 +47,9 @@ class T5DecoderInit(torch.nn.Module):
         self.decoder_start_token_id = (
             decoder_start_token_id if decoder_start_token_id is not None else self.config.decoder_start_token_id
         )
+        self.tie_word_embeddings = (
+            self.config.tie_word_embeddings if hasattr(self.config, "tie_word_embeddings") else True
+        )
 
     def forward(
         self,
@@ -76,7 +79,8 @@ class T5DecoderInit(torch.nn.Module):
         sequence_output = decoder_outputs.last_hidden_state
         present_key_values = decoder_outputs.past_key_values
 
-        sequence_output = sequence_output * (self.config.d_model**-0.5)
+        if self.tie_word_embeddings:
+            sequence_output = sequence_output * (self.config.d_model**-0.5)
 
         lm_logits = self.lm_head(sequence_output)
         past_self, past_cross = PastKeyValuesHelper.group_by_self_or_cross(present_key_values)
@@ -91,6 +95,9 @@ class T5Decoder(torch.nn.Module):
         self.decoder = decoder
         self.lm_head = lm_head
         self.config = config
+        self.tie_word_embeddings = (
+            self.config.tie_word_embeddings if hasattr(self.config, "tie_word_embeddings") else True
+        )
 
     def forward(self, decoder_input_ids, encoder_attention_mask, *past):
         past_key_values = PastKeyValuesHelper.group_by_layer(past, self.config.num_layers)
@@ -109,7 +116,8 @@ class T5Decoder(torch.nn.Module):
         sequence_output = decoder_outputs.last_hidden_state
         present_key_values = decoder_outputs.past_key_values
 
-        sequence_output = sequence_output * (self.config.d_model**-0.5)
+        if self.tie_word_embeddings:
+            sequence_output = sequence_output * (self.config.d_model**-0.5)
 
         lm_logits = self.lm_head(sequence_output)
         present_self, _ = PastKeyValuesHelper.group_by_self_or_cross(present_key_values)

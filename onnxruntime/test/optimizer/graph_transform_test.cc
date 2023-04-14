@@ -4906,7 +4906,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTestCudaEp) {
 }
 
 static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path, int add_count, int ln_count,
-                                    int skip_ln_count, logging::Logger* logger) {
+                                    int skip_ln_count, int cast_count, logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -4925,43 +4925,57 @@ static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_pat
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == ln_count);
   ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == skip_ln_count);
+  ASSERT_TRUE(op_to_count["Cast"] == cast_count);
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1.onnx", 0, 0, 1, logger_.get());
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx", 0, 0, 1, logger_.get());
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3.onnx", 0, 0, 1, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1.onnx", 0, 0, 1, 0, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx", 0, 0, 1, 0, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3.onnx", 0, 0, 1, 0, logger_.get());
 
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_partial.onnx", 1, 0, 1, logger_.get());
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_partial.onnx", 1, 0, 1, logger_.get());
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_no_fusion.onnx", 1, 1, 0, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_partial.onnx", 1, 0, 1, 0, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_partial.onnx", 1, 0, 1, 0, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_no_fusion.onnx", 1, 1, 0, 0, logger_.get());
 
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_graph_output.onnx", 1, 0, 1, logger_.get());
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_graph_output.onnx", 1, 0, 1, logger_.get());
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_graph_output.onnx", 1, 1, 0, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_graph_output.onnx", 1, 0, 1, 0, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_graph_output.onnx", 1, 0, 1, 0, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_graph_output.onnx", 1, 1, 0, 0, logger_.get());
 }
 
-TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/skip_layer_norm_input_output_check.onnx";
+TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_with_cast.onnx", 0, 0, 1, 3, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_with_cast.onnx", 0, 0, 1, 3, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_with_cast.onnx", 0, 0, 1, 2, logger_.get());
+
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_partial_with_cast.onnx", 1, 0, 1, 2, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_partial_with_cast.onnx", 1, 0, 1, 2, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_no_fusion_with_cast.onnx", 1, 1, 0, 0, logger_.get());
+
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_graph_output_with_cast.onnx", 1, 0, 1, 2, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_graph_output_with_cast.onnx", 1, 0, 1, 2, logger_.get());
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_graph_output_with_cast.onnx", 1, 1, 0, 0, logger_.get());
+}
+
+static void TestSkipLayerNormFusionInputOutputCheck(const std::basic_string<ORTCHAR_T>& model_uri, bool with_cast, logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger));
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SkipLayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
 
   for (Node& node : graph.Nodes()) {
     if (node.OpType() == "SkipLayerNormalization") {
       // check inputs
       std::vector<NodeArg*>& input_defs = node.MutableInputDefs();
       EXPECT_EQ(input_defs.size(), 5u) << "SkipLayerNormalization number of inputs does not equal to 5. Got:" << node.InputDefs().size();
-      EXPECT_EQ(input_defs[0]->Name(), "input.1");
-      EXPECT_EQ(input_defs[1]->Name(), "6");
+      EXPECT_EQ(input_defs[0]->Name(), ((with_cast) ? "input.1_Float" : "input.1"));
+      EXPECT_EQ(input_defs[1]->Name(), ((with_cast) ? "6_Float" : "6"));
       EXPECT_EQ(input_defs[2]->Name(), "1");
       EXPECT_EQ(input_defs[3]->Name(), "2");
-      EXPECT_EQ(input_defs[4]->Name(), "4");
+      EXPECT_EQ(input_defs[4]->Name(), ((with_cast) ? "4_Float" : "4"));
 
       // check outputs
       std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
@@ -4971,26 +4985,38 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
       EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
 #endif
       EXPECT_EQ(output_defs[0]->Name(), "19");
+    } else if (node.OpType() == "Cast") {
+      EXPECT_TRUE(with_cast) << "Unexpected node: " << node.OpType() << "," << node.Name();
     } else {
       EXPECT_EQ(node.OpType(), "MatMul") << "Unexpected node: " << node.OpType() << "," << node.Name();
     }
   }
 }
 
-TEST_F(GraphTransformationTests, SkipLayerNormFusion_NoBeta) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/skip_layer_norm_no_beta.onnx";
+TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
+  TestSkipLayerNormFusionInputOutputCheck(MODEL_FOLDER "fusion/skip_layer_norm_input_output_check.onnx", false, logger_.get());
+  TestSkipLayerNormFusionInputOutputCheck(MODEL_FOLDER "fusion/skip_layer_norm_input_output_with_cast_check.onnx", true, logger_.get());
+}
+
+static void TestSkipLayerNormFusionNoBeta(const std::basic_string<ORTCHAR_T>& model_uri, bool with_cast, logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger));
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SkipLayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 1);
+  ASSERT_TRUE(op_to_count["Cast"] == ((with_cast) ? 2 : 0));
+}
+
+TEST_F(GraphTransformationTests, SkipLayerNormFusion_NoBeta) {
+  TestSkipLayerNormFusionNoBeta(MODEL_FOLDER "fusion/skip_layer_norm_no_beta.onnx", false, logger_.get());
+  TestSkipLayerNormFusionNoBeta(MODEL_FOLDER "fusion/skip_layer_norm_no_beta_with_cast.onnx", true, logger_.get());
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
@@ -6176,6 +6202,130 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitialize
   }
 }
 
+template <typename T>
+void BuildConstantSharingDivMulGraphFor2DInitializer(ModelTestBuilder& builder) {
+  auto* input0_arg = builder.MakeInput<T>({{1, 1, 256, 8}});
+  auto* input1_arg = builder.MakeInput<T>({{1, 1, 256, 8}});
+  auto* div_out = builder.MakeIntermediate();
+  builder.AddNode("Div", {input0_arg, input1_arg}, {div_out});
+
+  std::vector<float> values{0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  std::vector<MLFloat16> values_float16;
+  values_float16.reserve(values.size());
+  if (std::is_same<T, MLFloat16>::value) {
+    for (auto v : values) {
+      values_float16.push_back(MLFloat16(math::floatToHalf(v)));
+    }
+  }
+
+  for (size_t i = 0; i < 12; ++i) {
+    NodeArg* mul_initializer = nullptr;
+    if (std::is_same<T, MLFloat16>::value) {
+      mul_initializer = builder.MakeInitializer<MLFloat16>({1, 8}, values_float16);
+    } else if (std::is_same<T, float>::value) {
+      mul_initializer = builder.MakeInitializer<float>({1, 8}, values);
+    } else {
+      ASSERT_TRUE(false);
+    }
+    auto* mul_out = builder.MakeOutput();
+    builder.AddNode("Mul", {div_out, mul_initializer}, {mul_out});
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [1, 1, 256, 8] (float|MLFloat16)
+                 |
+                Div
+            /    |       \
+           /     |        \
+          / ...  |  / ...  \
+        Mul      Mul      Mul
+         |       |         |
+ graph out [1, 1, 256, 8] (float|MLFloat16)
+
+Be noted:
+ the Mul's input initializer is a 2D float/MLFloat16.
+*/
+TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatOrHalfTypedInitializer) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 2U);
+    TEST_RETURN_IF_NOT(op_count_pre["Div"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Mul"] == 12);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 12U);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    TEST_RETURN_IF_NOT(initialized_tensor_set.size() == 1U);
+    const NodeArg* mul_initializer = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Mul") == 0) {
+        if (!mul_initializer) {
+          mul_initializer = node.InputDefs()[1];
+          TEST_RETURN_IF(mul_initializer == nullptr);
+          TEST_RETURN_IF_NOT(mul_initializer->Shape()->dim_size() == 2);
+        } else {
+          TEST_RETURN_IF_NOT(mul_initializer == node.InputDefs()[1]);
+        }
+      }
+    }
+    TEST_RETURN_IF(mul_initializer == nullptr);
+    for (const auto& entry : initialized_tensor_set) {
+      if (entry.first.compare(mul_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+        int32_t data_type = tensor_proto->data_type();
+        onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
+        TEST_RETURN_IF_NOT(float_const.size() == 8);
+        for (int i = 0; i < 8; ++i) {
+          float float_const_value;
+          if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+            float_const_value = math::halfToFloat((float_const.data<MLFloat16>() + i)->val);
+          } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+            float_const_value = *(float_const.data<float>() + i);
+          } else {
+            return Status(common::ONNXRUNTIME, common::FAIL, "unexpected type");
+          }
+          TEST_RETURN_IF_NOT(float_const_value == i * 1.0f);
+        }
+      }
+    }
+
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.size() == 2U);
+    TEST_RETURN_IF_NOT(op_count["Div"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Mul"] == 12);
+    return Status::OK();
+  };
+
+  const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
+
+  // Float data type tests.
+  auto build_test_case_float = [&](ModelTestBuilder& builder) {
+    BuildConstantSharingDivMulGraphFor2DInitializer<float>(builder);
+  };
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+
+  // MLFloat16 data type tests.
+  auto build_test_case_mlfloat16 = [&](ModelTestBuilder& builder) {
+    BuildConstantSharingDivMulGraphFor2DInitializer<MLFloat16>(builder);
+  };
+
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_mlfloat16, opset_version, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+}
+
 /*
 Test graph include multiple equivalent subgraphs as below.
            graph input [1, 1, 256, 256] (float)
@@ -6280,6 +6430,158 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
       builder.AddNode("Add", {cast_out, add_initializer}, {add_out});
     }
   };
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [1, 1, 8, 8] (float)
+                 |
+                Div ______________________________
+            /    |    \_______     |              |
+           /     |  float  |  |    |  half        |  half
+          / ...  |  / ...  |  |    |  /   ...     |  /   ...
+        Mul      Mul      Sub Sub Add            Add
+         |       |         |  |        \          /
+ graph out [1, 1, 8, 8](float)   graph out [1, 1, 8, 8](MLFloat16)
+
+Be noted:
+ the Mul's input initializer is a 2D float tensor.
+ the Add's input initializer is a 2D MLFloat16 tensor.
+*/
+TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitializer) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 5U);
+    TEST_RETURN_IF_NOT(op_count_pre["Div"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Cast"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Mul"] == 3);
+    TEST_RETURN_IF_NOT(op_count_pre["Sub"] == 3);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 3);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 9U);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    TEST_RETURN_IF_NOT(initialized_tensor_set.size() == 3U);
+    const NodeArg* mul_initializer = nullptr;
+    const NodeArg* sub_initializer = nullptr;
+    const NodeArg* add_initializer = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Mul") == 0) {
+        if (!mul_initializer) {
+          mul_initializer = node.InputDefs()[1];
+          TEST_RETURN_IF(mul_initializer == nullptr);
+          TEST_RETURN_IF_NOT(mul_initializer->Shape()->dim_size() == 2);
+          TEST_RETURN_IF_NOT(mul_initializer->Shape()->dim(0).dim_value() == 1);
+          TEST_RETURN_IF_NOT(mul_initializer->Shape()->dim(1).dim_value() == 8);
+        } else {
+          TEST_RETURN_IF_NOT(mul_initializer == node.InputDefs()[1]);
+        }
+      } else if (node.OpType().compare("Sub") == 0) {
+        if (!sub_initializer) {
+          sub_initializer = node.InputDefs()[1];
+          TEST_RETURN_IF(sub_initializer == nullptr);
+          TEST_RETURN_IF_NOT(sub_initializer->Shape()->dim_size() == 2);
+          TEST_RETURN_IF_NOT(sub_initializer->Shape()->dim(0).dim_value() == 8);
+          TEST_RETURN_IF_NOT(sub_initializer->Shape()->dim(1).dim_value() == 1);
+        } else {
+          TEST_RETURN_IF_NOT(sub_initializer == node.InputDefs()[1]);
+        }
+      } else if (node.OpType().compare("Add") == 0) {
+        if (!add_initializer) {
+          add_initializer = node.InputDefs()[1];
+          TEST_RETURN_IF(add_initializer == nullptr);
+          TEST_RETURN_IF_NOT(add_initializer->Shape()->dim_size() == 2);
+          TEST_RETURN_IF_NOT(add_initializer->Shape()->dim(0).dim_value() == 1);
+          TEST_RETURN_IF_NOT(add_initializer->Shape()->dim(1).dim_value() == 8);
+        } else {
+          TEST_RETURN_IF_NOT(add_initializer == node.InputDefs()[1]);
+        }
+      }
+    }
+    TEST_RETURN_IF(mul_initializer == nullptr);
+    TEST_RETURN_IF(sub_initializer == nullptr);
+    TEST_RETURN_IF(add_initializer == nullptr);
+    for (const auto& entry : initialized_tensor_set) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+      int32_t data_type = tensor_proto->data_type();
+      onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
+      TEST_RETURN_IF_NOT(float_const.size() == 8);
+      if (entry.first.compare(mul_initializer->Name()) == 0) {
+        TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        for (int i = 0; i < 8; ++i) {
+          float float_const_value = *(float_const.data<float>() + i);
+          TEST_RETURN_IF_NOT(float_const_value == i * 1.0f);
+        }
+      } else if (entry.first.compare(sub_initializer->Name()) == 0) {
+        TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        for (int i = 0; i < 8; ++i) {
+          float float_const_value = *(float_const.data<float>() + i);
+          TEST_RETURN_IF_NOT(float_const_value == i * 1.0f);
+        }
+      } else if (entry.first.compare(add_initializer->Name()) == 0) {
+        TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+        for (int i = 0; i < 8; ++i) {
+          float float_const_value = math::halfToFloat((float_const.data<MLFloat16>() + i)->val);
+          TEST_RETURN_IF_NOT(float_const_value == i * 1.0f);
+        }
+      }
+    }
+
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.size() == 5U);
+    TEST_RETURN_IF_NOT(op_count["Div"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Mul"] == 3);
+    TEST_RETURN_IF_NOT(op_count["Sub"] == 3);
+    TEST_RETURN_IF_NOT(op_count["Cast"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Add"] == 3);
+    return Status::OK();
+  };
+
+  const std::vector<int> opsets{12, 13, 14};
+
+  std::vector<float> values{0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  std::vector<MLFloat16> values_float16;
+  values_float16.reserve(values.size());
+  for (auto v : values) {
+    values_float16.push_back(MLFloat16(math::floatToHalf(v)));
+  }
+
+  auto build_test_case_float = [&values, &values_float16](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({{1, 1, 8, 8}});
+    auto* input1_arg = builder.MakeInput<float>({{1, 1, 8, 8}});
+    auto* div_out = builder.MakeIntermediate();
+    builder.AddNode("Div", {input0_arg, input1_arg}, {div_out});
+
+    for (size_t i = 0; i < 3; ++i) {
+      NodeArg* mul_initializer = builder.MakeInitializer<float>({1, 8}, values);
+      auto* mul_out = builder.MakeOutput();
+      builder.AddNode("Mul", {div_out, mul_initializer}, {mul_out});
+    }
+
+    for (size_t i = 0; i < 3; ++i) {
+      NodeArg* sub_initializer = builder.MakeInitializer<float>({8, 1}, values);
+      auto* sub_out = builder.MakeOutput();
+      builder.AddNode("Sub", {div_out, sub_initializer}, {sub_out});
+    }
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {div_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    for (size_t i = 0; i < 3; ++i) {
+      NodeArg* add_initializer = builder.MakeInitializer<MLFloat16>({1, 8}, values_float16);
+      auto* add_out = builder.MakeOutput();
+      builder.AddNode("Add", {cast_out, add_initializer}, {add_out});
+    }
+  };
+
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
