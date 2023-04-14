@@ -18,6 +18,7 @@ Licensed under the MIT License.
  * limitations under the License.
  */
 
+#include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/relative_attn_bias_impl.h"
 
@@ -149,13 +150,18 @@ template Status LaunchRelPosAttnBiasKernel<half>(cudaStream_t stream,
                                                  const bool is_bidirectional,
                                                  const int max_threads_per_block);
 
-template <typename T>
-__global__ void GatedRelativePositionBiasKernelSmallD(
-    T* output,         // (batch_size, num_heads, seq_len, seq_len)
-    const T* rel_pos,  // (1, num_heads, seq_len, seq_len)
-    const T* qw,       // (batch_size, num_heads, seq_len, D)
-    const T* bias,     // (D)
-    const T* eco_a,    // (1, num_heads, 1, 1)
+//#ifdef defined(__CUDA_ARCH__) || __CUDA_ARCH__ > 530
+inline __device__ half2 operator*(const float a, const half2 b) {
+  return __hmul2_rn(__float2half2_rn(a), b);
+}
+//#endif
+
+__global__ void GatedRelativePositionBiasKernelSmallDOpt(
+    half2* output,         // (batch_size, num_heads, seq_len, seq_len)
+    const half2* rel_pos,  // (1, num_heads, seq_len, seq_len)
+    const half* qw,       // (batch_size, num_heads, seq_len, D)
+    const half* bias,     // (D)
+    const half* eco_a,    // (1, num_heads, 1, 1)
     const int D,
     const int ldqw) {
   __shared__ float gate[1];
@@ -166,22 +172,22 @@ __global__ void GatedRelativePositionBiasKernelSmallD(
   const int n = blockIdx.y;
   const int b = blockIdx.z;
 
-  rel_pos += ((int64_t)n * seq_len + s) * seq_len;
-  output += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * seq_len;
+  rel_pos += (((int64_t)n * seq_len + s) * seq_len) / 2;
+  output += (((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * seq_len) / 2;
   qw += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * ldqw;
 
-  float val = 0.0f;
+  half val = (half)0.0f;
   if (threadIdx.x < D) {
-    val = (float)qw[threadIdx.x] + (bias ? (float)bias[threadIdx.x] : 0.0f);
+    val = qw[threadIdx.x] + (bias ? bias[threadIdx.x] : (half)0.0f);
   }
 
-  float u = (threadIdx.x < D / 2) ? val : 0.0f;
+  float u = (threadIdx.x < D / 2) ? (float)val : 0.0f;
 #pragma unroll
   for (int offset = 16; offset > 0; offset /= 2) {
     u += __shfl_down_sync(0xffffffff, u, offset);
   }
 
-  float r = (threadIdx.x >= D / 2) ? val : 0.0f;
+  float r = (threadIdx.x >= D / 2) ? (float)val : 0.0f;
 #pragma unroll
   for (int offset = 16; offset > 0; offset /= 2) {
     r += __shfl_down_sync(0xffffffff, r, offset);
@@ -194,8 +200,8 @@ __global__ void GatedRelativePositionBiasKernelSmallD(
   }
   __syncthreads();
 
-  for (int idx = threadIdx.x; idx < seq_len; idx += blockDim.x) {
-    output[idx] = (T)(gate[0]  * (float)rel_pos[idx]);
+  for (int idx = threadIdx.x; idx < seq_len / 2; idx += blockDim.x) {
+    output[idx] = (half2)(gate[0] * rel_pos[idx]);
   }
 }
 
@@ -228,13 +234,25 @@ Status LaunchGatedRelativePositionBiasKernel(
   tpb |= (tpb >> 16);
   tpb++;
 
-  dim3 block(tpb);
+  dim3 block(tpb / 2);
   dim3 grid(seq_len, num_heads, batch_size);
 
-  GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
-      output, rel_pos, qw, bias, eco_a, D, ldqw);
+  GatedRelativePositionBiasKernelSmallDOpt<<<grid, block, sizeof(float), stream>>>(
+    reinterpret_cast<half2*>(output),
+    reinterpret_cast<const half2*>(rel_pos),
+    reinterpret_cast<const half*>(qw),
+    reinterpret_cast<const half*>(bias),
+    reinterpret_cast<const half*>(eco_a), D, ldqw);
 
   return CUDA_CALL(cudaGetLastError());
+
+  // dim3 block(tpb);
+  // dim3 grid(seq_len, num_heads, batch_size);
+
+  // GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
+  //     output, rel_pos, qw, bias, eco_a, D, ldqw);
+
+  // return CUDA_CALL(cudaGetLastError());
 }
 
 template Status LaunchGatedRelativePositionBiasKernel(
