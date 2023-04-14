@@ -783,7 +783,7 @@ stages:
 
 - template: ../nodejs/templates/test_linux.yml
   parameters:
-    AgentPool : 'Linux-CPU'
+    AgentPool : 'aiinfra-Linux-CPU'
     StageSuffix : 'Linux_CPU_x64'
 
 - template: ../nodejs/templates/test_macos.yml
@@ -837,7 +837,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'Linux-CPU'
+    pool: 'aiinfra-Linux-CPU'
     variables:
     - name: runCodesignValidationInjection
       value: false
