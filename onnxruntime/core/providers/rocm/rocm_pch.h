@@ -19,6 +19,10 @@
 #include <rccl/rccl.h>
 #endif
 
+#ifdef USE_HIPBLASLT
+#include <hipblas/hipblas.h>
+#endif
+
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
