@@ -115,8 +115,9 @@ def test_group_norm(sd_sizes, dtype, swish):
 @pytest.mark.parametrize("swish", [True])
 def test_group_norm_ck(sd_sizes, dtype, swish):
     swish_suffix = "Swish" if swish else "Pass"
-    ck_f_name = "CKGroupNormNHWC"  + swish_suffix + "_" + dtype_to_suffix(dtype)
+    ck_f_name = "CKGroupNormNHWC" + swish_suffix + "_" + dtype_to_suffix(dtype)
     run_group_norm(*sd_sizes, dtype, swish, ck_f_name)
+
 
 @dataclass
 class GroupNormNHWCMetric(ke.BandwidthMetric):
@@ -176,7 +177,9 @@ def profile_group_norm_func(
         total_bytes = (input_x.size * 2 + gamma.size * 2) * dtype_to_bytes(dtype)
 
         ke.report(
-            GroupNormNHWCMetric(impl, dtype, duration_ms, total_bytes, batch_size, height, width, num_channels, num_groups)
+            GroupNormNHWCMetric(
+                impl, dtype, duration_ms, total_bytes, batch_size, height, width, num_channels, num_groups
+            )
         )
 
 
@@ -186,7 +189,7 @@ def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype
             profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, func)
         # ck function
         swish_suffix = "Swish" if swish else "Pass"
-        ck_f_name = "CKGroupNormNHWC"  + swish_suffix + "_" + dtype_to_suffix(dtype)
+        ck_f_name = "CKGroupNormNHWC" + swish_suffix + "_" + dtype_to_suffix(dtype)
         profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, ck_f_name)
 
 
@@ -234,5 +237,12 @@ if __name__ == "__main__":
     else:
         args = parser.parse_args()
         profile_with_args(
-            args.batch_size, args.height, args.width, args.num_channels, args.num_groups, args.dtype, args.swish, args.sort
+            args.batch_size,
+            args.height,
+            args.width,
+            args.num_channels,
+            args.num_groups,
+            args.dtype,
+            args.swish,
+            args.sort,
         )
