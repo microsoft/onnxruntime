@@ -229,23 +229,41 @@ void CastOpTestFloat8(Saturate saturate) {
 }
 
 TEST(CastOpTest, ToFloat8E4M3FN) {
-  CastOpTestFloat8<Float8E4M3FN>(Saturate::True);
-  CastOpTestFloat8<Float8E4M3FN>(Saturate::False);
+  int min_cuda_architecture = 11080;
+  bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
+
+  if (enable_cpu || enable_cuda) {
+    CastOpTestFloat8<Float8E4M3FN>(Saturate::True);
+    CastOpTestFloat8<Float8E4M3FN>(Saturate::False);
+  }
 }
 
 TEST(CastOpTest, ToFloat8E4M3FNUZ) {
-  CastOpTestFloat8<Float8E4M3FNUZ>(Saturate::True);
-  CastOpTestFloat8<Float8E4M3FNUZ>(Saturate::False);
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
+  if (enable_cpu) {
+    CastOpTestFloat8<Float8E4M3FNUZ>(Saturate::True);
+    CastOpTestFloat8<Float8E4M3FNUZ>(Saturate::False);
+  }
 }
 
 TEST(CastOpTest, ToFloat8E5M2) {
-  CastOpTestFloat8<Float8E5M2>(Saturate::True);
-  CastOpTestFloat8<Float8E5M2>(Saturate::False);
+  int min_cuda_architecture = 11080;
+  bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
+
+  if (enable_cpu || enable_cuda) {
+    CastOpTestFloat8<Float8E5M2>(Saturate::True);
+    CastOpTestFloat8<Float8E5M2>(Saturate::False);
+  }
 }
 
 TEST(CastOpTest, ToFloat8E5M2FNUZ) {
-  CastOpTestFloat8<Float8E5M2FNUZ>(Saturate::True);
-  CastOpTestFloat8<Float8E5M2FNUZ>(Saturate::False);
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
+  if (enable_cpu) {
+    CastOpTestFloat8<Float8E5M2FNUZ>(Saturate::True);
+    CastOpTestFloat8<Float8E5M2FNUZ>(Saturate::False);
+  }
 }
 
 }  // namespace test
