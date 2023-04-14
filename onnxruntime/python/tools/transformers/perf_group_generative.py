@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 from perf_single_generative import parse_perf_single_generative_model
+from transformers import GPT2Tokenizer
 
 import onnxruntime
 
@@ -215,7 +216,17 @@ def perform_group_perf(args):
             exporting_cmd.extend([f"-m={model_name}", f"--cache_dir={args.cache_dir}"])
             exporting_cmd.extend([f"--output={output_model_path}", f"-p={args.precision}"])
 
+            eos_token_id, pad_token_id, vocab_size = (-1, -1, -1)
+            tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=args.cache_dir)
+            tokenizer.pad_token = tokenizer.eos_token
+            eos_token_id, pad_token_id, vocab_size = (tokenizer.eos_token_id, tokenizer.pad_token_id, tokenizer.vocab_size)
+            print(f"      ----Using eos_token_id:{eos_token_id} pad_token_id:{pad_token_id} vocab_size:{vocab_size}")
+            exporting_cmd.extend(
+                [f"--eos_token_id={eos_token_id}", f"--pad_token_id={pad_token_id}", f"--vocab_size={vocab_size}"]
+            )
+
             report_message(freport, f"  ==> {exporting_cmd}")
+            report_message(freport, f"  ==> {' '.join(exporting_cmd)}")
 
             Path(output_model_dir).mkdir(parents=True, exist_ok=True)
             if os.path.exists(output_model_path):

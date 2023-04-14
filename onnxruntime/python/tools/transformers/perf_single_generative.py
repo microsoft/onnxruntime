@@ -27,6 +27,7 @@ def perf_gpt_model(args: argparse.Namespace):
         tokenizer = GPT2Tokenizer.from_pretrained(args.model_name, cache_dir=args.cache_dir)
         tokenizer.pad_token = tokenizer.eos_token
         eos_token_id, pad_token_id, vocab_size = (tokenizer.eos_token_id, tokenizer.pad_token_id, tokenizer.vocab_size)
+        print(f"      ----Using eos_token_id:{eos_token_id} pad_token_id:{pad_token_id} vocab_size:{vocab_size}")
 
     if args.eos_token_id >= 0:
         eos_token_id = args.eos_token_id
@@ -130,9 +131,8 @@ def parse_arguments(argv) -> argparse.Namespace:
     parser.add_argument(
         "-m",
         "--model_name",
-        required=False,
+        required=True,
         type=str,
-        default=None,
         help="Pytorch model checkpoint path, or pretrained model name in the list: "
         + ", ".join(PRETRAINED_GPT2_MODELS + PRETRAINED_T5_MODELS + PRETRAINED_MT5_MODELS),
     )
