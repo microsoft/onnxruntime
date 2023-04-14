@@ -371,7 +371,7 @@ class TestInferenceSession(unittest.TestCase):
         expect = expected[to].astype(TestInferenceSession.dtypes[float_name])
 
         onnx_model = self.model_cast_cast(to, float_name, saturate)
-        ortv = onnxruntime.OrtValue.ortvalue_from_numpy(x)  # , device_type="cuda")
+        ortv = onnxruntime.OrtValue.ortvalue_from_numpy(x, device_type="cuda")
         sess = onnxruntime.InferenceSession(
             onnx_model.SerializeToString(), so, providers=[provider], read_config_from_model=1
         )
@@ -527,6 +527,7 @@ class TestInferenceSession(unittest.TestCase):
         expect = expected[to].astype(TestInferenceSession.dtypes[float_name])
 
         onnx_model = self.model_qdq(to, float_name, saturate, True, True, True)
+        self.assertTrue("CastLike", str(onnx_model))
         try:
             sess = onnxruntime.InferenceSession(
                 onnx_model.SerializeToString(), so, providers=["CPUExecutionProvider"], read_config_from_model=1
@@ -578,6 +579,40 @@ class TestInferenceSession(unittest.TestCase):
             onnx_model.SerializeToString(), so, providers=[provider], read_config_from_model=1
         )
         y = sess.run(None, {"X": x})[0]
+        assert_allclose(expect, y)
+        self.assertEqual(expect.shape, y.shape)
+        self.assertEqual(expect.dtype, y.dtype)
+
+    @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running on CUDA.")
+    @parameterized.parameterized.expand(
+        [
+            ("FLOAT8E4M3FN", "FLOAT", 1, "CUDAExecutionProvider"),
+            ("FLOAT8E5M2", "FLOAT", 1, "CUDAExecutionProvider"),
+            ("FLOAT8E4M3FN", "FLOAT", 0, "CUDAExecutionProvider"),
+            ("FLOAT8E5M2", "FLOAT", 0, "CUDAExecutionProvider"),
+            ("FLOAT8E4M3FN", "FLOAT16", 1, "CUDAExecutionProvider"),
+            ("FLOAT8E5M2", "FLOAT16", 1, "CUDAExecutionProvider"),
+            ("FLOAT8E4M3FN", "FLOAT16", 0, "CUDAExecutionProvider"),
+            ("FLOAT8E5M2", "FLOAT16", 0, "CUDAExecutionProvider"),
+        ]
+    )
+    def test_model_qdq_cuda_ortvalue(self, name: str, float_name: str, saturate: int, provider: str):
+        so = onnxruntime.SessionOptions()
+        so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        so.add_session_config_entry("session.allow_released_opsets_only", "0")
+
+        to = getattr(TensorProto, name)
+        expected = TestInferenceSession.expected_saturate if saturate else TestInferenceSession.expected_no_saturate
+        x = TestInferenceSession.x.astype(TestInferenceSession.dtypes[float_name])
+        expect = expected[to].astype(TestInferenceSession.dtypes[float_name])
+
+        onnx_model = self.model_qdq(to, float_name, saturate, False, False)
+        ortv = onnxruntime.OrtValue.ortvalue_from_numpy(x, device_type="cuda")
+        sess = onnxruntime.InferenceSession(
+            onnx_model.SerializeToString(), so, providers=[provider], read_config_from_model=1
+        )
+        y = sess.run_with_ort_values(["Y"], {"X": ortv})[0].numpy()
         assert_allclose(expect, y)
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)
