@@ -3,6 +3,8 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using static Microsoft.ML.OnnxRuntime.NativeMethods;
 
 namespace Microsoft.ML.OnnxRuntime
@@ -1824,4 +1826,105 @@ namespace Microsoft.ML.OnnxRuntime
 
 #endregion
     } //class NativeMethods
+
+    internal static class EmptyArray<T>
+    {
+        public static readonly T[] Value = new T[0];
+    }
+
+    internal unsafe struct MarshaledString : IDisposable
+    {
+        // Ported from dotnet/clangsharp tag v15.0.2
+        // Original source is Copyright © .NET Foundation and Contributors. All Rights Reserved. Licensed under the MIT License (MIT).
+
+        public MarshaledString(string input)
+        {
+            int length;
+            IntPtr value;
+
+            if (input is null)
+            {
+                length = 0;
+                value = IntPtr.Zero;
+            }
+            else
+            {
+                var valueBytes = (input.Length != 0) ? Encoding.UTF8.GetBytes(input) : EmptyArray<byte>.Value;
+                length = valueBytes.Length;
+                value = Marshal.AllocHGlobal(length + 1);
+
+                Span<byte> destination = new Span<byte>(value.ToPointer(), length + 1);
+                valueBytes.AsSpan(0, length).CopyTo(destination);
+                destination[length] = 0;
+            }
+
+            Length = length;
+            Value = value;
+        }
+
+        public int Length { get; private set; }
+
+        public IntPtr Value { get; private set; }
+
+        public void Dispose()
+        {
+            if (Value != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(Value);
+                Value = IntPtr.Zero;
+                Length = 0;
+            }
+        }
+    }
+
+    internal unsafe ref struct MarshaledStringArray
+    {
+        // Ported from dotnet/clangsharp tag v15.0.2
+        // Original source is Copyright © .NET Foundation and Contributors. All Rights Reserved. Licensed under the MIT License (MIT).
+
+        private MarshaledString[] _values;
+
+        public MarshaledStringArray(Tensor<string> inputs)
+        {
+            if (inputs.Length == 0)
+            {
+                _values = null;
+            }
+            else
+            {
+                _values = new MarshaledString[inputs.Length];
+
+                for (var i = 0; i < inputs.Length; i++)
+                {
+                    _values[i] = new MarshaledString(inputs.GetValue(i));
+                }
+            }
+        }
+
+        public ReadOnlySpan<MarshaledString> Values => _values;
+
+        public void Dispose()
+        {
+            if (_values != null)
+            {
+                for (var i = 0; i < _values.Length; i++)
+                {
+                    _values[i].Dispose();
+                }
+
+                _values = null;
+            }
+        }
+
+        public void Fill(IntPtr[] pDestination)
+        {
+            if (_values != null)
+            {
+                for (var i = 0; i < _values.Length; i++)
+                {
+                    pDestination[i] = Values[i].Value;
+                }
+            }
+        }
+    }
 } //namespace
