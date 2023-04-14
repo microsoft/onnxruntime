@@ -330,13 +330,12 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             // allocate the native tensor
-            IntPtr valueHandle = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorAsOrtValue(
                                 OrtAllocator.DefaultInstance.Pointer,
                                 shape,
                                 (UIntPtr)(shape.Length),
                                 TensorElementType.String,
-                                out valueHandle
+                                out IntPtr valueHandle
                                 ));
 
             var ortValue = new OrtValue(valueHandle);
