@@ -352,11 +352,11 @@ namespace Microsoft.ML.OnnxRuntime
                     {
                         var utf8str = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(tensor.GetValue(i));
                         var pinnedUtf8 = new Memory<byte>(utf8str).Pin();
+                        pinnedHandles.Add(pinnedUtf8);
                         unsafe
                         {
                             nativeStrings[i] = (IntPtr)pinnedUtf8.Pointer;
                         }
-                        pinnedHandles.Add(pinnedUtf8);
                     }
 
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(ortValue.Handle, nativeStrings, (UIntPtr)len));

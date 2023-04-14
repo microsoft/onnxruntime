@@ -727,11 +727,11 @@ namespace Microsoft.ML.OnnxRuntime
                 var utf8Name = meta.ZeroTerminatedUtf8Name;
                 Debug.Assert(utf8Name != null);
                 var pinnedHandle = new Memory<byte>(utf8Name).Pin();
+                cleanupList.Add(pinnedHandle);
                 unsafe
                 {
                     result[i] = (IntPtr)pinnedHandle.Pointer;
                 }
-                cleanupList.Add(pinnedHandle);
             }
             return result;
         }

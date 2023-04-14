@@ -153,9 +153,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="memInfo">instance of memory info</param>
         public void BindOutputToDevice(string name, OrtMemoryInfo memInfo)
         {
-            var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
-            using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutputToDevice(handle, pinnedName.Pointer, memInfo.Pointer));
+            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutputToDevice(handle, utf8, memInfo.Pointer));
         }
 
         /// <summary>
@@ -212,17 +211,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="isInput"></param>
         private void BindInputOrOutput(string name, IntPtr ortValue, bool isInput)
         {
-            var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
-            using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
+            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name);
+            if (isInput)
             {
-                if (isInput)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtBindInput(handle, pinnedName.Pointer, ortValue));
-                }
-                else
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutput(handle, pinnedName.Pointer, ortValue));
-                }
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtBindInput(handle, utf8, ortValue));
+            }
+            else
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutput(handle, utf8, ortValue));
             }
         }
 

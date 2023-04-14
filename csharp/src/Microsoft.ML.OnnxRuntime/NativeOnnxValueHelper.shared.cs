@@ -10,41 +10,6 @@ using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    internal class PinnedGCHandle : IDisposable
-    {
-        private GCHandle _handle;
-
-        public PinnedGCHandle(GCHandle handle)
-        {
-            _handle = handle;
-        }
-
-        public IntPtr Pointer
-        {
-            get
-            {
-                return _handle.AddrOfPinnedObject();
-            }
-        }
-
-        #region Disposable Support
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                _handle.Free();
-            }
-        }
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-        // No need for the finalizer
-        // If this is not disposed timely GC can't help us
-        #endregion
-    }
-
     /// <summary>
     /// This helper class contains methods to create native OrtValue from a managed value object
     /// </summary>
@@ -121,14 +86,18 @@ namespace Microsoft.ML.OnnxRuntime
         internal static IntPtr[] ConvertNamesToUtf8<T>(IReadOnlyCollection<T> names, NameExtractor<T> extractor,
             DisposableList<IDisposable> cleanupList)
         {
+            cleanupList.Capacity += names.Count;
             var result = new IntPtr[names.Count];
             for (int i = 0; i < names.Count; ++i)
             {
                 var name = extractor(names.ElementAt(i));
                 var utf8Name = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name);
-                var pinnedHandle = new PinnedGCHandle(GCHandle.Alloc(utf8Name, GCHandleType.Pinned));
-                result[i] = pinnedHandle.Pointer;
+                var pinnedHandle = new Memory<byte>(utf8Name).Pin();
                 cleanupList.Add(pinnedHandle);
+                unsafe
+                {
+                    result[i] = (IntPtr)pinnedHandle.Pointer;
+                }
             }
             return result;
         }
