@@ -131,7 +131,7 @@ TEST_F(ActivationOpTest, Relu) {
       },
       {},
       /*is_tensorrt_supported=*/false,
-      /*opset_version= */ 14);
+      /*opset_version= */ 11);
 #endif // MLAS_F16VEC_INTRINSICS_SUPPORTED
 }
 
@@ -410,7 +410,7 @@ TEST_F(ActivationOpTest, LeakyRelu) {
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 TEST_F(ActivationOpTest, LeakyRelu_fp16) {
-  OpTester test("LeakyRelu", 16);
+  OpTester test("LeakyRelu", 11);
   float alpha = 0.01f;  // oneDNN set alpha equal to 0.01
   auto formula = [alpha](float x) { return (x >= 0) ? x : alpha * x; };
 

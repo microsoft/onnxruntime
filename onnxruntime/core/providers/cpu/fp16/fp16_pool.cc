@@ -217,6 +217,11 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
 //
 // Operator definitions
 //
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    MaxPool, 8, 11,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    PoolFp16);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     MaxPool,
@@ -246,7 +251,7 @@ namespace contrib {
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     MaxPool,
     kMSInternalNHWCDomain,
-    11,
+    12,
     MLFloat16,
     kCpuExecutionProvider,
     KernelDefBuilder()

@@ -95,7 +95,7 @@ TEST(PoolFp16Test, MaxPool_10_Dilation_1d) {
     GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
   }
 
-  OpTester test("MaxPool", 12);
+  OpTester test("MaxPool", 10);
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1});
