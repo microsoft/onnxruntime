@@ -217,7 +217,7 @@ void CastOpTestFloat8(Saturate saturate) {
   // float output precision is 8, so the expected output differs slightly from the input due to that
   std::vector<Float8E4M3FN> output;
   output.reserve(float_input.size());
-  for (int i = 0; i < float_input.size(); ++i) {
+  for (size_t i = 0; i < float_input.size(); ++i) {
     output.emplace_back(Float8E4M3FN(float_input[i], saturate == Saturate::True));
   }
   TestCastOp<float, Float8E4M3FN>(gsl::make_span(float_input), gsl::make_span(output), shape, OpTester::ExpectResult::kExpectSuccess, "", 19, saturate);

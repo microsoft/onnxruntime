@@ -110,7 +110,8 @@ REGISTER_Q_KERNEL_TYPED(uint8_t)
       T,                                                              \
       kCudaExecutionProvider,                                         \
       (*KernelDefBuilder::Create())                                   \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T, float>);
 
