@@ -404,10 +404,11 @@ namespace Microsoft.ML.OnnxRuntime
                                            out nameHandle));
             }
 
-            using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+            try
             {
                 str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
+            finally { allocator.FreeMemory(nameHandle); }
 
             return str;
         }

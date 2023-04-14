@@ -627,14 +627,17 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns> Returns the profile file name.</returns>
         public string EndProfiling()
         {
-            IntPtr nameHandle = IntPtr.Zero;
             var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionEndProfiling(_nativeHandle,
                                                                    allocator.Pointer,
-                                                                   out nameHandle));
-            using (var allocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+                                                                   out IntPtr nameHandle));
+            try
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
+            }
+            finally
+            {
+                allocator.FreeMemory(nameHandle);
             }
         }
 
@@ -764,9 +767,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 if (ortValue != null)
                 {
-                    if (ortValue.IsOwned)
-                        cleanupList.Add(ortValue);
-
+                    cleanupList.Add(ortValue);
                     result[valueIndex] = ortValue.Handle;
                 }
                 else
@@ -1001,9 +1002,13 @@ namespace Microsoft.ML.OnnxRuntime
                                            allocator.Pointer,
                                            out IntPtr nameHandle));
 
-            using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+            try
             {
                 NativeOnnxValueHelper.StringAndUtf8FromNative(nameHandle, out str, out utf8);
+            }
+            finally
+            {
+                allocator.FreeMemory(nameHandle);
             }
 
             return str;
@@ -1011,7 +1016,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         private string GetInputName(ulong index, out byte[] utf8)
         {
-            string str;
             var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputName(
                                            _nativeHandle,
@@ -1019,25 +1023,34 @@ namespace Microsoft.ML.OnnxRuntime
                                            allocator.Pointer,
                                            out IntPtr nameHandle));
 
-            using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+            string str;
+            try
             {
                 NativeOnnxValueHelper.StringAndUtf8FromNative(nameHandle, out str, out utf8);
+            }
+            finally
+            {
+                allocator.FreeMemory(nameHandle);
             }
             return str;
         }
 
         private string GetOverridableInitializerName(ulong index, out byte[] utf8)
         {
-            string str;
             var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerName(
                                             _nativeHandle,
                                             (UIntPtr)index,
                                             allocator.Pointer,
                                             out IntPtr nameHandle));
-            using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+            string str;
+            try
             {
                 NativeOnnxValueHelper.StringAndUtf8FromNative(nameHandle, out str, out utf8);
+            }
+            finally
+            {
+                allocator.FreeMemory(nameHandle);
             }
             return str;
         }
@@ -1607,104 +1620,102 @@ namespace Microsoft.ML.OnnxRuntime
 
         internal ModelMetadata(InferenceSession session)
         {
-            IntPtr modelMetadataHandle = IntPtr.Zero;
-
             var allocator = OrtAllocator.DefaultInstance;
 
             // Get the native ModelMetadata instance associated with the InferenceSession
-
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetModelMetadata(session.Handle, out modelMetadataHandle));
-
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetModelMetadata(session.Handle, out IntPtr modelMetadataHandle));
             try
             {
-
                 // Process producer name
-                IntPtr producerNameHandle = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetProducerName(modelMetadataHandle, allocator.Pointer, out producerNameHandle));
-                using (var ortAllocation = new OrtMemoryAllocation(allocator, producerNameHandle, 0))
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetProducerName(modelMetadataHandle,
+                    allocator.Pointer, out IntPtr producerNameHandle));
+                try
                 {
                     _producerName = NativeOnnxValueHelper.StringFromNativeUtf8(producerNameHandle);
                 }
+                finally { allocator.FreeMemory(producerNameHandle); }
 
                 // Process graph name
-                IntPtr graphNameHandle = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphName(modelMetadataHandle, allocator.Pointer, out graphNameHandle));
-                using (var ortAllocation = new OrtMemoryAllocation(allocator, graphNameHandle, 0))
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphName(modelMetadataHandle,
+                    allocator.Pointer, out IntPtr graphNameHandle));
+                try
                 {
                     _graphName = NativeOnnxValueHelper.StringFromNativeUtf8(graphNameHandle);
                 }
+                finally { allocator.FreeMemory(graphNameHandle); }
 
 
                 // Process domain
-                IntPtr domainHandle = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetDomain(modelMetadataHandle, allocator.Pointer, out domainHandle));
-                using (var ortAllocation = new OrtMemoryAllocation(allocator, domainHandle, 0))
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetDomain(modelMetadataHandle,
+                    allocator.Pointer, out IntPtr domainHandle));
+                try
                 {
                     _domain = NativeOnnxValueHelper.StringFromNativeUtf8(domainHandle);
                 }
+                finally { allocator.FreeMemory(domainHandle); }
 
                 // Process description
-                IntPtr descriptionHandle = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetDescription(modelMetadataHandle, allocator.Pointer, out descriptionHandle));
-                using (var ortAllocation = new OrtMemoryAllocation(allocator, descriptionHandle, 0))
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetDescription(modelMetadataHandle,
+                    allocator.Pointer, out IntPtr descriptionHandle));
+                try
                 {
                     _description = NativeOnnxValueHelper.StringFromNativeUtf8(descriptionHandle);
                 }
+                finally { allocator.FreeMemory(descriptionHandle); }
 
                 // Process graph description
-                IntPtr graphDescriptionHandle = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphDescription(modelMetadataHandle, allocator.Pointer, out graphDescriptionHandle));
-                using (var ortAllocation = new OrtMemoryAllocation(allocator, graphDescriptionHandle, 0))
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphDescription(modelMetadataHandle,
+                    allocator.Pointer, out IntPtr graphDescriptionHandle));
+                try
                 {
                     _graphDescription = NativeOnnxValueHelper.StringFromNativeUtf8(graphDescriptionHandle);
                 }
+                finally { allocator.FreeMemory(graphDescriptionHandle); }
 
                 // Process version
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetVersion(modelMetadataHandle, out _version));
 
 
                 // Process CustomMetadata Map
-                IntPtr customMetadataMapKeysHandle = IntPtr.Zero;
-                long numKeys;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetCustomMetadataMapKeys(modelMetadataHandle, allocator.Pointer, out customMetadataMapKeysHandle, out numKeys));
-
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetCustomMetadataMapKeys(modelMetadataHandle,
+                    allocator.Pointer, out IntPtr customMetadataMapKeysHandle, out long numKeys));
                 // We have received an array of null terminated C strings which are the keys that we can use to lookup the custom metadata map
                 // The OrtAllocator will finally free the customMetadataMapKeysHandle
-                using (var ortAllocationKeysArray = new OrtMemoryAllocation(allocator, customMetadataMapKeysHandle, 0))
-                using (var ortAllocationKeys = new DisposableList<OrtMemoryAllocation>((int)numKeys))
+                try
                 {
-                    // Put all the handles to each key in the DisposableList to be disposed off in an exception-safe manner
-                    for (int i = 0; i < (int)numKeys; ++i)
+                    using (var ortAllocationKeys = new DisposableList<OrtMemoryAllocation>((int)numKeys))
                     {
-                        ortAllocationKeys.Add(new OrtMemoryAllocation(allocator, Marshal.ReadIntPtr(customMetadataMapKeysHandle, IntPtr.Size * i), 0));
-                    }
-
-                    // Process each key via the stored key handles
-                    foreach (var allocation in ortAllocationKeys)
-                    {
-                        IntPtr keyHandle = allocation.Pointer;
-                        IntPtr valueHandle = IntPtr.Zero;
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataLookupCustomMetadataMap(modelMetadataHandle, allocator.Pointer, keyHandle, out valueHandle));
-
-                        using (var ortAllocationValue = new OrtMemoryAllocation(allocator, valueHandle, 0))
+                        // Put all the handles to each key in the DisposableList to be disposed off in an exception-safe manner
+                        for (int i = 0; i < (int)numKeys; ++i)
                         {
-                            var key = NativeOnnxValueHelper.StringFromNativeUtf8(keyHandle);
-                            var value = NativeOnnxValueHelper.StringFromNativeUtf8(valueHandle);
+                            ortAllocationKeys.Add(new OrtMemoryAllocation(allocator, Marshal.ReadIntPtr(customMetadataMapKeysHandle, IntPtr.Size * i), 0));
+                        }
 
-                            // Put the key/value pair into the dictionary
-                            _customMetadataMap[key] = value;
+                        // Process each key via the stored key handles
+                        foreach (var allocation in ortAllocationKeys)
+                        {
+                            IntPtr keyHandle = allocation.Pointer;
+                            NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataLookupCustomMetadataMap(modelMetadataHandle,
+                                allocator.Pointer, keyHandle, out IntPtr valueHandle));
 
+                            try
+                            {
+                                var key = NativeOnnxValueHelper.StringFromNativeUtf8(keyHandle);
+                                var value = NativeOnnxValueHelper.StringFromNativeUtf8(valueHandle);
+
+                                // Put the key/value pair into the dictionary
+                                _customMetadataMap[key] = value;
+                            }
+                            finally { allocator.FreeMemory(valueHandle); }
                         }
                     }
                 }
+                finally { allocator.FreeMemory(customMetadataMapKeysHandle); }
             }
-
             finally
             {
-
                 // Free ModelMetadata handle
                 NativeMethods.OrtReleaseModelMetadata(modelMetadataHandle);
-
             }
 
         }

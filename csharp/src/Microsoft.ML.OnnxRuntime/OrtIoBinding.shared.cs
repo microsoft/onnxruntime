@@ -228,43 +228,45 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>array of output names</returns>
         public string[] GetOutputNames()
         {
-            IntPtr buffer = IntPtr.Zero;
-            IntPtr lengths = IntPtr.Zero;
-            UIntPtr count = UIntPtr.Zero;
             var allocator = OrtAllocator.DefaultInstance;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputNames(handle, allocator.Pointer, out buffer, out lengths, out count));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputNames(handle,
+                allocator.Pointer, out IntPtr buffer, out IntPtr lengths, out UIntPtr count));
 
             if (count.Equals(UIntPtr.Zero))
             {
                 return new string[0];
             }
 
-            using (var bufferAllocation = new OrtMemoryAllocation(allocator, buffer, 0))
-            using (var lengthsAllocation = new OrtMemoryAllocation(allocator, lengths, 0))
+            try
             {
-                int outputCount = (int)count;
-                var lens = new int[outputCount];
-                int totalLength = 0;
-                for (int i = 0; i < outputCount; ++i)
+                try
                 {
-                    var len = (int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
-                    lens[i] = len;
-                    totalLength += len;
-                }
+                    int outputCount = (int)count;
+                    var lens = new int[outputCount];
+                    int totalLength = 0;
+                    for (int i = 0; i < outputCount; ++i)
+                    {
+                        var len = (int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
+                        lens[i] = len;
+                        totalLength += len;
+                    }
 
-                var stringData = new byte[totalLength];
-                Marshal.Copy(buffer, stringData, 0, stringData.Length);
+                    var stringData = new byte[totalLength];
+                    Marshal.Copy(buffer, stringData, 0, stringData.Length);
 
-                string[] result = new string[outputCount];
-                int readOffset = 0;
-                for (int i = 0; i < outputCount; ++i)
-                {
-                    var strLen = lens[i];
-                    result[i] = Encoding.UTF8.GetString(stringData, readOffset, strLen);
-                    readOffset += strLen;
+                    string[] result = new string[outputCount];
+                    int readOffset = 0;
+                    for (int i = 0; i < outputCount; ++i)
+                    {
+                        var strLen = lens[i];
+                        result[i] = Encoding.UTF8.GetString(stringData, readOffset, strLen);
+                        readOffset += strLen;
+                    }
+                    return result;
                 }
-                return result;
+                finally { allocator.FreeMemory(lengths); }
             }
+            finally { allocator.FreeMemory(buffer); }
         }
 
         /// <summary>
@@ -273,17 +275,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>IDisposableReadOnlyCollection<OrtValue></returns>
         public IDisposableReadOnlyCollection<OrtValue> GetOutputValues()
         {
-            IntPtr ortValues = IntPtr.Zero;
-            UIntPtr count = UIntPtr.Zero;
             var allocator = OrtAllocator.DefaultInstance;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputValues(handle, allocator.Pointer, out ortValues, out count));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputValues(handle, allocator.Pointer,
+                out IntPtr ortValues, out UIntPtr count));
 
             if (count.Equals(UIntPtr.Zero))
             {
                 return new DisposableList<OrtValue>();
             }
 
-            using (var ortValuesAllocation = new OrtMemoryAllocation(allocator, ortValues, 0))
+            try
             {
                 int outputCount = (int)count;
                 var ortList = new DisposableList<OrtValue>(outputCount);
@@ -302,6 +303,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 return ortList;
             }
+            finally { allocator.FreeMemory(ortValues); }
         }
 
         /// <summary>

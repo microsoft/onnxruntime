@@ -45,14 +45,14 @@ namespace Microsoft.ML.OnnxRuntime
         public string GetOptions()
         {
             var allocator = OrtAllocator.DefaultInstance;
-
             // Process provider options string
-            IntPtr providerOptions = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptionsAsString(handle, allocator.Pointer, out providerOptions));
-            using (var ortAllocation = new OrtMemoryAllocation(allocator, providerOptions, 0))
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptionsAsString(handle, 
+                allocator.Pointer, out IntPtr providerOptions));
+            try
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
             }
+            finally { allocator.FreeMemory(providerOptions); }
         }
 
         /// <summary>
@@ -158,12 +158,13 @@ namespace Microsoft.ML.OnnxRuntime
             var allocator = OrtAllocator.DefaultInstance;
 
             // Process provider options string
-            IntPtr providerOptions = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetCUDAProviderOptionsAsString(handle, allocator.Pointer, out providerOptions));
-            using (var ortAllocation = new OrtMemoryAllocation(allocator, providerOptions, 0))
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetCUDAProviderOptionsAsString(handle, 
+                allocator.Pointer, out IntPtr providerOptions));
+            try
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
             }
+            finally { allocator.FreeMemory(providerOptions); }
         }
 
         /// <summary>
