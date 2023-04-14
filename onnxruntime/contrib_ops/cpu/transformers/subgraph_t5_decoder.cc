@@ -170,6 +170,10 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   OrtValue input_ids;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  AllocatorPtr buffer_allocator = std::make_shared<onnxruntime::CPUAllocator>();
+  size_t total_size = static_cast<size_t>(static_cast<long long>(cur_len) * batch_beam_size * sizeof(int));
+  auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size);
+  int* seq_copy_ptr = seq_copy.get();
 
   if (!use_sequence_as_input_ids_) {
     ORT_RETURN_IF_ERROR(device_copy_int32_func(
@@ -181,10 +185,16 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const int32_t> sequence = sequences.GetSequence(i);
       const int32_t* sequence_data = sequence.data();
-      for (int j = 0; j < cur_len; j++) {
-        input_ids_data[i * cur_len + j] = sequence_data[j];
-      }
+      long long seq_index = (long long)i * cur_len;
+      memcpy(seq_copy_ptr + seq_index, sequence_data, total_size);
     }
+    gsl::span<int> temp_input(input_ids_data, total_size);
+    gsl::span<int> temp_sequence(seq_copy_ptr, total_size);
+    ORT_RETURN_IF_ERROR(device_copy_int32_func(
+        temp_input,
+        temp_sequence,
+        stream,
+        DeviceCopyDirection::hostToDevice));
   }
 
   // The ordering is the same as used in Setup.
