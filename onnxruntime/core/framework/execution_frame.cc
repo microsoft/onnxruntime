@@ -431,20 +431,20 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
 #endif
               // the memory pattern buffer will leave in the whole execution.
-#ifdef ORT_ENABLE_STREAM
-              StreamAwareArena* stream_aware_alloc = AsStreamBasedAllocator(alloc);
-              if (stream_aware_alloc && device_streams_) {
-                Stream* mem_pattern_stream = device_streams_->GetRootStream();
-                buffer = stream_aware_alloc->AllocOnStream(peak_size, mem_pattern_stream, nullptr);
-                for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
-                  stream_aware_alloc->SecureTheChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);
-                }
-              } else {
-                buffer = alloc->Alloc(peak_size);
-              }
-#else
+//#ifdef ORT_ENABLE_STREAM
+//              StreamAwareArena* stream_aware_alloc = AsStreamBasedAllocator(alloc);
+//              if (stream_aware_alloc && device_streams_) {
+//                Stream* mem_pattern_stream = device_streams_->GetRootStream();
+//                buffer = stream_aware_alloc->AllocOnStream(peak_size, mem_pattern_stream, nullptr);
+//                for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
+//                  stream_aware_alloc->SecureTheChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);
+//                }
+//              } else {
+//                buffer = alloc->Alloc(peak_size);
+//              }
+//#else
               buffer = alloc->Alloc(peak_size);
-#endif
+//#endif
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
                 // INFO level as this may fire on every run and there may not be much a user can do
