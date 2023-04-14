@@ -199,10 +199,10 @@ KE_REGISTER(m) {
   REGISTER_OP_TYPED(GroupNormNHWCStaticSelection, float);
 
 #ifdef USE_COMPOSABLE_KERNEL
-  REGISTER_CK(half, false, "WithoutSwish");
-  REGISTER_CK(half, true, "WithSwish");
-  REGISTER_CK(float, false, "WithoutSwish");
-  REGISTER_CK(float, true, "WithSwish");
+  REGISTER_CK(half, false, "Pass");
+  REGISTER_CK(half, true, "Swish");
+  REGISTER_CK(float, false, "Pass");
+  REGISTER_CK(float, true, "Swish");
 #endif  // USE_COMPOSABLE_KERNEL
 }
 

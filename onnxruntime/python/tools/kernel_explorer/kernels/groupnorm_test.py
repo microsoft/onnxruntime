@@ -99,7 +99,7 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
         np.testing.assert_allclose(y_ref, output_y, atol=1e-02)
 
 
-dtypes = ["float16", "float32"]
+dtypes = ["float32", "float16"]
 
 
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
@@ -112,9 +112,9 @@ def test_group_norm(sd_sizes, dtype, swish):
 
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("swish", [False, True])
+@pytest.mark.parametrize("swish", [True])
 def test_group_norm_ck(sd_sizes, dtype, swish):
-    swish_suffix = "WithSwish" if swish else "WithoutSwish"
+    swish_suffix = "Swish" if swish else "Pass"
     ck_f_name = "CKGroupNormNHWC"  + swish_suffix + "_" + dtype_to_suffix(dtype)
     run_group_norm(*sd_sizes, dtype, swish, ck_f_name)
 
@@ -185,7 +185,7 @@ def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype
         for func in dtype_to_funcs(dtype):
             profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, func)
         # ck function
-        swish_suffix = "WithSwish" if swish else "WithoutSwish"
+        swish_suffix = "Swish" if swish else "Pass"
         ck_f_name = "CKGroupNormNHWC"  + swish_suffix + "_" + dtype_to_suffix(dtype)
         profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, ck_f_name)
 

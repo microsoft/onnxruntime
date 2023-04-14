@@ -32,11 +32,6 @@ struct DataTypeAdaptor<half> {
   using type = ck::half_t;
 };
 
-template <>
-struct DataTypeAdaptor<BFloat16> {
-  using type = ck::bhalf16_t;
-};
-
 using Swish = ck::tensor_operation::element_wise::Swish;
 using Pass = ck::tensor_operation::element_wise::PassThrough;
 
@@ -56,16 +51,17 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
   std::vector<std::pair<std::string, onnxruntime::rocm::tunable::Op<GroupNormNHWCParams<T>>>> ret;
   for (auto&& impl : internal::GetDeviceGroupNormInstances<InDataType, GammaDataType, BetaDataType, AccDataType,
                                                            OutDataType, Activation, Rank, NumReduceDim>()) {
-    auto type_string = onnxruntime::MakeString(impl->GetTypeString()) + "_withSwish:" + std::to_string(WithSwish);
+    std::string swish_suffix = WithSwish ? "_Swish" : "_Pass";
+    auto type_string = onnxruntime::MakeString(impl->GetTypeString()) + swish_suffix;
     auto invoker = impl->MakeInvokerPointer();
 
     auto ck_group_norm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GroupNormNHWCParams<T>* params) -> Status {
       if constexpr (WithSwish) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            !params->withSwish, "withSwish version only support groupnorm with swish");
+            !params->withSwish, "Swish version only support groupnorm with swish");
       } else {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            params->withSwish, "non-Swish version only support groupnorm without swish");
+            params->withSwish, "Pass version only support groupnorm without swish");
       }
       std::vector<ck::index_t> in_lengths{params->n, params->h, params->w, params->groups, params->cPerGroup};
       std::vector<ck::index_t> in_out_strides{params->h * params->w * params->c, params->w * params->c, params->c, params->cPerGroup, 1};

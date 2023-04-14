@@ -137,12 +137,16 @@ class GroupNormNHWCOp {
 
   Status IsSupported(const GroupNormNHWCParams<T>* params) {
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-        !(params->c % VecSize == 0 && params->cPerGroup % VecSize == 0));
+        !(params->c % VecSize == 0 && params->cPerGroup % VecSize == 0),
+        "The number of channels (", params->c, ") or the number of channels per group (", params->cPerGroup,
+        ") isn't divisible by the number of vector size: ", VecSize);
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock % params->cPerGroup == 0 &&
-                                                params->c % params->cPerBlock == 0 &&
-                                                params->hw % params->hwPerBlock == 0));
+                                                params->c % params->cPerBlock == 0 && params->hw % params->hwPerBlock == 0),
+                                              "The value of attributes don't meet the requirements.");
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock <= ThreadsPerBlock * VecSize &&
-                                                params->cPerBlock > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize));
+                                                params->cPerBlock > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize),
+                                              "Configuration: Threads (", ThreadsPerBlock, "), vector size (",
+                                              VecSize, ") is redundant for the number of channels per group: ", params->cPerBlock);
 
     return Status::OK();
   }

@@ -17,7 +17,7 @@ GetDeviceGroupNormInstances<F16, F32, F32, F32, F16, Swish, 5, 3>() {
   std::vector<std::unique_ptr<DeviceNormalization<F16, F32, F32, F32, F16, Swish, 5, 3>>> instances;
   ck::tensor_operation::device::instance::add_device_operation_instances(
       instances,
-      device_normalization_f16_f32_instances<Swish, 5, 3>{});
+      device_normalization_f16_instances<Swish, 5, 3>{});
 
   return instances;
 }
@@ -28,7 +28,7 @@ GetDeviceGroupNormInstances<F16, F32, F32, F32, F16, Pass, 5, 3>() {
   std::vector<std::unique_ptr<DeviceNormalization<F16, F32, F32, F32, F16, Pass, 5, 3>>> instances;
   ck::tensor_operation::device::instance::add_device_operation_instances(
       instances,
-      device_normalization_f16_f32_instances<Pass, 5, 3>{});
+      device_normalization_f16_instances<Pass, 5, 3>{});
 
   return instances;
 }

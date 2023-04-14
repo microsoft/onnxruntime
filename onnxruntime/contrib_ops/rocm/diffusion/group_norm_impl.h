@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
-#include "core/common/status.h"
+
 #include <cstdint>
 #include <hip/hip_runtime.h>
-#include <hip/hip_fp16.h>
 
+#include "core/common/common.h"
+#include "core/common/status.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 
 using onnxruntime::rocm::tunable::RocmTuningContext;
