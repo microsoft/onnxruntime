@@ -41,6 +41,17 @@ std::string GetSoftmaxTritonName(int num_elements, bool is_log_softmax) {
   return ret;
 }
 
+template <typename T>
+std::string GetSoftmaxTritonGroupName(bool is_log_softmax) {
+  std::string ret = "softmax_";
+  if (is_log_softmax) {
+    ret = "log_softmax_";
+  }
+
+  ret += GetDataTypeName<T>();
+  return ret;
+}
+
 }  // end of namespace
 
 // TODO: onnxruntime softmax is not support output has different type between input
@@ -61,6 +72,44 @@ Status SoftmaxTritonOp(const SoftmaxParams<T, OutputT>* params) {
   // grid dim is (batch_count, 1, 1)
   return LaunchTritonKernel(params->stream, fname, params->batch_count, 1, 1, &args, sizeof(args));
 }
+
+template <typename T, typename OutputT>
+auto GetSoftmaxTritonOps() {
+  std::vector<std::pair<std::string, tunable::Op<SoftmaxParams<T, OutputT>>>> ret;
+  auto group_name = GetSoftmaxTritonGroupName();
+  auto *kernel_list = GetRocmTritonKernelByGroup(group_name);
+  if (kernel_list == nullptr) {
+    return ret;
+  }
+
+  for (auto i : *kernel_list) {
+    // check params match
+    auto *metadata = GetRocmTritonKernelMetadata(i);
+    auto block_size = -1;
+    if (metadata->constants.count("BLOCK_SIZE") {
+      block_size = metadata->constants["BLOCK_SIZE"];
+    }
+    auto impl = [i, block_size](const SoftmaxParams<T, OutputT> *params) -> Status {
+      if (block_size < params->softmax_elements) {
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, "BLOCK_SIZE not support");
+      }
+      // construct args for launch kernel
+      struct {
+        void *out;
+        const void *in;
+        int in_stride;
+        int out_stride;
+        int n_cols;
+      } args = {(void*)params->output, (const void*)params->input, params->input_stride, params->output_stride, params->softmax_elements};
+
+      // grid dim is (batch_count, 1, 1)
+      return LaunchTritonKernel(params->stream, i, params->batch_count, 1, 1, &args, sizeof(args));
+    };
+    ret.push_back(impl);
+  }
+  return ret;
+}
+
 #endif  // USE_TRITON_KERNEL
 
 }  // namespace rocm

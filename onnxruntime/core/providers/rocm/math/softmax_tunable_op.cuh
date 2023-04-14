@@ -132,7 +132,11 @@ class SoftmaxTunableOp : public tunable::TunableOp<SoftmaxParams<InputT, OutputT
 #endif  // USE_COMPOSABLE_KERNEL
 
 #ifdef USE_TRITON_KERNEL
-    this->RegisterOp(SoftmaxTritonOp<InputT, OutputT>);
+    for (auto && [_, op] : GetSoftmaxTritonOps()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+    // this->RegisterOp(SoftmaxTritonOp<InputT, OutputT>);
 #endif
   }
 };

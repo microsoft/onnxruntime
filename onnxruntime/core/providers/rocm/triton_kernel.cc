@@ -23,7 +23,15 @@ namespace {
 const int HIP_WARP_SIZE=64;
 const std::string FILE_SP = "/";
 const std::string META_FILENAME = "meta.json";
-static std::unordered_map<std::string, TritonKernelMetaData> rocm_triton_kernel_map;
+
+// a vector of kernel metadata
+static std::vector<TritonKernelMetaData> rocm_triton_kernel_metadata;
+
+// store func_name -> kernel metadata id
+static std::unordered_map<std::string, int> rocm_triton_kernel_map;
+
+// store group_name -> [kernel metadata id vector]
+static std::unordered_map<std::string, std::vector<int>> rocm_triton_kernel_group_map;
 
 const std::string GetRocmTritonKernelPath() {
   std::string path = onnxruntime::ParseEnvironmentVariableWithDefault<std::string>("ORT_TRITON_LIB_PATH", "");
@@ -72,22 +80,26 @@ void TryToLoadKernel() {
       metadata.shared_mem_size = j_m["shared"];
       metadata.func = function;
       fname = j_m["name"];  // name is not same as func_name
+      group_name = j_m["group"];
 
       // parse constants
       if (j_m.contains("constants")) {
         auto constants = j_m["constants"];
-	for (auto &el : constants.items()) {
+        for (auto &el : constants.items()) {
           auto k = el.key();
-	  auto v = el.value();
-	  if (!v.is_number_integer()) {
+          auto v = el.value();
+          if (!v.is_number_integer()) {
             // only support k is str and v is integer
-	    continue;
-	  }
-	  metadata.constants[k] = v;
-	}
+            continue;
+          }
+          metadata.constants[k] = v;
+        }
       }
-      rocm_triton_kernel_map[fname] = metadata;
-      LOGS_DEFAULT(VERBOSE) << "loaded rocm triton kernel: " << fname;
+      auto idx = rocm_triton_kernel_metadata.size();
+      rocm_triton_kernel_map.push_back(metadata);
+      rocm_triton_kernel_map[fname] = idx;
+      rocm_triton_kernel_group_map[group_name] = idx;
+      LOGS_DEFAULT(VERBOSE) << "loaded rocm triton kernel: " << fname << " idx: " << idx;
     }
   }
   ORT_CATCH (const std::exception &e) {
@@ -136,5 +148,41 @@ Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int 
   return Status::OK();
 }
 
+Status LaunchTritonKernel(hipStream_t stream, size_t idx, int grid0, int grid1, int grid2, void *args, size_t args_size) {
+  if (idx >= rocm_triton_kernel_metadata.size()) {
+    // return unsupported status when not found function name in registry
+    // this error status will be used by tunableOp
+    std::ostringstream message_stream;
+    message_stream << "can't find triton kernel idx: " << idx;
+    std::string message = message_stream.str();
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, message);
+  }
+  auto metadata = rocm_triton_kernel_map[fname];
+  void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, args, HIP_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
+                      HIP_LAUNCH_PARAM_END};
+
+  HIP_CHECK(hipModuleLaunchKernel(metadata.func,
+                                  grid0, grid1, grid2,
+                                  HIP_WARP_SIZE * metadata.num_warps, 1, 1,
+                                  metadata.shared_mem_size,
+                                  stream,
+                                  nullptr,
+                                  (void**)&config));
+  return Status::OK();
+}
+
+const TritonKernelMetaData *GetRocmTritonKernelMetadata(size_t idx) {
+  if (idx >= rocm_triton_kernel_metadata.size()) {
+    return nullptr;
+  }
+  return &rocm_triton_kernel_metadata[idx];
+}
+
+const std::vector<int> *GetRocmTritonKernelByGroup(std::string group_name) {
+  if (rocm_triton_kernel_group_map.count(group_name) == 0) {
+    return nullptr;
+  }
+  return &rocm_triton_kernel_metadata.at(group_name);
+}
 }  // end of rocm
 }  // end of onnxruntime
