@@ -1564,35 +1564,33 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
         std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
         if (engine_cache_enable_ && engine_file) {
-          engine_file.seekg(0, std::ios::end);
-          size_t engine_size = engine_file.tellg();
-          engine_file.seekg(0, std::ios::beg);
-          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          engine_file.read((char*)engine_buf.get(), engine_size);
-          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
-          if (trt_engine == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not deserialize engine from cache: " + engine_cache_path);
-          }
-        } else if (engine_decryption_enable_ && engine_cache_enable_ && !engine_file) {
-          // Decrypt engine
           size_t engine_size = 0;
-          if (!engine_decryption_(engine_cache_path.c_str(), nullptr, &engine_size)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not get engine buffer size");
-          }
-          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          if (!engine_decryption_(engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not call engine decryption function decrypt");
+          std::unique_ptr<char[]> engine_buf;
+          if (engine_decryption_enable_) {
+            // Decrypt engine
+            if (!engine_decryption_(engine_cache_path.c_str(), nullptr, &engine_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not get engine buffer size");
+            }
+            engine_buf = std::unique_ptr<char[]>(new char[engine_size]);
+            if (!engine_decryption_(engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not call engine decryption function decrypt");
+            }
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted " + engine_cache_path;
+          } else {
+            engine_file.seekg(0, std::ios::end);
+            engine_size = engine_file.tellg();
+            engine_file.seekg(0, std::ios::beg);
+            engine_buf = std::unique_ptr<char[]>(new char[engine_size]);
+            engine_file.read((char*)engine_buf.get(), engine_size);
           }
           // Deserialize engine
           trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
+                                   "TensorRT EP could not deserialize engine from cache: " + engine_cache_path);
           }
         } else {
           // Set INT8 per tensor dynamic range
@@ -1786,54 +1784,38 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           // Deserialize profile
           shape_ranges = DeserializeProfile(profile_file);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
-          // Deserialize engine
+          
+          size_t engine_size = 0;
+          std::unique_ptr<char[]> engine_buf;
           trt_state->context->reset();
           trt_state->engine->reset();
-          engine_file.seekg(0, std::ios::end);
-          size_t engine_size = engine_file.tellg();
-          engine_file.seekg(0, std::ios::beg);
-          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          engine_file.read((char*)engine_buf.get(), engine_size);
+          // Read/Decrypt engine file
+          if (trt_state->engine_decryption_enable) {
+            if (!trt_state->engine_decryption(engine_cache_path.c_str(), nullptr, &engine_size)) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not get engine buffer size");
+            }
+            engine_buf = std::unique_ptr<char[]>(new char[engine_size]);
+            if (!trt_state->engine_decryption(engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not call engine decryption function decrypt");
+            }
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted " + engine_cache_path;
+          }
+          else {
+            engine_file.seekg(0, std::ios::end);
+            engine_size = engine_file.tellg();
+            engine_file.seekg(0, std::ios::beg);
+            engine_buf = std::unique_ptr<char[]>(new char[engine_size]);
+            engine_file.read((char*)engine_buf.get(), engine_size);
+          }
+          // Deserialize engine
           *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
               trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           if (trt_state->engine == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to DeSerialize Engine.");
           }
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
-          trt_engine = trt_state->engine->get();
-          if (trt_state->context_memory_sharing_enable) {
-            *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
-                trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
-          } else {
-            *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
-                trt_state->engine->get()->createExecutionContext());
-          }
-          if (trt_state->context == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
-          }
-          trt_context = trt_state->context->get();
-        } else if (trt_state->engine_decryption_enable && !engine_file && profile_file) {
-          shape_ranges = DeserializeProfile(profile_file);
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
-          // Decrypt engine
-          size_t engine_size = 0;
-          if (!trt_state->engine_decryption(engine_cache_path.c_str(), nullptr, &engine_size)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not get engine buffer size");
-          }
-          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          if (!trt_state->engine_decryption(engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not call engine decryption function decrypt");
-          }
-          // Deserialize engine
-          trt_state->context->reset();
-          trt_state->engine->reset();
-          *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (trt_state->engine == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
-          }
+
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
           trt_engine = trt_state->engine->get();
           if (trt_state->context_memory_sharing_enable) {
