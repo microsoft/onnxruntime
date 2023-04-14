@@ -50,8 +50,9 @@ class TestFusion(unittest.TestCase):
         model_path = os.path.join(dir, "whisper_encoder_attention_sln.onnx")
         onnx.save(model, model_path)
         options = FusionOptions("bart")
-        optimized_model = optimize_model(model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size, 
-                                         optimization_options=options)
+        optimized_model = optimize_model(
+            model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size, optimization_options=options
+        )
         os.remove(model_path)
         self.verify_fusion(optimized_model, "encoder_attention_with_sln_fused.onnx")
 

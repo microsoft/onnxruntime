@@ -91,9 +91,9 @@ class FusionBartAttention(FusionAttention):
             ) = qkv_nodes
         else:
             return
-        
+
         other_inputs = []
-        for i, input in enumerate(normalize_node.input):
+        for input in normalize_node.input:
             if input not in output_name_to_node:
                 continue
             if input == qkv_nodes[0].output[0]:
@@ -119,7 +119,7 @@ class FusionBartAttention(FusionAttention):
         # child is the LayerNormalization node.
         if skip_layernorm.op_type == "Add":
             skip_layernorm = self.model.get_children(skip_layernorm)[0]
-        for i, output in enumerate(skip_layernorm.output):
+        for output in skip_layernorm.output:
             if output == "":
                 continue
             children = input_name_to_nodes[output]
@@ -240,7 +240,7 @@ class FusionBartAttention(FusionAttention):
             k_nodes_no_bias_with_past_cross_attn is not None
             and k_nodes_no_bias_with_past_cross_attn[-1].input[0] in graph_input_names
         ):
-            k_nodes = k_nodes_no_bias_with_past_cross_attn 
+            k_nodes = k_nodes_no_bias_with_past_cross_attn
             past_k = k_nodes[-1].input[0]
             present_k = k_nodes[-1].output[0]
             if present_k not in graph_output_names:
@@ -253,7 +253,7 @@ class FusionBartAttention(FusionAttention):
         past_k = past_k if past_k in graph_input_names else ""
         present_k = present_k if present_k in graph_output_names else ""
 
-        if k_nodes == k_nodes_no_bias or k_nodes == k_nodes_no_bias_with_past_self_attn:
+        if k_nodes in (k_nodes_no_bias, k_nodes_no_bias_with_past_self_attn):
             # Create empty Add node for attention graph
             bias_dim = self.model.get_initializer(add_v.input[0]).dims[0]
             empty_bias_name = "empty_bias"
@@ -288,7 +288,7 @@ class FusionBartAttention(FusionAttention):
             and matmul_k.input[0] == matmul_v.input[0]
             and matmul_k.input[0] != matmul_q.input[0]
         )
-        
+
         # There are 5 types of attention:
         # 1) Encoder attention with one_root_input=True and qk_nodes=qk_nodes_1
         # 2) Decoder attention with one_root_input=True and qk_nodes=qk_nodes_2
@@ -325,14 +325,14 @@ class FusionBartAttention(FusionAttention):
             or decoder_attention_with_past
             or decoder_cross_attention
             or decoder_cross_attention_with_past
-        ): 
+        ):
             attention_last_node = reshape_qkv_2
             num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q_1)
 
             if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:
                 logger.debug("fuse_attention: failed to detect num_heads or hidden_size")
                 return
-            
+
             new_node = None
             if decoder_attention_with_past or decoder_cross_attention or decoder_cross_attention_with_past:
                 # Note: Decoder attention with past key and past value is fused as multihead attention
@@ -389,7 +389,7 @@ class FusionBartAttention(FusionAttention):
 
             self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])
             self.nodes_to_remove.extend(qk_nodes)
-            
+
             # When using multihead attention, keep MatMul nodes in original graph
             if decoder_attention_with_past or decoder_cross_attention or decoder_cross_attention_with_past:
                 if q_nodes[-1].op_type == "MatMul":
@@ -398,7 +398,7 @@ class FusionBartAttention(FusionAttention):
                     k_nodes.pop()
                 if v_nodes[-1].op_type == "MatMul":
                     v_nodes.pop()
-            
+
             self.nodes_to_remove.extend(q_nodes)
             self.nodes_to_remove.extend(k_nodes)
             self.nodes_to_remove.extend(v_nodes)

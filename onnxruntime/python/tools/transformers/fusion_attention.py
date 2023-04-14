@@ -380,7 +380,7 @@ class FusionAttention(Fusion):
         past_v_transpose = (past_v + "_transposed").replace(".", "_")
         transpose_k_name = self.model.create_node_name("Transpose")
         transpose_v_name = self.model.create_node_name("Transpose")
-        
+
         transpose_k = helper.make_node(
             "Transpose",
             inputs=[past_k],
@@ -489,7 +489,7 @@ class FusionAttention(Fusion):
         )
         qkv_last_axis_name = matmul_node_name + "_qkv_last_axis"
         qkv_axis_tensor = helper.make_tensor(name=qkv_last_axis_name, data_type=TensorProto.INT64, dims=[1], vals=[-1])
-                
+
         self.model.add_initializer(q_start_tensor, self.this_graph_name)
         self.model.add_initializer(k_start_tensor, self.this_graph_name)
         self.model.add_initializer(v_start_tensor, self.this_graph_name)
@@ -565,7 +565,7 @@ class FusionAttention(Fusion):
             packed_qkv (bool): whether to combine MatMuls from Q, K, V paths
                                Note: This is for the scenario where an Attention node should be created but cannot be created
                                because past_key and past_value are separate inputs and not one concatenated input.
-            
+
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
         """
