@@ -873,7 +873,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
     { "FusedConv",
       "QLinearAveragePool",
       "QLinearGlobalAveragePool"
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN) || defined(USE_WEBNN)
       // The CUDA/ROCM Resize kernel is layout sensitive as it only handles NCHW input.
       // The CPU kernel and ONNX spec are not limited to handling NCHW input so are not layout sensitive, and
       // onnx_layout_transformation::HandleResize is used.

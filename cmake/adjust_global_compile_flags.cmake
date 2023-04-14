@@ -131,7 +131,11 @@ if (onnxruntime_DISABLE_RTTI)
     # Disable RTTI and turn usage of dynamic_cast and typeid into errors
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/GR->" "$<$<COMPILE_LANGUAGE:CXX>:/we4541>")
   else()
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>")
+    # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
+    # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/16911
+    if(NOT onnxruntime_USE_WEBNN)
+      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>")
+    endif()
   endif()
 else()
   #MSVC RTTI flag /GR is not added to CMAKE_CXX_FLAGS by default. But, anyway VC++2019 treats "/GR" default on.

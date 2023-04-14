@@ -86,13 +86,56 @@ module.exports = function (config) {
     hostname,
     listenAddress,
     customLaunchers: {
-      ChromeTest: { base: 'ChromeHeadless', flags: ['--enable-features=SharedArrayBuffer'] },
-      ChromePerf: { base: 'Chrome', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer'] },
-      ChromeDebug: { debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer'] },
-      ChromeCanaryTest: { base: 'ChromeCanary', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer', '--enable-unsafe-webgpu'] },
-      ChromeCanaryProfileTest: { base: 'ChromeCanary', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer', '--enable-unsafe-webgpu', '--disable-dawn-features=disallow_unsafe_apis'] },
-      ChromeCanaryDebug: { debug: true, base: 'ChromeCanary', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer', '--enable-unsafe-webgpu'] },
-      ChromeCanaryProfileDebug: { debug: true, base: 'ChromeCanary', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer', '--enable-unsafe-webgpu', '--disable-dawn-features=disallow_unsafe_apis'] },
+      ChromeTest: {
+        base: 'ChromeHeadless',
+        flags: ['--enable-features=SharedArrayBuffer']
+      },
+      ChromePerf: {
+        base: 'Chrome',
+        flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer']
+      },
+      ChromeDebug: {
+        debug: true,
+        base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer']
+      },
+      ChromeCanaryTest: {
+        base: 'ChromeCanary',
+        flags: [
+          '--window-size=1,1',
+          '--enable-features=SharedArrayBuffer',
+          '--enable-unsafe-webgpu',
+          '--enable-experimental-web-platform-features'
+        ]
+      },
+      ChromeCanaryProfileTest: {
+        base: 'ChromeCanary',
+        flags: [
+          '--window-size=1,1',
+          '--enable-features=SharedArrayBuffer',
+          '--enable-unsafe-webgpu',
+          '--disable-dawn-features=disallow_unsafe_apis'
+        ]
+      },
+      ChromeCanaryDebug: {
+        debug: true,
+        base: 'ChromeCanary',
+        flags: [
+          '--remote-debugging-port=9333',
+          '--enable-features=SharedArrayBuffer',
+          '--enable-unsafe-webgpu',
+          '--enable-experimental-web-platform-features'
+        ]
+      },
+      ChromeCanaryProfileDebug: {
+        debug: true,
+        base: 'ChromeCanary',
+        flags: [
+          '--remote-debugging-port=9333',
+          '--enable-features=SharedArrayBuffer',
+          '--enable-unsafe-webgpu',
+          '--disable-dawn-features=disallow_unsafe_apis',
+        ]
+      },
       //
       // ==== BrowserStack browsers ====
       //
