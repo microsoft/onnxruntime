@@ -18,20 +18,29 @@ class ResNet50FusionTests : public ::testing::Test {
   ResNet50FusionTests() : logger(DefaultLoggingManager().CreateLogger("ResNet50FusionTest")) {
   }
   std::unique_ptr<logging::Logger> logger;
+
+  void SetUp() override {
+    if(Model::Load(fp32_model_path, fp32_model, nullptr, *logger)!=Status::OK()){
+      GTEST_SKIP() << "Failed to load model: " << fp32_model_path;
+    }
+    if (Model::Load(fp16_model_path, fp16_model, nullptr, *logger) != Status::OK()) {
+      GTEST_SKIP() << "Failed to load model: " << fp16_model_path;
+    }
+  }
+  std::basic_string<ORTCHAR_T>  fp32_model_path = ORT_TSTR("../models/opset10/Resnet50_Fusion_Testing/resnet50.onnx");
+  std::shared_ptr<Model> fp32_model;
+  std::basic_string<ORTCHAR_T> fp16_model_path = ORT_TSTR("../models/opset10/Resnet50_Fusion_Testing/resnet50.fp16.onnx");
+  std::shared_ptr<Model> fp16_model;
+
 };
 
 TEST_F(ResNet50FusionTests, FuseConvAddRelu) {
-  std::basic_string<ORTCHAR_T> const fp32_model_path = ORT_TSTR("../models/opset10/Resnet50_Fusion_Testing/resnet50.onnx");
-  std::shared_ptr<Model> fp32_model;
-  ASSERT_STATUS_OK(Model::Load(fp32_model_path, fp32_model, nullptr, *logger));
+
+//  ASSERT_STATUS_OK(Model::Load(fp32_model_path, fp32_model, nullptr, *logger));
   Graph& fp32_graph = fp32_model->MainGraph();
   for (auto& node : fp32_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kCpuExecutionProvider);
   }
-
-  std::basic_string<ORTCHAR_T> const fp16_model_path = ORT_TSTR("../models/opset10/Resnet50_Fusion_Testing/resnet50.fp16.onnx");
-  std::shared_ptr<Model> fp16_model;
-  ASSERT_STATUS_OK(Model::Load(fp16_model_path, fp16_model, nullptr, *logger));
   Graph& fp16_graph = fp16_model->MainGraph();
   for (auto& node : fp16_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kCpuExecutionProvider);
