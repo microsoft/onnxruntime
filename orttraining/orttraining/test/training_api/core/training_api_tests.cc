@@ -2,14 +2,11 @@
 // Licensed under the MIT License.
 
 #include <thread>
-#include <random>
 
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
 
-#include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
-#include "test/util/include/test_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "orttraining/training_api/utils.h"
 #include "orttraining/training_api/module.h"
@@ -30,24 +27,6 @@ namespace test {
 namespace {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/training_api/")
-
-void GenerateRandomData(std::vector<float>& data) {
-  float scale = 1.f;
-  float mean = 0.f;
-  float seed = 123.f;
-
-  std::default_random_engine generator_float{gsl::narrow_cast<uint32_t>(seed)};
-  std::normal_distribution<float> distribution_float{mean, scale};
-  std::for_each(data.begin(), data.end(),
-                [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
-}
-
-void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
-  TensorShape shape(dims);
-  std::vector<float> data(shape.Size());
-  GenerateRandomData(data);
-  onnxruntime::test::CreateInputOrtValueOnCPU<float>(dims, data, &input);
-}
 
 void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
   auto training_model_uri = MODEL_FOLDER "training_model.onnx";
