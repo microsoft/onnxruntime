@@ -29,7 +29,13 @@ bool IsSupportedDataType(int32_t data_type) {
 
 using SupportedTypeList = boost::mp11::mp_list<MLFloat16, float, double, int32_t, int64_t>;
 
-static constexpr int64_t MAX_SIZE_PER_VALUE = 8;
+// A threshold is defined here to restrict the graph transformation only applied for small tensors.
+// Be note: having a bigger threshold means more overhead when we do the graph transformations.
+// `8` is chosen to cover common constant use cases in some Reshape/Gather/Concat's inputs.
+// TODO(pengwa): we can gradually increase this threshold if we see more benefits (memory saving
+// or more cse optimization triggered). Should be careful to conver test cases that assumes initializer
+// name did not got changed then.
+static constexpr int64_t TENSOR_ELEM_COUNT_THRESHOLD = 8;
 static constexpr char SHARED_INITIALIZER_PREFIX[] = "ortshared_";
 
 bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape,
@@ -46,12 +52,12 @@ bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape,
 
     int64_t dim_value = dim.dim_value();
     num_elements *= dim_value;
-    if (num_elements > MAX_SIZE_PER_VALUE) {
+    if (num_elements > TENSOR_ELEM_COUNT_THRESHOLD) {
       return false;
     }
   }
 
-  if (num_elements > 0 && num_elements <= MAX_SIZE_PER_VALUE) {
+  if (num_elements > 0 && num_elements <= TENSOR_ELEM_COUNT_THRESHOLD) {
     return true;
   }
 
