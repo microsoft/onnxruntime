@@ -200,18 +200,6 @@ static Status dft_bluestein_z_chirp(
 
   static constexpr T pi = static_cast<T>(3.14159265);
 
-  // Get data
-  auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + X_offset;
-  auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
-
-  U* window_data = nullptr;
-  if (window) {
-    window_data = const_cast<U*>(reinterpret_cast<const U*>(window->DataRaw()));
-  }
-
-  const auto& X_shape = X->Shape();
-  size_t number_of_samples = static_cast<size_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
-
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
 
@@ -222,36 +210,20 @@ static Status dft_bluestein_z_chirp(
   bool should_recreate_b_fft = b_fft.Shape().Size() != dft_input_shape.Size();
   bool should_recreate_chirp = chirp.Shape().Size() != dft_input_shape.Size();
   bool should_recreate = should_recreate_b_fft || should_recreate_chirp;
-
-  auto a = onnxruntime::Tensor(X->DataType(), dft_input_shape, alloc);
-  auto a_fft = onnxruntime::Tensor(Y->DataType(), dft_input_shape, alloc);
-
-  onnxruntime::Tensor b;
   if (should_recreate) {
-    b = onnxruntime::Tensor(X->DataType(), dft_input_shape, alloc);
+    auto b = onnxruntime::Tensor(X->DataType(), dft_input_shape, alloc);
     b_fft = onnxruntime::Tensor(Y->DataType(), dft_input_shape, alloc);
     chirp = onnxruntime::Tensor(X->DataType(), dft_input_shape, alloc);
-  }
 
-  std::complex<T>* a_data = reinterpret_cast<std::complex<T>*>(a.MutableDataRaw());
-  std::complex<T>* a_fft_data = reinterpret_cast<std::complex<T>*>(a_fft.MutableDataRaw());
-  std::complex<T>* b_data = reinterpret_cast<std::complex<T>*>(b.MutableDataRaw());
-  std::complex<T>* b_fft_data = reinterpret_cast<std::complex<T>*>(b_fft.MutableDataRaw());
-  std::complex<T>* chirp_data = reinterpret_cast<std::complex<T>*>(chirp.MutableDataRaw());
-
-  memset(a_data, 0, a.SizeInBytes());
-  if (should_recreate) {
+    std::complex<T>* b_data = reinterpret_cast<std::complex<T>*>(b.MutableDataRaw());
+    std::complex<T>* b_fft_data = reinterpret_cast<std::complex<T>*>(b_fft.MutableDataRaw());
+    std::complex<T>* chirp_data = reinterpret_cast<std::complex<T>*>(chirp.MutableDataRaw());
     memset(b_data, 0, b.SizeInBytes());
     memset(b_fft_data, 0, b_fft.SizeInBytes());
     memset(chirp_data, 0, chirp.SizeInBytes());
-  }
 
-  for (size_t n = 0; n < N; n++) {
-    std::complex<T>& a_n = *(a_data + n);
-    std::complex<T>& chirp_n = *(chirp_data + n);
-    auto window_n = window_data ? *(window_data + n) : 1;
-
-    if (should_recreate) {
+    for (size_t n = 0; n < N; n++) {
+      std::complex<T>& chirp_n = *(chirp_data + n);
       // chirp
       auto exponent = -pi * n * n / N;
       chirp_n = std::complex<T>(cos(exponent), sin(exponent));
@@ -261,7 +233,43 @@ static Status dft_bluestein_z_chirp(
       b_n = std::conj(chirp_n);
     }
 
-    // a
+    for (size_t n = M - N + 1; n < M; n++) {
+      std::complex<T>& b_n = *(b_data + n);
+      std::complex<T>& b_m_minus_n = *(b_data + M - n);
+      b_n = b_m_minus_n;
+    }
+
+    // Forward FFT radix2 for the "b" signal
+    // This will be cached and reused!
+    ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &b, &b_fft, 0, 1, 0, 1, 1, M, nullptr,
+                                                        false, inverse, V, temp_output)));
+  }
+
+  // Get data
+  auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + X_offset;
+  auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
+  U* window_data = nullptr;
+  if (window) {
+    window_data = const_cast<U*>(reinterpret_cast<const U*>(window->DataRaw()));
+  }
+
+  auto a = onnxruntime::Tensor(X->DataType(), dft_input_shape, alloc);
+  auto a_fft = onnxruntime::Tensor(Y->DataType(), dft_input_shape, alloc);
+  std::complex<T>* a_data = reinterpret_cast<std::complex<T>*>(a.MutableDataRaw());
+  std::complex<T>* a_fft_data = reinterpret_cast<std::complex<T>*>(a_fft.MutableDataRaw());
+  std::complex<T>* b_fft_data = reinterpret_cast<std::complex<T>*>(b_fft.MutableDataRaw());
+  std::complex<T>* chirp_data = reinterpret_cast<std::complex<T>*>(chirp.MutableDataRaw());
+  memset(a_data, 0, a.SizeInBytes());
+
+  const auto& X_shape = X->Shape();
+  size_t number_of_samples = static_cast<size_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
+
+  // Prepare "a" signal
+  for (size_t n = 0; n < N; n++) {
+    std::complex<T>& a_n = *(a_data + n);
+    std::complex<T>& chirp_n = *(chirp_data + n);
+    auto window_n = window_data ? *(window_data + n) : 1;
+
     if (n < number_of_samples) {
       a_n = *(X_data + n * X_stride);  // input
     }
@@ -269,21 +277,9 @@ static Status dft_bluestein_z_chirp(
     a_n *= chirp_n;
   }
 
-  if (should_recreate) {
-    for (size_t n = M - N + 1; n < M; n++) {
-      std::complex<T>& b_n = *(b_data + n);
-      std::complex<T>& b_m_minus_n = *(b_data + M - n);
-      b_n = b_m_minus_n;
-    }
-  }
-
+  // Forward FFT radix2 for the "a" signal
   ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &a, &a_fft, 0, 1, 0, 1, 1, M, nullptr,
                                         false, inverse, V, temp_output)));
-
-  if (should_recreate) {
-    ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &b, &b_fft, 0, 1, 0, 1, 1, M, nullptr,
-                                                        false, inverse, V, temp_output)));
-  }
 
   for (size_t i = 0; i < M; i++) {
     std::complex<T>& a_i = *(a_fft_data + i);
@@ -291,6 +287,7 @@ static Status dft_bluestein_z_chirp(
     a_i *= b_i;
   }
 
+  // Inverse FFT radix2 for the "a" signal
   ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &a_fft, &a, 0, 1, 0, 1, 1, M, nullptr,
                                         false, !inverse, V, temp_output)));
   const auto& Y_shape = Y->Shape();
@@ -301,7 +298,7 @@ static Status dft_bluestein_z_chirp(
     std::complex<T>& out = *(Y_data + i * Y_stride);
     std::complex<T>& c_i = *(a_data + i);
     if (i > 0) {
-      c_i = *(a_data + M - i); // Why reverse the output.. bug...
+      c_i = *(a_data + M - i); // Why reverse the output?
     }
     out = c_i * chirp_i;
   }
