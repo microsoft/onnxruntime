@@ -20,6 +20,7 @@ namespace Microsoft.ML.OnnxRuntime
         ONNX_TYPE_MAP = 3,  // It's a map
         ONNX_TYPE_OPAQUE = 4, // It's an experimental Opaque object
         ONNX_TYPE_SPARSETENSOR = 5, // It's a Sparse Tensor
+        ONNX_TYPE_OPTIONAL = 6, // It's an optional type that designates anything above (except UNKOWN)
     }
 
     /// <summary>
@@ -345,18 +346,20 @@ namespace Microsoft.ML.OnnxRuntime
                 // fill the native tensor, using GetValue(index) from the Tensor<string>
                 var len = tensor.Length;
                 var nativeStrings = new IntPtr[len];
-                using (var pinnedHandles = new DisposableList<PinnedGCHandle>((int)len))
+                using (var pinnedHandles = new DisposableList<IDisposable>((int)len))
                 {
                     for (int i = 0; i < len; i++)
                     {
                         var utf8str = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(tensor.GetValue(i));
-                        var gcHandle = GCHandle.Alloc(utf8str, GCHandleType.Pinned);
-                        nativeStrings[i] = gcHandle.AddrOfPinnedObject();
-                        pinnedHandles.Add(new PinnedGCHandle(gcHandle));
+                        var pinnedUtf8 = new Memory<byte>(utf8str).Pin();
+                        unsafe
+                        {
+                            nativeStrings[i] = (IntPtr)pinnedUtf8.Pointer;
+                        }
+                        pinnedHandles.Add(pinnedUtf8);
                     }
 
-                    using (var pinnedStrings = new PinnedGCHandle(GCHandle.Alloc(nativeStrings, GCHandleType.Pinned)))
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(ortValue.Handle, nativeStrings, (UIntPtr)len));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(ortValue.Handle, nativeStrings, (UIntPtr)len));
                 }
             }
             catch (OnnxRuntimeException)
@@ -380,6 +383,7 @@ namespace Microsoft.ML.OnnxRuntime
             if (IsOwned)
             {
                 NativeMethods.OrtReleaseValue(handle);
+                IsOwned = false;
             }
             // Prevent use after disposal
             handle = IntPtr.Zero;

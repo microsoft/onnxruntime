@@ -11,8 +11,10 @@
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
+#include "core/optimizer/compute_optimizer/upstream_reshape.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/constant_sharing.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
@@ -51,6 +53,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
@@ -96,6 +99,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<LSTMReplacement>()));
 
+      // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
+      // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
+      // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
+      transformers.emplace_back(std::make_unique<ConstantSharing>(compatible_eps));
       // Remove duplicate nodes. Must be applied before any recompute transformations.
       if (config.gelu_recompute || config.attn_dropout_recompute || config.transformer_layer_recompute) {
         transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
@@ -136,9 +143,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
 
-      if (config.enable_compute_optimizer) {
-        transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
-      }
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
       }
@@ -150,12 +154,22 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
             config.number_recompute_layers, compatible_eps));
       }
       if (config.propagate_cast_ops_config.level >= 0) {
-        const InlinedHashSet<std::string_view> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+        const InlinedHashSet<std::string_view> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider,
+                                                                          onnxruntime::kRocmExecutionProvider};
         transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
                                                                      static_cast<size_t>(config.propagate_cast_ops_config.level),
                                                                      config.propagate_cast_ops_config.allow,
                                                                      cuda_execution_provider));
       }
+
+      if (config.enable_compute_optimizer) {
+        transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
+        if (config.enable_label_sparsity_optimization) {
+          transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
+          transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps));
+        }
+      }
+
     } break;
 
     case TransformerLevel::Level2: {
