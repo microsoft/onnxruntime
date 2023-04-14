@@ -320,13 +320,15 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Saves a checkpoint to path. It can be loaded into <see cref="CheckpointState"/>
+        /// Gets the current training session state. The state can be saved to a checkpoint file
+        /// by calling <see cref="SaveCheckpoint"/>
         /// </summary>
-        /// <param name="path">Specify path for saving the checkpoint.</param>
-        /// <param name="saveOptimizerState">SFlag indicating whether to save optimizer state or not.</param>
-        public void SaveCheckpoint(string path, bool saveOptimizerState = false)
+        /// <param name="includeOptimizerState">SFlag indicating whether to include optimizer state or not.</param>
+        public CheckpointState GetState(bool includeOptimizerState = false)
         {
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtSaveCheckpoint(NativeOnnxValueHelper.GetPlatformSerializedString(path), _nativeHandle, saveOptimizerState));
+            IntPtr checkpointHandle = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetState(_nativeHandle, includeOptimizerState, out checkpointHandle));
+            return new CheckpointState(checkpointHandle);
         }
 
     #endregion
