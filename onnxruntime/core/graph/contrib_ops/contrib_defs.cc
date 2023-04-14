@@ -1695,6 +1695,10 @@ constexpr const char* FusedMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
+constexpr const char* FusedMatMulActivation_doc = R"DOC(
+Executes the same operation as FusedMatMul, but also has an activation function fused to its output.
+)DOC";
+
 ONNX_MS_OPERATOR_SET_SCHEMA(TransposeMatMul, 1,
                             OpSchema()
                                 .Input(0, "A", "N-dimensional matrix A", "T")
@@ -1745,6 +1749,53 @@ ONNX_MS_OPERATOR_SET_SCHEMA(FusedMatMul, 1,
                                 .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                                                 "Constrain input and output types to float tensors.")
                                 .SetDoc(FusedMatMul_doc)
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { FusedMatMulShapeInference(ctx); }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(FusedMatMulActivation, 1,
+                            OpSchema()
+                                .Input(0, "A", "N-dimensional matrix A", "T")
+                                .Input(1, "B", "N-dimensional matrix B", "T")
+                                .Attr("alpha", "Scalar multiplier for the product of the input tensors.", AttributeProto::FLOAT, 1.0f)
+                                .Attr("transA", "Whether A should be transposed on the last two dimensions before doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("transB", "Whether B should be transposed on the last two dimensions before doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("transBatchA",
+                                      "Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before "
+                                      "doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("transBatchB",
+                                      "Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before "
+                                      "doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr(
+                                    "activation",
+                                    "",
+                                    AttributeProto::STRING)
+                                .Attr(
+                                    "activation_alpha",
+                                    "",
+                                    AttributeProto::FLOAT,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "activation_beta",
+                                    "",
+                                    AttributeProto::FLOAT,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "activation_gamma",
+                                    "",
+                                    AttributeProto::FLOAT,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "activation_axis",
+                                    "",
+                                    AttributeProto::INT,
+                                    OPTIONAL_VALUE)
+                                .Output(0, "Y", "Matrix multiply results", "T")
+                                .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                                                "Constrain input and output types to float tensors.")
+                                .SetDoc(FusedMatMulActivation_doc)
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { FusedMatMulShapeInference(ctx); }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SparseToDenseMatMul, 1,

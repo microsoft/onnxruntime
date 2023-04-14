@@ -71,7 +71,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// </summary>
         /// <param name="f">instance of Float16</param>
         /// <returns>value member</returns>
-        public static implicit operator ushort (Float16 f) { return f.value; }
+        public static implicit operator ushort(Float16 f) { return f.value; }
         /// <summary>
         /// Converts a 16-bit unsigned integer to a Float16.
         /// </summary>
@@ -191,7 +191,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// represent the same type and value.
         /// </summary>
         /// <param name="obj">An System.Object.</param>
-       /// <returns>true if obj is BFloat16 its value is equal to this instance; otherwise, false.</returns>
+        /// <returns>true if obj is BFloat16 its value is equal to this instance; otherwise, false.</returns>
         public override bool Equals(object obj)
         {
             bool result = false;
@@ -286,7 +286,8 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
         private static readonly Dictionary<TensorElementType, TensorElementTypeInfo> tensorElementTypeInfoMap;
 
-        static TensorBase () {
+        static TensorBase()
+        {
             typeInfoMap = new Dictionary<Type, TensorTypeInfo>()
             {
                 { typeof(float), new TensorTypeInfo( TensorElementType.Float, sizeof(float)) },
@@ -306,11 +307,11 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             };
 
             tensorElementTypeInfoMap = new Dictionary<TensorElementType, TensorElementTypeInfo>();
-            foreach(var info in typeInfoMap)
+            foreach (var info in typeInfoMap)
             {
                 tensorElementTypeInfoMap.Add(info.Value.ElementType, new TensorElementTypeInfo(info.Key, info.Value.TypeSize));
             }
-         }
+        }
 
         private readonly Type _primitiveType;
         /// <summary>
@@ -559,7 +560,10 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                 {
                     return (T)(object)(ushort)(0);
                 }
-
+                else if (typeof(T) == typeof(string))
+                {
+                    return (T)(object)("0");
+                }
                 throw new NotSupportedException();
             }
         }
@@ -619,14 +623,18 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                 else if (typeof(T) == typeof(ushort))
                 {
                     return (T)(object)(ushort)(1);
-                } 
-                else if(typeof(T) == typeof(Float16))
+                }
+                else if (typeof(T) == typeof(Float16))
                 {
                     return (T)(object)(ushort)(15360);
                 }
                 else if (typeof(T) == typeof(BFloat16))
                 {
                     return (T)(object)(ushort)(16256);
+                }
+                else if (typeof(T) == typeof(string))
+                {
+                    return (T)(object)("1");
                 }
 
                 throw new NotSupportedException();

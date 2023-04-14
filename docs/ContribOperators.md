@@ -33,6 +33,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
+  * <a href="#com.microsoft.FusedMatMulActivation">com.microsoft.FusedMatMulActivation</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
@@ -1761,6 +1762,63 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Scalar multiplier for the product of the input tensors.</dd>
+<dt><tt>transA</tt> : int</dt>
+<dd>Whether A should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transBatchA</tt> : int</dt>
+<dd>Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
+<dt><tt>transBatchB</tt> : int</dt>
+<dd>Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>N-dimensional matrix A</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>N-dimensional matrix B</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Matrix multiply results</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.FusedMatMulActivation"></a><a name="com.microsoft.fusedmatmulactivation">**com.microsoft.FusedMatMulActivation**</a>
+
+  Executes the same operation as FusedMatMul, but also has an activation function fused to its output.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string (required)</dt>
+<dd></dd>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd></dd>
+<dt><tt>activation_axis</tt> : int</dt>
+<dd></dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd></dd>
+<dt><tt>activation_gamma</tt> : float</dt>
+<dd></dd>
 <dt><tt>alpha</tt> : float</dt>
 <dd>Scalar multiplier for the product of the input tensors.</dd>
 <dt><tt>transA</tt> : int</dt>

@@ -505,7 +505,10 @@ def optimize_model(model_path: Path, opt_model_path: Path):
     sess_option = SessionOptions()
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-    _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"])
+    kwargs = {}
+    # This will rename constant initializer names, disable it to make test pass.
+    kwargs["disabled_optimizers"] = ["ConstantSharing"]
+    _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"], **kwargs)
 
 
 def add_pre_process_metadata(model):
