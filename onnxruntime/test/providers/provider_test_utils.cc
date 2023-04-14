@@ -438,7 +438,7 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor,
 
   utils::MLTypeCallDispatcher<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t,
                               int8_t, int16_t, int32_t, int64_t, std::string, MLFloat16,
-                              BFloat16>
+                              BFloat16, Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ>
       t_disp(output_tensor.GetElementType());
 
   t_disp.Invoke<TensorCheck>(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, MakeCheckParams(expected_data));
