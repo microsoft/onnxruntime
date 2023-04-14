@@ -36,9 +36,15 @@ const std::string GetDataTypeName() {
   return DataTypeToName<T>::value;
 }
 
+void LoadRocmTritonKernel();
+
 Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void *args, size_t args_size);
 
-void LoadRocmTritonKernel();
+const TritonKernelMetaData *GetRocmTritonKernelMetadata(size_t idx);
+
+const std::vector<int> *GetRocmTritonKernelByGroup(std::string group_name);
+
+Status LaunchTritonKernel(hipStream_t stream, size_t idx, int grid0, int grid1, int grid2, void *args, size_t args_size);
 
 }  // end of rocm
 }  // end of onnxruntime
