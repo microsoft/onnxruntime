@@ -23,6 +23,8 @@ stages:
       PoolName: 'aiinfra-Win-CPU-2022-web-beta'
       BuildStaticLib: true
       ExtraBuildArgs: ''
+      # Test if build works when JSEP is disabled
+      BuildJsep: false
 
 # This stage is to test if the combined build works on
 # o Windows ARM64
