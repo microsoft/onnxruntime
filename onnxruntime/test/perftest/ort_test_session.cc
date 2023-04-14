@@ -124,6 +124,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_timing_cache_enable = false;
     bool trt_force_timing_cache = false;
     bool trt_detailed_build_log = false;
+    bool trt_build_heuristics_enable  = false;
+    bool trt_sparsity_enable  = false;
+    int trt_builder_optimization_level  = 2;
+    int trt_auxiliary_streams = -1;
+    std::string trt_tactic_sources = "";
 
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -295,6 +300,40 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_detailed_build_log' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "trt_build_heuristics_enable") {
+        if (value == "true" || value == "True") {
+          trt_build_heuristics_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_build_heuristics_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_build_heuristics_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_sparsity_enable") {
+        if (value == "true" || value == "True") {
+          trt_sparsity_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_sparsity_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_sparsity_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_builder_optimization_level") {
+        if (!value.empty()) {
+          trt_builder_optimization_level = std::stoi(value);
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_builder_optimization_level' should be a number and default to 2.\n");
+        }
+      } else if (key == "trt_auxiliary_streams") {
+        if (!value.empty()) {
+          trt_auxiliary_streams = std::stoi(value);
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_auxiliary_streams' should be a number.\n");
+        }
+      } else if (key == "trt_tactic_sources") {
+        if (!value.empty()) {
+          trt_tactic_sources = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a non-emtpy string.\n");
+        }
       } else {
         ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable', 'trt_layer_norm_fp32_fallback'] \n");
       }
@@ -323,6 +362,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_timing_cache_enable = trt_timing_cache_enable;
     tensorrt_options.trt_force_timing_cache = trt_force_timing_cache;
     tensorrt_options.trt_detailed_build_log = trt_detailed_build_log;
+    tensorrt_options.trt_build_heuristics_enable = trt_build_heuristics_enable;
+    tensorrt_options.trt_sparsity_enable = trt_sparsity_enable;
+    tensorrt_options.trt_builder_optimization_level = trt_builder_optimization_level;
+    tensorrt_options.trt_auxiliary_streams = trt_auxiliary_streams;
+    tensorrt_options.trt_tactic_sources = trt_tactic_sources.c_str();
     session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
@@ -473,7 +517,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       } else if (key == "rpc_control_latency") {
         qnn_options[key] = value;
       } else {
-        ORT_THROW(R"(Wrong key type entered. Choose from options: 
+        ORT_THROW(R"(Wrong key type entered. Choose from options:
 ['backend_path', 'profiling_level', 'rpc_control_latency'])");
       }
     }
