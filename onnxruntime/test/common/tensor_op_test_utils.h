@@ -71,9 +71,9 @@ class RandomValueGenerator {
     //  [1]
     //  [0, 1]
     //  [-1, 0, 1]
-    //  [-2, 1, 0, 1, 2]
+    //  [-2, -1, 0, 1, 2]
     //  [-1.5, -1, 0, 1, 1.5]
-    //  [-2, -1.5, -1, 0, 1, 1.5, -2]
+    //  [-2, -1.5, -1, 0, 1, 1.5, 2]
     for (size_t i = 0; i < values.size(); ++i) {
       // To maximize stability, use constant_generator_ since
       // it's always initialized with 0.
@@ -94,9 +94,9 @@ class RandomValueGenerator {
     //  [1]
     //  [0, 1]
     //  [-1, 0, 1]
-    //  [-2, 1, 0, 1, 2]
+    //  [-2, -1, 0, 1, 2]
     //  [-1.5, -1, 0, 1, 1.5]
-    //  [-2, -1.5, -1, 0, 1, 1.5, -2]
+    //  [-2, -1.5, -1, 0, 1, 1.5, 2]
     std::vector<TValue> values(detail::SizeFromDims(dims));
     for (size_t i = 0; i < values.size(); ++i) {
       auto index = i % value_candidates.size();

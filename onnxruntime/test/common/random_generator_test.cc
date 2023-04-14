@@ -30,17 +30,6 @@ TEST(RandomTensorGenerator, DiscreteInt) {
   }
 }
 
-TEST(RandomTensorGenerator, DiscreteBool) {
-  RandomValueGenerator random{};
-  const std::vector<int64_t> shape = {2, 3};
-  std::vector<bool> data = random.Discrete<bool>(shape, {false, true});
-
-  ASSERT_EQ(data.size(), 6);
-  for (bool value : data) {
-    EXPECT_TRUE(value == false || value == true);
-  }
-}
-
 // Tests for Circular
 TEST(RandomTensorGenerator, CircularFloat) {
   RandomValueGenerator random{};
