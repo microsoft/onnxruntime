@@ -163,7 +163,7 @@ try:
                         f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
                     f.write("except OSError as e:\n")
                     f.write("    import os\n")
-                    f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "{}"\n'.format(e))
+                    f.write(f'    os.environ["ORT_CUDA_UNAVAILABLE"] = {e}\n')
 
         def _rewrite_ld_preload_tensorrt(self, to_preload):
             with open("onnxruntime/capi/_ld_preload.py", "a", encoding="ascii") as f:
@@ -174,7 +174,7 @@ try:
                         f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
                     f.write("except OSError as e:\n")
                     f.write("    import os\n")
-                    f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "{}"\n'.format(e))
+                    f.write(f'    os.environ["ORT_TENSORRT_UNAVAILABLE"] = {e}\n')
 
         def _rewrite_ld_preload_azure(self):
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
@@ -189,7 +189,7 @@ try:
                 f.write("        LoadLib(lib_name)\n")
                 f.write("    except OSError as e:\n")
                 f.write('        print("Could not load ort azure-ep dependency: " + lib_name)\n')
-                f.write('        os.environ["ORT_" + lib_name + "_UNAVAILABLE"] = "{}"\n'.format(e))
+                f.write(f'        os.environ["ORT_" + lib_name + "_UNAVAILABLE"] = {e}\n')
 
         def run(self):
             if is_manylinux:
