@@ -273,6 +273,14 @@ def parse_arguments():
         "Currently only Windows and Linux platforms are supported.",
     )
 
+    parser.add_argument(
+        "--msbuild_extra_options",
+        nargs="+",
+        action="append",
+        help="Extra properties to pass to msbuild during build. "
+        "These are just msbuild /p: options without the leading /p:.",
+    )
+
     # Java bindings
     parser.add_argument("--build_java", action="store_true", help="Build Java bindings.")
 
@@ -1954,6 +1962,7 @@ def build_nuget_package(
     build_dir,
     configs,
     use_cuda,
+    use_rocm,
     use_openvino,
     use_tensorrt,
     use_dnnl,
@@ -1962,6 +1971,7 @@ def build_nuget_package(
     use_snpe,
     use_qnn,
     enable_training_apis,
+    msbuild_extra_options,
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2001,6 +2011,8 @@ def build_nuget_package(
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.DNNL"'
     elif use_cuda:
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
+    elif use_rocm:
+        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
     elif use_tvm:
         execution_provider = '/p:ExecutionProvider="tvm"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
@@ -2082,7 +2094,7 @@ def build_nuget_package(
             is_linux_build,
             ort_build_dir,
             nuget_exe_arg,
-        ]
+        ] + msbuild_extra_options
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
@@ -2544,6 +2556,7 @@ def main():
                 build_dir,
                 configs,
                 args.use_cuda,
+                args.use_rocm,
                 args.use_openvino,
                 args.use_tensorrt,
                 args.use_dnnl,
@@ -2552,6 +2565,7 @@ def main():
                 args.use_snpe,
                 args.use_qnn,
                 args.enable_training_apis,
+                normalize_arg_list(args.msbuild_extra_options),
             )
 
     if args.test and args.build_nuget:
