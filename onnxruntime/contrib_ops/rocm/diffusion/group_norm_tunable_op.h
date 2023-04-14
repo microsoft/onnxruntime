@@ -177,12 +177,17 @@ class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCParams<T>> {
     this->RegisterOp(GroupNormNHWCStaticSelection<T>);
     ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWCOp)
 
-    // #ifdef USE_COMPOSABLE_KERNEL
-    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, float>()) {
+#ifdef USE_COMPOSABLE_KERNEL
+    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSwish=*/false>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
-    // #endif  // USE_COMPOSABLE_KERNEL
+
+    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSwish=*/true>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+#endif  // USE_COMPOSABLE_KERNEL
   }
 };
 

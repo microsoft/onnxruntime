@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <stdio.h>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,10 +38,12 @@ struct DataTypeAdaptor<BFloat16> {
 };
 
 using Swish = ck::tensor_operation::element_wise::Swish;
+using Pass = ck::tensor_operation::element_wise::PassThrough;
+
 constexpr int Rank = 5;
 constexpr int NumReduceDim = 3;
 
-template <typename T, typename AccT>
+template <typename T, typename AccT, bool WithSwish>
 auto GetCKGroupNormNHWCTypeStringAndOps() {
   using InDataType = typename DataTypeAdaptor<T>::type;
   using OutDataType = typename DataTypeAdaptor<T>::type;
@@ -50,23 +51,29 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
   using GammaDataType = float;
   using BetaDataType = float;
 
+  using Activation = std::conditional_t<WithSwish, Swish, Pass>;
+
   std::vector<std::pair<std::string, onnxruntime::rocm::tunable::Op<GroupNormNHWCParams<T>>>> ret;
   for (auto&& impl : internal::GetDeviceGroupNormInstances<InDataType, GammaDataType, BetaDataType, AccDataType,
-                                                           OutDataType, Swish, Rank, NumReduceDim>()) {
-    auto type_string = onnxruntime::MakeString(impl->GetTypeString());
+                                                           OutDataType, Activation, Rank, NumReduceDim>()) {
+    auto type_string = onnxruntime::MakeString(impl->GetTypeString()) + "_withSwish:" + std::to_string(WithSwish);
     auto invoker = impl->MakeInvokerPointer();
 
     auto ck_group_norm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GroupNormNHWCParams<T>* params) -> Status {
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          !params->withSwish,
-          impl->GetTypeString(), " only supports group norm with swish");
-
+      if constexpr (WithSwish) {
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+            !params->withSwish, "withSwish version only support groupnorm with swish");
+      } else {
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+            params->withSwish, "non-Swish version only support groupnorm without swish");
+      }
       std::vector<ck::index_t> in_lengths{params->n, params->h, params->w, params->groups, params->cPerGroup};
       std::vector<ck::index_t> in_out_strides{params->h * params->w * params->c, params->w * params->c, params->c, params->cPerGroup, 1};
       std::vector<ck::index_t> gamma_beta_strides{0, 0, 0, params->cPerGroup, 1};
       std::vector<ck::index_t> reduce_dims{1, 2, 4};
 
-      auto swish = Swish{};
+      auto activation = Activation{};
+
       auto arg = impl->MakeArgumentPointer(in_lengths,          // lengths
                                            in_out_strides,      // xStrides
                                            gamma_beta_strides,  // gammaStrides
@@ -80,7 +87,7 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
                                            params->dst,
                                            nullptr,
                                            nullptr,
-                                           swish);
+                                           activation);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());
       invoker->Run(arg.get(), StreamConfig{params->stream});

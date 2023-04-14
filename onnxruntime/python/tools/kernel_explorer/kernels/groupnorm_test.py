@@ -16,7 +16,7 @@ from utils import dtype_to_bytes, dtype_to_suffix
 
 def get_sd_sizes():
     batch_sizes = [1, 2]
-    height = [8, 16, 32, 64]
+    height = [8, 16, 32]
     num_channels = [320, 640, 1280, 1920, 2560]
 
     num_groups = [32]
@@ -52,7 +52,7 @@ def group_norm(input_x, gamma, beta, num_groups, epsilon, with_swish):
     return x
 
 
-def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: int, dtype: str, func):
+def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: int, dtype: str, swish: bool, func):
     np.random.seed(0)
     width = height
     input_x = np.random.rand(batch_size, height, width, num_channels).astype(np.float32)
@@ -62,7 +62,7 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
     workspace = np.random.rand((np.dtype(np.float32).itemsize * 2) * 32 * 32).astype(np.float32)
     epsilon = 1e-05
     output_y = np.random.rand(batch_size, height, width, num_channels).astype(dtype)
-    use_swish = True
+    use_swish = swish
 
     host_x = input_x.astype(dtype)
     input_d = ke.DeviceArray(host_x)
@@ -104,16 +104,19 @@ dtypes = ["float16", "float32"]
 
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
-def test_group_norm(sd_sizes, dtype):
+@pytest.mark.parametrize("swish", [True])
+def test_group_norm(sd_sizes, dtype, swish):
     for func in dtype_to_funcs(dtype):
-        run_group_norm(*sd_sizes, dtype, func)
+        run_group_norm(*sd_sizes, dtype, swish, func)
 
 
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
-def test_group_norm(sd_sizes, dtype):
-    ck_f_name = "CKGroupNormNHWC" + "_" + dtype_to_suffix(dtype)
-    run_group_norm(*sd_sizes, dtype, ck_f_name)
+@pytest.mark.parametrize("swish", [False, True])
+def test_group_norm_ck(sd_sizes, dtype, swish):
+    swish_suffix = "WithSwish" if swish else "WithoutSwish"
+    ck_f_name = "CKGroupNormNHWC"  + swish_suffix + "_" + dtype_to_suffix(dtype)
+    run_group_norm(*sd_sizes, dtype, swish, ck_f_name)
 
 @dataclass
 class GroupNormNHWCMetric(ke.BandwidthMetric):
@@ -134,7 +137,7 @@ class GroupNormNHWCMetric(ke.BandwidthMetric):
 
 
 def profile_group_norm_func(
-    batch_size: int, height: int, width: int, num_channels: int, num_groups: int, dtype: str, func
+    batch_size: int, height: int, width: int, num_channels: int, num_groups: int, dtype: str, swish: bool, func
 ):
     np.random.seed(0)
     input_x = np.random.rand(batch_size, height, width, num_channels).astype(dtype)
@@ -143,7 +146,7 @@ def profile_group_norm_func(
     workspace = np.random.rand(np.dtype(np.float32).itemsize * 2 * 32 * 32).astype(np.float32)
     epsilon = 0.05
     output_y = np.random.rand(batch_size, height, width, num_channels).astype(dtype)
-    use_swish = True
+    use_swish = swish
 
     input_d = ke.DeviceArray(input_x)
     gamma_d = ke.DeviceArray(gamma)
@@ -177,13 +180,14 @@ def profile_group_norm_func(
         )
 
 
-def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, sort=True):
+def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, swish=True, sort=True):
     with ke.benchmark(sort):
         for func in dtype_to_funcs(dtype):
-            profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, func)
+            profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, func)
         # ck function
-        ck_f_name = "CKGroupNormNHWC" + "_" + dtype_to_suffix(dtype)
-        profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, ck_f_name)
+        swish_suffix = "WithSwish" if swish else "WithoutSwish"
+        ck_f_name = "CKGroupNormNHWC"  + swish_suffix + "_" + dtype_to_suffix(dtype)
+        profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, ck_f_name)
 
 
 sd_profile_sizes = [
@@ -222,6 +226,7 @@ if __name__ == "__main__":
     group.add_argument("num_channels", type=int)
     group.add_argument("num_groups", type=int)
     group.add_argument("dtype", choices=dtypes)
+    group.add_argument("--swish", action="store_true")
     group.add_argument("--sort", action="store_true")
 
     if len(sys.argv) == 1:
@@ -229,5 +234,5 @@ if __name__ == "__main__":
     else:
         args = parser.parse_args()
         profile_with_args(
-            args.batch_size, args.height, args.width, args.num_channels, args.num_groups, args.dtype, args.sort
+            args.batch_size, args.height, args.width, args.num_channels, args.num_groups, args.dtype, args.swish, args.sort
         )

@@ -106,7 +106,7 @@ class GroupNormNHWCTunable : public IKernelExplorer {
 };
 
 #ifdef USE_COMPOSABLE_KERNEL
-template <typename T>
+template <typename T, bool WithSwish>
 class CKGroupNormNHWC : public IKernelExplorer {
  public:
   CKGroupNormNHWC(DeviceArray& output, DeviceArray& workspace, DeviceArray& input, DeviceArray& gamma, DeviceArray& beta,
@@ -114,7 +114,7 @@ class CKGroupNormNHWC : public IKernelExplorer {
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<float*>(workspace.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()),
                 batch_size, height, width, num_channels, num_groups, epsilon, use_swish) {
-    for (auto&& [type_string, op] : contrib::rocm::GetCKGroupNormNHWCTypeStringAndOps<T, float>()) {
+    for (auto&& [type_string, op] : contrib::rocm::GetCKGroupNormNHWCTypeStringAndOps<T, float, WithSwish>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
@@ -172,15 +172,21 @@ class CKGroupNormNHWC : public IKernelExplorer {
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 256)                        \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 320)
 
-#define REGISTER_OP_TYPED(name, type)                                                     \
-  py::class_<name<type>>(m, #name "_" #type)                                              \
+#define REGISTER_COMMON(name, type, ...)                                                  \
+  py::class_<type<__VA_ARGS__>>(m, name)                                                  \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, \
                     int, int, int, int, int, float, bool>())                              \
-      .def("SetRepeats", &name<type>::SetRepeats)                                         \
-      .def("Profile", &name<type>::Profile)                                               \
-      .def("Run", &name<type>::Run)                                                       \
-      .def("ListOps", &name<type>::ListOps)                                               \
-      .def("SelectOp", &name<type>::SelectOp);
+      .def("SetRepeats", &type<__VA_ARGS__>::SetRepeats)                                  \
+      .def("Profile", &type<__VA_ARGS__>::Profile)                                        \
+      .def("Run", &type<__VA_ARGS__>::Run)                                                \
+      .def("ListOps", &type<__VA_ARGS__>::ListOps)                                        \
+      .def("SelectOp", &type<__VA_ARGS__>::SelectOp);
+
+#define REGISTER_OP_TYPED(name, type) \
+  REGISTER_COMMON(#name "_" #type, name, type)
+
+#define REGISTER_CK(type, with_swish, swish_suffix) \
+  REGISTER_COMMON("CKGroupNormNHWC" swish_suffix "_" #type, CKGroupNormNHWC, type, with_swish)
 
 KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWC, half);
@@ -193,8 +199,10 @@ KE_REGISTER(m) {
   REGISTER_OP_TYPED(GroupNormNHWCStaticSelection, float);
 
 #ifdef USE_COMPOSABLE_KERNEL
-  REGISTER_OP_TYPED(CKGroupNormNHWC, half);
-  REGISTER_OP_TYPED(CKGroupNormNHWC, float);
+  REGISTER_CK(half, false, "WithoutSwish");
+  REGISTER_CK(half, true, "WithSwish");
+  REGISTER_CK(float, false, "WithoutSwish");
+  REGISTER_CK(float, true, "WithSwish");
 #endif  // USE_COMPOSABLE_KERNEL
 }
 
