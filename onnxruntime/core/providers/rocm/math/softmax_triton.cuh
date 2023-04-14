@@ -42,12 +42,8 @@ std::string GetSoftmaxTritonName(int num_elements, bool is_log_softmax) {
 }
 
 template <typename T>
-std::string GetSoftmaxTritonGroupName(bool is_log_softmax) {
+std::string GetSoftmaxTritonGroupName() {
   std::string ret = "softmax_";
-  if (is_log_softmax) {
-    ret = "log_softmax_";
-  }
-
   ret += GetDataTypeName<T>();
   return ret;
 }
@@ -76,7 +72,7 @@ Status SoftmaxTritonOp(const SoftmaxParams<T, OutputT>* params) {
 template <typename T, typename OutputT>
 auto GetSoftmaxTritonOps() {
   std::vector<std::pair<std::string, tunable::Op<SoftmaxParams<T, OutputT>>>> ret;
-  auto group_name = GetSoftmaxTritonGroupName();
+  auto group_name = GetSoftmaxTritonGroupName<T>();
   auto *kernel_list = GetRocmTritonKernelByGroup(group_name);
   if (kernel_list == nullptr) {
     return ret;
@@ -86,10 +82,14 @@ auto GetSoftmaxTritonOps() {
     // check params match
     auto *metadata = GetRocmTritonKernelMetadata(i);
     auto block_size = -1;
-    if (metadata->constants.count("BLOCK_SIZE") {
-      block_size = metadata->constants["BLOCK_SIZE"];
+    const std::string block_name = "BLOCK_SIZE";
+    if (metadata->constants.count(block_name) != 0) {
+      block_size = metadata->constants.at(block_name);
     }
     auto impl = [i, block_size](const SoftmaxParams<T, OutputT> *params) -> Status {
+      if (params->log_softmax_) {
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, "log_softmax not support");
+      }
       if (block_size < params->softmax_elements) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, "BLOCK_SIZE not support");
       }
@@ -105,7 +105,7 @@ auto GetSoftmaxTritonOps() {
       // grid dim is (batch_count, 1, 1)
       return LaunchTritonKernel(params->stream, i, params->batch_count, 1, 1, &args, sizeof(args));
     };
-    ret.push_back(impl);
+    ret.emplace_back(std::make_pair(metadata->name, std::move(impl)));
   }
   return ret;
 }

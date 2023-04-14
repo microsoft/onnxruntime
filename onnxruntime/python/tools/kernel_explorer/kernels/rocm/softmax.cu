@@ -177,30 +177,44 @@ template <typename T>
 class SoftmaxTriton : public IKernelExplorer {
  public:
   SoftmaxTriton(DeviceArray& output, DeviceArray& input, int softmax_elements,
-                                  int input_stride, int output_stride, int batch_count, bool is_log_softmax)
+            int input_stride, int output_stride, int batch_count, bool is_log_softmax)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
-                softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {}
+                softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {
+    for (auto&& [name, op] : rocm::GetSoftmaxTritonOps<T, T>()) {
+      name_strings_.emplace_back(name);
+      ops_.emplace_back(std::move(op));
+    }
+  }
 
   void Run() override {
-    auto status = rocm::SoftmaxTritonOp<T, T>(&params_);
-    if (!status.IsOK()) {
-      std::cout << "launch softmax triton failed: " << status.ErrorMessage() << std::endl;
-    }
-    // ORT_THROW_IF_ERROR(status);
+    ORT_THROW_IF_ERROR(ops_[selected_op_](&params_));
   }
 
   std::vector<std::string> ListOps() const {
-    return {"SoftmaxTriton"};
+    return name_strings_;
   }
 
   bool SelectOp(const std::string& name) {
-    return name == "SoftmaxTriton";
+    for (size_t i = 0; i < ops_.size(); i++) {
+      if (name_strings_[i] == name) {
+        selected_op_ = i;
+        Status status = ops_[i](&params_);
+        return status.IsOK();
+      }
+    }
+
+    ORT_THROW("Cannot find implementation ", name);
   }
 
  private:
   using ParamsT = rocm::SoftmaxParams<T, T>;
+  using OpT = rocm::tunable::Op<ParamsT>;
   ParamsT params_{};
+  std::vector<OpT> ops_;
+  std::vector<std::string> name_strings_;
+  size_t selected_op_{};
 };
+
 #endif  // USE_TRITON_KERNEL
 
 #define REGISTER_OP(name, type, vec_size)                                    \

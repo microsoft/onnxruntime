@@ -80,7 +80,8 @@ void TryToLoadKernel() {
       metadata.shared_mem_size = j_m["shared"];
       metadata.func = function;
       fname = j_m["name"];  // name is not same as func_name
-      group_name = j_m["group"];
+      metadata.name = fname;
+      std::string group_name = j_m["group"];
 
       // parse constants
       if (j_m.contains("constants")) {
@@ -96,9 +97,9 @@ void TryToLoadKernel() {
         }
       }
       auto idx = rocm_triton_kernel_metadata.size();
-      rocm_triton_kernel_map.push_back(metadata);
+      rocm_triton_kernel_metadata.push_back(metadata);
       rocm_triton_kernel_map[fname] = idx;
-      rocm_triton_kernel_group_map[group_name] = idx;
+      rocm_triton_kernel_group_map[group_name].push_back(idx);
       LOGS_DEFAULT(VERBOSE) << "loaded rocm triton kernel: " << fname << " idx: " << idx;
     }
   }
@@ -134,7 +135,8 @@ Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int 
     std::string message = message_stream.str();
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, message);
   }
-  auto metadata = rocm_triton_kernel_map[fname];
+  auto idx = rocm_triton_kernel_map[fname];
+  auto metadata = rocm_triton_kernel_metadata[idx];
   void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, args, HIP_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
                       HIP_LAUNCH_PARAM_END};
 
@@ -157,7 +159,7 @@ Status LaunchTritonKernel(hipStream_t stream, size_t idx, int grid0, int grid1, 
     std::string message = message_stream.str();
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, message);
   }
-  auto metadata = rocm_triton_kernel_map[fname];
+  auto metadata = rocm_triton_kernel_metadata[idx];
   void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, args, HIP_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
                       HIP_LAUNCH_PARAM_END};
 
@@ -182,7 +184,7 @@ const std::vector<int> *GetRocmTritonKernelByGroup(std::string group_name) {
   if (rocm_triton_kernel_group_map.count(group_name) == 0) {
     return nullptr;
   }
-  return &rocm_triton_kernel_metadata.at(group_name);
+  return &rocm_triton_kernel_group_map.at(group_name);
 }
 }  // end of rocm
 }  // end of onnxruntime
