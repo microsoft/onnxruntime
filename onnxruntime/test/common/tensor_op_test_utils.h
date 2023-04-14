@@ -75,7 +75,9 @@ class RandomValueGenerator {
     //  [-1.5, -1, 0, 1, 1.5]
     //  [-2, -1.5, -1, 0, 1, 1.5, -2]
     for (size_t i = 0; i < values.size(); ++i) {
-      auto index = distribution(generator_);
+      // To maximize stability, use constant_generator_ since
+      // it's always initialized with 0.
+      auto index = distribution(constant_generator_);
       values[i] = value_candidates[index];
     }
     return values;
@@ -214,6 +216,7 @@ class RandomValueGenerator {
 
  private:
   const RandomSeedType random_seed_;
+  RandomEngine constant_generator_{0};
   RandomEngine generator_;
   // while this instance is in scope, output some context information on test failure like the random seed value
   const ::testing::ScopedTrace output_trace_;
