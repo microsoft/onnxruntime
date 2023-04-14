@@ -529,10 +529,10 @@ if (onnxruntime_USE_CUDA)
 
   if (WIN32)
     # *.cu cannot use PCH
-    target_precompile_headers(onnxruntime_providers_cuda PUBLIC
-      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
-    )
+    #target_precompile_headers(onnxruntime_providers_cuda PUBLIC
+    #  "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+    #  "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+    #)
 
     # minimize the Windows includes.
     # this avoids an issue with CUDA 11.6 where 'small' is defined in the windows and cuda headers.
