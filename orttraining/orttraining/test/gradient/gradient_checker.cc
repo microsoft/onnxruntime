@@ -467,7 +467,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   // TODO: Consider varying mean and variance
   float scale = 5.f;
   float mean = 0.f;
-  const auto seed = GetTestRandomSeed();
+  // Use fixed random since numerically compute gradient is not always stable.
+  const auto seed = 5566;
   std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
   std::normal_distribution<X_T> distribution{mean, scale};
 
