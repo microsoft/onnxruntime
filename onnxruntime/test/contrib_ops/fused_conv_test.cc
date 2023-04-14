@@ -36,6 +36,7 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 bool use_float16 = false,
                 bool weight_is_initializer = false) {
   bool enable_cuda = HasCudaEnvironment(0) && !use_float16 && !disable_cuda;
+  // Only ROCm EP supports float16.
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get()) && !disable_rocm;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
 
@@ -69,7 +70,6 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
     const char* szNames[] = {"X", "W", "B", "Z"};
 
     if (use_float16) {
-      // Only ROCm EP supports float16.
       test.AddInput<MLFloat16>(szNames[0], input_shapes[0], ToFloat16(inputs[0]));
       test.AddInput<MLFloat16>(szNames[1], input_shapes[1], ToFloat16(inputs[1]), weight_is_initializer);
       if (inputs.size() >= 3)
@@ -95,7 +95,7 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
 
     if (enable_rocm) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
+      execution_providers.push_back(DefaultRocmExecutionProvider());
       test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
 
