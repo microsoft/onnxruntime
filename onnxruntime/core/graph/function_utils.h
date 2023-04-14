@@ -20,7 +20,7 @@ namespace function_utils {
  * @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
  * @param allow_aggregated_tensor_type if true, it will use a type constraint called
  * TAggregatedTypes for all inputs and outputs,
- * and that this will match all tensor types in the all_tensor_types_with_bfloat list.
+ * and that this will match all tensor types in the all_tensor_types_ir4 list.
  */
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
                                                        const IndexedSubGraph& nodes_to_fuse,

@@ -1156,9 +1156,9 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypesWithFloat8() {
-  static std::vector<MLDataType> all_fixed_size_tensor_types_with_float8 =
+  static std::vector<MLDataType> all_fixed_size_tensor_types_ir9 =
       GetTensorTypesFromTypeList<element_type_lists::AllFixedSizeWithFloat8>();
-  return all_fixed_size_tensor_types_with_float8;
+  return all_fixed_size_tensor_types_ir9;
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
