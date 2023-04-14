@@ -44,13 +44,13 @@ namespace Microsoft.ML.OnnxRuntime
     /// <param name="param">Pointer to data passed into Constructor `log_param` parameter.</param>
     /// <param name="severity">Log severity level.</param>
     /// <param name="category">Log category</param>
-    /// <param name="logid">Log Id.</param>
-    /// <param name="code_location">Code location detail.</param>
+    /// <param name="logId">Log Id.</param>
+    /// <param name="codeLocation">Code location detail.</param>
     /// <param name="message">Log message.</param>
     public delegate void DOrtLoggingFunction(IntPtr param,
         LogLevel severity,
         string category,
-        string logid,
+        string logId,
         string codeLocation,
         string message);
 
@@ -60,17 +60,31 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public struct EnvironmentCreateOptions
     {
-        // Supply a log id to identify the application using ORT, otherwise, a default one will be used
+        /// <summary>
+        ///  Supply a log id to identify the application using ORT, otherwise, a default one will be used
+        /// </summary>
         public string logId;
-        // Initial logging level so that you can see what is going on during environment creation
-        // Default is LogLevel.Warning
+
+        /// <summary>
+        /// Initial logging level so that you can see what is going on during environment creation
+        /// Default is LogLevel.Warning
+        /// </summary>
         public LogLevel? logLevel;
-        // Supply OrtThreadingOptions instance, otherwise null
+
+        /// <summary>
+        /// Supply OrtThreadingOptions instance, otherwise null
+        /// </summary>
         public OrtThreadingOptions threadOptions;
-        // Supply IntPtr logging param when registering logging function, otherwise IntPtr.Zero
-        // This param will be passed to the logging function when called, it is opaque for the API
+
+        /// <summary>
+        /// Supply IntPtr logging param when registering logging function, otherwise IntPtr.Zero
+        /// This param will be passed to the logging function when called, it is opaque for the API
+        /// </summary>
         public IntPtr? loggingParam;
-        // Supply custom logging function otherwise null
+
+        /// <summary>
+        /// Supply custom logging function otherwise null
+        /// </summary>
         public DOrtLoggingFunction loggingFunction;
     }
 
@@ -110,7 +124,7 @@ namespace Microsoft.ML.OnnxRuntime
         private static DOrtLoggingFunctionInternal _loggingFunctionInternal = LoggingFunctionThunk;
 
         // Customer supplied logging function (if specified)
-        public static DOrtLoggingFunction _userLoggingFunction;
+        private static DOrtLoggingFunction _userLoggingFunction;
 
         #endregion
 
