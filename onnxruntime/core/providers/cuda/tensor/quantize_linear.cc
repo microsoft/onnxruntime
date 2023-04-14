@@ -35,8 +35,12 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   T* output = y.MutableData<T>();
 
   // TO DO: support per-channel
-  ORT_ENFORCE(IsScalarOr1ElementVector(&y_scale), "y_scale must be a scalar or 1D tensor of size 1.");
-  ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point), "y_zero_point must be a scalar or 1D tensor of size 1.");
+  ORT_ENFORCE(IsScalarOr1ElementVector(&y_scale),
+              "y_scale must be a scalar or 1D tensor of size 1. It has ", y_scale.Shape().NumDimensions(),
+              " dimensions and the first one is ", y_scale.Shape()[0], ".");
+  ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point),
+              "y_zero_point must be a scalar or 1D tensor of size 1. It has ", y_zero_point->Shape().NumDimensions(),
+              "dimensions.");
 
   const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
   const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
@@ -129,7 +133,7 @@ REGISTER_Q_KERNEL_TYPED_19(Float8E5M2)
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()), \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DequantizeLinear<T, float>);
 
 REGISTER_DQ_KERNEL_TYPED(int8_t)

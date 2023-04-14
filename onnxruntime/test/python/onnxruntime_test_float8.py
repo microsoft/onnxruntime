@@ -18,7 +18,7 @@ from onnx.reference import ReferenceEvaluator
 import onnxruntime
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
-if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:
+if platform.system() == "Windows" and sys.version_info[:2] >= (3, 8):
     os.add_dll_directory(os.getcwd())
 
 available_providers = [provider for provider in onnxruntime.get_available_providers()]
@@ -214,21 +214,21 @@ class TestInferenceSession(unittest.TestCase):
 
     def model_cast_cast(self, to, float_name, saturate):
         src = getattr(TensorProto, float_name)
-        X = make_tensor_value_info("X", src, [None])
-        Y = make_tensor_value_info("Y", src, [None])
+        x = make_tensor_value_info("X", src, [None])
+        y = make_tensor_value_info("Y", src, [None])
         node1 = make_node("Cast", ["X"], ["T"], to=to, saturate=saturate)
         node2 = make_node("Cast", ["T"], ["Y"], to=src)
-        graph = make_graph([node1, node2], "lr", [X], [Y])
+        graph = make_graph([node1, node2], "lr", [x], [y])
         onnx_model = make_model(graph)
         check_model(onnx_model)
         return onnx_model
 
     def model_cast_cast_f16_float(self, to, saturate, rev=False):
-        X = make_tensor_value_info("X", TensorProto.FLOAT if rev else TensorProto.FLOAT16, [None])
-        Y = make_tensor_value_info("Y", TensorProto.FLOAT16 if rev else TensorProto.FLOAT, [None])
+        x = make_tensor_value_info("X", TensorProto.FLOAT if rev else TensorProto.FLOAT16, [None])
+        y = make_tensor_value_info("Y", TensorProto.FLOAT16 if rev else TensorProto.FLOAT, [None])
         node1 = make_node("Cast", ["X"], ["T"], to=to, saturate=saturate)
         node2 = make_node("Cast", ["T"], ["Y"], to=TensorProto.FLOAT16 if rev else TensorProto.FLOAT)
-        graph = make_graph([node1, node2], "lr", [X], [Y])
+        graph = make_graph([node1, node2], "lr", [x], [y])
         onnx_model = make_model(graph)
         check_model(onnx_model)
         return onnx_model
@@ -329,7 +329,6 @@ class TestInferenceSession(unittest.TestCase):
         expected = TestInferenceSession.expected_saturate if saturate else TestInferenceSession.expected_no_saturate
         x = TestInferenceSession.x.astype(TestInferenceSession.dtypes[float_name])
         expect = expected[to].astype(TestInferenceSession.dtypes[float_name])
-        diff = np.abs(x.astype(TestInferenceSession.x.dtype) - TestInferenceSession.x)
 
         onnx_model = self.model_cast_cast(to, float_name, saturate)
         sess = onnxruntime.InferenceSession(
@@ -388,8 +387,8 @@ class TestInferenceSession(unittest.TestCase):
 
     def model_qdq(self, to, float_name, saturate, castq=False, castdq=False, like=False):
         fltype = getattr(TensorProto, float_name)
-        X = make_tensor_value_info("X", fltype, [None])
-        Y = make_tensor_value_info("Y", fltype, [None])
+        x = make_tensor_value_info("X", fltype, [None])
+        y = make_tensor_value_info("Y", fltype, [None])
         scale = make_node("Constant", [], ["scale"], value=make_tensor("scale", fltype, [1], [1.0]))
         zero = make_node("Constant", [], ["zero"], value=make_tensor("zero", to, [1], [0.0]))
         if castq:
@@ -406,7 +405,7 @@ class TestInferenceSession(unittest.TestCase):
                 node2 = make_node("Cast", ["Temp"], ["Y"], to=fltype)
         else:
             node2 = make_node("DequantizeLinear", ["Temp", "scale"], ["Y"], axis=0)
-        graph = make_graph([scale, zero, node1, node2], "lr", [X], [Y])
+        graph = make_graph([scale, zero, node1, node2], "lr", [x], [y])
         onnx_model = make_model(graph)
         check_model(onnx_model)
         return onnx_model
@@ -443,12 +442,9 @@ class TestInferenceSession(unittest.TestCase):
         y = ref.run(None, {"X": x})[0]
         assert_allclose(expect, y)
         self.assertEqual(expect.shape, y.shape)
-        try:
-            self.assertEqual(expect.dtype, y.dtype)
-        except AssertionError as e:
-            # A bug in the reference implementation.
-            # raise AssertionError(f"Type issue with onnx model:\n{onnx_model}") from e
-            pass
+        # A bug in the reference implementation,
+        # enable that test when onnx package is fixed.
+        # self.assertEqual(expect.dtype, y.dtype)
 
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
     @parameterized.parameterized.expand(
