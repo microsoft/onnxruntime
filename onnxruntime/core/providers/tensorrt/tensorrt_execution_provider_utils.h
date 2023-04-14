@@ -291,10 +291,11 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
   return model_hash;
 }
 
-int GetNumProfile(std::string name, std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
-
-  if (profile_shapes.find(name) != profile_shapes.end()) {
-    return profile_shapes[name].size();
+int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
+    
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::iterator it;
+  for (it = profile_shapes.begin(); it != profile_shapes.end(); it ++) {
+    return it->second.size();
   }
   return 0;
 }
@@ -342,6 +343,8 @@ bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vect
  * The input string is "input_id:32x1",
  * after the string is being parsed, the pair object is returned as below.
  * pair("input_id", [32, 1])
+ *
+ * Return true if string can be successfully parsed or false if string has wrong format.
  */
 bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std::vector<int64_t>>& pair) {
   if (pair_string.empty()) {
@@ -386,6 +389,7 @@ bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std:
  * after string is being parsed, the profile shapes has two profiles and is being represented as below.
  * {"input_id": [[32, 1], [32, 41]], "attention_mask": [[32, 1], [32, 41]]} 
  *
+ * Return true if string can be successfully parsed or false if string has wrong format.
  */
 bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
   if (profile_shapes_string.empty()) {

@@ -33,9 +33,9 @@ static const std::string kLayerNormFP32Fallback = "ORT_TENSORRT_LAYER_NORM_FP32_
 static const std::string kTimingCacheEnable = "ORT_TENSORRT_TIMING_CACHE_ENABLE";
 static const std::string kForceTimingCache = "ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE";
 static const std::string kDetailedBuildLog = "ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE";
-static const std::string kProfilesMinShapes = "ORT_TENSORRT_PROFILES_MIN_SHAPES";
-static const std::string kProfilesMaxShapes = "ORT_TENSORRT_PROFILES_MAX_SHAPES";
-static const std::string kProfilesOptShapes = "ORT_TENSORRT_PROFILES_OPT_SHAPES";
+static const std::string kProfilesMinShapes = "ORT_TENSORRT_PROFILE_MIN_SHAPES";
+static const std::string kProfilesMaxShapes = "ORT_TENSORRT_PROFILE_MAX_SHAPES";
+static const std::string kProfilesOptShapes = "ORT_TENSORRT_PROFILE_OPT_SHAPES";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -99,6 +99,11 @@ struct TensorrtFuncState {
   std::unique_ptr<nvinfer1::INetworkDefinition>* network = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
+  bool has_explicit_profile = false;
+  int explicit_num_profiles = 0;
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes;
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes;
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes;
   std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
@@ -111,7 +116,7 @@ struct TensorrtFuncState {
   bool engine_cache_enable = false;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
-  nvinfer1::IOptimizationProfile* trt_profile = nullptr;
+  std::vector<nvinfer1::IOptimizationProfile*> profiles;
   AllocatorPtr scratch_allocator;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
@@ -201,6 +206,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes_;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
+  std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;
