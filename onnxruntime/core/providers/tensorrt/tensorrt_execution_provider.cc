@@ -118,6 +118,67 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
   return true;
 }
 
+std::vector<std::string> SplitToStringVec(std::string const& s, char separator) {
+  std::vector<std::string> splitted;
+
+  for (size_t start = 0; start < s.length();) {
+    size_t separatorIndex = s.find(separator, start);
+    if (separatorIndex == std::string::npos) {
+      separatorIndex = s.length();
+    }
+    splitted.emplace_back(s.substr(start, separatorIndex - start));
+    start = separatorIndex + 1;
+  }
+
+  return splitted;
+}
+
+nvinfer1::TacticSources GetTacticSourceFromString(std::string& tactic_sting) {
+  nvinfer1::TacticSources disabledTactics = 0;
+  nvinfer1::TacticSources enabledTactics = 0;
+  std::vector<std::string> tacticList = SplitToStringVec(tactic_sting, ',');
+  for (auto& t : tacticList) {
+    bool enable{false};
+    if (t.front() == '+') {
+      enable = true;
+    } else if (t.front() != '-') {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic source must be prefixed with + or - skipping: " << t;
+    }
+    t.erase(0, 1);
+
+    const auto toUpper = [](std::string& sourceName) {
+      std::transform(
+          sourceName.begin(), sourceName.end(), sourceName.begin(), [](char c) { return std::toupper(c); });
+      return sourceName;
+    };
+
+    nvinfer1::TacticSource source{};
+    t = toUpper(t);
+    if (t == "CUBLAS") {
+      source = nvinfer1::TacticSource::kCUBLAS;
+    } else if (t == "CUBLASLT" || t == "CUBLAS_LT") {
+      source = nvinfer1::TacticSource::kCUBLAS_LT;
+    } else if (t == "CUDNN") {
+      source = nvinfer1::TacticSource::kCUDNN;
+    } else if (t == "EDGE_MASK_CONVOLUTIONS") {
+      source = nvinfer1::TacticSource::kEDGE_MASK_CONVOLUTIONS;
+    } else if (t == "JIT_CONVOLUTIONS") {
+      source = nvinfer1::TacticSource::kJIT_CONVOLUTIONS;
+    } else {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic source was not found with name: " << t;
+    }
+
+    uint32_t sourceBit = 1U << static_cast<uint32_t>(source);
+
+    if (enable) {
+      enabledTactics |= sourceBit;
+    } else {
+      disabledTactics |= sourceBit;
+    }
+  }
+  return enabledTactics & ~disabledTactics;
+}
+
 inline std::vector<char> loadTimingCacheFile(const std::string inFileName) {
   std::ifstream iFile(inFileName, std::ios::in | std::ios::binary);
   if (!iFile) {
@@ -353,6 +414,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (fp16_enable_) {
       layer_norm_fp32_fallback_ = info.layer_norm_fp32_fallback;
     }
+    build_heuristics_enable_ = info.build_heuristics_enable;
+    sparsity_enable_ = info.sparsity_enable;
+    builder_optimization_level_ = info.builder_optimization_level;
+    auxiliary_streams_ = info.auxiliary_streams;
+    tactic_sources_ = info.tactic_sources;
   } else {
     const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
@@ -462,6 +528,31 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (!layer_norm_fp32_fallback_env.empty()) {
       layer_norm_fp32_fallback_ = (std::stoi(layer_norm_fp32_fallback_env) == 0 ? false : true);
     }
+
+    const std::string build_heuristics_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBuildHeuristics);
+    if (!build_heuristics_env.empty()) {
+      build_heuristics_enable_ = (std::stoi(build_heuristics_env) == 0 ? false : true);
+    }
+
+    const std::string sparsity_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kSparsityEnable);
+    if (!sparsity_enable_env.empty()) {
+      sparsity_enable_ = (std::stoi(sparsity_enable_env) == 0 ? false : true);
+    }
+
+    const std::string builder_optimization_level_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBuilderOptimizationLevel);
+    if (!builder_optimization_level_env.empty()) {
+      builder_optimization_level_ = std::stoi(builder_optimization_level_env);
+    }
+
+    const std::string auxiliary_streams_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kAuxiliaryStreams);
+    if (!auxiliary_streams_env.empty()) {
+      auxiliary_streams_ = std::stoi(auxiliary_streams_env);
+    }
+
+    const std::string tactic_sources_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTacticSources);
+    if (!tactic_sources_env.empty()) {
+      tactic_sources_ = tactic_sources_env;
+    }
   }
 
   // Validate setting
@@ -527,7 +618,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
                         << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
                         << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_
-                        << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_;
+                        << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_
+                        << ", trt_build_heuristics_enable: " << build_heuristics_enable_
+                        << ", trt_sparsity_enable: " << sparsity_enable_
+                        << ", trt_builder_optimization_level: " << builder_optimization_level_
+                        << ", trt_auxiliary_streams: " << auxiliary_streams_
+                        << ", trt_tactic_sources: " << tactic_sources_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -1410,6 +1506,45 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
+    // enable sparse weights
+    if (sparsity_enable_) {
+      trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
+    }
+
+    // enable builder heuristics
+    if (build_heuristics_enable_) {
+      trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC );
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
+    }
+#if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
+    // switch optimizaion level
+    if (builder_optimization_level_ != 2) {
+      trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder optimization level is set to " << builder_optimization_level_;
+    }
+
+    // limit auxiliary streams
+    if (auxiliary_streams_ >= 0) {
+      trt_config->setMaxAuxStreams(auxiliary_streams_);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << auxiliary_streams_;
+    }
+#else
+    if (builder_optimization_level_ != 2) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
+    }
+    if (auxiliary_streams_ >= 0) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
+    }
+#endif
+    // limit used tactic sources
+    if (!tactic_sources_.empty()) {
+      nvinfer1::TacticSources tactics = trt_config->getTacticSources();
+      tactics |= GetTacticSourceFromString(tactic_sources_);
+      trt_config->setTacticSources(tactics);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
+    }
+
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
@@ -1584,6 +1719,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
+      // translate tactic sources string to nvinfer1::TacticSources
+      nvinfer1::TacticSources tactics = 0;
+      if (!tactic_sources_.empty()) {
+        tactics = GetTacticSourceFromString(tactic_sources_);
+      }
       *p = {context->allocate_func, context->release_func, context->allocator_handle, &parsers_[context->node_name],
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
@@ -1591,7 +1731,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), nullptr, allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
-            force_timing_cache_match_, detailed_build_log_};
+            force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
+            builder_optimization_level_, auxiliary_streams_ , !tactic_sources_.empty(), tactics};
       *state = p.release();
       return 0;
     };
@@ -1870,6 +2011,45 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
           trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
           trt_config->setDLACore(trt_state->dla_core);
+        }
+
+        // enable sparse weights
+        if (trt_state->sparsity_enable) {
+          trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
+        }
+
+        // enable builder heuristics
+        if (trt_state->build_heuristics_enable) {
+          trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC );
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
+        }
+#if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
+        // switch optimizaion level
+        if (trt_state->builder_optimization_level != 2) {
+          trt_config->setBuilderOptimizationLevel(trt_state->builder_optimization_level);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder optimization level is set to " << builder_optimization_level_;
+        }
+
+        // limit auxiliary streams
+        if (trt_state->auxiliary_streams >= 0) {
+          trt_config->setMaxAuxStreams(trt_state->auxiliary_streams);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << trt_state->auxiliary_streams;
+        }
+#else
+        if (trt_state->builder_optimization_level != 2) {
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
+        }
+        if (trt_state->auxiliary_streams >= 0) {
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
+        }
+#endif
+        // limit used tactic sources
+        if (trt_state->filter_tactic_sources) {
+          nvinfer1::TacticSources tactics = trt_config->getTacticSources();
+          tactics |= trt_state->tactic_sources;
+          trt_config->setTacticSources(tactics);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using bitmask " << tactics;
         }
 
         // Load timing cache from file. Create a fresh cache if the file doesn't exist
