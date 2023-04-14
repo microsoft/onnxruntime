@@ -386,28 +386,39 @@ class FusionT5Attention(FusionAttention):
                 if "past_key_cross" not in past_key:
                     return
         else:
-            k_nodes = self.model.match_parent_path(
+            idx, k_nodes, _ = self.model.match_parent_paths(
                 matmul_qk,
-                ["Transpose", "Concat", "Reshape", "MatMul"],
-                [1, 0, 1, 0],
+                [
+                    (["Transpose", "Concat", "Reshape", "MatMul"], [1, 0, 1, 0]),
+                    (["Transpose", "Concat", "Transpose", "Reshape", "MatMul"], [1, 0, 1, 0, 0]),
+                ],
+                output_name_to_node,
             )
+            past_key_transpose_node = None
+            present_key_transpose_nodes = None
             if k_nodes is not None:
-                _, concat_k, reshape_k, _ = k_nodes
+                concat_k, reshape_k = k_nodes[1], k_nodes[-2]
                 key = reshape_k.input[0]
-                past_key_transpose_node = output_name_to_node[concat_k.input[0]]
-                past_key = past_key_transpose_node.input[0]
+
+                if idx == 0:
+                    past_key_transpose_node = output_name_to_node[concat_k.input[0]]
+                    past_key = past_key_transpose_node.input[0]
+                else:
+                    past_key = concat_k.input[0]
                 if past_key in output_name_to_node:
                     return
                 if "past_key_self" not in past_key:
                     return
-                present_key_transpose_nodes = input_name_to_nodes[concat_k.output[0]]
-                for present_key_transpose_node in present_key_transpose_nodes:
-                    # print("present_key_transpose_node:", present_key_transpose_node)
-                    present_key_candidate = self.model.find_graph_output(present_key_transpose_node.output[0])
-                    # print("present_key_candidate:", present_key_candidate)
-                    if present_key_candidate is not None:
-                        present_key = present_key_candidate.name
-                        break
+
+                if idx == 0:
+                    present_key_transpose_nodes = input_name_to_nodes[concat_k.output[0]]
+                    for present_key_transpose_node in present_key_transpose_nodes:
+                        present_key_candidate = self.model.find_graph_output(present_key_transpose_node.output[0])
+                        if present_key_candidate is not None:
+                            present_key = present_key_candidate.name
+                            break
+                else:
+                    present_key = concat_k.output[0]
                 if present_key is None:
                     return
                 if "present_key_self" not in present_key:
@@ -583,7 +594,13 @@ class FusionSimplifiedLayerNormalization(Fusion):
             [1, 1, 1, 0, 0, 0, 0],
         )
         if sim_ln_nodes is None:
-            return
+            sim_ln_nodes = self.model.match_parent_path(
+                node,
+                ["Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow", "Gather"],
+                [1, 1, 1, 0, 0, 0, 0],
+            )
+            if sim_ln_nodes is None:
+                return
 
         pow_node = sim_ln_nodes[-2]
         if self.model.find_constant_input(pow_node, 2.0) != 1:

@@ -441,15 +441,18 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
 template <typename T>
 typename FusedConv<T>::FusionPlanCache FusedConv<T>::plan_cache_;
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    FusedConv,
-    kMSDomain,
-    1,
-    float,
-    kRocmExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    FusedConv<float>);
+#define REGISTER_KERNEL_TYPED(T)                                                           \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      FusedConv,                                                                           \
+      kMSDomain,                                                                           \
+      1,                                                                                   \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      FusedConv<T>);
 
+REGISTER_KERNEL_TYPED(float);
+REGISTER_KERNEL_TYPED(MLFloat16);
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

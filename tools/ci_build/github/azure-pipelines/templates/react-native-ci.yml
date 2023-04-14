@@ -19,10 +19,15 @@ parameters:
   displayName: 'Package name'
   type: string
   default: 'NPM_packages'
+- name: BuildAndroidAARStageDependsOn
+  displayName: 'Stage the Build Android AAR stage depends on'
+  type: string
+  default: ''
 
 stages:
 - stage: Build_Android_AAR
   displayName: Build Android AAR
+  dependsOn: '${{parameters.BuildAndroidAARStageDependsOn}}'
   jobs:
   - template: android-java-api-aar.yml
     parameters:
@@ -79,7 +84,8 @@ stages:
 
     - template: mac-build-step-with-cache.yml
       parameters:
-        TODAY: $(TODAY)
+        WithCache: true
+        Today: $(TODAY)
         AdditionalKey: ' protobuf | "$(Agent.OS)" | $(Build.SourcesDirectory)/cmake/deps.txt, $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh'
         CacheDir: $(PROTO_CACHE_DIR)
         ChangeEveryCommit: false
@@ -93,7 +99,8 @@ stages:
 
     - template: mac-build-step-with-cache.yml
       parameters:
-        TODAY: $(TODAY)
+        WithCache: true
+        Today: $(TODAY)
         AdditionalKey: react_${{parameters.BuildConfig}}
         CacheDir: $(ORT_CACHE_DIR)
         BuildStep:

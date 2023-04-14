@@ -9,6 +9,18 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
+#if defined(USE_ROCM) && defined(USE_COMPOSABLE_KERNEL)
+#define DISABLE_ROCM false
+#else
+#define DISABLE_ROCM true
+#endif
+
+#if defined(USE_ROCM)
+#define ROCM_GTEST_SKIP(message) GTEST_SKIP_(message)
+#else
+#define ROCM_GTEST_SKIP(message)
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -37,13 +49,14 @@ static void RunMultiHeadAttentionTest(
     bool use_float16 = false,
     bool disable_cpu = true,  // not supported in cpu right now.
     bool disable_cuda = false,
-    bool disable_rocm = true,  // not supported in rocm right now.
+    bool disable_rocm = DISABLE_ROCM,  // not supported in rocm right now.
     bool disable_dml = false) {
   kv_sequence_length = (kv_sequence_length == 0 ? sequence_length : kv_sequence_length);
 
   int min_cuda_architecture = use_float16 ? 700 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !disable_cuda;
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get()) && !disable_rocm;
+  // rocm mha is required to work with TunableOp Enabled
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider(/*test_tunable_op=*/true).get()) && !disable_rocm;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get()) && !disable_dml;
 
@@ -228,7 +241,7 @@ static void RunMultiHeadAttentionTest(
 
     if (enable_rocm) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(DefaultRocmExecutionProvider());
+      execution_providers.push_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
 
@@ -272,7 +285,7 @@ static void RunMultiHeadAttentionKernel(
     bool is_static_kv = true,
     bool disable_cpu = true,  // not supported in cpu right now.
     bool disable_cuda = false,
-    bool disable_rocm = true,
+    bool disable_rocm = DISABLE_ROCM,
     bool disable_dml = false) {
   if (kernel_type == AttentionKernelType::AttentionKernel_Default) {
     ScopedEnvironmentVariables scoped_env_vars{
@@ -437,18 +450,21 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
 // Test fused cross attention kernel
 // It requires head_size > 32 and head_size <= 64 for T4 GPU; hidden_size == v_hidden_size.
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
+  ROCM_GTEST_SKIP("ROCm MHA does not support bias");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize40(data);
   RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask1D) {
+  ROCM_GTEST_SKIP("ROCm MHA does not support mask");
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, AttentionMaskType::MASK_1D_KEY_SEQ_LEN);
   RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask2D) {
+  ROCM_GTEST_SKIP("ROCm MHA does not support mask");
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, AttentionMaskType::MASK_2D_KEY_PADDING);
   RunMultiHeadAttentionTests(data);
@@ -461,6 +477,7 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_K
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Mask2D) {
+  ROCM_GTEST_SKIP("ROCm MHA does not support mask");
   AttentionTestData data;
   GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data, AttentionMaskType::MASK_2D_KEY_PADDING);
   RunMultiHeadAttentionTests(data);
@@ -487,30 +504,35 @@ TEST(MultiHeadAttentionTest, SelfAttention_Batch2_HeadSize32_NoBias_NoMask_Packe
 
 // This tests qk_head_size != k_head_size
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
+  ROCM_GTEST_SKIP("ROCm MHA does not support bias");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16_8(data);
   RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
+  ROCM_GTEST_SKIP("ROCm MHA does not support bias");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16(data);
   RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttentionWithPast) {
+  ROCM_GTEST_SKIP("ROCm MHA does not support attention cache");
   AttentionTestData data;
   GetCrossAttentionDataWithPast(data);
   RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, SelfAttentionWithPast) {
+  ROCM_GTEST_SKIP("ROCm MHA does not support attention cache");
   AttentionTestData data;
   GetSelfAttentionDataWithPast(data);
   RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, AttentionCutlassRelPosBias) {
+  ROCM_GTEST_SKIP("ROCm does not support cutlass");
   AttentionTestData data;
   GetAttentionDataCutlassRelPosBias(data);
   RunMultiHeadAttentionTests(data);
