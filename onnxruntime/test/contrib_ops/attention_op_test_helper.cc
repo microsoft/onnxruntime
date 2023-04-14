@@ -3342,7 +3342,6 @@ void GetCrossAttentionData_DiffSequenceLengths(AttentionTestData& data) {
     -0.41967732f, -0.43735462f, 0.051356006f, -0.36559904f, 0.093453586f, -0.13974363f, -0.10689265f, 0.27119368f,
     -0.40707609f, -0.44006824f, 0.048184391f, -0.35585383f, 0.081379525f, -0.14954941f, -0.086910933f, 0.25871021f,
   };
-  // data.fp16_output_data = data.fp32_output_data;
 
   data.present_key_data = {
     0.18157977f, 0.067748934f, 0.17747428f, -0.60858983f,
@@ -3440,7 +3439,6 @@ void GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(AttentionTestDa
     -0.00033577532f, -0.23549549f, 0.19853255f, 0.10450245f, -0.26995566f, 0.37128073f, 0.064667389f, 0.29624334f,
     0.040147364f, -0.43521237f, -0.096833363f, -0.24481347f, 0.037364807f, -0.0091082826f, -0.40797871f, 0.26487666f,
   };
-  // data.fp16_output_data = data.fp32_output_data;
 
   data.present_key_data = {
     0.12724897f, 0.22341636f, -0.4838708f, 0.094431877f,
@@ -3522,7 +3520,6 @@ void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& da
     0.43687066f, 0.3954815f, 0.37647754f, 0.44443309f,
     0.43690678f, 0.39541441f, 0.37764412f, 0.44382966f,
   };
-  // data.fp16_output_data = data.fp32_output_data;
 }
 
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type) {

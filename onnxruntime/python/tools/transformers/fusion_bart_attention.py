@@ -93,7 +93,7 @@ class FusionBartAttention(FusionAttention):
             return
         
         other_inputs = []
-        for _i, input in enumerate(normalize_node.input):
+        for i, input in enumerate(normalize_node.input):
             if input not in output_name_to_node:
                 continue
             if input == qkv_nodes[0].output[0]:
@@ -103,7 +103,7 @@ class FusionBartAttention(FusionAttention):
             return
         root_input = other_inputs[0]
 
-        # Sometimes the input name to the attention MatMul nodes does not match the input name to the end 
+        # Sometimes the input name to the attention MatMul nodes does not match the input name to the end
         # SkipLayerNormalization node (name saved in root_input). We find the true input name to the MatMul
         # nodes by getting the initial SkipLayerNormalization node and checking how many MatMul nodes are
         # children nodes for each of its output names.
@@ -137,31 +137,38 @@ class FusionBartAttention(FusionAttention):
             [1, 0, 0, 0, None],
         )
         v_nodes_with_past_self_attn = self.model.match_parent_path(
+            # Decoder attention with past value concatenated before MatMul
             matmul_qkv,
-            ["Reshape", "Concat", "Transpose", "Reshape", "Add", "MatMul"], # Decoder attention with past value concatenated before MatMul
+            ["Reshape", "Concat", "Transpose", "Reshape", "Add", "MatMul"],
             [1, 0, 1, 0, 0, None],
         )
         v_nodes_with_past_cross_attn = self.model.match_parent_path(
+            # Decoder attention with past value directly used in MatMul
             matmul_qkv,
-            ["Reshape"], # Decoder attention with past value directly used in MatMul
+            ["Reshape"],
             [1],
         )
         past_v, present_v = "", ""
         reshape_v_2, add_v = None, None
         if v_nodes is not None:
             (reshape_v_2, transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes
-            present_v = transpose_v.output[0] # For initial pass through encoder-decoder_with_past to get starting past values (beam search)
+            # For initial pass through encoder-decoder_with_past to get starting past values (beam search)
+            present_v = transpose_v.output[0]
         elif v_nodes_with_past_self_attn is not None:
             (reshape_v_2, concat_v, transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes_with_past_self_attn
             v_nodes = v_nodes_with_past_self_attn
             past_v = concat_v.input[0]
             present_v = concat_v.output[0]
-        elif v_nodes_with_past_cross_attn is not None and v_nodes_with_past_cross_attn[-1].input[0] in graph_input_names:
+        elif (
+            v_nodes_with_past_cross_attn is not None and v_nodes_with_past_cross_attn[-1].input[0] in graph_input_names
+        ):
             v_nodes = v_nodes_with_past_cross_attn
             past_v = v_nodes[-1].input[0]
             present_v = v_nodes[-1].output[0]
             if present_v not in graph_output_names:
-                identity_node_v = list(filter(lambda node: node.op_type == "Identity", self.model.input_name_to_nodes()[past_v]))
+                identity_node_v = list(
+                    filter(lambda node: node.op_type == "Identity", self.model.input_name_to_nodes()[past_v])
+                )
                 present_v = identity_node_v[0].output[0] if len(identity_node_v) == 1 else ""
         else:
             logger.debug("fuse_attention: failed to match v path")
@@ -170,7 +177,9 @@ class FusionBartAttention(FusionAttention):
         present_v = present_v if present_v in graph_output_names else ""
 
         qk_nodes_1 = self.model.match_parent_path(matmul_qkv, ["Softmax", "MatMul"], [0, 0])
-        qk_nodes_2 = self.model.match_parent_path(matmul_qkv, ["Softmax", "Reshape", "Add", "Reshape", "MatMul"], [0, 0, 0, 0, 0])
+        qk_nodes_2 = self.model.match_parent_path(
+            matmul_qkv, ["Softmax", "Reshape", "Add", "Reshape", "MatMul"], [0, 0, 0, 0, 0]
+        )
         if qk_nodes_1 is not None:
             _, matmul_qk = qk_nodes_1
             qk_nodes = qk_nodes_1
@@ -201,13 +210,15 @@ class FusionBartAttention(FusionAttention):
             [1, 0, 0, 0, 0],
         )
         k_nodes_no_bias_with_past_self_attn = self.model.match_parent_path(
+            # Decoder attention with past key concatenated before MatMul
             matmul_qk,
-            ["Transpose", "Reshape", "Concat", "Transpose", "Reshape", "MatMul"], # Decoder attention with past key concatenated before MatMul
+            ["Transpose", "Reshape", "Concat", "Transpose", "Reshape", "MatMul"],
             [1, 0, 0, 1, 0, 0],
         )
         k_nodes_no_bias_with_past_cross_attn = self.model.match_parent_path(
+            # Decoder attention with past key directly used in MatMul
             matmul_qk,
-            ["Transpose", "Reshape"], # Decoder attention with past key directly used in MatMul
+            ["Transpose", "Reshape"],
             [1, 0],
         )
         past_k, present_k = "", ""
@@ -218,18 +229,24 @@ class FusionBartAttention(FusionAttention):
         elif k_nodes_no_bias is not None:
             _, reshape_k_2, transpose_k_1, reshape_k_1, matmul_k = k_nodes_no_bias
             k_nodes = k_nodes_no_bias
-            present_k = transpose_k_1.output[0] # For initial pass through encoder-decoder_with_past to get starting past values (beam search) 
+            # For initial pass through encoder-decoder_with_past to get starting past values (beam search)
+            present_k = transpose_k_1.output[0]
         elif k_nodes_no_bias_with_past_self_attn is not None:
             _, reshape_k_2, concat_k, _, reshape_k_1, matmul_k = k_nodes_no_bias_with_past_self_attn
             k_nodes = k_nodes_no_bias_with_past_self_attn
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
-        elif k_nodes_no_bias_with_past_cross_attn is not None and k_nodes_no_bias_with_past_cross_attn[-1].input[0] in graph_input_names:
+        elif (
+            k_nodes_no_bias_with_past_cross_attn is not None
+            and k_nodes_no_bias_with_past_cross_attn[-1].input[0] in graph_input_names
+        ):
             k_nodes = k_nodes_no_bias_with_past_cross_attn 
             past_k = k_nodes[-1].input[0]
             present_k = k_nodes[-1].output[0]
             if present_k not in graph_output_names:
-                identity_node_k = list(filter(lambda node: node.op_type == "Identity", self.model.input_name_to_nodes()[past_k]))
+                identity_node_k = list(
+                    filter(lambda node: node.op_type == "Identity", self.model.input_name_to_nodes()[past_k])
+                )
                 present_k = identity_node_k[0].output[0] if len(identity_node_k) == 1 else ""
         else:
             return
@@ -259,8 +276,18 @@ class FusionBartAttention(FusionAttention):
             return
 
         three_root_inputs = past_k != "" and past_v != "" and matmul_k is None and "matmul_v" not in locals()
-        one_root_input = not three_root_inputs and matmul_k.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input 
-        two_root_inputs = not three_root_inputs and matmul_q.input[0] == root_input and matmul_k.input[0] == matmul_v.input[0] and matmul_k.input[0] != matmul_q.input[0]
+        one_root_input = (
+            not three_root_inputs
+            and matmul_k.input[0] == root_input
+            and matmul_q.input[0] == root_input
+            and matmul_v.input[0] == root_input
+        )
+        two_root_inputs = (
+            not three_root_inputs
+            and matmul_q.input[0] == root_input
+            and matmul_k.input[0] == matmul_v.input[0]
+            and matmul_k.input[0] != matmul_q.input[0]
+        )
         
         # There are 5 types of attention:
         # 1) Encoder attention with one_root_input=True and qk_nodes=qk_nodes_1
@@ -292,7 +319,13 @@ class FusionBartAttention(FusionAttention):
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
             
-        if encoder_attention or decoder_attention or decoder_attention_with_past or decoder_cross_attention or decoder_cross_attention_with_past: 
+        if (
+            encoder_attention
+            or decoder_attention
+            or decoder_attention_with_past
+            or decoder_cross_attention
+            or decoder_cross_attention_with_past
+        ): 
             attention_last_node = reshape_qkv_2
             num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q_1)
 
@@ -303,24 +336,28 @@ class FusionBartAttention(FusionAttention):
             new_node = None
             if decoder_attention_with_past or decoder_cross_attention or decoder_cross_attention_with_past:
                 # Note: Decoder attention with past key and past value is fused as multihead attention
-                # rather than attention because multihead attention supports separate past key and past 
+                # rather than attention because multihead attention supports separate past key and past
                 # value whereas attention supports concatenated past key and past value.
-                new_node = self.create_multihead_attention_node(
-                    matmul_q,
-                    matmul_k if decoder_cross_attention or decoder_attention_with_past else past_k,
-                    matmul_v if decoder_cross_attention or decoder_attention_with_past else past_v,
-                    add_q,
-                    add_k if decoder_cross_attention or decoder_attention_with_past else None,
-                    add_v if decoder_cross_attention or decoder_attention_with_past else None,
-                    num_heads,
-                    hidden_size,
-                    attention_last_node.output[0],
-                    past_k=past_k if decoder_attention_with_past else "",
-                    past_v=past_v if decoder_attention_with_past else "",
-                    present_k=present_k,
-                    present_v=present_v,
-                    packed_qkv=decoder_attention_with_past,
-                ) if self.use_multi_head_attention else None
+                new_node = (
+                    self.create_multihead_attention_node(
+                        matmul_q,
+                        matmul_k if decoder_cross_attention or decoder_attention_with_past else past_k,
+                        matmul_v if decoder_cross_attention or decoder_attention_with_past else past_v,
+                        add_q,
+                        add_k if decoder_cross_attention or decoder_attention_with_past else None,
+                        add_v if decoder_cross_attention or decoder_attention_with_past else None,
+                        num_heads,
+                        hidden_size,
+                        attention_last_node.output[0],
+                        past_k=past_k if decoder_attention_with_past else "",
+                        past_v=past_v if decoder_attention_with_past else "",
+                        present_k=present_k,
+                        present_v=present_v,
+                        packed_qkv=decoder_attention_with_past,
+                    )
+                    if self.use_multi_head_attention
+                    else None
+                )
             else:
                 # Temporarily set multihead attention flag to false
                 use_multi_head_attention_ground_truth = self.use_multi_head_attention

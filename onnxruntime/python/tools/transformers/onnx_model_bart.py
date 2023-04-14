@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
+from typing import Optional
 
 from fusion_attention import AttentionMask
 from fusion_bart_attention import FusionBartAttention
@@ -11,7 +12,6 @@ from fusion_reshape import FusionReshape
 from onnx import numpy_helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,9 @@ class FusionBartReshape(FusionReshape):
             shape.extend(input_1)
             shape.extend(input_2)
             shape.extend(input_3)
-            gemm_path_with_bias = self.model.match_parent_path(reshape_node, ["Add", "MatMul"], [0, 1], output_name_to_node)
+            gemm_path_with_bias = self.model.match_parent_path(
+                reshape_node, ["Add", "MatMul"], [0, 1], output_name_to_node
+            )
             gemm_path_no_bias = self.model.match_parent_path(reshape_node, ["MatMul"], [0], output_name_to_node)
             if gemm_path_with_bias is not None:
                 gemm_path = gemm_path_with_bias

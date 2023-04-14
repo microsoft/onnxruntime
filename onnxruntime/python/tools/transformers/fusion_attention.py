@@ -289,7 +289,9 @@ class FusionAttention(Fusion):
         new_dims_name = "kv_4d_to_3d"
         new_dims = self.model.get_initializer(new_dims_name)
         if new_dims is None:
-            new_dims = numpy_helper.from_array(np.array([0, -1, self.model.hidden_size], dtype='int64'), name=new_dims_name)
+            new_dims = numpy_helper.from_array(
+                np.array([0, -1, self.model.hidden_size], dtype="int64"), name=new_dims_name
+            )
             self.model.add_initializer(new_dims, self.this_graph_name)
 
         reshape_k_name = self.model.create_node_name("Reshape")
@@ -333,10 +335,10 @@ class FusionAttention(Fusion):
         k_dim = self.model.get_initializer(k_index)
         v_dim = self.model.get_initializer(v_index)
         if k_dim is None:
-            k_dim = numpy_helper.from_array(np.array(0, dtype='int64'), name=k_index)
+            k_dim = numpy_helper.from_array(np.array(0, dtype="int64"), name=k_index)
             self.model.add_initializer(k_dim, self.this_graph_name)
         if v_dim is None:
-            v_dim = numpy_helper.from_array(np.array(1, dtype='int64'), name=v_index)
+            v_dim = numpy_helper.from_array(np.array(1, dtype="int64"), name=v_index)
             self.model.add_initializer(v_dim, self.this_graph_name)
 
         # Create nodes to index kv_node
@@ -384,14 +386,14 @@ class FusionAttention(Fusion):
             inputs=[past_k],
             outputs=[past_k_transpose],
             name=transpose_k_name,
-            perm=[0,2,1,3],
+            perm=[0, 2, 1, 3],
         )
         transpose_v = helper.make_node(
             "Transpose",
             inputs=[past_v],
             outputs=[past_v_transpose],
             name=transpose_v_name,
-            perm=[0,2,1,3],
+            perm=[0, 2, 1, 3],
         )
 
         # Add reshape nodes to graph
@@ -412,8 +414,8 @@ class FusionAttention(Fusion):
         v_add: Union[NodeProto, None],
         num_heads: int,
     ) -> Union[NodeProto, None]:
-        """Create packed QKV MatMul node before MultiHeadAttention node. 
-           This is for the scenario where an Attention node should be created but cannot be created 
+        """Create packed QKV MatMul node before MultiHeadAttention node.
+           This is for the scenario where an Attention node should be created but cannot be created
            because past_key and past_value are separate inputs and not one concatenated input.
 
         Args:
@@ -443,7 +445,7 @@ class FusionAttention(Fusion):
         vw = NumpyHelper.to_array(v_weight)
 
         assert qw.shape == kw.shape and kw.shape == vw.shape
-        d = qw.shape[0] # hidden size
+        d = qw.shape[0]
 
         qkv_weight = np.stack((qw, kw, vw), axis=1).reshape((d, 3 * d))
         qkv_weight_name = matmul_node_name + "_qkv_weight"
@@ -482,7 +484,9 @@ class FusionAttention(Fusion):
         v_slice_name = matmul_node_name + "_v_start_index"
         v_start_tensor = helper.make_tensor(name=v_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[2 * d])
         end_of_qkv_name = matmul_node_name + "_end_of_qkv_index"
-        end_of_qkv_tensor = helper.make_tensor(name=end_of_qkv_name, data_type=TensorProto.INT64, dims=[1], vals=[3 * d])
+        end_of_qkv_tensor = helper.make_tensor(
+            name=end_of_qkv_name, data_type=TensorProto.INT64, dims=[1], vals=[3 * d]
+        )
         qkv_last_axis_name = matmul_node_name + "_qkv_last_axis"
         qkv_axis_tensor = helper.make_tensor(name=qkv_last_axis_name, data_type=TensorProto.INT64, dims=[1], vals=[-1])
                 
@@ -497,7 +501,7 @@ class FusionAttention(Fusion):
             "Slice",
             inputs=[qkv_matmul_output, q_slice_name, k_slice_name, qkv_last_axis_name],
             outputs=[q_slice_output],
-            name=self.model.create_node_name("Slice")
+            name=self.model.create_node_name("Slice"),
         )
         self.node_name_to_graph_name[q_slice.name] = self.this_graph_name
         k_slice_output = matmul_node_name + "_k_out"
@@ -505,7 +509,7 @@ class FusionAttention(Fusion):
             "Slice",
             inputs=[qkv_matmul_output, k_slice_name, v_slice_name, qkv_last_axis_name],
             outputs=[k_slice_output],
-            name=self.model.create_node_name("Slice")
+            name=self.model.create_node_name("Slice"),
         )
         self.node_name_to_graph_name[k_slice.name] = self.this_graph_name
         v_slice_output = matmul_node_name + "_v_out"
@@ -513,7 +517,7 @@ class FusionAttention(Fusion):
             "Slice",
             inputs=[qkv_matmul_output, v_slice_name, end_of_qkv_name, qkv_last_axis_name],
             outputs=[v_slice_output],
-            name=self.model.create_node_name("Slice")
+            name=self.model.create_node_name("Slice"),
         )
         self.node_name_to_graph_name[v_slice.name] = self.this_graph_name
 
@@ -558,7 +562,7 @@ class FusionAttention(Fusion):
             past_v (str): name of past V value - (batch_size, num_heads, past_sequence_length, head_size)
             present_k (str): name of present K value - (batch_size, num_heads, sequence_length, head_size)
             present_v (str): name of present V value - (batch_size, num_heads, sequence_length, head_size)
-            packed_qkv (bool): whether to combine MatMuls from Q, K, V paths 
+            packed_qkv (bool): whether to combine MatMuls from Q, K, V paths
                                Note: This is for the scenario where an Attention node should be created but cannot be created
                                because past_key and past_value are separate inputs and not one concatenated input.
             
@@ -579,11 +583,18 @@ class FusionAttention(Fusion):
         # Add initial Q/K/V inputs for MHA
         mha_inputs = []
         if packed_qkv:
-            q_slice, k_slice, v_slice = self.create_packed_qkv_matmul_node(q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, num_heads)
+            q_slice, k_slice, v_slice = self.create_packed_qkv_matmul_node(
+                q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, num_heads
+            )
             mha_inputs.extend([q_slice.output[0], k_slice.output[0], v_slice.output[0]])
         elif type(k_matmul) == NodeProto and type(v_matmul) == NodeProto:
             mha_inputs.extend([q_matmul.output[0], k_matmul.output[0], v_matmul.output[0]])
-        elif type(k_matmul) == str and type(v_matmul) == str and k_matmul in graph_input_names and v_matmul in graph_input_names:
+        elif (
+            type(k_matmul) == str
+            and type(v_matmul) == str
+            and k_matmul in graph_input_names
+            and v_matmul in graph_input_names
+        ):
             mha_inputs.extend([q_matmul.output[0], k_matmul, v_matmul])
         else:
             return None
@@ -597,7 +608,7 @@ class FusionAttention(Fusion):
             k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
             kb = NumpyHelper.to_array(k_bias)
         if v_add is not None:
-            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])            
+            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
             vb = NumpyHelper.to_array(v_bias)
 
         qkv_bias = np.stack((qb, kb, vb), axis=0)
@@ -621,12 +632,7 @@ class FusionAttention(Fusion):
 
         # Add optional inputs for MHA
         if past_k != "" and past_v != "" and past_k in graph_input_names and past_v in graph_input_names:
-            mha_inputs.extend([
-                key_padding_mask,
-                add_qk,
-                past_k,
-                past_v,
-            ])
+            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
 
         # Add outputs for MHA
         mha_outputs = [output]
