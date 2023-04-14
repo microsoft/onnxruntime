@@ -245,8 +245,11 @@ def output_summary(results, csv_filename, args):
         ]
         data_names = []
         for batch_size in args.batch_sizes:
-            for sequence_length in args.sequence_lengths:
-                data_names.append(f"b{batch_size}_s{sequence_length}")
+            if args.sequence_lengths == [""]:
+                data_names.append(f"b{batch_size}")
+            else:
+                for sequence_length in args.sequence_lengths:
+                    data_names.append(f"b{batch_size}_s{sequence_length}")
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + data_names)
         csv_writer.writeheader()
@@ -273,7 +276,10 @@ def output_summary(results, csv_filename, args):
                                             assert row[k] == headers[k]
                                     b = result["batch_size"]
                                     s = result["sequence_length"]
-                                    row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                                    if s != "":
+                                        row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                                    else:
+                                        row[f"b{b}"] = result["average_latency_ms"]
                             if row:
                                 csv_writer.writerow(row)
 

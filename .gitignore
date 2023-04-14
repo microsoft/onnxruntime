@@ -39,6 +39,7 @@ onnxprofile_profile_test_*.json
 /csharp/packages
 /csharp/src/Microsoft.ML.OnnxRuntime/targets/**/*.targets
 /csharp/src/Microsoft.ML.OnnxRuntime/targets/**/*.props
+/csharp/**/*.vcxproj.user
 cmake/external/FeaturizersLibrary/
 # Java specific ignores
 java/.gradle

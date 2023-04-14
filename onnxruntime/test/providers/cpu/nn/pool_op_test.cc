@@ -915,7 +915,13 @@ TEST(PoolTest, AveragePool_DefaultStrides) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+#ifdef USE_QNN
+// TODO: Unskip when fixed AB#14594
+// Error message: ComposeGraph Failed to compose Qnn graph.
+TEST(PoolTest, DISABLED_AveragePool_10_ceil1_2d) {
+#else
 TEST(PoolTest, AveragePool_10_ceil1_2d) {
+#endif
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
