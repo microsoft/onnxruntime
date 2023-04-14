@@ -1958,6 +1958,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
+    cmake_path,
     source_dir,
     build_dir,
     configs,
@@ -2038,7 +2039,7 @@ def build_nuget_package(
     for config in configs:
         if is_linux():
             native_build_dir = os.path.join(native_dir, config)
-            cmd_args = ["make", "install", "DESTDIR=.//nuget-staging"]
+            cmd_args = [cmake_path, "-DCMAKE_INSTALL_PREFIX=./nuget-staging/usr/local", "-Pcmake_install.cmake"]
             run_subprocess(cmd_args, cwd=native_build_dir)
 
         configuration = '/p:Configuration="' + config + '"'
@@ -2552,6 +2553,7 @@ def main():
             )
         if args.build_nuget:
             build_nuget_package(
+                cmake_path,
                 source_dir,
                 build_dir,
                 configs,
