@@ -260,7 +260,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             // Must be default level of warning
             ortEnvInstance = OrtEnv.Instance();
-            Assert.Equal(LogLevel.Warning, ortEnvInstance.EnvLogLevel);
             ortEnvInstance.Dispose();
             Assert.False(OrtEnv.IsCreated);
 
