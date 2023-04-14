@@ -51,20 +51,6 @@ class RandomValueGenerator {
     return random_seed_;
   }
 
-  // Random values generated are in the range [min, max).
-  template <typename TFloat>
-  typename std::enable_if<
-      std::is_floating_point<TFloat>::value,
-      std::vector<TFloat>>::type
-  Uniform(gsl::span<const int64_t> dims, TFloat min, TFloat max) {
-    std::vector<TFloat> val(detail::SizeFromDims(dims));
-    std::uniform_real_distribution<TFloat> distribution(min, max);
-    for (size_t i = 0; i < val.size(); ++i) {
-      val[i] = distribution(generator_);
-    }
-    return val;
-  }
-
   template <typename TValue>
   std::vector<TValue>
   Discrete(gsl::span<const int64_t> dims, const std::vector<TValue>& value_candidates) {
@@ -75,9 +61,19 @@ class RandomValueGenerator {
     //
     // The generated tensor is more numerically stable than other `Uniform` methods.
     // If a test constantly fails, it's better to use `Discrete` method. For example,
-    // we call `Discrete` method to generate a tensor with shape [2, 3] and value candidates [-1, 0, 1].
-    // to eliminate the error propagation caused by * and / in matrix multiplication.
+    // we call `Discrete` method to generate a tensor with shape [2, 3] and value candidates
+    // [-1, 0, 1] to eliminate the error propagation caused by * and / in matrix multiplication.
     // To trigger mild error propagation in * and /, try value candidates [-1.5, -1, 0, 1, 1.5].
+    //
+    // Suggested value_candidates to alleviate numerical error (listed
+    // from smallest error to largest error):
+    //  [0]
+    //  [1]
+    //  [0, 1]
+    //  [-1, 0, 1]
+    //  [-2, 1, 0, 1, 2]
+    //  [-1.5, -1, 0, 1, 1.5]
+    //  [-2, -1.5, -1, 0, 1, 1.5, -2]
     for (size_t i = 0; i < values.size(); ++i) {
       auto index = distribution(generator_);
       values[i] = value_candidates[index];
@@ -90,19 +86,35 @@ class RandomValueGenerator {
   Circular(gsl::span<const int64_t> dims, const std::vector<TValue>& value_candidates) {
     // Tier 3 RNG. Use it if `Discrete` method causes large numerical errors
     // (e.g., when elementwise relative error > 1e-3).
-    // Suggested value_candidates to alleviate numerical error (listed from smallest error to largest error):
+    // Suggested value_candidates to alleviate numerical error (listed
+    // from smallest error to largest error):
     //  [0]
     //  [1]
     //  [0, 1]
     //  [-1, 0, 1]
     //  [-2, 1, 0, 1, 2]
     //  [-1.5, -1, 0, 1, 1.5]
+    //  [-2, -1.5, -1, 0, 1, 1.5, -2]
     std::vector<TValue> values(detail::SizeFromDims(dims));
     for (size_t i = 0; i < values.size(); ++i) {
       auto index = i % value_candidates.size();
       values[i] = value_candidates[index];
     }
     return values;
+  }
+
+  // Random values generated are in the range [min, max).
+  template <typename TFloat>
+  typename std::enable_if<
+      std::is_floating_point<TFloat>::value,
+      std::vector<TFloat>>::type
+  Uniform(gsl::span<const int64_t> dims, TFloat min, TFloat max) {
+    std::vector<TFloat> val(detail::SizeFromDims(dims));
+    std::uniform_real_distribution<TFloat> distribution(min, max);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = distribution(generator_);
+    }
+    return val;
   }
 
   // Random values generated are in the range [min, max).
