@@ -1997,7 +1997,9 @@ def build_nuget_package(
     target_name = "/t:CreatePackage"
     execution_provider = '/p:ExecutionProvider="None"'
     package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime"'
+    enable_training_tests = '/p:TrainingEnabledNativeBuild="false"'
     if enable_training_apis:
+        enable_training_tests = '/p:TrainingEnabledNativeBuild="true"'
         if use_cuda:
             package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Training.Gpu"'
         else:
@@ -2052,6 +2054,7 @@ def build_nuget_package(
                 package_name,
                 is_linux_build,
                 ort_build_dir,
+                enable_training_tests,
             ]
             run_subprocess(cmd_args, cwd=csharp_build_dir)
         else:
