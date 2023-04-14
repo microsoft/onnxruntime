@@ -143,8 +143,9 @@ REGISTER_DQ_KERNEL_TYPED(uint8_t)
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()), \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())             \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),        \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}),  \
       DequantizeLinear<T, float>);
 
 REGISTER_DQ_KERNEL_TYPED_19(int8_t)

@@ -49,8 +49,9 @@ static void PrepareForQDQ(const TensorShape& input_shape,
       19,                                                         \
       T,                                                          \
       KernelDefBuilder()                                          \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()), \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())             \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),        \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}),  \
       DequantizeLinear<T>);
 
 #define REGISTER_DEQUANTIZELINEAR_VERSIONED(T)                    \
@@ -181,7 +182,8 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
       19,                                                             \
       T,                                                              \
       KernelDefBuilder()                                              \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T>);
 
