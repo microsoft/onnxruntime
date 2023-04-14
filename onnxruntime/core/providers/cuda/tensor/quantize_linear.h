@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <class T, class U = float>
+template <class T, class U>
 class QuantizeLinear final : public CudaKernel {
  public:
   QuantizeLinear(const OpKernelInfo& info) : CudaKernel(info) {
@@ -24,7 +24,7 @@ class QuantizeLinear final : public CudaKernel {
   int64_t saturate_;
 };
 
-template <class T, class U = float>
+template <class T, class U>
 class DequantizeLinear final : public CudaKernel {
  public:
   DequantizeLinear(const OpKernelInfo& info) : CudaKernel(info) {}
