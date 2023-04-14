@@ -184,7 +184,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           input_tensor_shape[tensor_iter] = *i;
           tensor_iter += 1;
         }
-        auto input = ie_cnn_network_->get_parameters().at(0);
+        auto input = ie_cnn_network_->get_parameters().at(input_idx);
         OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(input->get_element_type(), input_tensor_shape);
         FillInputBlob(tensor_ptr, batch_slice_idx, input_name, context, subgraph_context_);
         try {
