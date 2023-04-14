@@ -149,7 +149,6 @@ class AttentionCPUBase : public AttentionBase {
 
     {
       // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
-      // auto memset_beg = std::chrono::high_resolution_clock::now();
       if (mask_data != nullptr) {
         PrepareMask(mask_index, mask_index_dims, mask_data,
                     has_unidirectional, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
