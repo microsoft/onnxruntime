@@ -29,12 +29,12 @@ bool IsSupportedDataType(int32_t data_type) {
 
 using SupportedTypeList = boost::mp11::mp_list<MLFloat16, float, double, int32_t, int64_t>;
 
-// A threshold is defined here to restrict the graph transformation only applied for small tensors.
+// A threshold is defined here to restrict the graph transformation only applied to small tensors.
 // Be note: having a bigger threshold means more overhead when we do the graph transformations.
 // `8` is chosen to cover common constant use cases in some Reshape/Gather/Concat's inputs.
 // TODO(pengwa): we can gradually increase this threshold if we see more benefits (memory saving
-// or more cse optimization triggered). Should be careful to conver test cases that assumes initializer
-// name did not got changed then.
+// or more CSE optimizations triggered). Should be careful to cover test cases that assume initializer
+// name did not change after transformation then.
 static constexpr int64_t TENSOR_ELEM_COUNT_THRESHOLD = 8;
 static constexpr char SHARED_INITIALIZER_PREFIX[] = "ortshared_";
 
