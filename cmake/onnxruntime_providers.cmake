@@ -1536,6 +1536,12 @@ if (onnxruntime_USE_ROCM)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE ROCBLAS_BETA_FEATURES_API)
   endif()
 
+  if (onnxruntime_USE_HIPBLASLT)
+    find_package(hipblaslt REQUIRED)
+    target_link_libraries(onnxruntime_providers_rocm PRIVATE roc::hipblaslt)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_HIPBLASLT)
+  endif()
+
   if (onnxruntime_USE_COMPOSABLE_KERNEL)
     include(composable_kernel)
     target_link_libraries(onnxruntime_providers_rocm PRIVATE

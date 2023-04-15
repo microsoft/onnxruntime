@@ -1,0 +1,50 @@
+parameters:
+- name: WithCache
+  displayName: Build with Cache
+  type: boolean
+  default: false
+
+- name: BuildStep
+  type: stepList
+
+- name: Today
+  type: string
+  default: ""
+
+# It'd be different in different jobs in one workflow.
+- name: AdditionalKey
+  type: string
+  default: ""
+
+- name: ChangeEveryCommit
+  type: boolean
+  default: true
+
+- name: CacheDir
+  type: string
+  default: ""
+
+steps:
+  - ${{if eq(parameters.WithCache, true)}}:
+    - script: |
+        mkdir -p ${{ parameters.CacheDir }}
+      displayName: Create Cache Dir
+
+  - ${{if eq(parameters.WithCache, true)}}:
+    - task: Cache@2
+      inputs:
+        ${{ if eq(parameters.ChangeEveryCommit, true) }}:
+          ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
+            key: ' "${{parameters.Today}}" | merge | ${{parameters.AdditionalKey}} '
+          ${{else}}:
+            key:  ' "${{parameters.Today}}" | ${{parameters.AdditionalKey}} | "$(Build.SourceVersion)" '
+          restoreKeys: |
+            "${{parameters.Today}}" | ${{parameters.AdditionalKey}}
+        ${{ else }}:
+          key:  ' ${{parameters.AdditionalKey}} '
+          restoreKeys: |
+            ${{parameters.AdditionalKey}}
+        path: ${{ parameters.CacheDir }}
+      displayName: ccache task
+
+  - ${{ parameters.BuildStep }}

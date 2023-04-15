@@ -24,8 +24,10 @@ static void TestSoftmax(const std::vector<int64_t>& X_dims,
   CompareOpTester test(op);
   test.AddAttribute<int64_t>("axis", axis);
 
+  // Use fixed random seed because those tests are not stable.
+  // It's impossible to debug if the test fails randomly.
+  RandomValueGenerator random{5566};
   // create rand inputs
-  RandomValueGenerator random{};
   std::vector<T> X_data = random.Uniform<T>(X_dims, -10.0f, 10.0f);
   test.AddInput<T>("X", X_dims, X_data);
 
@@ -156,7 +158,7 @@ static void TestSoftmaxGrad(const std::vector<int64_t>& dY_dims,
   test.AddAttribute<int64_t>("axis", axis);
 
   // create rand inputs
-  RandomValueGenerator random{};
+  RandomValueGenerator random{5566};
   std::vector<T> dY_data = random.Uniform<T>(dY_dims, -1.0f, 1.0f);
   // Add 1e-2 for numerical stability to prevent zero probability.
   std::vector<T> Y_data = random.Uniform<T>(Y_dims, -1.02f, 1.02f);

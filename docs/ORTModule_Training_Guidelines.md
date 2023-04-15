@@ -135,6 +135,9 @@ debugging). Disable it with following command:
 	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0
 	```
 
+	There are fine-grained flags to control different optimizations, but only applied when `ORTMODULE_ENABLE_COMPUTE_OPTIMIZER` is enabled.
+	- `ORTMODULE_ENABLE_LABEL_SPARSITY_OPT` is used to enable the optimization leveraging label sparsity.
+
 #### ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR
 
 - **Feature Area**: *ORTMODULE/Runtime inspector*
