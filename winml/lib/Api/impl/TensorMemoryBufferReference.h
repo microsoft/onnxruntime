@@ -13,7 +13,8 @@ namespace _winml {
 template <typename T>
 struct TensorResources {
   // ITensorNative::GetBuffer
-  STDMETHOD(GetBuffer) (
+  STDMETHOD(GetBuffer)
+  (
       std::vector<int64_t> shape,
       BYTE** value, UINT32* capacity) {
     RETURN_HR_IF_NULL(E_POINTER, value);

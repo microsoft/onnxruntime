@@ -20,11 +20,11 @@ class BaseOpBuilder : public IOpBuilder {
  public:
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
   [[nodiscard]] Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
-                           const logging::Logger& logger) const override final;
+                                         const logging::Logger& logger) const override final;
 
  protected:
   [[nodiscard]] virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                       const logging::Logger& logger) const = 0;
+                                                     const logging::Logger& logger) const = 0;
 
   static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer>
   CreateNNLayer(ModelBuilder& model_builder, const Node& node);

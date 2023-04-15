@@ -22,7 +22,7 @@ typedef struct {
   ONNXTensorElementDataType onnxTypeEnum;
 } JavaTensorTypeShape;
 
-jint JNI_OnLoad(JavaVM *vm, void *reserved);
+jint JNI_OnLoad(JavaVM* vm, void* reserved);
 
 OrtLoggingLevel convertLoggingLevel(jint level);
 
@@ -40,55 +40,55 @@ ONNXTensorElementDataType convertToONNXDataFormat(jint type);
 
 size_t onnxTypeSize(ONNXTensorElementDataType type);
 
-OrtErrorCode getTensorTypeShape(JNIEnv * jniEnv, JavaTensorTypeShape * output, const OrtApi * api, const OrtValue * value);
+OrtErrorCode getTensorTypeShape(JNIEnv* jniEnv, JavaTensorTypeShape* output, const OrtApi* api, const OrtValue* value);
 
 jfloat convertHalfToFloat(uint16_t half);
 
-jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo * info);
+jobject convertToValueInfo(JNIEnv* jniEnv, const OrtApi* api, const OrtTypeInfo* info);
 
-jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorTypeAndShapeInfo * info);
+jobject convertToTensorInfo(JNIEnv* jniEnv, const OrtApi* api, const OrtTensorTypeAndShapeInfo* info);
 
-jobject convertToMapInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtMapTypeInfo * info);
+jobject convertToMapInfo(JNIEnv* jniEnv, const OrtApi* api, const OrtMapTypeInfo* info);
 
-jobject convertToSequenceInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtSequenceTypeInfo * info);
+jobject convertToSequenceInfo(JNIEnv* jniEnv, const OrtApi* api, const OrtSequenceTypeInfo* info);
 
 int64_t copyJavaToPrimitiveArray(JNIEnv* jniEnv, ONNXTensorElementDataType onnxType, jarray inputArray, uint8_t* outputTensor);
 
 int64_t copyJavaToTensor(JNIEnv* jniEnv, ONNXTensorElementDataType onnxType, size_t tensorSize, size_t dimensionsRemaining, jarray inputArray, uint8_t* outputTensor);
 
-int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, const uint8_t* inputTensor, jarray outputArray);
+int64_t copyPrimitiveArrayToJava(JNIEnv* jniEnv, ONNXTensorElementDataType onnxType, const uint8_t* inputTensor, jarray outputArray);
 
-int64_t copyTensorToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, const uint8_t* inputTensor, size_t tensorSize, size_t dimensionsRemaining, jarray outputArray);
+int64_t copyTensorToJava(JNIEnv* jniEnv, ONNXTensorElementDataType onnxType, const uint8_t* inputTensor, size_t tensorSize, size_t dimensionsRemaining, jarray outputArray);
 
-jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor);
+jobject createStringFromStringTensor(JNIEnv* jniEnv, const OrtApi* api, OrtValue* tensor);
 
-OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor, size_t length, jobjectArray outputArray);
+OrtErrorCode copyStringTensorToArray(JNIEnv* jniEnv, const OrtApi* api, OrtValue* tensor, size_t length, jobjectArray outputArray);
 
-jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor);
+jobjectArray createStringArrayFromTensor(JNIEnv* jniEnv, const OrtApi* api, OrtValue* tensor);
 
-jlongArray createLongArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor);
+jlongArray createLongArrayFromTensor(JNIEnv* jniEnv, const OrtApi* api, OrtValue* tensor);
 
-jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor);
+jfloatArray createFloatArrayFromTensor(JNIEnv* jniEnv, const OrtApi* api, OrtValue* tensor);
 
-jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor);
+jdoubleArray createDoubleArrayFromTensor(JNIEnv* jniEnv, const OrtApi* api, OrtValue* tensor);
 
-jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor);
+jobject createJavaTensorFromONNX(JNIEnv* jniEnv, const OrtApi* api, OrtAllocator* allocator, OrtValue* tensor);
 
-jobject createJavaSparseTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor);
+jobject createJavaSparseTensorFromONNX(JNIEnv* jniEnv, const OrtApi* api, OrtAllocator* allocator, OrtValue* tensor);
 
-jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* sequence);
+jobject createJavaSequenceFromONNX(JNIEnv* jniEnv, const OrtApi* api, OrtAllocator* allocator, OrtValue* sequence);
 
-jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* map);
+jobject createJavaMapFromONNX(JNIEnv* jniEnv, const OrtApi* api, OrtAllocator* allocator, OrtValue* map);
 
-jobject createMapInfoFromValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator * allocator, const OrtValue * map);
+jobject createMapInfoFromValue(JNIEnv* jniEnv, const OrtApi* api, OrtAllocator* allocator, const OrtValue* map);
 
-jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* onnxValue);
+jobject convertOrtValueToONNXValue(JNIEnv* jniEnv, const OrtApi* api, OrtAllocator* allocator, OrtValue* onnxValue);
 
-jint throwOrtException(JNIEnv *env, int messageId, const char *message);
+jint throwOrtException(JNIEnv* env, int messageId, const char* message);
 
 jint convertErrorCode(OrtErrorCode code);
 
-OrtErrorCode checkOrtStatus(JNIEnv * env, const OrtApi * api, OrtStatus * status);
+OrtErrorCode checkOrtStatus(JNIEnv* env, const OrtApi* api, OrtStatus* status);
 
 jsize safecast_size_t_to_jsize(size_t v);
 
@@ -107,7 +107,7 @@ static inline void* allocarray(size_t nmemb, size_t size) {
 #ifdef HAS_REALLOCARRAY
   return reallocarray(NULL, nmemb, size);
 #else
-  //TODO: find a safer way
+  // TODO: find a safer way
   return malloc(nmemb * size);
 #endif
 }

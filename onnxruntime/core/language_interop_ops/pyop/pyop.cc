@@ -238,9 +238,7 @@ PyCustomKernel::PyCustomKernel(const OnnxAttrs& attrs,
                                const std::string& module,
                                const std::string& class_name,
                                const std::string& compute,
-                               PyOpLogFunc logging_func) : 
-        attrs_(attrs), module_(module),
-        class_name_(class_name), compute_(compute), logging_func_(logging_func) {
+                               PyOpLogFunc logging_func) : attrs_(attrs), module_(module), class_name_(class_name), compute_(compute), logging_func_(logging_func) {
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
   ORT_ENFORCE(PyOpLibProxy::GetInstance().Initialized(), "Py library not properly initialized.");
@@ -263,10 +261,10 @@ void PyCustomKernel::GetOutputShape(OrtKernelContext*, size_t, OrtTensorTypeAndS
 
 void PyCustomKernel::Compute(OrtKernelContext* context) {
   ORT_ENFORCE(nullptr != context);
-  
+
   Ort::KernelContext ctx(context);
   const auto inputs_count = ctx.GetInputCount();
-  
+
   std::vector<const void*> inputs;
   std::vector<std::unique_ptr<char[]>> outputs;
   std::vector<int32_t> inputs_type, outputs_elem_size;
@@ -277,9 +275,9 @@ void PyCustomKernel::Compute(OrtKernelContext* context) {
   for (size_t i = 0; i < inputs_count; ++i) {
     auto value = ctx.GetInput(i);
     ORT_ENFORCE(value.IsTensor(), "input must be a tensor");
-   
+
     inputs.push_back(value.GetTensorRawData());
-    
+
     auto type_and_shape = value.GetTensorTypeAndShapeInfo();
     inputs_type.push_back(GetNumpyType(type_and_shape.GetElementType()));
     auto shape = type_and_shape.GetShape();
@@ -303,7 +301,6 @@ void PyCustomKernel::Compute(OrtKernelContext* context) {
 }
 
 int32_t PyCustomKernel::GetNumpyType(int32_t elem_type) const {
-
   int32_t numpy_type;
   namespace on = ONNX_NAMESPACE;
   switch (elem_type) {

@@ -165,7 +165,7 @@ Implicit Arguments:
         add     rcx,rbp                     # advance input to next row
 .if \OutputCount\() == 1
         sub     r13,\KernelFrame\()_DilatedInputWidth[rsp]
-                                            # advance input base to next row
+#advance input base to next row
 .endif
         dec     r11
         jnz     .L\PoolingType\().\OutputCount\().ProcessNextRow

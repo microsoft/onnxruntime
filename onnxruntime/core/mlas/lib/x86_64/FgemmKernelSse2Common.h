@@ -42,7 +42,7 @@ Implicit Arguments:
 
 --*/
 
-        .macro AccumulateAndStoreBlock RowCount, VectorCount
+.macro AccumulateAndStoreBlock RowCount, VectorCount
 
         test    r15b,r15b                   # ZeroMode?
         jnz     .LSkipAccumulateOutput\@

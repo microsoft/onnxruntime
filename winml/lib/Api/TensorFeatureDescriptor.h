@@ -19,7 +19,7 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
       const std::vector<int64_t>& shape,
       bool is_required,
       bool has_unsuppored_image_metadata);
-  
+
   TensorFeatureDescriptor(
       hstring const& name,
       hstring const& description,
@@ -59,10 +59,9 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
       const wchar_t** description,
       uint32_t* cchDescription) override;
 
-  
   STDMETHOD(GetDescriptorInfo)
   (
-      _winml::IEngineFactory* engine_factory, 
+      _winml::IEngineFactory* engine_factory,
       _winml::IDescriptorInfo** info) override;
 
  private:
@@ -73,4 +72,4 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
   bool is_required_;
   bool has_unsupported_image_metadata_;
 };
-}  // WINMLP
+}  // namespace WINMLP

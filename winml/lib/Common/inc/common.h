@@ -44,7 +44,7 @@ extern WinMLTelemetryHelper telemetry_helper;
 #ifndef WINML_TELEMETRY_DISABLED
 // Declare TraceLogging provider
 TRACELOGGING_DECLARE_PROVIDER(winml_trace_logging_provider);
-#endif  //WINML_TELEMETRY_DISABLED
+#endif  // WINML_TELEMETRY_DISABLED
 
 // WinML
 #include "errors.h"

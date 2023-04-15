@@ -255,7 +255,7 @@ Implicit Arguments:
 
 .LMultiplyAlpha2xNBlock\@:
         EmitIfCountGE \RowCount\(), 1, "vmulpf ymm4,ymm4,ymm2"
-                                            # multiply by alpha
+#multiply by alpha
         EmitIfCountGE \RowCount\(), 1, "vmulpf ymm5,ymm5,ymm2"
         EmitIfCountGE \RowCount\(), 2, "vmulpf ymm6,ymm6,ymm2"
         EmitIfCountGE \RowCount\(), 2, "vmulpf ymm7,ymm7,ymm2"
@@ -305,7 +305,7 @@ Implicit Arguments:
 
 .LMultiplyAlpha1xNBlock\@:
         EmitIfCountGE \RowCount\(), 1, "vmulpf ymm5,ymm5,ymm2"
-                                            # multiply by alpha
+#multiply by alpha
         EmitIfCountGE \RowCount\(), 2, "vmulpf ymm7,ymm7,ymm2"
         EmitIfCountGE \RowCount\(), 3, "vmulpf ymm9,ymm9,ymm2"
         EmitIfCountGE \RowCount\(), 4, "vmulpf ymm11,ymm11,ymm2"

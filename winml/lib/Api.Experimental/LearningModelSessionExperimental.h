@@ -9,7 +9,7 @@ struct LearningModelSessionExperimental : LearningModelSessionExperimentalT<Lear
 
   WINML_EXPERIMENTAL::LearningModelSessionOptionsExperimental Options();
 
-private:
+ private:
   winml::LearningModelSession _session;
 };
 

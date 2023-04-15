@@ -9,7 +9,7 @@
 #include <mutex>
 #include <iosfwd>
 
-//result of a single test run: 1 model with 1 test dataset
+// result of a single test run: 1 model with 1 test dataset
 enum class EXECUTE_RESULT {
   NOT_SET = 0,
   SUCCESS = 1,
@@ -41,12 +41,12 @@ class TestCaseResult {
     return execution_result_;
   }
 
-  //Time spent in Session::Run. It only make sense when SeqTestRunner was used
+  // Time spent in Session::Run. It only make sense when SeqTestRunner was used
   onnxruntime::TIME_SPEC GetSpentTime() const {
     return spent_time_;
   }
 
-  //Time spent in Session::Run. It only make sense when SeqTestRunner was used
+  // Time spent in Session::Run. It only make sense when SeqTestRunner was used
   void SetSpentTime(const onnxruntime::TIME_SPEC& input) {
     spent_time_ = input;
   }
@@ -56,7 +56,7 @@ class TestCaseResult {
   }
 
  private:
-  //only valid for single node tests;
+  // only valid for single node tests;
   std::string node_name;
   onnxruntime::TIME_SPEC spent_time_;
   std::vector<EXECUTE_RESULT> execution_result_;

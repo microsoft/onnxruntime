@@ -44,11 +44,13 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   STDMETHOD_(boolean, SharedHandleInitialized)
   ();
 
-  STDMETHOD(GetThreadPool)(
-        _winml::IThreading** thread_pool);
+  STDMETHOD(GetThreadPool)
+  (
+      _winml::IThreading** thread_pool);
 
-  STDMETHOD(CacheThreadPool)(
-        _winml::IThreading* thread_pool);
+  STDMETHOD(CacheThreadPool)
+  (
+      _winml::IThreading* thread_pool);
 
   // internal:
 

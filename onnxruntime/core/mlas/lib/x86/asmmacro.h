@@ -32,47 +32,50 @@ Arguments:
 
 --*/
 
-        .macro FUNCTION_ENTRY FunctionName
+.macro FUNCTION_ENTRY FunctionName
 
-        .p2align 4
+    .p2align 4
 #if defined(__APPLE__)
-        .globl  _\FunctionName\()
-_\FunctionName\():
+    .globl _\FunctionName\() _\FunctionName\()
+    :
 #else
-        .globl  \FunctionName\()
-        .type   \FunctionName\(),@function
-\FunctionName\():
+    .globl  \FunctionName\()
+    .type   \FunctionName\(),
+    @function
+\FunctionName\()
+    :
 #endif
 
-        .endm
+    .endm
 
-/*++
+    /*++
 
-Macro Description:
+    Macro Description:
 
-    This macro emits the code to load the global offset table address into the
-    supplied register.
+        This macro emits the code to load the global offset table address into the
+        supplied register.
 
-Arguments:
+    Arguments:
 
-    TargetReg - Specifies the target register.
+        TargetReg - Specifies the target register.
 
---*/
+    --*/
 
-        .macro  LoadGlobalOffsetTable, TargetReg
+    .macro LoadGlobalOffsetTable,
+TargetReg
 
-//
-// The LLVM integrated assembler doesn't support the Intel syntax for OFFSET:
-//
-//      add     ebx,OFFSET _GLOBAL_OFFSET_TABLE_
-//
-// Workaround this by temporarily switching to AT&T syntax.
-//
+    //
+    // The LLVM integrated assembler doesn't support the Intel syntax for OFFSET:
+    //
+    //      add     ebx,OFFSET _GLOBAL_OFFSET_TABLE_
+    //
+    // Workaround this by temporarily switching to AT&T syntax.
+    //
 
-        .att_syntax
+    .att_syntax
 
-        calll   __x86.get_pc_thunk.\TargetReg\()
-        addl    $_GLOBAL_OFFSET_TABLE_,%e\TargetReg\()
+    calll __x86.get_pc_thunk.\TargetReg\() addl $_GLOBAL_OFFSET_TABLE_,
+% e\TargetReg\()
 
         .intel_syntax noprefix
 

@@ -148,7 +148,7 @@ struct TensorBase : TBase {
 
     // If there is no matching gpu resource, then fallback to a cpu resource
     if (CpuTensor() != nullptr) {
-      auto num_backing_buffers = CpuTensor()->num_buffers(); 
+      auto num_backing_buffers = CpuTensor()->num_buffers();
       if (num_backing_buffers == 1) {
         // If we have a single backing cpu buffer, there is no need to create GPU resources.
         // The engine will use the buffer provided, and perform the needed copies into the GPU context as needed.
@@ -171,10 +171,10 @@ struct TensorBase : TBase {
 
           context.converter = _winml::PoolObjectWrapper::Create(device->TensorizerStore()->Fetch(descriptor));
           context.converter->Get()->Tensorizer->ConvertBuffersToBatchedGPUTensor(
-            CpuTensor()->buffers(),
-            CpuTensor()->size_in_bytes(),
-            *device->GetD3DDeviceCache(),
-            GpuTensor().get());
+              CpuTensor()->buffers(),
+              CpuTensor()->size_in_bytes(),
+              *device->GetD3DDeviceCache(),
+              GpuTensor().get());
 
           return CreateGPUMLValue(GpuTensor().get(), context, out);
 
@@ -526,7 +526,6 @@ struct TensorBase : TBase {
   }
   WINML_CATCH_ALL
 
-  
   // ITensor<T>::CreateFromBatchedBuffersInternal
   static typename TBase::class_type CreateFromBatchedBuffersInternal(
       std::vector<int64_t> shape,

@@ -83,13 +83,12 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kBuilderOptimizationLevel, info.builder_optimization_level)
           .AddAssignmentToReference(tensorrt::provider_option_names::kAuxiliaryStreams, info.auxiliary_streams)
           .AddAssignmentToReference(tensorrt::provider_option_names::kTacticSources, info.tactic_sources)
-          .Parse(options)); // add new provider option here.
+          .Parse(options));  // add new provider option here.
 
   return info;
 }
 
 ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtExecutionProviderInfo& info) {
-
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.max_partition_iterations)},
@@ -123,7 +122,6 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
 }
 
 ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensorRTProviderOptionsV2& info) {
-
   auto empty_if_null = [](const char* s) { return s != nullptr ? std::string{s} : std::string{}; };
   const std::string kInt8CalibTable_ = empty_if_null(info.trt_int8_calibration_table_name);
   const std::string kCachePath_ = empty_if_null(info.trt_engine_cache_path);

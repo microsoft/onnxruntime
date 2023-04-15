@@ -26,70 +26,74 @@ Arguments:
 
 --*/
 
-        .macro FUNCTION_ENTRY FunctionName
+.macro FUNCTION_ENTRY FunctionName
 
-        .p2align 2
+    .p2align 2
 #if defined(__APPLE__)
-        .globl  _\FunctionName\()
-_\FunctionName\():
+    .globl _\FunctionName\() _\FunctionName\()
+    :
 #else
-        .globl  \FunctionName\()
-        .type   \FunctionName\(),%function
-\FunctionName\():
+    .globl  \FunctionName\()
+    .type   \FunctionName\(),
+    % function
+\FunctionName\()
+    :
 #endif
 
-        .endm
+    .endm
 
-/*++
+    /*++
 
-Macro Description:
+    Macro Description:
 
-    This macro conditionally emits the statement if Count is greater than or
-    equal to Value.
+        This macro conditionally emits the statement if Count is greater than or
+        equal to Value.
 
-Arguments:
+    Arguments:
 
-    Count - Supplies the variable used in the comparison.
+        Count - Supplies the variable used in the comparison.
 
-    Value - Supplies the static used in the comparison.
+        Value - Supplies the static used in the comparison.
 
-    Statement - Supplies the statement to conditionally emit.
+        Statement - Supplies the statement to conditionally emit.
 
---*/
+    --*/
 
-        .macro EmitIfCountGE Count1, Value1, Statement
+    .macro EmitIfCountGE Count1,
+Value1, Statement
 
-.if (\Count1\() >= \Value1\())
+            .if (\Count1\() >= \Value1\())
         \Statement\()
-.endif
+            .endif
 
-        .endm
+            .endm
 
-/*++
+            /*++
 
-Macro Description:
+            Macro Description:
 
-    This macro conditionally emits the statement if Count1 is greater than or
-    equal to Value1 and Count2 is greater than or equal to Value2.
+                This macro conditionally emits the statement if Count1 is greater than or
+                equal to Value1 and Count2 is greater than or equal to Value2.
 
-Arguments:
+            Arguments:
 
-    Count1 - Supplies the variable used in the comparison.
+                Count1 - Supplies the variable used in the comparison.
 
-    Value1 - Supplies the static used in the comparison.
+                Value1 - Supplies the static used in the comparison.
 
-    Count2 - Supplies the variable used in the comparison.
+                Count2 - Supplies the variable used in the comparison.
 
-    Value2 - Supplies the static used in the comparison.
+                Value2 - Supplies the static used in the comparison.
 
-    Statement - Supplies the statement to conditionally emit.
+                Statement - Supplies the statement to conditionally emit.
 
---*/
+            --*/
 
-        .macro EmitIfCount2GE Count1, Value1, Count2, Value2, Statement
+            .macro EmitIfCount2GE Count1,
+Value1, Count2, Value2, Statement
 
-.if (\Count1\() >= \Value1\()) && (\Count2\() >= \Value2\())
-        \Statement\()
-.endif
+                                .if (\Count1\() >= \Value1\()) &&
+                            (\Count2\() >= \Value2\())
+        \Statement\().endif
 
-        .endm
+                                .endm

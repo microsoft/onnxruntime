@@ -10,9 +10,9 @@ namespace ml {
 ONNX_CPU_OPERATOR_ML_KERNEL(
     LinearRegressor,
     1,
-    //KernelDefBuilder().TypeConstraint("T", std::vector<MLDataType>{
-    //                                           DataTypeImpl::GetTensorType<float>(),
-    //                                           DataTypeImpl::GetTensorType<double>()}),
+    // KernelDefBuilder().TypeConstraint("T", std::vector<MLDataType>{
+    //                                            DataTypeImpl::GetTensorType<float>(),
+    //                                            DataTypeImpl::GetTensorType<double>()}),
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     LinearRegressor);
 

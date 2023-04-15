@@ -39,12 +39,14 @@ Abstract:
         .equ    .LFgemmYmmElementCount, 32 / .LFgemmElementSize
         .equ    .LFgemmZmmElementCount, 64 / .LFgemmElementSize
 
-//
-// Define the typed instruction template.
-//
+        //
+        // Define the typed instruction template.
+        //
 
 #define FGEMM_TYPED_INSTRUCTION(Untyped, Typed) \
-        .macro Untyped Operand:vararg; Typed \Operand\(); .endm;
+            .macro Untyped Operand : vararg;            \
+            Typed \Operand\();                          \
+            .endm;
 
 /*++
 

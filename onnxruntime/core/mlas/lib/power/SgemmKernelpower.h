@@ -17,23 +17,19 @@ Abstract:
 
 #include "FgemmKernelpower.h"
 
-template<size_t RowCount>
-MLAS_FORCEINLINE
-size_t
-MlasSgemmProcessCount(
-    const float* A,
-    const float* B,
-    float* C,
-    size_t CountK,
-    size_t CountN,
-    size_t lda,
-    size_t ldc,
-    MLAS_FLOAT32X4 AlphaBroadcast,
-    bool ZeroMode
-    )
+template <size_t RowCount>
+MLAS_FORCEINLINE size_t
+MlasSgemmProcessCount(const float* A,
+                      const float* B,
+                      float* C,
+                      size_t CountK,
+                      size_t CountN,
+                      size_t lda,
+                      size_t ldc,
+                      MLAS_FLOAT32X4 AlphaBroadcast,
+                      bool ZeroMode)
 {
     do {
-
         const float* a = A;
         size_t k = CountK;
 
@@ -52,7 +48,6 @@ MlasSgemmProcessCount(
         //
 
         while (k >= 4) {
-
             MlasLoopUnroll<RowCount, MlasFgemmLoadAElements>()(AElements, a, lda);
 
             MlasLoopUnroll<RowCount, MlasFgemmSplatAElements<0>>()(AElements, ABroadcast);
@@ -73,7 +68,6 @@ MlasSgemmProcessCount(
         }
 
         while (k > 0) {
-
             MlasLoopUnroll<RowCount, MlasFgemmBroadcastAElements>()(ABroadcast, a, lda);
             MlasFgemmComputeBlock<RowCount>(Accumulators, ABroadcast, B);
 
@@ -83,25 +77,27 @@ MlasSgemmProcessCount(
         }
 
         if (CountN >= 16) {
-
             //
             // Store the entire output block.
             //
 
-            MlasLoopUnroll<RowCount, MlasFgemmStoreVector<4>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+            MlasLoopUnroll<RowCount, MlasFgemmStoreVector<4>>()(Accumulators, C, ldc,
+                                                                AlphaBroadcast, ZeroMode);
 
         } else {
-
             //
             // Store the partial output block.
             //
 
             if (CountN >= 12) {
-                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<3>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<3>>()(Accumulators, C, ldc,
+                                                                    AlphaBroadcast, ZeroMode);
             } else if (CountN >= 8) {
-                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<2>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<2>>()(Accumulators, C, ldc,
+                                                                    AlphaBroadcast, ZeroMode);
             } else if (CountN >= 4) {
-                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<1>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<1>>()(Accumulators, C, ldc,
+                                                                    AlphaBroadcast, ZeroMode);
             }
 
             //
@@ -112,17 +108,19 @@ MlasSgemmProcessCount(
             CountN &= 3;
 
             if (CountN > 0) {
-
-                MlasLoopUnroll<RowCount, MlasFgemmMultiplyAlphaTrailing>()(Accumulators, AlphaBroadcast);
+                MlasLoopUnroll<RowCount, MlasFgemmMultiplyAlphaTrailing>()(Accumulators,
+                                                                           AlphaBroadcast);
 
                 MlasLoopUnroll<RowCount, MlasFgemmStoreScalar<0>>()(Accumulators, C, ldc, ZeroMode);
 
                 if (CountN >= 2) {
-                    MlasLoopUnroll<RowCount, MlasFgemmStoreScalar<1>>()(Accumulators, C, ldc, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasFgemmStoreScalar<1>>()(Accumulators, C, ldc,
+                                                                        ZeroMode);
                 }
 
                 if (CountN >= 3) {
-                    MlasLoopUnroll<RowCount, MlasFgemmStoreScalar<2>>()(Accumulators, C, ldc, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasFgemmStoreScalar<2>>()(Accumulators, C, ldc,
+                                                                        ZeroMode);
                 }
             }
 
@@ -136,4 +134,3 @@ MlasSgemmProcessCount(
 
     return RowCount;
 }
-

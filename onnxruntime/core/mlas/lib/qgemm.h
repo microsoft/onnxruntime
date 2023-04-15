@@ -30,11 +30,11 @@ Abstract:
 
 #pragma once
 
-#include "mlasi.h"
-
+#include <cstdlib>
 #include <sstream>
 #include <string>
-#include <cstdlib>
+
+#include "mlasi.h"
 
 //
 // Define the default striding parameters used for the quantized integer
@@ -47,19 +47,16 @@ struct MLAS_GEMM_QUANT_STRIDES {
     size_t K;
 };
 
-template<typename KernelType>
-MLAS_FORCEINLINE
-bool
-MlasGemmQuantTryGemvKernel(
-    const uint8_t* A,
-    const uint8_t* B,
-    size_t ldb,
-    int32_t* C,
-    size_t CountK,
-    size_t CountN,
-    bool AIsSigned,
-    bool BIsSigned
-)
+template <typename KernelType>
+MLAS_FORCEINLINE bool
+MlasGemmQuantTryGemvKernel(const uint8_t* A,
+                           const uint8_t* B,
+                           size_t ldb,
+                           int32_t* C,
+                           size_t CountK,
+                           size_t CountN,
+                           bool AIsSigned,
+                           bool BIsSigned)
 {
     MLAS_UNREFERENCED_PARAMETER(A);
     MLAS_UNREFERENCED_PARAMETER(B);
@@ -74,42 +71,31 @@ MlasGemmQuantTryGemvKernel(
 }
 
 template <typename KernelType>
-MLAS_FORCEINLINE constexpr
-int32_t
-MlasGemmQuantFixupZeroPointA(
-    int32_t ZeroPointA,
-    bool AIsSigned)
+MLAS_FORCEINLINE constexpr int32_t
+MlasGemmQuantFixupZeroPointA(int32_t ZeroPointA, bool AIsSigned)
 {
     MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     return ZeroPointA;
 }
 
-template<typename KernelType>
-int32_t constexpr
-MlasGemmQuantFixupZeroPointB(
-    int32_t ZeroPointB,
-    bool BIsSigned
-)
+template <typename KernelType>
+int32_t constexpr MlasGemmQuantFixupZeroPointB(int32_t ZeroPointB, bool BIsSigned)
 {
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
     return ZeroPointB;
 }
 
-template<typename KernelType>
-MLAS_FORCEINLINE
-void
-MlasGemmQuantFixupZeroPointB(
-    const uint8_t* PackedZeroPointB,
-    int32_t* ZeroPointBBuffer,
-    size_t N,
-    bool BIsSigned
-)
+template <typename KernelType>
+MLAS_FORCEINLINE void
+MlasGemmQuantFixupZeroPointB(const uint8_t* PackedZeroPointB,
+                             int32_t* ZeroPointBBuffer,
+                             size_t N,
+                             bool BIsSigned)
 {
     int32_t ZeroPointB;
 
     for (size_t n = 0; n < N; n++) {
-
         ZeroPointB = typename KernelType::OffsetBType(PackedZeroPointB[n]);
         ZeroPointB = MlasGemmQuantFixupZeroPointB<KernelType>(ZeroPointB, BIsSigned);
 
@@ -121,52 +107,47 @@ MlasGemmQuantFixupZeroPointB(
     // against tools that check for uninitialized data usage.
     //
 
-    size_t AlignedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+    size_t AlignedN =
+        (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
 
     for (size_t n = N; n < AlignedN; n++) {
         ZeroPointBBuffer[n] = 0;
     }
 }
 
-template<typename KernelType>
+template <typename KernelType>
 void
-MlasGemmQuantCopyPackA(
-    typename KernelType::PackedAType* D,
-    const uint8_t* A,
-    size_t lda,
-    size_t CountM,
-    size_t CountK,
-    int32_t* RowSumBuffer,
-    bool AIsSigned
-);
+MlasGemmQuantCopyPackA(typename KernelType::PackedAType* D,
+                       const uint8_t* A,
+                       size_t lda,
+                       size_t CountM,
+                       size_t CountK,
+                       int32_t* RowSumBuffer,
+                       bool AIsSigned);
 
-template<typename KernelType>
+template <typename KernelType>
 void
-MlasGemmQuantCopyPackB(
-    typename KernelType::PackedBType* D,
-    const uint8_t* B,
-    size_t ldb,
-    size_t CountN,
-    size_t CountK,
-    int32_t* ColumnSumBuffer,
-    bool BIsSigned
-);
+MlasGemmQuantCopyPackB(typename KernelType::PackedBType* D,
+                       const uint8_t* B,
+                       size_t ldb,
+                       size_t CountN,
+                       size_t CountK,
+                       int32_t* ColumnSumBuffer,
+                       bool BIsSigned);
 
-template<typename KernelType>
+template <typename KernelType>
 size_t
-MlasGemmQuantKernel(
-    const typename KernelType::PackedAType* A,
-    const typename KernelType::PackedBType* B,
-    int32_t* C,
-    size_t PackedCountK,
-    size_t CountM,
-    size_t CountN,
-    size_t ldc,
-    const int32_t* RowSumBuffer,
-    const int32_t* ColumnSumBuffer,
-    const int32_t* ZeroPointB,
-    bool ZeroMode
-);
+MlasGemmQuantKernel(const typename KernelType::PackedAType* A,
+                    const typename KernelType::PackedBType* B,
+                    int32_t* C,
+                    size_t PackedCountK,
+                    size_t CountM,
+                    size_t CountN,
+                    size_t ldc,
+                    const int32_t* RowSumBuffer,
+                    const int32_t* ColumnSumBuffer,
+                    const int32_t* ZeroPointB,
+                    bool ZeroMode);
 
 /**
  * @brief Usually a wrapper of assembly/intrinsic kernel
@@ -182,50 +163,36 @@ MlasGemmQuantKernel(
  * @param lda                 Row stride of A
  * @param ColumnSumVector     Column sum of B scaled by zero point A
  * @return                    Number of rows processed
-*/
-template<typename KernelType>
+ */
+template <typename KernelType>
 size_t
-MlasSymmQGemmKernel(
-    const int8_t* A,
-    const int8_t* B,
-    int32_t* C,
-    size_t PackedCountK,
-    size_t CountM,
-    size_t CountN,
-    size_t ldc,
-    size_t lda,
-    const int32_t* ColumnSumVector
-);
+MlasSymmQGemmKernel(const int8_t* A,
+                    const int8_t* B,
+                    int32_t* C,
+                    size_t PackedCountK,
+                    size_t CountM,
+                    size_t CountN,
+                    size_t ldc,
+                    size_t lda,
+                    const int32_t* ColumnSumVector);
 
-inline
-void
-MlasGemmQuantScaleSumBuffer(
-    int32_t* Output,
-    const int32_t* Input,
-    size_t N,
-    int32_t Scale
-)
+inline void
+MlasGemmQuantScaleSumBuffer(int32_t* Output, const int32_t* Input, size_t N, int32_t Scale)
 {
     for (size_t n = 0; n < N; n++) {
         Output[n] = Input[n] * Scale;
     }
 }
 
-
 MLAS_FORCEINLINE
 void
-MlasGemmQuantScaleSumBuffer(
-    int32_t* SumBuffer,
-    size_t N,
-    int32_t Scale
-)
+MlasGemmQuantScaleSumBuffer(int32_t* SumBuffer, size_t N, int32_t Scale)
 {
     return MlasGemmQuantScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
 }
 
-template<typename KernelType>
-MLAS_FORCEINLINE
-void
+template <typename KernelType>
+MLAS_FORCEINLINE void
 MlasGemmQuantThreadInit()
 {
     constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::Strides;
@@ -241,21 +208,20 @@ MlasGemmQuantThreadInit()
     constexpr size_t packedASize =
         UpAlignSize(PackedStrides.M * PackedStrides.K * sizeof(typename KernelType::PackedAType));
 
-    constexpr size_t bufsize = std::max(packASize + packBSize, packedASize) + rowSumSize + colSumSize + zpbSize;
+    constexpr size_t bufsize =
+        std::max(packASize + packBSize, packedASize) + rowSumSize + colSumSize + zpbSize;
 
     MlasThreadedBufAlloc(bufsize);
 }
 
-template<typename KernelType>
+template <typename KernelType>
 void
-MlasGemmQuantOperation(
-    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
-    const size_t RangeStartM,
-    const size_t RangeCountM,
-    const size_t RangeStartN,
-    const size_t RangeCountN
-    )
+MlasGemmQuantOperation(const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+                       const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+                       const size_t RangeStartM,
+                       const size_t RangeCountM,
+                       const size_t RangeStartN,
+                       const size_t RangeCountN)
 /*++
 
 Routine Description:
@@ -306,7 +272,6 @@ Return Value:
     p += colSumSize;
     int32_t* ZeroPointBBuffer = reinterpret_cast<int32_t*>(p);
 
-
     const size_t K = Shape->K;
 
     const size_t lda = Data->lda;
@@ -316,8 +281,8 @@ Return Value:
     const uint8_t* A = Data->A + RangeStartM * lda;
     const uint8_t* B = (const uint8_t*)Data->B + RangeStartN;
     int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
-    const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
-        Data->ZeroPointB + RangeStartN : nullptr;
+    const uint8_t* PackedZeroPointB =
+        Data->PerColumnZeroPoints ? Data->ZeroPointB + RangeStartN : nullptr;
     bool IsAccumulateMode = Shape->IsAccumulateMode;
 
     int32_t ZeroPointA = typename KernelType::OffsetAType(Data->ZeroPointA);
@@ -327,10 +292,10 @@ Return Value:
     // Try to use a GEMV kernel if supported by this kernel type.
     //
 
-    if ((RangeCountM == 1) &&
-        (ZeroPointA == 0) && (PackedZeroPointB == nullptr) && (ZeroPointB == 0) &&
-        (Data->OutputProcessor == nullptr)) {
-        if (MlasGemmQuantTryGemvKernel<KernelType>(A, B, ldb, C, K, RangeCountN, Shape->AIsSigned, Shape->BIsSigned)) {
+    if ((RangeCountM == 1) && (ZeroPointA == 0) && (PackedZeroPointB == nullptr) &&
+        (ZeroPointB == 0) && (Data->OutputProcessor == nullptr)) {
+        if (MlasGemmQuantTryGemvKernel<KernelType>(A, B, ldb, C, K, RangeCountN, Shape->AIsSigned,
+                                                   Shape->BIsSigned)) {
             return;
         }
     }
@@ -357,7 +322,6 @@ Return Value:
     size_t CountK;
 
     for (size_t k = 0; k < K; k += CountK) {
-
         CountK = std::min(K - k, Strides.K);
 
         const size_t PackedCountK = (CountK + KernelType::PackedK - 1) / KernelType::PackedK;
@@ -369,7 +333,6 @@ Return Value:
         size_t CountN;
 
         for (size_t n = 0; n < RangeCountN; n += CountN) {
-
             CountN = std::min(RangeCountN - n, Strides.N);
 
             //
@@ -378,25 +341,16 @@ Return Value:
             //
 
             if (PackedZeroPointB != nullptr) {
-                MlasGemmQuantFixupZeroPointB<KernelType>(
-                    PackedZeroPointB + n,
-                    ZeroPointBBuffer,
-                    CountN,
-                    Shape->BIsSigned);
+                MlasGemmQuantFixupZeroPointB<KernelType>(PackedZeroPointB + n, ZeroPointBBuffer,
+                                                         CountN, Shape->BIsSigned);
             }
 
             //
             // Copy a panel of matrix B to a local packed buffer.
             //
 
-            MlasGemmQuantCopyPackB<KernelType>(
-                PanelB,
-                B + n,
-                ldb,
-                CountN,
-                CountK,
-                ColumnSumBuffer,
-                Shape->BIsSigned);
+            MlasGemmQuantCopyPackB<KernelType>(PanelB, B + n, ldb, CountN, CountK, ColumnSumBuffer,
+                                               Shape->BIsSigned);
 
             MlasGemmQuantScaleSumBuffer(ColumnSumBuffer, CountN, -ZeroPointA);
 
@@ -408,21 +362,14 @@ Return Value:
             size_t CountM;
 
             for (size_t m = 0; m < RangeCountM; m += CountM) {
-
                 CountM = std::min(RangeCountM - m, Strides.M);
 
                 //
                 // Copy a panel of matrix A to a local packed buffer.
                 //
 
-                MlasGemmQuantCopyPackA<KernelType>(
-                    PanelA,
-                    A + m * lda,
-                    lda,
-                    CountM,
-                    CountK,
-                    RowSumBuffer,
-                    Shape->AIsSigned);
+                MlasGemmQuantCopyPackA<KernelType>(PanelA, A + m * lda, lda, CountM, CountK,
+                                                   RowSumBuffer, Shape->AIsSigned);
 
                 //
                 // Apply the global depth value constant without the ZeroPointB scaling from:
@@ -459,28 +406,15 @@ Return Value:
                 bool PostProcess = (k + CountK == K);
 
                 while (RowsRemaining > 0) {
-
                     size_t RowsHandled = MlasGemmQuantKernel<KernelType>(
-                        pa,
-                        PanelB,
-                        c,
-                        PackedCountK,
-                        RowsRemaining,
-                        CountN,
-                        ldc,
-                        RowSums,
-                        ColumnSumBuffer,
-                        (PackedZeroPointB != nullptr) ? ZeroPointBBuffer : nullptr,
+                        pa, PanelB, c, PackedCountK, RowsRemaining, CountN, ldc, RowSums,
+                        ColumnSumBuffer, (PackedZeroPointB != nullptr) ? ZeroPointBBuffer : nullptr,
                         ZeroMode);
 
                     if (PostProcess && Data->OutputProcessor != nullptr) {
                         Data->OutputProcessor->Process(
-                            Data->C,
-                            RangeStartM + m + CountM - RowsRemaining,
-                            RangeStartN + n,
-                            RowsHandled,
-                            CountN,
-                            Data->ldc);
+                            Data->C, RangeStartM + m + CountM - RowsRemaining, RangeStartN + n,
+                            RowsHandled, CountN, Data->ldc);
                     }
 
                     c += ldc * RowsHandled;
@@ -496,17 +430,14 @@ Return Value:
     }
 }
 
-
-template<typename KernelType>
+template <typename KernelType>
 void
-MlasGemmQuantPackedOperation(
-    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
-    const size_t RangeStartM,
-    const size_t RangeCountM,
-    const size_t RangeStartN,
-    const size_t RangeCountN
-    )
+MlasGemmQuantPackedOperation(const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+                             const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+                             const size_t RangeStartM,
+                             const size_t RangeCountM,
+                             const size_t RangeStartN,
+                             const size_t RangeCountN)
 /*++
 
 Routine Description:
@@ -560,8 +491,8 @@ Return Value:
     const uint8_t* A = Data->A + RangeStartM * lda;
     const uint8_t* PackedB = (const uint8_t*)Data->B;
     int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
-    const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
-        Data->ZeroPointB + RangeStartN : nullptr;
+    const uint8_t* PackedZeroPointB =
+        Data->PerColumnZeroPoints ? Data->ZeroPointB + RangeStartN : nullptr;
     bool IsAccumulateMode = Shape->IsAccumulateMode;
 
     int32_t ZeroPointA = typename KernelType::OffsetAType(Data->ZeroPointA);
@@ -599,7 +530,6 @@ Return Value:
     size_t CountK;
 
     for (size_t k = 0; k < K; k += CountK) {
-
         CountK = std::min(K - k, Strides.K);
 
         const size_t PackedCountK = (CountK + KernelType::PackedK - 1) / KernelType::PackedK;
@@ -615,12 +545,11 @@ Return Value:
         size_t CountN;
 
         for (size_t n = 0; n < RangeCountN; n += CountN) {
-
             CountN = std::min(RangeCountN - n, Strides.N);
 
             if (k == 0) {
-                MlasGemmQuantScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
-                    CountN, -ZeroPointA);
+                MlasGemmQuantScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n, CountN,
+                                            -ZeroPointA);
             }
 
             //
@@ -629,38 +558,27 @@ Return Value:
             //
 
             if (PackedZeroPointB != nullptr) {
-                MlasGemmQuantFixupZeroPointB<KernelType>(
-                    PackedZeroPointB + n,
-                    ZeroPointBBuffer,
-                    CountN,
-                    Shape->BIsSigned);
+                MlasGemmQuantFixupZeroPointB<KernelType>(PackedZeroPointB + n, ZeroPointBBuffer,
+                                                         CountN, Shape->BIsSigned);
             }
 
             //
             // Step through each slice of matrix A along the M dimension.
             //
 
-            const uint8_t* b = PackedB + (RangeStartN + n) *
-                KernelType::PackedK * PackedCountK;
+            const uint8_t* b = PackedB + (RangeStartN + n) * KernelType::PackedK * PackedCountK;
             int32_t* c = C + n;
             size_t CountM;
 
             for (size_t m = 0; m < RangeCountM; m += CountM) {
-
                 CountM = std::min(RangeCountM - m, Strides.M);
 
                 //
                 // Copy a panel of matrix A to a local packed buffer.
                 //
 
-                MlasGemmQuantCopyPackA<KernelType>(
-                    PanelA,
-                    A + m * lda,
-                    lda,
-                    CountM,
-                    CountK,
-                    RowSumBuffer,
-                    Shape->AIsSigned);
+                MlasGemmQuantCopyPackA<KernelType>(PanelA, A + m * lda, lda, CountM, CountK,
+                                                   RowSumBuffer, Shape->AIsSigned);
 
                 //
                 // Apply the global depth value constant without the ZeroPointB scaling from:
@@ -697,28 +615,15 @@ Return Value:
                 bool PostProcess = (k + CountK == K);
 
                 while (RowsRemaining > 0) {
-
                     size_t RowsHandled = MlasGemmQuantKernel<KernelType>(
-                        pa,
-                        b,
-                        c,
-                        PackedCountK,
-                        RowsRemaining,
-                        CountN,
-                        ldc,
-                        RowSums,
-                        ColumnSumBuffer,
-                        (PackedZeroPointB != nullptr) ? ZeroPointBBuffer : nullptr,
+                        pa, b, c, PackedCountK, RowsRemaining, CountN, ldc, RowSums,
+                        ColumnSumBuffer, (PackedZeroPointB != nullptr) ? ZeroPointBBuffer : nullptr,
                         ZeroMode);
 
                     if (PostProcess && Data->OutputProcessor != nullptr) {
                         Data->OutputProcessor->Process(
-                            Data->C,
-                            RangeStartM + m + CountM - RowsRemaining,
-                            RangeStartN + n,
-                            RowsHandled,
-                            CountN,
-                            Data->ldc);
+                            Data->C, RangeStartM + m + CountM - RowsRemaining, RangeStartN + n,
+                            RowsHandled, CountN, Data->ldc);
                     }
 
                     c += ldc * RowsHandled;
@@ -743,19 +648,16 @@ Return Value:
  * @param RangeCountM
  * @param RangeStartN
  * @param RangeCountN
-*/
-template<typename KernelType>
+ */
+template <typename KernelType>
 void
-MlasSymmQGemmPackedOperation(
-    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
-    const MLAS_SYMM_QGEMM_DATA_PARAMS* Data,
-    const size_t RangeStartM,
-    const size_t RangeCountM,
-    const size_t RangeStartN,
-    const size_t RangeCountN
-    )
+MlasSymmQGemmPackedOperation(const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+                             const MLAS_SYMM_QGEMM_DATA_PARAMS* Data,
+                             const size_t RangeStartM,
+                             const size_t RangeCountM,
+                             const size_t RangeStartN,
+                             const size_t RangeCountN)
 {
-
     const size_t K = Shape->K;
 
     const size_t lda = Data->lda;
@@ -802,44 +704,31 @@ MlasSymmQGemmPackedOperation(
     }
 }
 
-
 //
 // Quantized integer matrix/matrix dispatch structure.
 //
 
-typedef
-void
-(MLAS_GEMM_QUANT_OPERATION)(
-    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
-    const size_t RangeStartM,
-    const size_t RangeCountM,
-    const size_t RangeStartN,
-    const size_t RangeCountN
-    );
+typedef void(MLAS_GEMM_QUANT_OPERATION)(const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+                                        const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+                                        const size_t RangeStartM,
+                                        const size_t RangeCountM,
+                                        const size_t RangeStartN,
+                                        const size_t RangeCountN);
 
-typedef
-void
-(MLAS_SYMM_QGEMM_OPERATION)(
-    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
-    const MLAS_SYMM_QGEMM_DATA_PARAMS* Data,
-    const size_t RangeStartM,
-    const size_t RangeCountM,
-    const size_t RangeStartN,
-    const size_t RangeCountN
-    );
+typedef void(MLAS_SYMM_QGEMM_OPERATION)(const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+                                        const MLAS_SYMM_QGEMM_DATA_PARAMS* Data,
+                                        const size_t RangeStartM,
+                                        const size_t RangeCountM,
+                                        const size_t RangeStartN,
+                                        const size_t RangeCountN);
 
-typedef
-void
-(MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE)(
-    uint8_t* D,
-    const uint8_t* B,
-    size_t ldb,
-    size_t CountN,
-    size_t CountK,
-    int32_t* ColumnSumBuffer,
-    bool BIsSigned
-    );
+typedef void(MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE)(uint8_t* D,
+                                                 const uint8_t* B,
+                                                 size_t ldb,
+                                                 size_t CountN,
+                                                 size_t CountK,
+                                                 int32_t* ColumnSumBuffer,
+                                                 bool BIsSigned);
 
 struct MLAS_GEMM_QUANT_DISPATCH {
     MLAS_GEMM_QUANT_OPERATION* Operation;
@@ -851,8 +740,8 @@ struct MLAS_GEMM_QUANT_DISPATCH {
 };
 
 struct MLAS_SYMM_QGEMM_DISPATCH {
-    MLAS_SYMM_QGEMM_OPERATION* LitOperation; /// running on little cores with narrow memory load
-    MLAS_SYMM_QGEMM_OPERATION* BigOperation; /// running on big cores with wider memory load
+    MLAS_SYMM_QGEMM_OPERATION* LitOperation;  /// running on little cores with narrow memory load
+    MLAS_SYMM_QGEMM_OPERATION* BigOperation;  /// running on big cores with wider memory load
     MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE* CopyPackBRoutine;
     size_t StrideM; /**< num of rows processed by kernel at a time */
     size_t PackedK;
@@ -860,10 +749,7 @@ struct MLAS_SYMM_QGEMM_DISPATCH {
 
 MLAS_FORCEINLINE
 const MLAS_GEMM_QUANT_DISPATCH*
-MlasGemmQuantGetDispatch(
-    bool AIsSigned,
-    bool BIsSigned
-)
+MlasGemmQuantGetDispatch(bool AIsSigned, bool BIsSigned)
 {
     const MLAS_GEMM_QUANT_DISPATCH* GemmQuantDispatch = nullptr;
 
@@ -875,32 +761,31 @@ MlasGemmQuantGetDispatch(
     if (!AIsSigned) {
         if (BIsSigned) {
             GemmQuantDispatch = GetMlasPlatform().GemmU8S8Dispatch;
-        }
-        else {
+        } else {
             GemmQuantDispatch = GetMlasPlatform().GemmU8U8Dispatch;
         }
     }
 #elif defined(MLAS_TARGET_ARM64)
-    if(BIsSigned) {
-        if(GetMlasPlatform().GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+    if (BIsSigned) {
+        if (GetMlasPlatform().GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
             GemmQuantDispatch = &MlasGemmX8S8DispatchNeon;
         } else {
-            GemmQuantDispatch = AIsSigned? &MlasGemmS8S8DispatchSdot : &MlasGemmU8X8DispatchUdot;
+            GemmQuantDispatch = AIsSigned ? &MlasGemmS8S8DispatchSdot : &MlasGemmU8X8DispatchUdot;
         }
-    } else if(!AIsSigned) {
+    } else if (!AIsSigned) {
         GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
-    if(BIsSigned || !AIsSigned) {
+    if (BIsSigned || !AIsSigned) {
         GemmQuantDispatch = &MlasGemmU8X8DispatchNeon;
     }
 #elif defined(MLAS_TARGET_WASM_SIMD)
     if (!AIsSigned) {
         GemmQuantDispatch = &MlasGemmU8X8DispatchWasmSimd;
     }
-#elif defined(MLAS_TARGET_POWER) && defined(__linux__)  && defined(POWER10) && \
-    ((defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
-    (defined(__clang__) && (__clang_major__ >= 12)))
+#elif defined(MLAS_TARGET_POWER) && defined(__linux__) && defined(POWER10) &&               \
+    ((defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__ == 10 && __GNUC_MINOR__ >= 2))) || \
+     (defined(__clang__) && (__clang_major__ >= 12)))
     if (GetMlasPlatform().GemmU8X8Dispatch == &MlasGemm8X8DispatchPOWER10) {
         GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
     }

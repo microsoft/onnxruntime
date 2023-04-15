@@ -4,8 +4,7 @@
 
 namespace WINML_EXPERIMENTALP {
 
-struct LearningModelSessionOptionsExperimental : LearningModelSessionOptionsExperimentalT<LearningModelSessionOptionsExperimental> 
-{
+struct LearningModelSessionOptionsExperimental : LearningModelSessionOptionsExperimentalT<LearningModelSessionOptionsExperimental> {
   LearningModelSessionOptionsExperimental(const winml::LearningModelSession& options);
 
   wfc::IMapView<winrt::hstring, uint32_t> GetNamedDimensionOverrides();

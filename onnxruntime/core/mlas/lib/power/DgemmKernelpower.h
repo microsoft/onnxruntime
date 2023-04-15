@@ -17,23 +17,19 @@ Abstract:
 
 #include "FgemmKernelpower.h"
 
-template<size_t RowCount>
-MLAS_FORCEINLINE
-size_t
-MlasDgemmProcessCount(
-    const double* A,
-    const double* B,
-    double* C,
-    size_t CountK,
-    size_t CountN,
-    size_t lda,
-    size_t ldc,
-    MLAS_FLOAT64X2 AlphaBroadcast,
-    bool ZeroMode
-    )
+template <size_t RowCount>
+MLAS_FORCEINLINE size_t
+MlasDgemmProcessCount(const double* A,
+                      const double* B,
+                      double* C,
+                      size_t CountK,
+                      size_t CountN,
+                      size_t lda,
+                      size_t ldc,
+                      MLAS_FLOAT64X2 AlphaBroadcast,
+                      bool ZeroMode)
 {
     do {
-
         const double* a = A;
         size_t k = CountK;
 
@@ -51,7 +47,6 @@ MlasDgemmProcessCount(
         // Compute the output block.
         //
         while (k >= 2) {
-
             MlasLoopUnroll<RowCount, MlasFgemmLoadAElements>()(AElements, a, lda);
 
             MlasLoopUnroll<RowCount, MlasFgemmSplatAElements<0>>()(AElements, ABroadcast);
@@ -65,7 +60,6 @@ MlasDgemmProcessCount(
             k -= 2;
         }
         if (k > 0) {
-
             MlasLoopUnroll<RowCount, MlasFgemmBroadcastAElements>()(ABroadcast, a, lda);
             MlasFgemmComputeBlock<RowCount>(Accumulators, ABroadcast, B);
 
@@ -75,26 +69,28 @@ MlasDgemmProcessCount(
         }
 
         if (CountN >= 8) {
-
             //
             // Store the entire output block.
             //
 
-            MlasLoopUnroll<RowCount, MlasFgemmStoreVector<4>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+            MlasLoopUnroll<RowCount, MlasFgemmStoreVector<4>>()(Accumulators, C, ldc,
+                                                                AlphaBroadcast, ZeroMode);
 
         } else {
-
             //
             // Store the partial output block.
             //
 
             //
             if (CountN >= 6) {
-                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<3>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<3>>()(Accumulators, C, ldc,
+                                                                    AlphaBroadcast, ZeroMode);
             } else if (CountN >= 4) {
-                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<2>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<2>>()(Accumulators, C, ldc,
+                                                                    AlphaBroadcast, ZeroMode);
             } else if (CountN >= 2) {
-                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<1>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasFgemmStoreVector<1>>()(Accumulators, C, ldc,
+                                                                    AlphaBroadcast, ZeroMode);
             }
             //
             // Store the remaining unaligned columns.
@@ -103,8 +99,8 @@ MlasDgemmProcessCount(
             CountN &= 1;
 
             if (CountN > 0) {
-
-                MlasLoopUnroll<RowCount, MlasFgemmMultiplyAlphaTrailing>()(Accumulators, AlphaBroadcast);
+                MlasLoopUnroll<RowCount, MlasFgemmMultiplyAlphaTrailing>()(Accumulators,
+                                                                           AlphaBroadcast);
 
                 MlasLoopUnroll<RowCount, MlasFgemmStoreScalar<0>>()(Accumulators, C, ldc, ZeroMode);
             }
@@ -119,4 +115,3 @@ MlasDgemmProcessCount(
 
     return RowCount;
 }
-

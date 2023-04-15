@@ -19,7 +19,7 @@ Abstract:
 // Map friendly register names to the encoded register index.
 //
 
-        .equ    .LYmmIndex_ymm0, 0
+.equ    .LYmmIndex_ymm0, 0
         .equ    .LYmmIndex_ymm1, 1
         .equ    .LYmmIndex_ymm2, 2
         .equ    .LYmmIndex_ymm3, 3

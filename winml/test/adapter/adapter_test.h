@@ -5,8 +5,7 @@
 #include "core/providers/winml/winml_provider_factory.h"
 #include "winml_adapter_c_api.h"
 
-struct AdapterTestApi
-{
+struct AdapterTestApi {
   SetupClass AdapterTestSetup;
   TeardownClass AdapterTestTeardown;
   VoidTest CreateModelFromPath;

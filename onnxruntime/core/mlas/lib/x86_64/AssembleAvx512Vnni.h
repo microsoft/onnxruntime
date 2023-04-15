@@ -19,7 +19,7 @@ Abstract:
 // Map friendly register names to the encoded register index.
 //
 
-        .equ    .LZmmIndex_zmm0, 0
+.equ    .LZmmIndex_zmm0, 0
         .equ    .LZmmIndex_zmm1, 1
         .equ    .LZmmIndex_zmm2, 2
         .equ    .LZmmIndex_zmm3, 3

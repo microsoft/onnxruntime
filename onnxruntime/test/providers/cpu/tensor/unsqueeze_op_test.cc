@@ -202,7 +202,7 @@ TEST(TensorOpTest, Unsqueeze_3_axes_input) {
 #if defined(USE_DNNL)
 TEST(TensorOpTest, Unsqueeze_3_axes_input_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -220,7 +220,7 @@ TEST(TensorOpTest, Unsqueeze_3_axes_input_bfloat16) {
 
 TEST(TensorOpTest, UnsqueezeNegAxis_3_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }

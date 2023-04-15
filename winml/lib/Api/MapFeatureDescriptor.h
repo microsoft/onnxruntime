@@ -19,7 +19,7 @@ struct MapFeatureDescriptor : MapFeatureDescriptorT<
       bool is_required,
       winml::TensorKind keyKind,
       winml::ILearningModelFeatureDescriptor valueKind);
- 
+
   // IMapDescriptor
   winml::TensorKind
   KeyKind();
@@ -49,7 +49,7 @@ struct MapFeatureDescriptor : MapFeatureDescriptorT<
   (
       const wchar_t** description,
       uint32_t* cchDescription) override;
-  
+
   STDMETHOD(GetDescriptorInfo)
   (
       _winml::IEngineFactory* engine_factory,

@@ -42,11 +42,17 @@ MlasBroadcastFloat16x4(_mlas_fp16_ Value) { return vreinterpret_f16_p16(vdup_n_p
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasBroadcastFloat16x8(const _mlas_fp16_* Value) { return vreinterpretq_f16_u16(vld1q_dup_u16(Value)); }
+MlasBroadcastFloat16x8(const _mlas_fp16_* Value)
+{
+    return vreinterpretq_f16_u16(vld1q_dup_u16(Value));
+}
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X4
-MlasBroadcastFloat16x4(const _mlas_fp16_* Value) { return vreinterpret_f16_u16(vld1_dup_u16(Value)); }
+MlasBroadcastFloat16x4(const _mlas_fp16_* Value)
+{
+    return vreinterpret_f16_u16(vld1_dup_u16(Value));
+}
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
@@ -176,7 +182,6 @@ MlasMultiplyAddFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2, MLAS_FL
     return vfma_f16(Vector3, Vector1, Vector2);
 }
 
-
 MLAS_FORCEINLINE
 void
 MlasMultiplyAddFloat16x8(MLAS_FLOAT16X8 Vector1, _mlas_fp16_ Scalar2, MLAS_FLOAT16X8 Vector3)
@@ -209,28 +214,32 @@ MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 MlasAndFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 {
-    return vreinterpretq_f16_s64(vandq_s64(vreinterpretq_s64_f16(Vector1), vreinterpretq_s64_f16(Vector2)));
+    return vreinterpretq_f16_s64(
+        vandq_s64(vreinterpretq_s64_f16(Vector1), vreinterpretq_s64_f16(Vector2)));
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 MlasOrFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 {
-    return vreinterpretq_f16_s64(vorrq_s64(vreinterpretq_s64_f16(Vector1), vreinterpretq_s64_f16(Vector2)));
+    return vreinterpretq_f16_s64(
+        vorrq_s64(vreinterpretq_s64_f16(Vector1), vreinterpretq_s64_f16(Vector2)));
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 MlasAndNotFloat16x8(MLAS_FLOAT16X8 VectorNot, MLAS_FLOAT16X8 Vector)
 {
-    return vreinterpretq_f16_s32(vandq_s32(vmvnq_s32(vreinterpretq_s32_f16(VectorNot)), vreinterpretq_s32_f16(Vector)));
+    return vreinterpretq_f16_s32(
+        vandq_s32(vmvnq_s32(vreinterpretq_s32_f16(VectorNot)), vreinterpretq_s32_f16(Vector)));
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 MlasXorFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 {
-    return vreinterpretq_f16_s32(veorq_s32(vreinterpretq_s32_f16(Vector1), vreinterpretq_s32_f16(Vector2)));
+    return vreinterpretq_f16_s32(
+        veorq_s32(vreinterpretq_s32_f16(Vector1), vreinterpretq_s32_f16(Vector2)));
 }
 
 MLAS_FORCEINLINE

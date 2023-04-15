@@ -36,11 +36,11 @@ class TileOpBuilder : public BaseOpBuilder {
 };
 
 Status TileOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                                     const NodeUnit& node_unit,
-                                     const logging::Logger& logger,
-                                     bool is_quantized_model,
-                                     std::vector<std::string>& input_names,
-                                     bool do_op_validation) const {
+                                    const NodeUnit& node_unit,
+                                    const logging::Logger& logger,
+                                    bool is_quantized_model,
+                                    std::vector<std::string>& input_names,
+                                    bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
   // QNN Tile only support 1 input, the 2nd input need to be initialier and set as Qnn node parameter
   if (do_op_validation) {
@@ -55,11 +55,11 @@ Status TileOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 }
 
 Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                   const NodeUnit& node_unit,
-                                                   std::vector<std::string>&& input_names,
-                                                   const logging::Logger& logger,
-                                                   bool is_quantized_model,
-                                                   bool do_op_validation) const {
+                                                  const NodeUnit& node_unit,
+                                                  std::vector<std::string>&& input_names,
+                                                  const logging::Logger& logger,
+                                                  bool is_quantized_model,
+                                                  bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
   // Already confirmed repeats input is initailizer in ProcessInputs()
   const auto& repeats_input_name = node_unit.Inputs()[1].node_arg.Name();
@@ -79,7 +79,7 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   uint32_t multiples_size = static_cast<uint32_t>(multiples.size());
   std::vector<uint32_t> multiples_dim{multiples_size};
   QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), qnn_def::multiples, std::move(multiples_dim),
-                              std::move(multiples));
+                                  std::move(multiples));
   param_tensor_names.push_back(multiples_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(multiples_param));
 

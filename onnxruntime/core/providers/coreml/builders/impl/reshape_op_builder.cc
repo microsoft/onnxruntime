@@ -26,7 +26,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 
  private:
   [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override;
+                                             const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
