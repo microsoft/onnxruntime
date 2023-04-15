@@ -167,6 +167,7 @@ class MinMaxCalibrater(CalibraterBase):
         use_external_data_format=False,
         moving_average=False,
         averaging_constant=0.01,
+        reshape_shape_name=None,
     ):
         """
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
@@ -192,6 +193,7 @@ class MinMaxCalibrater(CalibraterBase):
         if moving_average and (averaging_constant < 0 or averaging_constant > 1):
             raise ValueError("Invalid averaging constant, which should not be < 0 or > 1.")
         self.averaging_constant = averaging_constant
+        self.reshape_shape_name = reshape_shape_name
 
     def augment_graph(self):
         """
@@ -202,7 +204,14 @@ class MinMaxCalibrater(CalibraterBase):
         model = clone_model_with_shape_infer(self.model)
 
         tensors, _ = self.select_tensors_to_calibrate(model)
-        reshape_shape_name = str(uuid.uuid4())
+        if self.reshape_shape_name is None:
+            reshape_shape_name = str(uuid.uuid4())
+        else:
+            reshape_shape_name = self.reshape_shape_name
+            input_names = [input.name for input in model.graph.input]
+            output_names = [output.name for output in model.graph.output]
+            node_names = [node.name for node in model.graph.node]
+            assert reshape_shape_name not in input_names and reshape_shape_name not in output_names and reshape_shape_name not in node_names
         reshape_shape = numpy_helper.from_array(np.array([1], dtype=np.int64), reshape_shape_name)
         model.graph.initializer.append(reshape_shape)
 
@@ -228,7 +237,8 @@ class MinMaxCalibrater(CalibraterBase):
             model.graph.node.extend([reduce_node, reshape_node])
             model.graph.output.append(helper.make_tensor_value_info(reduce_output, TensorProto.FLOAT, [1]))
 
-        for tensor in tensors:
+        sorted_tensors = sorted(tensors)
+        for tensor in sorted_tensors:
             add_reduce_min_max(tensor, "ReduceMin")
             add_reduce_min_max(tensor, "ReduceMax")
 
@@ -1034,6 +1044,7 @@ def create_calibrator(
         symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
         moving_average = False if "moving_average" not in extra_options else extra_options["moving_average"]
         averaging_constant = 0.01 if "averaging_constant" not in extra_options else extra_options["averaging_constant"]
+        reshape_shape_name = None if "reshape_shape_name" not in extra_options else extra_options["reshape_shape_name"]
         calibrator = MinMaxCalibrater(
             model,
             op_types_to_calibrate,
@@ -1042,6 +1053,7 @@ def create_calibrator(
             symmetric=symmetric,
             moving_average=moving_average,
             averaging_constant=averaging_constant,
+            reshape_shape_name=reshape_shape_name,
         )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm
