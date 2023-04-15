@@ -176,8 +176,9 @@ include_patterns = [
     '**/*.cc',
 ]
 exclude_patterns = [
-    'onnxruntime/core/mlas/**',
-    'onnxruntime/contrib_ops/cuda/**',
+    'onnxruntime/core/mlas/**', # Contains assembly code
+    'onnxruntime/contrib_ops/cuda/**', # Contains data chunks
+    'onnxruntime/core/graph/contrib_ops/quantization_defs.cc',
 ]
 command = [
     'python',
