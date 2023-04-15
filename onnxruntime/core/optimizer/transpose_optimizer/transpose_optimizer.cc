@@ -975,6 +975,8 @@ static bool HandleResize([[maybe_unused]] HandlerArgs& args) {
   // The CUDA Resize kernel requires that the input is NCHW, so we can't push a Transpose through a Resize
   // in ORT builds with CUDA enabled.
   // The ROCm EP is generated from the CUDA EP kernel so the same applies to builds with ROCm enabled.
+  // The QNN EP requires the input to be NHWC, so the Resize handler is also not enabled for QNN builds.
+  //
   // TODO: Remove this special case once the CUDA Resize kernel is implemented "generically" (i.e.) aligning with the
   // generic nature of the ONNX spec.
   // See https://github.com/microsoft/onnxruntime/pull/10824 for a similar fix applied to the CPU Resize kernel.
