@@ -18,7 +18,7 @@ class DeviceStreamCollectionImpl {
       eps_.push_back(ep);
     }
     is_main_graph_ = sess_state.GetGraphViewer().ParentNode() == nullptr;
-    root_stream_ = std::make_unique<Stream>(nullptr, OrtDevice());
+    //root_stream_ = std::make_unique<Stream>(nullptr, OrtDevice());
   }
 
   ~DeviceStreamCollectionImpl() {
