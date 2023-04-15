@@ -1827,11 +1827,6 @@ namespace Microsoft.ML.OnnxRuntime
 #endregion
     } //class NativeMethods
 
-    internal static class EmptyArray<T>
-    {
-        public static readonly T[] Value = new T[0];
-    }
-
     internal unsafe struct MarshaledString : IDisposable
     {
         // Ported from dotnet/clangsharp tag v15.0.2
@@ -1849,7 +1844,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             else
             {
-                var valueBytes = (input.Length != 0) ? Encoding.UTF8.GetBytes(input) : EmptyArray<byte>.Value;
+                var valueBytes = (input.Length != 0) ? Encoding.UTF8.GetBytes(input) : ArrayUtilities.GetEmpty<byte>();
                 length = valueBytes.Length;
                 value = Marshal.AllocHGlobal(length + 1);
 

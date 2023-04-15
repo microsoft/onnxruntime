@@ -256,5 +256,20 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
             return transformIndex;
         }
+
+        public static T[] GetEmpty<T>()
+        {
+            // Match the implementation of Array.GetEmpty<T>()
+            // from dotnet/runtime. Having it as a static in a
+            // nested class ensures we only allocate the empty
+            // array once and only when actually necessary.
+
+            return EmptyArray<T>.Value;
+        }
+
+        private static class EmptyArray<T>
+        {
+            public static readonly T[] Value = new T[0];
+        }
     }
 }
