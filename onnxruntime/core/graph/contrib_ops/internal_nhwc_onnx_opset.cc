@@ -17,7 +17,6 @@ class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearConvTranspose);
 namespace internal_nhwc_onnx {
 
 using contrib::NhwcInferenceContext;
-using contrib::NhwcResizeInferenceContext;
 using RegistrationFunc = std::function<void(ONNX_NAMESPACE::OpSchema&&)>;
 
 namespace {
@@ -31,20 +30,6 @@ void RegisterNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& 
                     // so the ONNX shape inferencing can be used. Once that completes, the call to PropagateOutputShape
                     // will convert the inferred shape from NCHW to NHWC
                     NhwcInferenceContext nhwc_ctx(ctx);
-                    onnx_inferencing_func(nhwc_ctx);
-                    nhwc_ctx.PropagateOutputShape();
-                  })
-                  .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
-}
-
-void RegisterResizeNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
-  auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
-  f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
-                  .TypeAndShapeInferenceFunction([onnx_inferencing_func](ONNX_NAMESPACE::InferenceContext& ctx) {
-                    // Use the NHWC Resize inferencing context to convert input0, scales, sizes, and output0 to NCHW
-                    // so the ONNX shape inferencing can be used. Once that completes, the call to PropagateOutputShape
-                    // will convert the inferred output shape from NCHW to NHWC
-                    NhwcResizeInferenceContext nhwc_ctx(ctx);
                     onnx_inferencing_func(nhwc_ctx);
                     nhwc_ctx.PropagateOutputShape();
                   })
@@ -135,11 +120,6 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
 
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 1);
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 13);
-
-  // Used by QNN EP.
-  REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 11);
-  REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 13);
-  REGISTER_RESIZE_NHWC_SCHEMA(fn, Resize, 18);
 
   // internal QLinear ops
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);

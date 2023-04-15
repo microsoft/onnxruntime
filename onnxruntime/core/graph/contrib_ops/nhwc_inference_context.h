@@ -16,94 +16,113 @@ namespace contrib {
  */
 class NhwcInferenceContext : public ONNX_NAMESPACE::InferenceContext {
  public:
-  NhwcInferenceContext(ONNX_NAMESPACE::InferenceContext& ctx);
+  NhwcInferenceContext(ONNX_NAMESPACE::InferenceContext& ctx) : ctx_(ctx) {
+    // copy any existing type and shape info, and convert to NCHW for usage with the ONNX inferencing
+    const auto* nhwc_type = ctx_.getInputType(0);
+    if (nhwc_type != nullptr) {
+      input_type_ = *nhwc_type;
+      TransposeToNchw(*nhwc_type, input_type_);
+    }
 
-  const ONNX_NAMESPACE::AttributeProto* getAttribute(const std::string& name) const override;
+    nhwc_type = ctx_.getOutputType(0);
+    if (nhwc_type != nullptr) {
+      output_type_ = *nhwc_type;
+      TransposeToNchw(*nhwc_type, output_type_);
+    }
+  }
 
-  size_t getNumInputs() const noexcept override;
+  const ONNX_NAMESPACE::AttributeProto* getAttribute(const std::string& name) const override {
+    return ctx_.getAttribute(name);
+  }
 
-  const ONNX_NAMESPACE::TypeProto* getInputType(size_t index) const override;
+  size_t getNumInputs() const noexcept override {
+    return ctx_.getNumInputs();
+  }
 
-  const ONNX_NAMESPACE::TensorProto* getInputData(size_t index) const override;
+  const ONNX_NAMESPACE::TypeProto* getInputType(size_t index) const override {
+    return (index == 0) ? &input_type_ : ctx_.getInputType(index);
+  }
 
-  size_t getNumOutputs() const noexcept override;
+  const ONNX_NAMESPACE::TensorProto* getInputData(size_t index) const override {
+    // we can't return the NHWC input data without transposing it, but wouldn't expect to be asked for it
+    // during shape inferencing as getInputData is only used to retrieve things that may have small
+    // constant initializers (e.g. something like the min and max values of a Clip operator).
+    return index == 0 ? nullptr : ctx_.getInputData(index);
+  }
 
-  ONNX_NAMESPACE::TypeProto* getOutputType(size_t index) override;
+  size_t getNumOutputs() const noexcept override {
+    return ctx_.getNumOutputs();
+  }
 
-  ONNX_NAMESPACE::GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override;
+  ONNX_NAMESPACE::TypeProto* getOutputType(size_t index) override {
+    return (index == 0) ? &output_type_ : ctx_.getOutputType(index);
+  }
 
-  const ONNX_NAMESPACE::TensorShapeProto* getSymbolicInput(size_t index) const override;
+  ONNX_NAMESPACE::GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
+    return ctx_.getGraphAttributeInferencer(attribute_name);
+  }
 
-  const ONNX_NAMESPACE::SparseTensorProto* getInputSparseData(size_t index) const override;
+  const ONNX_NAMESPACE::TensorShapeProto* getSymbolicInput(size_t index) const override {
+    return ctx_.getSymbolicInput(index);
+  }
+
+  const ONNX_NAMESPACE::SparseTensorProto* getInputSparseData(size_t index) const override {
+    return ctx_.getInputSparseData(index);
+  }
 
   // Propagate the inferred type/shape info to output 0, converting any inferred shape from NCHW to NHWC.
-  void PropagateOutputShape();
+  void PropagateOutputShape() {
+    auto& nhwc_tp = *ctx_.getOutputType(0);
+
+    // copy latest type/shape info.
+    nhwc_tp = output_type_;
+
+    // convert shape to channels last
+    if (output_type_.tensor_type().has_shape()) {
+      const auto& nchw_shape = output_type_.tensor_type().shape();
+      const int rank = nchw_shape.dim_size();
+      // N and C dims are required. Some operators like AveragePool allow 1D input
+      if (rank < 3) {
+        fail_shape_inference("Output tensor must have at least 3 dimensions");
+      }
+
+      // Convert output shape from N, C, H {, W, ...} to N, H {, W, ...}, C.
+      auto& nhwc_shape = *nhwc_tp.mutable_tensor_type()->mutable_shape();
+      nhwc_shape.Clear();
+      *nhwc_shape.add_dim() = nchw_shape.dim(0);
+      for (int i = 2; i < rank; i++) {
+        *nhwc_shape.add_dim() = nchw_shape.dim(i);
+      }
+
+      *nhwc_shape.add_dim() = nchw_shape.dim(1);
+    }
+  }
 
  private:
-  InferenceContext& ctx_;
+  void TransposeToNchw(const ONNX_NAMESPACE::TypeProto& nhwc_tp, ONNX_NAMESPACE::TypeProto& nchw_tp) {
+    if (nhwc_tp.tensor_type().has_shape()) {
+      const auto& nhwc_shape = nhwc_tp.tensor_type().shape();
+      const int rank = nhwc_shape.dim_size();
+      // N and C dims are required. Some operators like AveragePool allow 1D input.
+      if (rank < 3) {
+        fail_shape_inference(
+            "Tensor must have at least 3 dimensions to convert between channels first and channels last.");
+      }
 
-  // These are the NCHW versions of the actual input and output types.
-  // Provided to ONNX type/shape inferencing via the overridden InferenceContext::getInputType function.
-  ONNX_NAMESPACE::TypeProto input_type_;
-  ONNX_NAMESPACE::TypeProto output_type_;
-};
-
-/** Adapter class to enable ONNX shape inferencing to be used with the NHWC Resize layout-sensitive operator.
- * Currently only used by the QNN EP.
- *
- * After layout transformation, the Resize operator's input0 and output0 have an NHWC layout. However, ONNX shape
- * inferencing expects a NCHW layout for inputs and outputs. This adapter ensures that ONNX sees a NCHW version
- * of the operator during shape inferencing.
- *
- * The NhwcInferenceContext class is not used for NHWC Resize because it only handles input0 and output0. We also
- * need to convert the 'scales' and 'sizes' constant inputs to their NCHW counterparts.
- * Ex: a NHWC 'scales' input [1.0f, 2.0f, 3.0f, 4.0f] needs to be converted to [1.0f, 4.0f, 2.0f, 3.0f] for NCHW.
- */
-class NhwcResizeInferenceContext : public ONNX_NAMESPACE::InferenceContext {
- public:
-  explicit NhwcResizeInferenceContext(ONNX_NAMESPACE::InferenceContext& ctx);
-
-  const ONNX_NAMESPACE::AttributeProto* getAttribute(const std::string& name) const override;
-
-  size_t getNumInputs() const noexcept override;
-
-  const ONNX_NAMESPACE::TypeProto* getInputType(size_t index) const override;
-
-  const ONNX_NAMESPACE::TensorProto* getInputData(size_t index) const override;
-
-  size_t getNumOutputs() const noexcept override;
-
-  ONNX_NAMESPACE::TypeProto* getOutputType(size_t index) override;
-
-  ONNX_NAMESPACE::GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override;
-
-  const ONNX_NAMESPACE::TensorShapeProto* getSymbolicInput(size_t index) const override;
-
-  const ONNX_NAMESPACE::SparseTensorProto* getInputSparseData(size_t index) const override;
-
-  // Propagate the ONNX inferred type/shape info to output 0, converting any inferred shape from NCHW to NHWC.
-  void PropagateOutputShape();
-
- private:
-
-  // Initializes scales_input_data_ with the NCHW version of the NHWC scales input.
-  void TransposeScalesInput();
-
-  // Initializes sizes_input_data_ with the NCHW version of the NHWC sizes input.
-  void TransposeSizesInput();
+      // Convert input shape from {N, H, W, ..., C} to {N, C, H, W, ...}.
+      auto& nchw_shape = *nchw_tp.mutable_tensor_type()->mutable_shape();
+      nchw_shape.Clear();
+      *nchw_shape.add_dim() = nhwc_shape.dim(0);
+      *nchw_shape.add_dim() = nhwc_shape.dim(rank - 1);
+      for (int i = 1; i < rank - 1; i++) {
+        *nchw_shape.add_dim() = nhwc_shape.dim(i);
+      }
+    }
+  }
 
   InferenceContext& ctx_;
-
-  // These are the NCHW versions of the actual inputs and outputs.
-  // Provided to ONNX type/shape inferencing via overridden
-  // InferenceContext functions (e.g., getInputType, getInputData).
   ONNX_NAMESPACE::TypeProto input_type_;
-  ONNX_NAMESPACE::TensorProto scales_input_data_;
-  ONNX_NAMESPACE::TensorProto sizes_input_data_;
   ONNX_NAMESPACE::TypeProto output_type_;
-
-  static constexpr size_t scales_input_index = 2;
-  static constexpr size_t sizes_input_index = 3;
 };
 
 }  // namespace contrib
