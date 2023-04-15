@@ -218,9 +218,9 @@ static Status dft_bluestein_z_chirp(
     std::complex<T>* b_data = reinterpret_cast<std::complex<T>*>(b.MutableDataRaw());
     std::complex<T>* b_fft_data = reinterpret_cast<std::complex<T>*>(b_fft.MutableDataRaw());
     std::complex<T>* chirp_data = reinterpret_cast<std::complex<T>*>(chirp.MutableDataRaw());
-    memset(b_data, 0, b.SizeInBytes());
-    memset(b_fft_data, 0, b_fft.SizeInBytes());
-    memset(chirp_data, 0, chirp.SizeInBytes());
+    memset(reinterpret_cast<void*>(b_data), 0, b.SizeInBytes());
+    memset(reinterpret_cast<void*>(b_fft_data), 0, b_fft.SizeInBytes());
+    memset(reinterpret_cast<void*>(chirp_data), 0, chirp.SizeInBytes());
 
     for (size_t n = 0; n < N; n++) {
       std::complex<T>& chirp_n = *(chirp_data + n);
@@ -259,20 +259,17 @@ static Status dft_bluestein_z_chirp(
   std::complex<T>* a_fft_data = reinterpret_cast<std::complex<T>*>(a_fft.MutableDataRaw());
   std::complex<T>* b_fft_data = reinterpret_cast<std::complex<T>*>(b_fft.MutableDataRaw());
   std::complex<T>* chirp_data = reinterpret_cast<std::complex<T>*>(chirp.MutableDataRaw());
-  memset(a_data, 0, a.SizeInBytes());
+  memset(reinterpret_cast<void*>(a_data), 0, a.SizeInBytes());
 
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
 
   // Prepare "a" signal
-  for (size_t n = 0; n < N; n++) {
+  for (size_t n = 0; n < number_of_samples; n++) {
     std::complex<T>& a_n = *(a_data + n);
     std::complex<T>& chirp_n = *(chirp_data + n);
     auto window_n = window_data ? *(window_data + n) : 1;
-
-    if (n < number_of_samples) {
-      a_n = *(X_data + n * X_stride);  // input
-    }
+    a_n = *(X_data + n * X_stride);  // input
     a_n *= window_n;
     a_n *= chirp_n;
   }
