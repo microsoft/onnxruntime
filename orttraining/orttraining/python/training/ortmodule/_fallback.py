@@ -102,7 +102,7 @@ class _FallbackManager:
         self.policy = policy
         self.retry = retry
         self._exception = None
-        self._raised_ORTModuleONNXModelException = False
+        self._raised_ortmodule_onnx_model_exception = False
 
     def handle_exception(
         self, exception: Exception, log_level: _logger.LogLevel, override_policy: Optional[_FallbackPolicy] = None
@@ -172,7 +172,7 @@ class _FallbackManager:
 
         assert self.is_pending(), "`fallback` can only be called when there is a pending fallback"
 
-        if log_level <= _logger.LogLevel.WARNING and not self._raised_ORTModuleONNXModelException:
+        if log_level <= _logger.LogLevel.WARNING and not self._raised_ortmodule_onnx_model_exception:
             warnings.warn(
                 (
                     f"Fallback to PyTorch due to exception {type(self._exception)} was triggered. "
@@ -182,7 +182,7 @@ class _FallbackManager:
                 UserWarning,
             )
             if type(self._exception) == ORTModuleONNXModelException:
-                self._raised_ORTModuleONNXModelException = True
+                self._raised_ortmodule_onnx_model_exception = True
 
         # Pending fallbacks are resetted to enforce retries
         if self.retry:
