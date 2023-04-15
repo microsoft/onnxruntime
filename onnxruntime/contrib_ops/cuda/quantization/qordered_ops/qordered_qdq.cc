@@ -94,6 +94,7 @@ cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order
 #endif
 
 QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
+
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
@@ -135,6 +136,7 @@ DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(
   ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
+
 }
 
 Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {

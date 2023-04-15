@@ -19,7 +19,7 @@ Abstract:
 // Define the single precision parameters.
 //
 
-.equ    .LFgemmElementShift, 2
+        .equ    .LFgemmElementShift, 2
         .equ    .LFgemmElementSize, 1 << .LFgemmElementShift
 
 #include "FgemmKernelCommon.h"

@@ -22,6 +22,7 @@ Abstract:
 #include <cstdint>
 #include <cstdlib>
 
+
 using _mlas_fp16_ = uint16_t;
 
 union fp32_bits {
@@ -40,7 +41,8 @@ union fp32_bits {
 #pragma warning(disable : 26451)
 #endif
 
-inline _mlas_fp16_
+inline 
+_mlas_fp16_
 MLAS_Float2Half(float ff)
 {
     constexpr fp32_bits f32infty = {255 << 23};
@@ -84,7 +86,8 @@ MLAS_Float2Half(float ff)
     return val;
 }
 
-inline float
+inline
+float
 MLAS_Half2Float(_mlas_fp16_ val)
 {
     constexpr fp32_bits magic = {113 << 23};

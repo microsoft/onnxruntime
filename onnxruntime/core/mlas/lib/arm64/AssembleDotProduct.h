@@ -38,51 +38,36 @@ Arguments:
 
 --*/
 
-MACRO
-SdotByElement $DestReg, $Src1Reg, $Src2Reg,
-    $Index
+        MACRO
+        SdotByElement $DestReg, $Src1Reg, $Src2Reg, $Index
 
-        DCD 0x4F80E000 : OR : ($DestReg)
-    : OR : ($Src1Reg:SHL : 5)
-    : OR : ($Src2Reg:SHL : 16)
-    : OR : (($Index:AND : 2)
-            : SHL : 10)
-    : OR : (($Index:AND : 1)
-            : SHL : 21)
+        DCD     0x4F80E000:OR:($DestReg):OR:($Src1Reg:SHL:5):OR:($Src2Reg:SHL:16):OR:(($Index:AND:2):SHL:10):OR:(($Index:AND:1):SHL:21)
 
-               MEND
+        MEND
 
-           /*++
+/*++
 
-           Macro Description:
+Macro Description:
 
-               This macro builds a UDOT instruction of the form:
+    This macro builds a UDOT instruction of the form:
 
-                   UDOT DestReg.4s, Src1Reg.16b, Src2Reg.4b[Index]
+        UDOT DestReg.4s, Src1Reg.16b, Src2Reg.4b[Index]
 
-           Arguments:
+Arguments:
 
-               DestReg - Specifies the destination register.
+    DestReg - Specifies the destination register.
 
-               Src1Reg - Specifies the first source register.
+    Src1Reg - Specifies the first source register.
 
-               Src2Reg - Specifies the second source register.
+    Src2Reg - Specifies the second source register.
 
-               Index - Specifies the element index of the second source register.
+    Index - Specifies the element index of the second source register.
 
-           --*/
+--*/
 
-           MACRO UdotByElement $DestReg,
-           $Src1Reg,
-           $Src2Reg,
-           $Index
+        MACRO
+        UdotByElement $DestReg, $Src1Reg, $Src2Reg, $Index
 
-           DCD 0x6F80E000 : OR : ($DestReg)
-    : OR : ($Src1Reg:SHL : 5)
-    : OR : ($Src2Reg:SHL : 16)
-    : OR : (($Index:AND : 2)
-            : SHL : 10)
-    : OR : (($Index:AND : 1)
-            : SHL : 21)
+        DCD     0x6F80E000:OR:($DestReg):OR:($Src1Reg:SHL:5):OR:($Src2Reg:SHL:16):OR:(($Index:AND:2):SHL:10):OR:(($Index:AND:1):SHL:21)
 
-               MEND
+        MEND

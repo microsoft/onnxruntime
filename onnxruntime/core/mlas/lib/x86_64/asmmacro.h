@@ -32,7 +32,7 @@ Arguments:
 
 --*/
 
-.macro FUNCTION_ENTRY FunctionName
+        .macro FUNCTION_ENTRY FunctionName
 
         .p2align 4
 #if defined(__APPLE__)

@@ -33,6 +33,7 @@ class GatedRelativePositionBias final : public CudaKernel {
   int num_heads_;
 };
 
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

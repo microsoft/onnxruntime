@@ -18,8 +18,8 @@ Abstract:
 #pragma once
 
 #include <cstddef>
-#include <cstdint>
 #include <cstdlib>
+#include <cstdint>
 
 //
 // Define the calling convention for Windows targets.
@@ -73,7 +73,7 @@ Abstract:
 // Define the support levels for the target architecture.
 //
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER)
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
@@ -87,9 +87,9 @@ Abstract:
 
 #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
-#endif  //
-#endif  // ARM64
-#endif  // Visual Studio 16 or earlier does not support fp16 intrinsic
+#endif // 
+#endif // ARM64
+#endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 
 //
 // Basic Linear Algebra Subprograms (BLAS) types.
@@ -97,10 +97,10 @@ Abstract:
 
 #ifndef CBLAS_ENUM_DEFINED_H
 #define CBLAS_ENUM_DEFINED_H
-typedef enum { CblasNoTrans = 111, CblasTrans = 112, CblasConjTrans = 113 } CBLAS_TRANSPOSE;
-typedef enum { CblasUpper = 121, CblasLower = 122 } CBLAS_UPLO;
-typedef enum { CblasNonUnit = 131, CblasUnit = 132 } CBLAS_DIAG;
-typedef enum { CblasLeft = 141, CblasRight = 142 } CBLAS_SIDE;
+typedef enum { CblasNoTrans=111, CblasTrans=112, CblasConjTrans=113 } CBLAS_TRANSPOSE;
+typedef enum { CblasUpper=121, CblasLower=122 } CBLAS_UPLO;
+typedef enum { CblasNonUnit=131, CblasUnit=132 } CBLAS_DIAG;
+typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
@@ -110,23 +110,25 @@ typedef enum { CblasLeft = 141, CblasRight = 142 } CBLAS_SIDE;
 // standalone MLAS test executables smaller.
 //
 
-namespace onnxruntime
-{
-namespace concurrency
-{
-class ThreadPool;
-};
-struct MLFloat16;
+namespace onnxruntime {
+    namespace concurrency {
+        class ThreadPool;
+    };
+    struct MLFloat16;
 };  // namespace onnxruntime
 
 using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
+
 
 //
 // Platform routines.
 //
 
-size_t MLASCALL
-MlasGetPreferredBufferAlignment(void);
+size_t
+MLASCALL
+MlasGetPreferredBufferAlignment(
+    void
+    );
 
 #ifdef MLAS_TARGET_AMD64_IX86
 
@@ -134,11 +136,15 @@ MlasGetPreferredBufferAlignment(void);
  * @brief Return whether the current CPU has over saturation problem
  *        when computing u8s8 matrix multiplication
  * https://www.intel.com/content/www/us/en/develop/documentation/onednn-developer-guide-and-reference/top/advanced-topics/nuances-of-int8-computations.html
- */
-bool MLASCALL
-MlasPlatformU8S8Overflow(void);
+*/
+bool
+MLASCALL
+MlasPlatformU8S8Overflow(
+    void
+    );
 
 #endif
+
 
 //
 // Activation routines.
@@ -173,13 +179,16 @@ struct MLAS_ACTIVATION {
     } Parameters;
 };
 
-void MLASCALL
-MlasActivation(const MLAS_ACTIVATION* Activation,
-               float* Buffer,
-               const float* Bias,
-               size_t M,
-               size_t N,
-               size_t ldc);
+void
+MLASCALL
+MlasActivation(
+    const MLAS_ACTIVATION* Activation,
+    float* Buffer,
+    const float* Bias,
+    size_t M,
+    size_t N,
+    size_t ldc
+    );
 
 //
 // Matrix/matrix multiply routines.
@@ -216,15 +225,18 @@ struct MLAS_SGEMM_DATA_PARAMS {
  * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
                      base library threading support should be used.
  */
-void MLASCALL
-MlasGemmBatch(CBLAS_TRANSPOSE TransA,
-              CBLAS_TRANSPOSE TransB,
-              size_t M,
-              size_t N,
-              size_t K,
-              const MLAS_SGEMM_DATA_PARAMS* Data,
-              size_t BatchSize,
-              MLAS_THREADPOOL* ThreadPool);
+void
+MLASCALL
+MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
 /**
  * @brief  Single precision matrix/matrix multiply operation (SGEMM)
@@ -239,14 +251,17 @@ MlasGemmBatch(CBLAS_TRANSPOSE TransA,
  * @param ThreadPool  Supplies the thread pool object to use, else nullptr if the
                       base library threading support should be used.
  */
-inline void
-MlasGemm(CBLAS_TRANSPOSE TransA,
-         CBLAS_TRANSPOSE TransB,
-         size_t M,
-         size_t N,
-         size_t K,
-         const MLAS_SGEMM_DATA_PARAMS& Data,
-         MLAS_THREADPOOL* ThreadPool)
+inline
+void
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS& Data,
+    MLAS_THREADPOOL* ThreadPool
+    )
 {
     MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
 }
@@ -271,21 +286,24 @@ MlasGemm(CBLAS_TRANSPOSE TransA,
  * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
                       base library threading support should be used.
  */
-inline void
-MlasGemm(CBLAS_TRANSPOSE TransA,
-         CBLAS_TRANSPOSE TransB,
-         size_t M,
-         size_t N,
-         size_t K,
-         float alpha,
-         const float* A,
-         size_t lda,
-         const float* B,
-         size_t ldb,
-         float beta,
-         float* C,
-         size_t ldc,
-         MLAS_THREADPOOL* ThreadPool)
+inline
+void
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const float* B,
+    size_t ldb,
+    float beta,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    )
 {
     MLAS_SGEMM_DATA_PARAMS Data;
     Data.alpha = alpha;
@@ -318,19 +336,22 @@ MlasGemm(CBLAS_TRANSPOSE TransA,
  * @param ThreadPool  - Supplies the thread pool object to use, else nullptr if the
                         base library threading support should be used.
  */
-inline void
-MlasGemm(CBLAS_TRANSPOSE TransA,
-         size_t M,
-         size_t N,
-         size_t K,
-         float alpha,
-         const float* A,
-         size_t lda,
-         const void* PackedB,
-         float beta,
-         float* C,
-         size_t ldc,
-         MLAS_THREADPOOL* ThreadPool)
+inline
+void
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const void* PackedB,
+    float beta,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    )
 {
     MLAS_SGEMM_DATA_PARAMS DataParams;
     DataParams.A = A;
@@ -376,15 +397,18 @@ struct MLAS_DGEMM_DATA_PARAMS {
  * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
                      base library threading support should be used.
  */
-void MLASCALL
-MlasGemmBatch(CBLAS_TRANSPOSE TransA,
-              CBLAS_TRANSPOSE TransB,
-              size_t M,
-              size_t N,
-              size_t K,
-              const MLAS_DGEMM_DATA_PARAMS* Data,
-              size_t BatchSize,
-              MLAS_THREADPOOL* ThreadPool);
+void
+MLASCALL
+MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_DGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
 /**
  * @brief  Double precision matrix/matrix multiply operation (DGEMM)
@@ -399,14 +423,17 @@ MlasGemmBatch(CBLAS_TRANSPOSE TransA,
  * @param ThreadPool  Supplies the thread pool object to use, else nullptr if the
                       base library threading support should be used.
  */
-inline void
-MlasGemm(CBLAS_TRANSPOSE TransA,
-         CBLAS_TRANSPOSE TransB,
-         size_t M,
-         size_t N,
-         size_t K,
-         const MLAS_DGEMM_DATA_PARAMS& Data,
-         MLAS_THREADPOOL* ThreadPool)
+inline
+void
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_DGEMM_DATA_PARAMS& Data,
+    MLAS_THREADPOOL* ThreadPool
+    )
 {
     MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
 }
@@ -431,21 +458,24 @@ MlasGemm(CBLAS_TRANSPOSE TransA,
  * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
                       base library threading support should be used.
  */
-inline void
-MlasGemm(CBLAS_TRANSPOSE TransA,
-         CBLAS_TRANSPOSE TransB,
-         size_t M,
-         size_t N,
-         size_t K,
-         double alpha,
-         const double* A,
-         size_t lda,
-         const double* B,
-         size_t ldb,
-         double beta,
-         double* C,
-         size_t ldc,
-         MLAS_THREADPOOL* ThreadPool)
+inline
+void
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    double alpha,
+    const double* A,
+    size_t lda,
+    const double* B,
+    size_t ldb,
+    double beta,
+    double* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    )
 {
     MLAS_DGEMM_DATA_PARAMS Data;
     Data.alpha = alpha;
@@ -465,60 +495,68 @@ enum class MLAS_QUANTIZATION_GRANULARITY {
 };
 
 enum class MLAS_QGEMM_OUTPUT_MODE {
-    ZeroMode,        // overwrite the output buffer
-    AccumulateMode,  // accumulate to the output buffer
+    ZeroMode,       // overwrite the output buffer
+    AccumulateMode, // accumulate to the output buffer
 };
 
-class MLAS_QGEMM_OUTPUT_PROCESSOR
-{
-   public:
-    virtual void Process(const int32_t*,  // Supplies the address of matrix to process
-                         size_t,          // Supplies the start row index of matrix
-                         size_t,          // Supplies the start col index of matrix
-                         size_t,          // Supplies the element count per row to process
-                         size_t,          // Supplies the element count per col to process
-                         size_t           // Supplies the leading dimension of matrix
-    ) const = 0;
+class MLAS_QGEMM_OUTPUT_PROCESSOR {
+public:
+    virtual
+    void
+    Process(
+        const int32_t*, // Supplies the address of matrix to process
+        size_t,         // Supplies the start row index of matrix
+        size_t,         // Supplies the start col index of matrix
+        size_t,         // Supplies the element count per row to process
+        size_t,         // Supplies the element count per col to process
+        size_t          // Supplies the leading dimension of matrix
+        ) const = 0;
 
     virtual ~MLAS_QGEMM_OUTPUT_PROCESSOR() {}
 };
 
-class MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
-{
-   public:
+class MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR {
+public:
     MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR(
         float* Output,
         size_t LeadingDimensionOutput,
         const float* Scale,
         const float* Bias,
         MLAS_QGEMM_OUTPUT_MODE Mode = MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
-        MLAS_QUANTIZATION_GRANULARITY QuantGran = MLAS_QUANTIZATION_GRANULARITY::PerMatrix)
-        : Output_(Output),
-          LeadingDimensionOutput_(LeadingDimensionOutput),
-          Scale_(Scale),
-          Bias_(Bias),
-          OutputMode_(Mode),
-          QuantGran_(QuantGran)
+        MLAS_QUANTIZATION_GRANULARITY QuantGran = MLAS_QUANTIZATION_GRANULARITY::PerMatrix) :
+            Output_(Output),
+            LeadingDimensionOutput_(LeadingDimensionOutput),
+            Scale_(Scale),
+            Bias_(Bias),
+            OutputMode_(Mode),
+            QuantGran_(QuantGran)
     {
     }
 
-    void Process(const int32_t* C,
-                 size_t StartM,
-                 size_t StartN,
-                 size_t CountM,
-                 size_t CountN,
-                 size_t ldc) const override;
+    void
+    Process(
+        const int32_t* C,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc
+        ) const override;
 
-   private:
-    template <bool HasBias, MLAS_QGEMM_OUTPUT_MODE Mode, MLAS_QUANTIZATION_GRANULARITY QuantGran>
-    inline void ProcessImpl(const int32_t* C,
-                            size_t StartM,
-                            size_t StartN,
-                            size_t CountM,
-                            size_t CountN,
-                            size_t ldc) const;
+private:
+    template<bool HasBias, MLAS_QGEMM_OUTPUT_MODE Mode, MLAS_QUANTIZATION_GRANULARITY QuantGran>
+    inline
+    void
+    ProcessImpl(
+        const int32_t* C,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc
+        ) const;
 
-   private:
+private:
     float* Output_;
     size_t LeadingDimensionOutput_;
     const float* Scale_;
@@ -533,15 +571,14 @@ class MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSO
  ** NOTE: AIsSigned == true is not supported on non-ARM devices for now.
  **       AIsSigned == true is supported on ARM devices when BIsSigned is also true.
  *
- */
+*/
 struct MLAS_GEMM_QUANT_SHAPE_PARAMS {
-    size_t M = 0;           /**< Supplies the row size of matrix A */
-    size_t N = 0;           /**< Supplies the column size of matrix B */
-    size_t K = 0;           /**< Supplies the column size of matrix A and row size of matrix B */
-    bool AIsSigned = false; /**< Indicates whether type of A is int8_t or uint8_t.*/
-    bool BIsSigned = false; /**< Indicates whether type of B is int8_t or uint8_t */
-    bool IsAccumulateMode =
-        false; /**< Indicates whether to accumulate to matrix C or override matrix C */
+    size_t M = 0;                  /**< Supplies the row size of matrix A */
+    size_t N = 0;                  /**< Supplies the column size of matrix B */
+    size_t K = 0;                  /**< Supplies the column size of matrix A and row size of matrix B */
+    bool AIsSigned = false;        /**< Indicates whether type of A is int8_t or uint8_t.*/
+    bool BIsSigned = false;        /**< Indicates whether type of B is int8_t or uint8_t */
+    bool IsAccumulateMode = false; /**< Indicates whether to accumulate to matrix C or override matrix C */
 };
 
 struct MLAS_GEMM_QUANT_DATA_PARAMS {
@@ -569,16 +606,21 @@ struct MLAS_GEMM_QUANT_DATA_PARAMS {
  * @param [IN]  BatchN       Size of the parameters array, also number of multiplications to perform
  * @param [IN]  ThreadPool   optional thread pool for parallel processing
  */
-void MLASCALL
-MlasGemmBatch(const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
-              const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
-              const size_t BatchN,
-              MLAS_THREADPOOL* ThreadPool);
+void
+MLASCALL
+MlasGemmBatch(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
-inline void
-MlasGemm(const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
-         const MLAS_GEMM_QUANT_DATA_PARAMS& DataParams,
-         MLAS_THREADPOOL* ThreadPool)
+inline
+void
+MlasGemm(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS &Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS &DataParams,
+    MLAS_THREADPOOL *ThreadPool)
 {
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
@@ -597,7 +639,7 @@ constexpr size_t MLAS_SYMM_QGEMM_BUF_OVERRUN = 0;
  * @brief Supply data parameters for symmetric quantized GEMM.
  *        B matrix zero point must be zero, and it must be
  *        pre-packed, with column sums scaled by (-ZeroPointA)
- */
+*/
 struct MLAS_SYMM_QGEMM_DATA_PARAMS {
     const void* A = nullptr;
     size_t lda = 0;
@@ -619,34 +661,58 @@ struct MLAS_SYMM_QGEMM_DATA_PARAMS {
  * @param [IN] BatchN       Number of multiplications
  * @param [IN] ThreadPool
 */
-void MLASCALL
-MlasSymmQgemmBatch(const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
-                   const MLAS_SYMM_QGEMM_DATA_PARAMS* DataParams,
-                   const size_t BatchN,
-                   MLAS_THREADPOOL* ThreadPool);
+void
+MLASCALL
+MlasSymmQgemmBatch(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_SYMM_QGEMM_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
 
 //
 // Buffer packing routines.
 //
 
-size_t MLASCALL
-MlasGemmPackBSize(size_t N, size_t K);
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K
+    );
 
-void MLASCALL
+void
+MLASCALL
 MlasGemmPackB(
-    CBLAS_TRANSPOSE TransB, size_t N, size_t K, const float* B, size_t ldb, void* PackedB);
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    );
 
-size_t MLASCALL
-MlasGemmPackBSize(size_t N, size_t K, bool AIsSigned, bool BIsSigned);
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K,
+    bool AIsSigned,
+    bool BIsSigned
+    );
 
-void MLASCALL
-MlasGemmPackB(size_t N,
-              size_t K,
-              const uint8_t* B,
-              size_t ldb,
-              bool AIsSigned,
-              bool BIsSigned,
-              void* PackedB);
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    bool BIsSigned,
+    void* PackedB
+    );
 
 /**
  * @brief For symmetric quantized GEMM, returns size of the
@@ -656,18 +722,26 @@ MlasGemmPackB(size_t N,
  * @param AIsSigned      Whether left hand size is signed int8_t
  * @return  size of the packing buffer,
  *          0 if operation not supported
- */
-size_t MLASCALL
-MlasSymmQgemmPackBSize(size_t N, size_t K, bool AIsSigned);
+*/
+size_t
+MLASCALL
+MlasSymmQgemmPackBSize(
+    size_t N,
+    size_t K,
+    bool AIsSigned
+    );
 
-void MLASCALL
-MlasSymmQgemmPackB(size_t N,
-                   size_t K,
-                   const int8_t* B,
-                   size_t ldb,
-                   bool AIsSigned,
-                   int32_t ZeroPointA,
-                   void* PackedB);
+void
+MLASCALL
+MlasSymmQgemmPackB(
+    size_t N,
+    size_t K,
+    const int8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    int32_t ZeroPointA,
+    void* PackedB
+    );
 
 //
 // Convolution routines.
@@ -730,50 +804,63 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool);
 
-void MLASCALL
-MlasConv(const MLAS_CONV_PARAMETERS* Parameters,
-         const float* Input,
-         const float* Filter,
-         const float* Bias,
-         float* WorkingBuffer,
-         float* Output,
-         MLAS_THREADPOOL* ThreadPool);
+void
+MLASCALL
+MlasConv(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* WorkingBuffer,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
-void MLASCALL
-MlasConvDepthwise(const void* const* Input,
-                  int32_t InputZeroPoint,
-                  bool InputIsSigned,
-                  const void* Filter,
-                  int32_t FilterZeroPoint,
-                  bool FilterIsSigned,
-                  int32_t* Output,
-                  size_t Channels,
-                  size_t OutputCount,
-                  size_t KernelSize);
+void
+MLASCALL
+MlasConvDepthwise(
+    const void* const* Input,
+    int32_t InputZeroPoint,
+    bool InputIsSigned,
+    const void* Filter,
+    int32_t FilterZeroPoint,
+    bool FilterIsSigned,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
 
 //
 // Symmetric quantized integer convolution routines.
 //
 
 size_t
-MlasConvSymPackWSize(size_t GroupCount,
-                     size_t InputChannels,
-                     size_t OutputChannels,
-                     size_t KernelSize,
-                     bool InputIsSigned);
+MlasConvSymPackWSize(
+    size_t GroupCount,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t KernelSize,
+    bool InputIsSigned
+    );
 
 void
-MlasConvSymPackW(size_t GroupCount,
-                 size_t InputChannels,
-                 size_t OutputChannels,
-                 size_t KernelSize,
-                 const int8_t* W,
-                 int8_t* PackedW,
-                 size_t PackedWSize,
-                 bool InputIsSigned);
+MlasConvSymPackW(
+    size_t GroupCount,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t KernelSize,
+    const int8_t* W,
+    int8_t* PackedW,
+    size_t PackedWSize,
+    bool InputIsSigned
+    );
 
 int32_t
-MlasConvSymFixupInputZeroPoint(int32_t zero_point_value, bool InputIsSigned);
+MlasConvSymFixupInputZeroPoint(
+    int32_t zero_point_value,
+    bool InputIsSigned
+    );
 
 //
 // Convolution operators (or maybe others in the future) need to do their
@@ -783,10 +870,14 @@ MlasConvSymFixupInputZeroPoint(int32_t zero_point_value, bool InputIsSigned);
 //
 
 int32_t
-MlasConvSymGetKernelOutputCount(bool InputIsSigned);
+MlasConvSymGetKernelOutputCount(
+    bool InputIsSigned
+    );
 
 int32_t
-MlasConvSymDepthwiseGetKernelOutputCnt(bool InputIsSigned);
+MlasConvSymDepthwiseGetKernelOutputCnt(
+    bool InputIsSigned
+    );
 
 /**
  * @brief Returns the stride M of depthwise conv kernel
@@ -802,8 +893,9 @@ MlasConvSymDepthwiseGetKernelOutputCnt(bool InputIsSigned);
  * kernels.
  *
  * @return
- */
-inline int32_t
+*/
+inline
+int32_t
 MlasConvDepthwiseGetKernelOutputCnt()
 {
     return 4;
@@ -813,7 +905,11 @@ int32_t
 MlasSymmQgemmGetKernelOutputCnt();
 
 int32_t
-MlasQgemmGetKernelOutputCnt(bool AIsSigned, bool BIsSigned);
+MlasQgemmGetKernelOutputCnt(
+    bool AIsSigned,
+    bool BIsSigned
+    );
+
 
 struct MLAS_CONV_SYM_PARAMS {
     const void* InputDirect;
@@ -832,10 +928,14 @@ struct MLAS_CONV_SYM_PARAMS {
 };
 
 void
-MlasConvSym(const MLAS_CONV_SYM_PARAMS& Params);
+MlasConvSym(
+    const MLAS_CONV_SYM_PARAMS& Params
+    );
 
 void
-MlasConvSymDepthwise(const MLAS_CONV_SYM_PARAMS& Params);
+MlasConvSymDepthwise(
+    const MLAS_CONV_SYM_PARAMS& Params
+    );
 
 //
 // Pooling routines.
@@ -848,160 +948,276 @@ enum MLAS_POOLING_KIND {
     MlasPoolingKindCount,
 };
 
-void MLASCALL
-MlasPool(MLAS_POOLING_KIND PoolingKind,
-         size_t Dimensions,
-         const int64_t* InputShape,
-         const int64_t* KernelShape,
-         const int64_t* Padding,
-         const int64_t* StrideShape,
-         const int64_t* OutputShape,
-         const float* Input,
-         float* Output,
-         MLAS_THREADPOOL* ThreadPool);
+void
+MLASCALL
+MlasPool(
+    MLAS_POOLING_KIND PoolingKind,
+    size_t Dimensions,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    const float* Input,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
-template <typename T8Bits>
-void MLASCALL
-MlasMaximumPool(const T8Bits* const* Input,
-                T8Bits* Output,
-                size_t Channels,
-                size_t OutputCount,
-                size_t KernelSize);
+template<typename T8Bits>
+void
+MLASCALL
+MlasMaximumPool(
+    const T8Bits* const* Input,
+    T8Bits* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
 
 //
 // Miscellaneous compute routines.
 //
 
-void MLASCALL
-MlasComputeErf(const float* Input, float* Output, size_t N);
+void
+MLASCALL
+MlasComputeErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
 
-void MLASCALL
-MlasComputeExp(const float* Input, float* Output, size_t N);
+void
+MLASCALL
+MlasComputeExp(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
 
-void MLASCALL
-MlasComputeLogistic(const float* Input, float* Output, size_t N);
+void
+MLASCALL
+MlasComputeLogistic(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
 
-void MLASCALL
-MlasComputeSoftmax(const float* Input,
-                   float* Output,
-                   size_t N,
-                   size_t D,
-                   bool LogSoftmax,
-                   MLAS_THREADPOOL* ThreadPool);
+void
+MLASCALL
+MlasComputeSoftmax(
+    const float* Input,
+    float* Output,
+    size_t N,
+    size_t D,
+    bool LogSoftmax,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
-void MLASCALL
-MlasComputeTanh(const float* Input, float* Output, size_t N);
+void
+MLASCALL
+MlasComputeTanh(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
 
 //
 // Half-precision floating-point routines.
 //
 
-extern "C" void MLASCALL
-MlasConvertHalfToFloatBuffer(const unsigned short* Source, float* Destination, size_t Count);
+extern "C"
+void
+MLASCALL
+MlasConvertHalfToFloatBuffer(
+    const unsigned short* Source,
+    float* Destination,
+    size_t Count
+    );
 
 //
 // Transpose routines.
 //
 
-void MLASCALL
-MlasTranspose(const uint8_t* Input, uint8_t* Output, size_t M, size_t N);
+void
+MLASCALL
+MlasTranspose(
+    const uint8_t* Input,
+    uint8_t* Output,
+    size_t M,
+    size_t N
+    );
 
-void MLASCALL
-MlasTranspose(const int8_t* Input, int8_t* Output, size_t M, size_t N);
+void
+MLASCALL
+MlasTranspose(
+    const int8_t* Input,
+    int8_t* Output,
+    size_t M,
+    size_t N
+    );
 
-void MLASCALL
-MlasTranspose(const uint16_t* Input, uint16_t* Output, size_t M, size_t N);
+void
+MLASCALL
+MlasTranspose(
+    const uint16_t* Input,
+    uint16_t* Output,
+    size_t M,
+    size_t N
+    );
 
-void MLASCALL
-MlasTranspose(const uint32_t* Input, uint32_t* Output, size_t M, size_t N);
+void
+MLASCALL
+MlasTranspose(
+    const uint32_t* Input,
+    uint32_t* Output,
+    size_t M,
+    size_t N
+    );
 
-void MLASCALL
-MlasTranspose(const float* Input, float* Output, size_t M, size_t N);
+void
+MLASCALL
+MlasTranspose(
+    const float* Input,
+    float* Output,
+    size_t M,
+    size_t N
+    );
 
 //
 // Buffer reordering routines.
 //
 
-void MLASCALL
-MlasReorderInputNchw(const float* S, float* D, size_t InputChannels, size_t InputSize);
+void
+MLASCALL
+MlasReorderInputNchw(
+    const float* S,
+    float* D,
+    size_t InputChannels,
+    size_t InputSize
+    );
 
-void MLASCALL
+void
+MLASCALL
 MlasReorderInputNhwc(
-    const float* S, float* D, size_t InputChannels, size_t RowCount, size_t FullRowCount);
+    const float* S,
+    float* D,
+    size_t InputChannels,
+    size_t RowCount,
+    size_t FullRowCount
+    );
 
-void MLASCALL
-MlasReorderOutputNchw(const int64_t* OutputShape,
-                      const float* S,
-                      float* D,
-                      MLAS_THREADPOOL* ThreadPool);
+void
+MLASCALL
+MlasReorderOutputNchw(
+    const int64_t* OutputShape,
+    const float* S,
+    float* D,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
-void MLASCALL
-MlasReorderOutputNhwc(const int64_t* OutputShape, const float* S, float* D);
+void
+MLASCALL
+MlasReorderOutputNhwc(
+    const int64_t* OutputShape,
+    const float* S,
+    float* D
+    );
 
-void MLASCALL
-MlasReorderFilterOIHWBiBo(const int64_t* FilterShape, const float* S, float* D);
+void
+MLASCALL
+MlasReorderFilterOIHWBiBo(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    );
 
-void MLASCALL
-MlasReorderFilterOIHWBo(const int64_t* FilterShape, const float* S, float* D);
+void
+MLASCALL
+MlasReorderFilterOIHWBo(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    );
 
 //
 // Single precision NCHWc routines.
 //
 
-size_t MLASCALL
-MlasNchwcGetBlockSize(void);
+size_t
+MLASCALL
+MlasNchwcGetBlockSize(
+    void
+    );
 
-void MLASCALL
-MlasNchwcConv(const int64_t* InputShape,
-              const int64_t* KernelShape,
-              const int64_t* DilationShape,
-              const int64_t* Padding,
-              const int64_t* StrideShape,
-              const int64_t* OutputShape,
-              size_t GroupCount,
-              const float* Input,
-              const float* Filter,
-              const float* Bias,
-              float* Output,
-              const MLAS_ACTIVATION* Activation,
-              bool ZeroMode,
-              MLAS_THREADPOOL* ThreadPool);
+void
+MLASCALL
+MlasNchwcConv(
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t GroupCount,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* Output,
+    const MLAS_ACTIVATION* Activation,
+    bool ZeroMode,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
-void MLASCALL
-MlasNchwcPool(MLAS_POOLING_KIND PoolingKind,
-              const int64_t* InputShape,
-              const int64_t* KernelShape,
-              const int64_t* DilationShape,
-              const int64_t* Padding,
-              const int64_t* StrideShape,
-              const int64_t* OutputShape,
-              const float* Input,
-              float* Output,
-              MLAS_THREADPOOL* ThreadPool);
+void
+MLASCALL
+MlasNchwcPool(
+    MLAS_POOLING_KIND PoolingKind,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    const float* Input,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
-void MLASCALL
-MlasNchwcUpsampleNearest(const int64_t* InputShape,
-                         const int64_t* Scales,
-                         const float* Input,
-                         float* Output);
+void
+MLASCALL
+MlasNchwcUpsampleNearest(
+    const int64_t* InputShape,
+    const int64_t* Scales,
+    const float* Input,
+    float* Output
+    );
 
-void MLASCALL
-MlasNchwcUpsampleLinear(size_t InputHeight,
-                        size_t InputWidth,
-                        size_t OutputWidth,
-                        float InterpolationHeight,
-                        const float* InterpolationWidth,
-                        const float* Input,
-                        float* Output);
+void
+MLASCALL
+MlasNchwcUpsampleLinear(
+    size_t InputHeight,
+    size_t InputWidth,
+    size_t OutputWidth,
+    float InterpolationHeight,
+    const float* InterpolationWidth,
+    const float* Input,
+    float* Output
+    );
 
 //
 // Linear quantization routines.
 //
 
-template <typename OutputType>
-void MLASCALL
+template<typename OutputType>
+void
+MLASCALL
 MlasQuantizeLinear(
-    const float* Input, OutputType* Output, size_t N, float Scale, OutputType ZeroPoint);
+    const float* Input,
+    OutputType* Output,
+    size_t N,
+    float Scale,
+    OutputType ZeroPoint
+    );
 
 /**
  * @brief Requantize a block of the intermediate buffer to the output buffer,
@@ -1022,31 +1238,35 @@ MlasQuantizeLinear(
  * @param CountN
  * @return
 */
-template <typename OutputType>
-void MLASCALL
-MlasRequantizeOutput(const int32_t* Input,
-                     size_t InputLeadingDimension,
-                     OutputType* Output,
-                     size_t OutputLeadingDimension,
-                     const int32_t* Bias,
-                     const float* Scale,
-                     bool PerColumnScale,
-                     OutputType ZeroPoint,
-                     size_t StartM,
-                     size_t StartN,
-                     size_t CountM,
-                     size_t CountN);
+template<typename OutputType>
+void
+MLASCALL
+MlasRequantizeOutput(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    OutputType* Output,
+    size_t OutputLeadingDimension,
+    const int32_t* Bias,
+    const float* Scale,
+    bool PerColumnScale,
+    OutputType ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    );
 
 class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
 {
    public:
-    MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR(void* Output,
-                                        size_t OutputLeadingDimension,
-                                        const int32_t* Bias,
-                                        const float* Scale,
-                                        bool PerColumnScale,
-                                        int32_t ZeroPoint,
-                                        bool OutputIsSigned)
+    MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR(
+        void* Output,
+        size_t OutputLeadingDimension,
+        const int32_t* Bias,
+        const float* Scale,
+        bool PerColumnScale,
+        int32_t ZeroPoint,
+        bool OutputIsSigned)
         : Output_(Output),
           OutputLeadingDimension_(OutputLeadingDimension),
           Bias_(Bias),
@@ -1064,16 +1284,17 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
                  size_t CountN,
                  size_t ldc) const override
     {
-        if (OutputIsSigned_) {
-            MlasRequantizeOutput(C, ldc, reinterpret_cast<int8_t*>(Output_),
-                                 OutputLeadingDimension_, Bias_, Scale_, PerColumnScale_,
-                                 static_cast<int8_t>(ZeroPoint_), StartM, StartN, CountM, CountN);
+        if(OutputIsSigned_){
+            MlasRequantizeOutput(C, ldc, reinterpret_cast<int8_t*>(Output_), OutputLeadingDimension_,
+                                 Bias_, Scale_, PerColumnScale_, static_cast<int8_t>(ZeroPoint_),
+                                 StartM, StartN, CountM, CountN);
         } else {
-            MlasRequantizeOutput(C, ldc, reinterpret_cast<uint8_t*>(Output_),
-                                 OutputLeadingDimension_, Bias_, Scale_, PerColumnScale_,
-                                 static_cast<uint8_t>(ZeroPoint_), StartM, StartN, CountM, CountN);
+            MlasRequantizeOutput(C, ldc, reinterpret_cast<uint8_t*>(Output_), OutputLeadingDimension_,
+                                 Bias_, Scale_, PerColumnScale_, static_cast<uint8_t>(ZeroPoint_),
+                                 StartM, StartN, CountM, CountN);
         }
     }
+
 
    private:
     void* Output_;
@@ -1085,70 +1306,93 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
     bool OutputIsSigned_;
 };
 
-void MLASCALL
-MlasFindMinMaxElement(const float* Input, float* Min, float* Max, size_t N);
 
-size_t MLASCALL
-MlasQLinearSafePaddingElementCount(size_t ElementSize, size_t ElementCount);
+void
+MLASCALL
+MlasFindMinMaxElement(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    );
+
+size_t
+MLASCALL
+MlasQLinearSafePaddingElementCount(
+    size_t ElementSize,
+    size_t ElementCount
+    );
+
+template<typename T8Bits>
+void
+MLASCALL
+MlasQLinearGlobalAveragePoolNchw(
+    const T8Bits* Input,
+    float ScaleInput,
+    int32_t ZeroPointInput,
+    T8Bits* Output,
+    float ScaleOutput,
+    int32_t ZeroPointOutput,
+    size_t Channels,
+    size_t ImageSize,
+    int32_t* AccumulateBuffer
+    );
 
 template <typename T8Bits>
-void MLASCALL
-MlasQLinearGlobalAveragePoolNchw(const T8Bits* Input,
-                                 float ScaleInput,
-                                 int32_t ZeroPointInput,
-                                 T8Bits* Output,
-                                 float ScaleOutput,
-                                 int32_t ZeroPointOutput,
-                                 size_t Channels,
-                                 size_t ImageSize,
-                                 int32_t* AccumulateBuffer);
-
-template <typename T8Bits>
-void MLASCALL
-MlasQLinearGlobalAveragePoolNhwc(const T8Bits* Input,
-                                 float ScaleInput,
-                                 int32_t ZeroPointInput,
-                                 T8Bits* Output,
-                                 float ScaleOutput,
-                                 int32_t ZeroPointOutput,
-                                 size_t Batch,
-                                 size_t ImageSize,
-                                 size_t Stride,
-                                 size_t Channels,
-                                 int32_t* AccumulateBuffer,
-                                 const T8Bits* ZeroBuffer);
+void
+MLASCALL
+MlasQLinearGlobalAveragePoolNhwc(
+    const T8Bits* Input,
+    float ScaleInput,
+    int32_t ZeroPointInput,
+    T8Bits* Output,
+    float ScaleOutput,
+    int32_t ZeroPointOutput,
+    size_t Batch,
+    size_t ImageSize,
+    size_t Stride,
+    size_t Channels,
+    int32_t* AccumulateBuffer,
+    const T8Bits* ZeroBuffer
+    );
 
 //
 // InputA is of size N,
 // Input B is of size 1 if IsScalarB == true, otherwise it is of size N
 //
-template <typename DataType>
-void MLASCALL
-MlasQLinearAdd(const DataType* InputA,
-               float ScaleA,
-               int32_t ZeroPointA,
-               const DataType* InputB,
-               float ScaleB,
-               int32_t ZeroPointB,
-               float ScaleC,
-               int32_t ZeroPointC,
-               DataType* OutputC,
-               size_t N,
-               bool IsScalarB);
+template<typename DataType>
+void
+MLASCALL
+MlasQLinearAdd(
+    const DataType* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    DataType* OutputC,
+    size_t N,
+    bool IsScalarB
+    );
 
-template <typename DataType>
-void MLASCALL
-MlasQLinearMul(const DataType* InputA,
-               float ScaleA,
-               int32_t ZeroPointA,
-               const DataType* InputB,
-               float ScaleB,
-               int32_t ZeroPointB,
-               float ScaleC,
-               int32_t ZeroPointC,
-               DataType* OutputC,
-               size_t N,
-               bool IsScalarB);
+template<typename DataType>
+void
+MLASCALL
+MlasQLinearMul(
+    const DataType* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    DataType* OutputC,
+    size_t N,
+    bool IsScalarB
+    );
 
 //
 // Half precision routines
@@ -1161,7 +1405,7 @@ constexpr size_t FP16_SIZE = sizeof(uint16_t);
 
 /**
  * @brief Whether current CPU supports FP16 acceleration.
- */
+*/
 bool MLASCALL
 MlasFp16AccelerationSupported();
 
@@ -1175,17 +1419,19 @@ MlasFp16AccelerationSupported();
  * is produced, the method Process() is called to process this tile.
  * Parameters of this method describe the location and shape of the
  * tile.
- */
-class MLAS_HALF_GEMM_POSTPROCESSOR
-{
-   public:
-    virtual void Process(MLAS_FP16*, /**< the address of matrix to process */
-                         size_t,     /**< the start row index of matrix */
-                         size_t,     /**< the start col index of matrix */
-                         size_t,     /**< the element count per row to process */
-                         size_t,     /**< the element count per col to process */
-                         size_t      /**< the leading dimension of matrix */
-    ) const = 0;
+*/
+class MLAS_HALF_GEMM_POSTPROCESSOR {
+public:
+    virtual
+    void
+    Process(
+        MLAS_FP16*, /**< the address of matrix to process */
+        size_t,     /**< the start row index of matrix */
+        size_t,     /**< the start col index of matrix */
+        size_t,     /**< the element count per row to process */
+        size_t,     /**< the element count per col to process */
+        size_t      /**< the leading dimension of matrix */
+        ) const = 0;
 
     virtual ~MLAS_HALF_GEMM_POSTPROCESSOR() {}
 };
@@ -1194,78 +1440,91 @@ class MLAS_HALF_GEMM_POSTPROCESSOR
  * @brief Half precision activation functions, with optional sum tensor.
  * Supplied sum tensor must be the same layout as the GEMM output tensor.
  * And the supplied sum tensor will be added to the final result.
- */
+*/
 class MLAS_HALF_GEMM_ACTIVATION_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR
 {
-   public:
-    MLAS_HALF_GEMM_ACTIVATION_PROCESSOR(const MLAS_ACTIVATION& Activation,
-                                        const MLAS_FP16* SumBuf = nullptr)
-        : Activation_(Activation), SumBuf_(SumBuf)
-    {
-    }
+  public:
+    MLAS_HALF_GEMM_ACTIVATION_PROCESSOR(
+        const MLAS_ACTIVATION& Activation,
+        const MLAS_FP16* SumBuf = nullptr)
+       : Activation_(Activation), SumBuf_(SumBuf)
+    {}
 
-    void Process(MLAS_FP16* C,
-                 size_t StartM,
-                 size_t StartN,
-                 size_t CountM,
-                 size_t CountN,
-                 size_t ldc) const override;
+    void Process(
+        MLAS_FP16* C,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc
+        ) const override;
 
-   private:
+  private:
     const MLAS_ACTIVATION& Activation_;
     const MLAS_FP16* SumBuf_;
 };
 
-inline void
+inline
+void
 MlasFp16Activation(
-    const MLAS_ACTIVATION* Activation, MLAS_FP16* Buffer, size_t M, size_t N, size_t ldc)
+    const MLAS_ACTIVATION* Activation,
+    MLAS_FP16* Buffer,
+    size_t M,
+    size_t N,
+    size_t ldc
+    )
 {
     MLAS_HALF_GEMM_ACTIVATION_PROCESSOR proc(*Activation);
     proc.Process(Buffer, 0, 0, M, N, ldc);
 }
 
+
 /**
  * @brief Convert half gemm result matrix to single precision float matrix
- */
-class MLAS_HALF_GEMM_2FLOAT_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR
-{
-   public:
-    MLAS_HALF_GEMM_2FLOAT_PROCESSOR(const MLAS_ACTIVATION& Activation,
-                                    float* Output,   /**< address of the output matrix, row major */
-                                    size_t RowStride /**< row stride of the output matrix */
-                                    )
-        : Activation_(Activation), Output_(Output), RowStride_(RowStride)
-    {
-    }
+*/
+class MLAS_HALF_GEMM_2FLOAT_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
+public:
+    MLAS_HALF_GEMM_2FLOAT_PROCESSOR(
+        const MLAS_ACTIVATION& Activation,
+        float* Output,    /**< address of the output matrix, row major */
+        size_t RowStride  /**< row stride of the output matrix */
+    ) : Activation_(Activation),
+        Output_(Output),
+        RowStride_(RowStride)
+    {}
 
-    void Process(MLAS_FP16* C,
-                 size_t StartM,
-                 size_t StartN,
-                 size_t CountM,
-                 size_t CountN,
-                 size_t ldc) const override;
+    void
+    Process(
+        MLAS_FP16* C,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc
+        ) const override;
 
-   private:
+private:
     const MLAS_ACTIVATION& Activation_;
     float* Output_;
     const size_t RowStride_;
 };
 
+
 /**
  * @brief Data parameters for half precision GEMM routine
  *        All except C are [in] parameters
- */
+*/
 struct MLAS_HALF_GEMM_DATA_PARAMS {
-    const void* A = nullptr;         /**< address of A */
-    const void* B = nullptr;         /**< address of B */
-    const MLAS_FP16* Bias = nullptr; /**< address of Bias, vector size N */
-    MLAS_FP16* C = nullptr;          /**< address of result matrix */
-    size_t lda = 0;                  /**< leading dimension of A */
-    size_t ldb = 0;                  /**< leading dimension of B, 0 when B is pre-packed*/
-    size_t ldc = 0;                  /**< leading dimension of C*/
+    const void* A = nullptr;          /**< address of A */
+    const void* B = nullptr;          /**< address of B */
+    const MLAS_FP16* Bias = nullptr;  /**< address of Bias, vector size N */
+    MLAS_FP16* C = nullptr;           /**< address of result matrix */
+    size_t lda = 0;                   /**< leading dimension of A */
+    size_t ldb = 0;                   /**< leading dimension of B, 0 when B is pre-packed*/
+    size_t ldc = 0;                   /**< leading dimension of C*/
     const MLAS_HALF_GEMM_POSTPROCESSOR* OutputProcessor = nullptr;
-    bool AIsfp32 = false; /**< matrix A is fp32, needs to be casted into fp16*/
-    bool BIsfp32 = false; /**< matrix B is fp32, needs to be casted into fp16*/
+    bool AIsfp32 = false;             /**< matrix A is fp32, needs to be casted into fp16*/
+    bool BIsfp32 = false;             /**< matrix B is fp32, needs to be casted into fp16*/
 };
 
 /**
@@ -1282,14 +1541,17 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
  * @param[inout]  DataParams  An array (size BatchN) of parameter blocks
  * @param[in]  ThreadPool
  * @return
- */
-void MLASCALL
-MlasHalfGemmBatch(const size_t M,
-                  const size_t N,
-                  const size_t K,
-                  const size_t BatchN,
-                  const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
-                  MLAS_THREADPOOL* ThreadPool = nullptr);
+*/
+void
+MLASCALL
+MlasHalfGemmBatch(
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool = nullptr
+    );
 
 /**
  * @brief For half precision GEMM, returns size of the
@@ -1300,9 +1562,14 @@ MlasHalfGemmBatch(const size_t M,
  *                        needs to be converted to half precision
  * @return  size of the packing buffer,
  *          0 if operation not supported
- */
-size_t MLASCALL
-MlasHalfGemmPackBSize(size_t N, size_t K, bool float2half);
+*/
+size_t
+MLASCALL
+MlasHalfGemmPackBSize(
+    size_t N,
+    size_t K,
+    bool float2half
+    );
 
 /**
  * @brief For half precision GEMM, pack the right hand
@@ -1313,9 +1580,16 @@ MlasHalfGemmPackBSize(size_t N, size_t K, bool float2half);
  * @param[in]  B        Address of matrix B
  * @param[in]  ldb      leading dimension of input matrix B
  * @param[out] PackedB  Address of the packed matrix
- */
-void MLASCALL
-MlasHalfGemmPackB(size_t N, size_t K, const MLAS_FP16* B, size_t ldb, void* PackedB);
+*/
+void
+MLASCALL
+MlasHalfGemmPackB(
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB
+    );
 
 /**
  * @brief For half precision GEMM, convert the float matrix B
@@ -1326,9 +1600,16 @@ MlasHalfGemmPackB(size_t N, size_t K, const MLAS_FP16* B, size_t ldb, void* Pack
  * @param[in]  B        Address of matrix B
  * @param[in]  ldb      leading dimension of input matrix B
  * @param[out] PackedB  Address of the packed matrix
- */
-void MLASCALL
-MlasHalfGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* PackedB);
+*/
+void
+MLASCALL
+MlasHalfGemmConvertPackB(
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    );
 
 /**
  * @brief Indirect Depthwise convolution for fp16
@@ -1338,22 +1619,34 @@ MlasHalfGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* P
  * @param Channels      # of input channels
  * @param OutputCount   # of output pixels
  * @param KernelSize    # kernel size
- * @return
- */
-void MLASCALL
-MlasConvDepthwise(const MLAS_FP16* const* Input,
-                  const MLAS_FP16* Filter,
-                  MLAS_FP16* Output,
-                  size_t Channels,
-                  size_t OutputCount,
-                  size_t KernelSize,
-                  MLAS_HALF_GEMM_POSTPROCESSOR* PostProc);
+ * @return 
+*/
+void
+MLASCALL
+MlasConvDepthwise(
+    const MLAS_FP16* const* Input,
+    const MLAS_FP16* Filter,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize,
+    MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
+    );
 
-inline void
-MlasTranspose(const MLAS_FP16* Input, MLAS_FP16* Output, size_t M, size_t N)
+
+inline
+void
+MlasTranspose(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t M,
+    size_t N
+    )
 {
-    MlasTranspose(reinterpret_cast<const uint16_t*>(Input), reinterpret_cast<uint16_t*>(Output), M,
-                  N);
+    MlasTranspose(
+        reinterpret_cast<const uint16_t*>(Input),
+        reinterpret_cast<uint16_t*>(Output),
+        M, N);
 }
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -1364,14 +1657,17 @@ MlasTranspose(const MLAS_FP16* Input, MLAS_FP16* Output, size_t M, size_t N)
  * @param Channels      C in NHWC
  * @param OutputCount   Number of output pixels
  * @param KernelSize    Size of the kernel
- * @return
- */
-void MLASCALL
-MlasNhwcMaxPool(const MLAS_FP16* const* Input,
-                MLAS_FP16* Output,
-                size_t Channels,
-                size_t OutputCount,
-                size_t KernelSize);
+ * @return 
+*/
+void
+MLASCALL
+MlasNhwcMaxPool(
+    const MLAS_FP16* const* Input,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
 
 /**
  * @brief Avg Pooling for fp16 nhwc
@@ -1380,13 +1676,16 @@ MlasNhwcMaxPool(const MLAS_FP16* const* Input,
  * @param Channels      C in NHWC
  * @param OutputCount   Number of output pixels
  * @param KernelSize    size of the kernel
- * @return
- */
-void MLASCALL
-MlasNhwcAvgPool(const MLAS_FP16* const* Input,
-                MLAS_FP16* Output,
-                size_t Channels,
-                size_t OutputCount,
-                size_t KernelSize);
+ * @return 
+*/
+void
+MLASCALL
+MlasNhwcAvgPool(
+    const MLAS_FP16* const* Input,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
 
 #endif

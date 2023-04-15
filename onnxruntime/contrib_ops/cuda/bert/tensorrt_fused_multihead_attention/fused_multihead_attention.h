@@ -104,7 +104,7 @@ class TFusedMultiHeadAttentionXMMAKernel {
     }
 
     loadXMMAKernels(mSM);
-
+    
     // sm_86 chips prefer sm_86 kernel, but can also use sm_80 kernel if sm_86 not exist.
     // sm_89 will reuse sm_80 kernels
     if (mSM == kSM_86 || mSM == kSM_89) {

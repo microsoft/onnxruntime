@@ -19,10 +19,10 @@ Abstract:
 // Define the convolution kernel flags.
 //
 
-#define MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT 0x00000001
-#define MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION 0x00000002
-#define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION 0x00000004
-#define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION 0x00000008
+#define MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT     0x00000001
+#define MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION         0x00000002
+#define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION       0x00000004
+#define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      0x00000008
 
 //
 // Stack frame layout for the convolution kernels.
@@ -219,7 +219,7 @@ Implicit Arguments:
         add     rcx,rbp                     # advance input by dilation width
 .ifeqs "\KernelType\()","Nchwc"
         add     rdx,\BlockSize\()*\BlockSize\()*4
-#advance filter by 8i8o / 16i16o block
+                                            # advance filter by 8i8o/16i16o block
 .else
         add     rdx,\BlockSize\()*4         # advance filter by 8o/16o block
 .endif
@@ -228,7 +228,7 @@ Implicit Arguments:
         add     rcx,r15                     # advance input to next row
 .if \OutputCount\() == 1
         sub     r13,\KernelFrame\()_DilatedInputWidth[rsp]
-#advance input base to next row
+                                            # advance input base to next row
 .endif
         dec     r11                         # decrement rows remaining
         jnz     .L\KernelType\().\FilterCount\().\OutputCount\().ProcessNextRow
@@ -622,7 +622,7 @@ Implicit Arguments:
 .endif
         add     rcx,rbp                     # advance input to next channel block
         add     rdx,\BlockSize\()*\BlockSize\()*4
-#advance filter by 8i8o / 16i16o block
+                                            # advance filter by 8i8o/16i16o block
         dec     r11                         # decrement input blocks remaining
         jnz     .LPointwise.\FilterCount\().\OutputCount\().ProcessNextInputBlock
 

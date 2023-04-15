@@ -255,7 +255,7 @@ Implicit Arguments:
 
 .LProcessNextColumnLoop2xN\@:
         EmitIfCountGE \RowCount\(), 12, "vmovapf zmm16,zmm4"
-#clear upper block accumulators
+                                            # clear upper block accumulators
         EmitIfCountGE \RowCount\(), 12, "vmovapf zmm17,zmm5"
         EmitIfCountGE \RowCount\(), 12, "vmovapf zmm18,zmm4"
         EmitIfCountGE \RowCount\(), 12, "vmovapf zmm19,zmm5"
@@ -326,7 +326,7 @@ Implicit Arguments:
         sub     r9,.LFgemmZmmElementCount
         jae     .LOutput1xNBlockWithMask\@
         lea     rcx,[r9+.LFgemmZmmElementCount]
-#correct for over - subtract above
+                                            # correct for over-subtract above
         mov     ebp,1
         shl     ebp,cl
         dec     ebp
@@ -387,7 +387,7 @@ Implicit Arguments:
 
 .LProcessRemainingCountN\@:
         EmitIfCountGE \RowCount\(), 12, "vmovapf zmm17,zmm5"
-#clear upper block accumulators
+                                            # clear upper block accumulators
         EmitIfCountGE \RowCount\(), 12, "vmovapf zmm19,zmm5"
         EmitIfCountGE \RowCount\(), 12, "vmovapf zmm21,zmm5"
         EmitIfCountGE \RowCount\(), 12, "vmovapf zmm23,zmm5"

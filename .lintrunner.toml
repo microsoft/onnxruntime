@@ -176,6 +176,8 @@ include_patterns = [
     '**/*.cc',
 ]
 exclude_patterns = [
+    'onnxruntime/core/mlas/**',
+    'onnxruntime/contrib_ops/cuda/**',
 ]
 command = [
     'python',
