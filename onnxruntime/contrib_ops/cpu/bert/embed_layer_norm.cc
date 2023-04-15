@@ -166,7 +166,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
       }
       mask_index_data[b] = cur_sum;
     }
-  } else {
+  } else if (mask_index != nullptr) {
     memset(mask_index->MutableData<int32_t>(), 0, batch_size * sizeof(int32_t));
   }
 

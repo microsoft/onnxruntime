@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "embed_layer_norm.h"
@@ -55,18 +56,25 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
 
+  size_t element_size = sizeof(T);
+  int32_t* dummy_mask_index = nullptr;
+  if (mask_index == nullptr) {
+    auto dummy_mask_workspace = GetScratchBuffer<void>(SafeInt<size_t>(input_dims[0]) * element_size, context->GetComputeStream());
+    dummy_mask_index = reinterpret_cast<int32_t*>(dummy_mask_workspace.get());
+  }
+  ORT_ENFORCE(mask_index != nullptr || dummy_mask_index != nullptr);
+
   Tensor* embedding_sum = context->Output(2, output_shape);
 
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
-  size_t element_size = sizeof(T);
 
   const bool broadcast_position_ids = (nullptr != position_ids && position_ids->Shape()[0] == 1);
 
   return LaunchEmbedLayerNormKernel(
       Stream(context),
           output->MutableData<T>(),
-          mask_index->MutableData<int32_t>(),
+          (mask_index != nullptr) ? mask_index->MutableData<int32_t>() : dummy_mask_index,
           input_ids->Data<int32_t>(),
           nullptr == segment_ids ? nullptr : segment_ids->Data<int32_t>(),
           nullptr == mask ? nullptr : mask->Data<int32_t>(),
