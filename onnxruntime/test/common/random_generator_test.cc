@@ -13,7 +13,7 @@ TEST(RandomTensorGenerator, DiscreteFloat) {
   const std::vector<int64_t> shape = {2, 3};
   std::vector<float> data = random.Discrete<float>(shape, {-1.f, 0.f, 1.f});
 
-  ASSERT_EQ(data.size(), 6);
+  ASSERT_EQ(data.size(), static_cast<size_t>(6));
   for (float value : data) {
     EXPECT_TRUE(value == -1.f || value == 0.f || value == 1.f);
   }
@@ -24,7 +24,7 @@ TEST(RandomTensorGenerator, DiscreteInt) {
   const std::vector<int64_t> shape = {2, 3};
   std::vector<int> data = random.Discrete<int>(shape, {-1, 0, 1});
 
-  ASSERT_EQ(data.size(), 6);
+  ASSERT_EQ(data.size(), static_cast<size_t>(6));
   for (int value : data) {
     EXPECT_TRUE(value == -1 || value == 0 || value == 1);
   }
@@ -36,7 +36,7 @@ TEST(RandomTensorGenerator, CircularFloat) {
   const std::vector<int64_t> shape = {3, 2};
   std::vector<float> data = random.Circular<float>(shape, {-1.f, 0.f, 1.f});
 
-  ASSERT_EQ(data.size(), 6);
+  ASSERT_EQ(data.size(), static_cast<size_t>(6));
   EXPECT_EQ(data[0], -1.f);
   EXPECT_EQ(data[1], 0.f);
   EXPECT_EQ(data[2], 1.f);
@@ -50,7 +50,7 @@ TEST(RandomTensorGenerator, CircularInt) {
   const std::vector<int64_t> shape = {3, 2};
   std::vector<int> data = random.Circular<int>(shape, {-1, 0, 1});
 
-  ASSERT_EQ(data.size(), 6);
+  ASSERT_EQ(data.size(), static_cast<size_t>(6));
   EXPECT_EQ(data[0], -1);
   EXPECT_EQ(data[1], 0);
   EXPECT_EQ(data[2], 1);
@@ -64,7 +64,7 @@ TEST(RandomTensorGenerator, CircularBool) {
   const std::vector<int64_t> shape = {3, 2};
   std::vector<bool> data = random.Circular<bool>(shape, {false, true});
 
-  ASSERT_EQ(data.size(), 6);
+  ASSERT_EQ(data.size(), static_cast<size_t>(6));
   EXPECT_EQ(data[0], false);
   EXPECT_EQ(data[1], true);
   EXPECT_EQ(data[2], false);
