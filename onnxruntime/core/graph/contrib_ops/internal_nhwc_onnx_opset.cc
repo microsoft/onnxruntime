@@ -62,12 +62,6 @@ void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPAC
       ::ONNX_NAMESPACE::GetOpSchema<                           \
           ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>())
 
-#define REGISTER_RESIZE_NHWC_SCHEMA(RegistrationFn, Op, SinceVersion) \
-  RegisterResizeNHWCSchema(                                          \
-      RegistrationFn,                                          \
-      ::ONNX_NAMESPACE::GetOpSchema<                           \
-          ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>())
-
 #define REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(RegistrationFn, Op, SinceVersion) \
   RegisterNHWCSchemaWithActivation(                                            \
       RegistrationFn,                                                          \
