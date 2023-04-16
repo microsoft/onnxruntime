@@ -354,7 +354,7 @@ def parse_arguments():
     parser.add_argument("--use_gdk", action="store_true", help="Build with the GDK toolchain.")
     parser.add_argument(
         "--gdk_edition",
-        default=os.path.normpath(os.environ.get("GAMEDKLATEST", "")).split(os.sep)[-1],
+        default=os.path.normpath(os.environ.get("GameDKLatest", "")).split(os.sep)[-1],  # noqa: SIM112
         help="Build with a specific GDK edition. Defaults to the latest installed.",
     )
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
@@ -1327,8 +1327,8 @@ def generate_build_tree(
     # (e.g. 191101-2300.1.master) and source version in environment
     # variables. If present, use these values to define the
     # WinML/ORT DLL versions.
-    build_number = os.getenv("BUILD_BUILDNUMBER")
-    source_version = os.getenv("BUILD_SOURCEVERSION")
+    build_number = os.getenv("Build_BuildNumber")  # noqa: SIM112
+    source_version = os.getenv("Build_SourceVersion")  # noqa: SIM112
     if build_number and source_version:
         build_matches = re.fullmatch(r"(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)", build_number)
         if build_matches:
