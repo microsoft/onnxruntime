@@ -121,7 +121,7 @@ class ORTTrainer:
     """
 
     def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
-        warnings.warn(  # noqa: B028
+        warnings.warn(
             "ORTTrainer is deprecated and will be removed in ort release 1.14. Please use ORTModule instead.",
             FutureWarning,
         )
@@ -279,7 +279,7 @@ class ORTTrainer:
             ValueError: raised when `path` is not valid path
         """
         if not self._training_session:
-            warnings.warn(  # noqa: B028
+            warnings.warn(
                 "Training session is not initialized yet. "
                 "'train_step' or 'eval_step' methods must be executed at least once before calling 'save_as_onnx()'."
             )
@@ -291,7 +291,7 @@ class ORTTrainer:
         dir_name = os.path.dirname(path)
         file_name = os.path.basename(path)
         if (dir_name and not os.path.exists(dir_name)) or not file_name:
-            warnings.warn("'path' is not valid or does not exist")  # noqa: B028
+            warnings.warn("'path' is not valid or does not exist")
             return
 
         with open(path, "wb") as f:
@@ -521,7 +521,7 @@ class ORTTrainer:
                 model_copy = copy.deepcopy(model)
             except Exception:
                 model_copy = model
-                warnings.warn(  # noqa: B028
+                warnings.warn(
                     "This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
                     " Compute will continue, but unexpected results may occur!"
                 )
@@ -1204,7 +1204,7 @@ class ORTTrainer:
             A dictionary with `ORTTrainer` state
         """
         if not self._training_session:
-            warnings.warn(  # noqa: B028
+            warnings.warn(
                 "ONNX Runtime training session is not initialized yet. "
                 "Please run train_step or eval_step at least once before calling ORTTrainer.state_dict().",
                 UserWarning,
@@ -1217,9 +1217,9 @@ class ORTTrainer:
         self._extract_model_states(state_dict, pytorch_format)
         if pytorch_format:
             if self.options.distributed.deepspeed_zero_optimization.stage > 0:
-                warnings.warn("Incomplete state_dict: ZeRO enabled", UserWarning)  # noqa: B028
+                warnings.warn("Incomplete state_dict: ZeRO enabled", UserWarning)
             if self.options.distributed.horizontal_parallel_size > 1:
-                warnings.warn("Incomplete state_dict: Megatron enabled", UserWarning)  # noqa: B028
+                warnings.warn("Incomplete state_dict: Megatron enabled", UserWarning)
             # if pytorch_format is true, return a flat dictionary with only model states
             # which is compatible with a PyTorch model
             return state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()]
@@ -1379,12 +1379,12 @@ class ORTTrainer:
             if _utils.state_dict_model_key() in state_dict:
                 _check_model_key_mismatch(current_state_dict, state_dict, allow_unexpected)
             else:
-                warnings.warn("Missing key: model in state_dict", UserWarning)  # noqa: B028
+                warnings.warn("Missing key: model in state_dict", UserWarning)
             # check presence of 'optimizer' in the input state_dict
             if _utils.state_dict_optimizer_key() in state_dict:
                 _check_optimizer_key_mismatch(current_state_dict, state_dict, allow_unexpected)
             else:
-                warnings.warn("Missing key: optimizer in state_dict", UserWarning)  # noqa: B028
+                warnings.warn("Missing key: optimizer in state_dict", UserWarning)
 
         # extract state dict from the current training session. this is to persist the states between
         # two training sessions.
@@ -1416,7 +1416,7 @@ class ORTTrainer:
         """Load the train step info settings from state dict"""
 
         if _utils.state_dict_train_step_info_key() not in state_dict:
-            warnings.warn("Missing key: train_step_info in state_dict", UserWarning)  # noqa: B028
+            warnings.warn("Missing key: train_step_info in state_dict", UserWarning)
             return
 
         optimization_step = _utils.state_dict_train_step_info_optimization_step_key()

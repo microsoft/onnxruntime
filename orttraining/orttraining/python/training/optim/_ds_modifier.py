@@ -40,7 +40,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         # we need to check the implementation of these functions in detail.
         ds_version = Version(deepspeed.__version__)
         if ds_version > Version("0.8.3") or ds_version < Version("0.4.0"):
-            warnings.warn(  # noqa: B028
+            warnings.warn(
                 "Skip modifying optimizer because of unsupported DeepSpeed version {}, "
                 "supported version: 0.4.0 - 0.8.3.".format(deepspeed.__version__),
                 UserWarning,
@@ -50,10 +50,10 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         try:
             from deepspeed.accelerator import get_accelerator
         except ImportError:
-            warnings.warn("Unable to import get_accelerator from deepspeed.accelerator", UserWarning)  # noqa: B028
+            warnings.warn("Unable to import get_accelerator from deepspeed.accelerator", UserWarning)
         else:
             if not get_accelerator().device_name().startswith("cuda"):
-                warnings.warn(  # noqa: B028
+                warnings.warn(
                     "Skip modifying optimizer as device is not supported, "
                     "device name: {}".format(get_accelerator().device_name()),
                     UserWarning,
@@ -67,7 +67,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         )
 
     def override_function(self):
-        warnings.warn("DeepSpeed fp16_optimizer functions are overrided with faster implementation.", UserWarning)  # noqa: B028
+        warnings.warn("DeepSpeed fp16_optimizer functions are overrided with faster implementation.", UserWarning)
 
         def get_grad_norm_direct(target, gradients, params, norm_type=2):
             from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops

@@ -15,13 +15,13 @@ from . import _checkpoint_storage, _utils
 
 
 def experimental_state_dict(ort_trainer, include_optimizer_state=True):
-    warnings.warn(  # noqa: B028
-        "experimental_state_dict() will be deprecated soon. " "Please use ORTTrainer.state_dict() instead.",  # noqa: ISC001
+    warnings.warn(
+        "experimental_state_dict() will be deprecated soon. Please use ORTTrainer.state_dict() instead.",
         DeprecationWarning,
     )
 
     if not ort_trainer._training_session:
-        warnings.warn(  # noqa: B028
+        warnings.warn(
             "ONNX Runtime training session is not initialized yet. "
             "Please run train_step or eval_step at least once before calling state_dict()."
         )
@@ -45,8 +45,8 @@ def experimental_state_dict(ort_trainer, include_optimizer_state=True):
 
 
 def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
-    warnings.warn(  # noqa: B028
-        "experimental_load_state_dict() will be deprecated soon. " "Please use ORTTrainer.load_state_dict() instead.",  # noqa: ISC001
+    warnings.warn(
+        "experimental_load_state_dict() will be deprecated soon. Please use ORTTrainer.load_state_dict() instead.",
         DeprecationWarning,
     )
 
@@ -86,8 +86,8 @@ def experimental_save_checkpoint(
     checkpoint_state_dict=None,
     include_optimizer_state=True,
 ):
-    warnings.warn(  # noqa: B028
-        "experimental_save_checkpoint() will be deprecated soon. " "Please use ORTTrainer.save_checkpoint() instead.",  # noqa: ISC001
+    warnings.warn(
+        "experimental_save_checkpoint() will be deprecated soon. Please use ORTTrainer.save_checkpoint() instead.",
         DeprecationWarning,
     )
 
@@ -107,13 +107,13 @@ def experimental_save_checkpoint(
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
     if os.path.exists(checkpoint_file):
         msg = f"{checkpoint_file} already exists, overwriting."
-        warnings.warn(msg)  # noqa: B028
+        warnings.warn(msg)
     torch.save(checkpoint_state_dict, checkpoint_file)
 
 
 def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", strict=False):
-    warnings.warn(  # noqa: B028
-        "experimental_load_checkpoint() will be deprecated soon. " "Please use ORTTrainer.load_checkpoint() instead.",  # noqa: ISC001
+    warnings.warn(
+        "experimental_load_checkpoint() will be deprecated soon. Please use ORTTrainer.load_checkpoint() instead.",
         DeprecationWarning,
     )
 
@@ -124,7 +124,7 @@ def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
             f"Found more than one file with prefix {checkpoint_prefix} in directory {checkpoint_dir}."
             " Attempting to load ZeRO checkpoint."
         )
-        warnings.warn(msg)  # noqa: B028
+        warnings.warn(msg)
         is_partitioned = True
     if (not ort_trainer.options.distributed.deepspeed_zero_optimization.stage) and is_partitioned:
         return _load_multi_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix, strict)
@@ -720,7 +720,7 @@ class _CombineZeroCheckpoint:
                 self._update_weight_statistics(weight_name, v)
 
     def aggregate_checkpoints(self):
-        warnings.warn(  # noqa: B028
+        warnings.warn(
             "_CombineZeroCheckpoint.aggregate_checkpoints() will be deprecated soon. "
             "Please use aggregate_checkpoints() instead.",
             DeprecationWarning,

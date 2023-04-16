@@ -53,7 +53,7 @@ class StatisticsSubscriber(SubscriberBase):
         self._output_dir = output_dir
         if os.path.exists(self._output_dir):
             if override_output_dir:
-                warnings.warn(f"Output directory {self._output_dir} already exists, overriding it.")  # noqa: B028
+                warnings.warn(f"Output directory {self._output_dir} already exists, overriding it.")
                 shutil.rmtree(self._output_dir)
             else:
                 raise FileExistsError(

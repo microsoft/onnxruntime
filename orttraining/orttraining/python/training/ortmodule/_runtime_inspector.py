@@ -77,7 +77,7 @@ class InputDensityObserver:
 
             value = onnx.numpy_helper.to_array(tensor)
             if value.ndim != 0:
-                warnings.warn(f"Embedding padding_idx must be a scalar, but got a tensor of shape {value.shape}")  # noqa: B028
+                warnings.warn(f"Embedding padding_idx must be a scalar, but got a tensor of shape {value.shape}")
                 continue
 
             padding_idx = value.item()
@@ -123,7 +123,7 @@ class InputDensityObserver:
 
             value = onnx.numpy_helper.to_array(tensor)
             if value.ndim != 0:
-                warnings.warn(  # noqa: B028
+                warnings.warn(
                     f"SoftmaxCrossEntropyLossInternal ignore_index must be a scalar, but got a tensor of shape {value.shape}"
                 )
                 continue

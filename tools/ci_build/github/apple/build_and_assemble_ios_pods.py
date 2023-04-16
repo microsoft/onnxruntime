@@ -73,7 +73,7 @@ def parse_args():
         action="append",
         dest="build_ios_framework_extra_args",
         default=[],
-        help="Pass an argument through to build_ios_framework.py. " "This may be specified multiple times.",  # noqa: ISC001
+        help="Pass an argument through to build_ios_framework.py. This may be specified multiple times.",
     )
 
     args = parser.parse_args()

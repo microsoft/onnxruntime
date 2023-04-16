@@ -588,7 +588,7 @@ def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs, log
             is_deepcopy = True
         except Exception:
             model_copy = module
-            warnings.warn(  # noqa: B028
+            warnings.warn(
                 "This model cannot be deep copied (or pickled), "
                 "which is a required step for stateful models to be properly exported to ONNX."
                 " Compute will continue, but unexpected results may occur!"

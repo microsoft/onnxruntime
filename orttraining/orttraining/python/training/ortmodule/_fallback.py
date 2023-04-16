@@ -132,12 +132,12 @@ class _FallbackManager:
                 )
             ):
                 if log_level <= _logger.LogLevel.INFO:
-                    warnings.warn(f"Fallback for policy {policy.name} is pending.", UserWarning)  # noqa: B028
+                    warnings.warn(f"Fallback for policy {policy.name} is pending.", UserWarning)
 
                 # ORTModuleInitException exceptions do not call `fallback()` through `GraphExecutionManager`,
                 # Instead, it fallbacks to PyTorch implicitly through `ORTModule._torch_module = TorchModulePytorch(module)`
                 if log_level <= _logger.LogLevel.WARNING and policy == _FallbackPolicy.FALLBACK_BAD_INITIALIZATION:
-                    warnings.warn(  # noqa: B028
+                    warnings.warn(
                         (
                             f"Fallback to PyTorch due to exception {type(exception)} was triggered. "
                             "Report this issue with a minimal repro at https://www.github.com/microsoft/onnxruntime. "
@@ -172,7 +172,7 @@ class _FallbackManager:
         assert self.is_pending(), "`fallback` can only be called when there is a pending fallback"
 
         if log_level <= _logger.LogLevel.WARNING:
-            warnings.warn(  # noqa: B028
+            warnings.warn(
                 (
                     f"Fallback to PyTorch due to exception {type(self._exception)} was triggered. "
                     "Report this issue with a minimal repro at https://www.github.com/microsoft/onnxruntime. "

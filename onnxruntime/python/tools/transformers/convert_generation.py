@@ -1687,7 +1687,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
         if not logits_matmul_weight_padded:
             logger.warning(
-                "Tried and failed to pad logits MatMul weights. " "Performance may be sub-optimal for this MatMul"
+                "Tried and failed to pad logits MatMul weights. Performance may be sub-optimal for this MatMul"
             )
 
     gpt2_init_decoder_generated = False

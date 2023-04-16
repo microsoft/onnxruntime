@@ -17,7 +17,7 @@ def find_cudart_versions(build_env=False, build_cuda_version=None):
     # only give warnings if the expected cuda version is not found.
     # in onnxruntime build environment, we expected only one Cuda version.
     if not sys.platform.startswith("linux"):
-        warnings.warn("find_cudart_versions only works on Linux")  # noqa: B028
+        warnings.warn("find_cudart_versions only works on Linux")
         return None
 
     cudart_possible_versions = {None, build_cuda_version}
@@ -50,7 +50,7 @@ def find_cudart_versions(build_env=False, build_cuda_version=None):
 def find_cudnn_supported_cuda_versions(build_env=False):
     # comments in get_cudart_version apply here
     if not sys.platform.startswith("linux"):
-        warnings.warn("find_cudnn_versions only works on Linux")  # noqa: B028
+        warnings.warn("find_cudnn_versions only works on Linux")
 
     cudnn_possible_versions = {None}
     if not build_env:

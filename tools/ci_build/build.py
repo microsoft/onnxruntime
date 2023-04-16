@@ -104,18 +104,18 @@ def _openvino_verify_device_type(device_read):
                 break
 
     def invalid_hetero_build():
-        print("\n" + "If trying to build Hetero/Multi/Auto, specifiy the supported devices along with it." + +"\n")  # noqa: ISC003
+        print("\nIf trying to build Hetero/Multi/Auto, specifiy the supported devices along with it.\n")
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
-        print("in the order of priority you want to build" + "\n")  # noqa: ISC003
+        print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
-        print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")  # noqa: ISC003
-        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")  # noqa: ISC003
-        print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")  # noqa: ISC003
-        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU" + "\n")  # noqa: ISC003
+        print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']\n")
+        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU\n")
+        print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU\n")
+        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU\n")
         sys.exit("Wrong Build Type selected")
 
     if res is False:
-        print("\n" + "You have selcted wrong configuration for the build.")  # noqa: ISC003
+        print("\nYou have selcted wrong configuration for the build.")
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")

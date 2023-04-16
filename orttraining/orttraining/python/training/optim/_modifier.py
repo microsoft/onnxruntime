@@ -35,14 +35,14 @@ class FP16OptimizerModifier:
             if require_torch_non_finite_check is True:
                 _ = torch._amp_foreach_non_finite_check_and_unscale_
         except Exception:
-            warnings.warn("Skip modifying optimizer because of Apex or torch_non_finite_check not found.", UserWarning)  # noqa: B028
+            warnings.warn("Skip modifying optimizer because of Apex or torch_non_finite_check not found.", UserWarning)
             return False
 
         if required_funcs:
             for func_name in required_funcs:
                 func = getattr(self._optimizer, func_name, None)
                 if not func or not callable(func):
-                    warnings.warn(  # noqa: B028
+                    warnings.warn(
                         "Skip modifying optimizer because of specific function not found in optimizer.", UserWarning
                     )
                     return False

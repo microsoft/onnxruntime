@@ -48,9 +48,7 @@ def onnx_compile(
             log.info("Build TVM graph executor")
             lib = relay.build(irmod, target=target, params=params)
         else:
-            log.error(
-                f"Executor type {executor} is unsupported. " + 'Only "vm" and "graph" types are supported'
-            )
+            log.error(f'Executor type {executor} is unsupported. Only "vm" and "graph" types are supported')
             return None
         return lib
 

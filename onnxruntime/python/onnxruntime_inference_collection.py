@@ -62,13 +62,13 @@ def check_and_normalize_provider_args(
 
     def set_provider_options(name, options):
         if name not in available_provider_names:
-            warnings.warn(  # noqa: B028
+            warnings.warn(
                 "Specified provider '{}' is not in available provider names."
                 "Available providers: '{}'".format(name, ", ".join(available_provider_names))
             )
 
         if name in provider_name_to_options:
-            warnings.warn(f"Duplicate provider '{name}' encountered, ignoring.")  # noqa: B028
+            warnings.warn(f"Duplicate provider '{name}' encountered, ignoring.")
             return
 
         normalized_options = {str(key): str(value) for key, value in options.items()}
@@ -613,8 +613,7 @@ class OrtValue:
         else:
             # An end user won't hit this error
             raise ValueError(
-                "`Provided ortvalue` needs to be of type "
-                + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`"
+                "`Provided ortvalue` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`"
             )
 
     def _get_c_value(self):
@@ -772,8 +771,7 @@ class OrtDevice:
             self._ort_device = c_ort_device
         else:
             raise ValueError(
-                "`Provided object` needs to be of type "
-                + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
+                "`Provided object` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
             )
 
     def _get_c_device(self):
@@ -816,8 +814,7 @@ class SparseTensor:
         else:
             # An end user won't hit this error
             raise ValueError(
-                "`Provided object` needs to be of type "
-                + "`onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`"
+                "`Provided object` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`"
             )
 
     def _get_c_tensor(self):
