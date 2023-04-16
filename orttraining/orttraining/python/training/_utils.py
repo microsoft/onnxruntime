@@ -213,7 +213,7 @@ def import_module_from_file(file_path, module_name=None):
 
     if not isinstance(file_path, str) or not os.path.exists(file_path):
         raise AssertionError(
-            "'file_path' must be a full path string with the python file to load. " "file_path={!r}.".format(file_path)
+            "'file_path' must be a full path string with the python file to load. " "file_path={!r}.".format(file_path)  # noqa: ISC001
         )
     if module_name is not None and (not isinstance(module_name, str) or not module_name):
         raise AssertionError(

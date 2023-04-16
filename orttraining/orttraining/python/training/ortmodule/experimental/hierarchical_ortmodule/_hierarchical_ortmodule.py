@@ -141,7 +141,7 @@ class HierarchicalORTModule(torch.nn.Module):
                         )
                 except Exception as e:
                     if self._log_level <= LogLevel.WARNING:
-                        warnings.warn(
+                        warnings.warn(  # noqa: B028
                             f"Failed to export module with type {type(module).__name__}. Error message: {str(e)}",
                             UserWarning,
                         )
@@ -162,7 +162,7 @@ class HierarchicalORTModule(torch.nn.Module):
                         module_exportable = False
                         break
             elif self._log_level <= LogLevel.WARNING:
-                warnings.warn(
+                warnings.warn(  # noqa: B028
                     f"Module with type {type(module).__name__} is not exportable because it's not in module_arg_pool.",
                     UserWarning,
                 )
@@ -267,7 +267,7 @@ class HierarchicalORTModule(torch.nn.Module):
         else:
             recursive_wrap(self._original_module, self._save_onnx, self._name_prefix)
         if self._log_level <= LogLevel.WARNING:
-            warnings.warn(
+            warnings.warn(  # noqa: B028
                 f"Wrapped module: {str(self._original_module)}.",
                 UserWarning,
             )

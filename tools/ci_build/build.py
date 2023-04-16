@@ -104,18 +104,18 @@ def _openvino_verify_device_type(device_read):
                 break
 
     def invalid_hetero_build():
-        print("\n" + "If trying to build Hetero/Multi/Auto, specifiy the supported devices along with it." + +"\n")
+        print("\n" + "If trying to build Hetero/Multi/Auto, specifiy the supported devices along with it." + +"\n")  # noqa: ISC003
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
-        print("in the order of priority you want to build" + "\n")
+        print("in the order of priority you want to build" + "\n")  # noqa: ISC003
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
-        print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
-        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
-        print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")
-        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU" + "\n")
+        print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")  # noqa: ISC003
+        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")  # noqa: ISC003
+        print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")  # noqa: ISC003
+        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU" + "\n")  # noqa: ISC003
         sys.exit("Wrong Build Type selected")
 
     if res is False:
-        print("\n" + "You have selcted wrong configuration for the build.")
+        print("\n" + "You have selcted wrong configuration for the build.")  # noqa: ISC003
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
@@ -1213,9 +1213,9 @@ def generate_build_tree(
             args.apple_deploy_target,
         ]
         arg_names = [
-            "--use_xcode            " + "<need use xcode to cross build iOS on MacOS>",
-            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",
-            "--apple_deploy_target  " + "<the minimum version of the target platform>",
+            "--use_xcode            " + "<need use xcode to cross build iOS on MacOS>",  # noqa: ISC003
+            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",  # noqa: ISC003
+            "--apple_deploy_target  " + "<the minimum version of the target platform>",  # noqa: ISC003
         ]
         if not all(needed_args):
             raise BuildError(

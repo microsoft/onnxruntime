@@ -42,7 +42,7 @@ class InputDensityObserver:
         self._tensor_to_node_map.clear()
         for node in model.graph.node:
             for output_name in node.output:
-                if output_name != "":
+                if output_name != "":  # noqa: PLC1901
                     self._tensor_to_node_map[output_name] = node
 
         self._initialize_embedding_padding_inspector(model, user_input_names)
@@ -77,7 +77,7 @@ class InputDensityObserver:
 
             value = onnx.numpy_helper.to_array(tensor)
             if value.ndim != 0:
-                warnings.warn(f"Embedding padding_idx must be a scalar, but got a tensor of shape {value.shape}")
+                warnings.warn(f"Embedding padding_idx must be a scalar, but got a tensor of shape {value.shape}")  # noqa: B028
                 continue
 
             padding_idx = value.item()
@@ -123,7 +123,7 @@ class InputDensityObserver:
 
             value = onnx.numpy_helper.to_array(tensor)
             if value.ndim != 0:
-                warnings.warn(
+                warnings.warn(  # noqa: B028
                     f"SoftmaxCrossEntropyLossInternal ignore_index must be a scalar, but got a tensor of shape {value.shape}"
                 )
                 continue
@@ -279,7 +279,7 @@ class InputDensityObserver:
             self._stats.clear()
 
     def _try_get_node_from_its_output(self, name):
-        if name == "" or name not in self._tensor_to_node_map:
+        if name == "" or name not in self._tensor_to_node_map:  # noqa: PLC1901
             return None
 
         return self._tensor_to_node_map[name]

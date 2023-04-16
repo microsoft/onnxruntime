@@ -92,7 +92,7 @@ def FP16_Optimizer(optimizer, **kwargs):  # noqa: N802
 
     optimizer_full_qualified_name = get_full_qualified_type_name(optimizer)
     if optimizer_full_qualified_name not in OptimizerModifierTypeRegistry:
-        warnings.warn("Skip modifying optimizer because of optimizer name not found in registry.", UserWarning)
+        warnings.warn("Skip modifying optimizer because of optimizer name not found in registry.", UserWarning)  # noqa: B028
         return optimizer
 
     modifier = OptimizerModifierTypeRegistry[optimizer_full_qualified_name](optimizer, **kwargs)

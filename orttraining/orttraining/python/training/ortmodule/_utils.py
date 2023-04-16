@@ -246,7 +246,7 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                 # This is a user defined/overridden method. Check for collisions.
                 if attribute_name in ortmodule_attributes:
                     # This is a user defined method, issue a warning.
-                    warnings.warn(
+                    warnings.warn(  # noqa: B028
                         f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                         "User Module's method may not be called upon invocation through ORTModule."
                     )
@@ -260,7 +260,7 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
             if attribute_name not in torch_module_attributes and attribute_name in ortmodule_attributes:
                 # This is a user defined attribute that collides with ORTModule
                 if attribute_name in ortmodule_attributes:
-                    warnings.warn(
+                    warnings.warn(  # noqa: B028
                         f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                         "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule."
                     )
@@ -337,7 +337,7 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
 
 
 def warn_of_constant_inputs(data):
-    warnings.warn(
+    warnings.warn(  # noqa: B028
         f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
         " Please consider moving constant arguments to the model constructor."
     )

@@ -419,7 +419,7 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
                     ex_info.value
                 )
     else:
-        warnings.warn(
+        warnings.warn(  # noqa: B028
             "Skipping test_ortmodule_fallback_torch_version."
             f" It requires PyTorch prior to {MINIMUM_RUNTIME_PYTORCH_VERSION_STR}"
         )
@@ -437,7 +437,7 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(
     #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_DEVICE) is used to verify that the fallback does not happen
 
     if is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR):
-        warnings.warn(
+        warnings.warn(  # noqa: B028
             "Skipping test_ortmodule_fallback_init__missing_cpp_extensions."
             " It requires PyTorch CPP extensions to be missing"
         )

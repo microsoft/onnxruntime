@@ -189,7 +189,7 @@ class TrainingManager(GraphExecutionManager):
             ):
                 # Only change this after the firs time a warning is issued.
                 self._first_skip_check_warning = False
-                warnings.warn(
+                warnings.warn(  # noqa: B028
                     f"Fast path enabled - skipping checks."
                     f" Rebuild graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
                     f" Execution agent: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"

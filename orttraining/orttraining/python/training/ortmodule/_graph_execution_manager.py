@@ -163,7 +163,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         for input_parameter in self._module_parameters:
             if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
                 if self._debug_options.logging.log_level <= LogLevel.WARNING:
-                    warnings.warn(
+                    warnings.warn(  # noqa: B028
                         "The model's forward method has **kwargs parameter which has EXPERIMENTAL support!", UserWarning
                     )
 
@@ -267,7 +267,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if _are_deterministic_algorithms_enabled():
             if self._debug_options.logging.log_level <= _logger.LogLevel.INFO:
-                warnings.warn(
+                warnings.warn(  # noqa: B028
                     "ORTModule's determinism will be enabled because PyTorch's determinism is enabled.", UserWarning
                 )
 
@@ -282,7 +282,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 # Set Conv algo search mode to HEURISTIC by default, which is the same as PyTorch's default setting.
                 conv_algo_search = ortmodule._defined_from_envvar("ORTMODULE_CONV_ALGO_SEARCH", "HEURISTIC", warn=True)
                 if conv_algo_search not in ["HEURISTIC", "EXHAUSTIVE"]:
-                    warnings.warn("Invalid value of env CONV_ALGO_SEARCH. Must be HEURISTIC or EXHAUSTIVE.")
+                    warnings.warn("Invalid value of env CONV_ALGO_SEARCH. Must be HEURISTIC or EXHAUSTIVE.")  # noqa: B028
                     conv_algo_search = "HEURISTIC"
                 provider_option_map["cudnn_conv_algo_search"] = conv_algo_search
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"

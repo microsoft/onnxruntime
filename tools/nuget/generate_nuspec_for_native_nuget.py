@@ -90,12 +90,12 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
                     files_list.append('<file src="' + str(child_file) + '" target="runtimes/android/native"/>')
 
         if child.name == "onnxruntime-ios-xcframework":
-            files_list.append('<file src="' + str(child) + "\\**" '" target="runtimes/ios/native"/>')
+            files_list.append('<file src="' + str(child) + "\\**" '" target="runtimes/ios/native"/>')  # noqa: ISC001
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="ONNX Runtime create nuget spec script " "(for hosting native shared library artifacts)", usage=""
+        description="ONNX Runtime create nuget spec script " "(for hosting native shared library artifacts)", usage=""  # noqa: ISC001
     )
     # Main arguments
     parser.add_argument("--package_name", required=True, help="ORT package name. Eg: Microsoft.ML.OnnxRuntime.Gpu")
@@ -150,7 +150,7 @@ def generate_description(line_list, package_name):
         description = "This package contains Windows ML binaries."
     elif "Microsoft.ML.OnnxRuntime" in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
         description = (
-            "This package contains native shared library artifacts " "for all supported platforms of ONNX Runtime."
+            "This package contains native shared library artifacts " "for all supported platforms of ONNX Runtime."  # noqa: ISC001
         )
 
     line_list.append("<description>" + description + "</description>")
@@ -204,42 +204,42 @@ def generate_dependencies(xml_text, package_name, version):
         xml_text.append("<dependencies>")
         # Support .Net Core
         xml_text.append('<group targetFramework="NETCOREAPP">')
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')  # noqa: ISC003
         if include_dml:
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
         # Support .Net Standard
         xml_text.append('<group targetFramework="NETSTANDARD">')
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')  # noqa: ISC003
         if include_dml:
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
         # Support .Net Framework
         xml_text.append('<group targetFramework="NETFRAMEWORK">')
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')  # noqa: ISC003
         if include_dml:
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
         if package_name == "Microsoft.ML.OnnxRuntime":
             # Support monoandroid11.0
             xml_text.append('<group targetFramework="monoandroid11.0">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')  # noqa: ISC003
             xml_text.append("</group>")
             # Support xamarinios10
             xml_text.append('<group targetFramework="xamarinios10">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')  # noqa: ISC003
             xml_text.append("</group>")
             # Support net6.0-android
             xml_text.append('<group targetFramework="net6.0-android31.0">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')  # noqa: ISC003
             xml_text.append("</group>")
             # Support net6.0-ios
             xml_text.append('<group targetFramework="net6.0-ios15.4">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')  # noqa: ISC003
             xml_text.append("</group>")
             # Support net6.0-macos
             xml_text.append('<group targetFramework="net6.0-macos12.3">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')  # noqa: ISC003
             xml_text.append("</group>")
         # Support Native C++
         if include_dml:
@@ -259,14 +259,14 @@ def generate_release_notes(line_list, dependency_sdk_info):
     line_list.append("Release Def:")
 
     branch = get_env_var("BUILD_SOURCEBRANCH")
-    line_list.append("\t" + "Branch: " + (branch if branch is not None else ""))
+    line_list.append("\t" + "Branch: " + (branch if branch is not None else ""))  # noqa: ISC003
 
     version = get_env_var("BUILD_SOURCEVERSION")
-    line_list.append("\t" + "Commit: " + (version if version is not None else ""))
+    line_list.append("\t" + "Commit: " + (version if version is not None else ""))  # noqa: ISC003
 
     build_id = get_env_var("BUILD_BUILDID")
     line_list.append(
-        "\t"
+        "\t"  # noqa: ISC003
         + "Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId="
         + (build_id if build_id is not None else "")
     )
@@ -284,7 +284,7 @@ def generate_metadata(line_list, args):
     generate_authors(metadata_list, "Microsoft")
     generate_owners(metadata_list, "Microsoft")
     generate_description(metadata_list, args.package_name)
-    generate_copyright(metadata_list, "\xc2\xa9 " + "Microsoft Corporation. All rights reserved.")
+    generate_copyright(metadata_list, "\xc2\xa9 " + "Microsoft Corporation. All rights reserved.")  # noqa: ISC003
     generate_tags(metadata_list, "ONNX ONNX Runtime Machine Learning")
     generate_icon(metadata_list, "ORT_icon_for_light_bg.png")
     generate_license(metadata_list)
@@ -366,19 +366,19 @@ def generate_files(line_list, args):
 
     # Process headers
     files_list.append(
-        "<file src="
+        "<file src="  # noqa: ISC003
         + '"'
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\session\\onnxruntime_*.h")
         + '" target="build\\native\\include" />'
     )
     files_list.append(
-        "<file src="
+        "<file src="  # noqa: ISC003
         + '"'
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\framework\\provider_options.h")
         + '" target="build\\native\\include" />'
     )
     files_list.append(
-        "<file src="
+        "<file src="  # noqa: ISC003
         + '"'
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h")
         + '" target="build\\native\\include" />'
@@ -386,7 +386,7 @@ def generate_files(line_list, args):
 
     if is_training_package:
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(
                 args.sources_path, "orttraining\\orttraining\\training_api\\include\\onnxruntime_training_c_api.h"
@@ -396,7 +396,7 @@ def generate_files(line_list, args):
 
     if args.execution_provider == "tvm":
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\tvm\\tvm_provider_factory.h")
             + '" target="build\\native\\include" />'
@@ -404,7 +404,7 @@ def generate_files(line_list, args):
 
     if args.execution_provider == "openvino":
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(
                 args.sources_path, "include\\onnxruntime\\core\\providers\\openvino\\openvino_provider_factory.h"
@@ -414,7 +414,7 @@ def generate_files(line_list, args):
 
     if args.execution_provider == "tensorrt":
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(
                 args.sources_path, "include\\onnxruntime\\core\\providers\\tensorrt\\tensorrt_provider_factory.h"
@@ -424,7 +424,7 @@ def generate_files(line_list, args):
 
     if args.execution_provider == "dnnl":
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\dnnl\\dnnl_provider_factory.h")
             + '" target="build\\native\\include" />'
@@ -432,7 +432,7 @@ def generate_files(line_list, args):
 
     if includes_directml:
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\dml\\dml_provider_factory.h")
             + '" target="build\\native\\include" />'
@@ -441,19 +441,19 @@ def generate_files(line_list, args):
     if includes_winml:
         # Add microsoft.ai.machinelearning headers
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.ort_build_path, args.build_config, "microsoft.ai.machinelearning.h")
             + '" target="build\\native\\include\\abi\\Microsoft.AI.MachineLearning.h" />'
         )
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.sources_path, "winml\\api\\dualapipartitionattribute.h")
             + '" target="build\\native\\include\\abi\\dualapipartitionattribute.h" />'
         )
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.ort_build_path, args.build_config, "microsoft.ai.machinelearning.native.h")
             + '" target="build\\native\\include\\Microsoft.AI.MachineLearning.Native.h" />'
@@ -461,18 +461,18 @@ def generate_files(line_list, args):
         # Add custom operator headers
         mlop_path = "onnxruntime\\core\\providers\\dml\\dmlexecutionprovider\\inc\\mloperatorauthor.h"
         files_list.append(
-            "<file src=" + '"' + os.path.join(args.sources_path, mlop_path) + '" target="build\\native\\include" />'
+            "<file src=" + '"' + os.path.join(args.sources_path, mlop_path) + '" target="build\\native\\include" />'  # noqa: ISC003
         )
         # Process microsoft.ai.machinelearning.winmd
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.ort_build_path, args.build_config, "microsoft.ai.machinelearning.winmd")
             + '" target="winmds\\Microsoft.AI.MachineLearning.winmd" />'
         )
         # Process microsoft.ai.machinelearning.experimental.winmd
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.ort_build_path, args.build_config, "microsoft.ai.machinelearning.experimental.winmd")
             + '" target="winmds\\Microsoft.AI.MachineLearning.Experimental.winmd" />'
@@ -481,7 +481,7 @@ def generate_files(line_list, args):
             interop_dll_path = "Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.17763.0"
             interop_dll = interop_dll_path + "\\Microsoft.AI.MachineLearning.Interop.dll"
             files_list.append(
-                "<file src="
+                "<file src="  # noqa: ISC003
                 + '"'
                 + os.path.join(args.native_build_path, interop_dll)
                 + '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.dll" />'
@@ -489,7 +489,7 @@ def generate_files(line_list, args):
             interop_pdb_path = "Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.17763.0"
             interop_pdb = interop_pdb_path + "\\Microsoft.AI.MachineLearning.Interop.pdb"
             files_list.append(
-                "<file src="
+                "<file src="  # noqa: ISC003
                 + '"'
                 + os.path.join(args.native_build_path, interop_pdb)
                 + '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />'
@@ -497,10 +497,10 @@ def generate_files(line_list, args):
 
     if args.package_name == "Microsoft.ML.OnnxRuntime.Snpe":
         files_list.append(
-            "<file src=" + '"' + os.path.join(args.native_build_path, "onnx_test_runner.exe") + runtimes + " />"
+            "<file src=" + '"' + os.path.join(args.native_build_path, "onnx_test_runner.exe") + runtimes + " />"  # noqa: ISC003
         )
         files_list.append(
-            "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime_perf_test.exe") + runtimes + " />"
+            "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime_perf_test.exe") + runtimes + " />"  # noqa: ISC003
         )
 
     is_ado_packaging_build = False
@@ -524,18 +524,18 @@ def generate_files(line_list, args):
         else:
             # Code path for local dev build
             files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.lib") + runtimes + " />"
+                "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.lib") + runtimes + " />"  # noqa: ISC003
             )
             files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.dll") + runtimes + " />"
+                "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.dll") + runtimes + " />"  # noqa: ISC003
             )
             if include_pdbs and os.path.exists(os.path.join(args.native_build_path, "onnxruntime.pdb")):
                 files_list.append(
-                    "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
+                    "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"  # noqa: ISC003
                 )
     else:
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, "nuget-staging/usr/local/lib", "libonnxruntime.so")
             + '" target="runtimes\\linux-'
@@ -546,7 +546,7 @@ def generate_files(line_list, args):
     if includes_winml:
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, "microsoft.ai.machinelearning.lib")
             + runtimes_target
@@ -555,7 +555,7 @@ def generate_files(line_list, args):
             + '\\Microsoft.AI.MachineLearning.lib" />'
         )
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, "microsoft.ai.machinelearning.dll")
             + runtimes_target
@@ -564,7 +564,7 @@ def generate_files(line_list, args):
             + '\\Microsoft.AI.MachineLearning.dll" />'
         )
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, "microsoft.ai.machinelearning.pdb")
             + runtimes_target
@@ -575,7 +575,7 @@ def generate_files(line_list, args):
     # Process execution providers which are built as shared libs
     if args.execution_provider == "tensorrt" and not is_ado_packaging_build:
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
             + runtimes_target
@@ -583,7 +583,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["cuda_ep_shared_lib"])
             + runtimes_target
@@ -591,7 +591,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["tensorrt_ep_shared_lib"])
             + runtimes_target
@@ -601,7 +601,7 @@ def generate_files(line_list, args):
 
     if args.execution_provider == "dnnl":
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
             + runtimes_target
@@ -609,7 +609,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["dnnl_ep_shared_lib"])
             + runtimes_target
@@ -619,7 +619,7 @@ def generate_files(line_list, args):
 
     if args.execution_provider == "tvm":
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
             + runtimes_target
@@ -627,7 +627,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["tvm_ep_shared_lib"])
             + runtimes_target
@@ -638,7 +638,7 @@ def generate_files(line_list, args):
         tvm_build_path = os.path.join(args.ort_build_path, args.build_config, "_deps", "tvm-build")
         if is_windows():
             files_list.append(
-                "<file src="
+                "<file src="  # noqa: ISC003
                 + '"'
                 + os.path.join(tvm_build_path, args.build_config, nuget_dependencies["tvm"])
                 + runtimes_target
@@ -652,7 +652,7 @@ def generate_files(line_list, args):
     if args.execution_provider == "openvino":
         openvino_path = get_env_var("INTEL_OPENVINO_DIR")
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
             + runtimes_target
@@ -660,7 +660,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["openvino_ep_shared_lib"])
             + runtimes_target
@@ -681,7 +681,7 @@ def generate_files(line_list, args):
                 for ngraph_element in os.listdir(ngraph_list_path):
                     if ngraph_element.endswith("dll"):
                         files_list.append(
-                            "<file src="
+                            "<file src="  # noqa: ISC003
                             + '"'
                             + os.path.join(ngraph_list_path, ngraph_element)
                             + runtimes_target
@@ -691,7 +691,7 @@ def generate_files(line_list, args):
             for dll_element in os.listdir(dll_list_path):
                 if dll_element.endswith("dll"):
                     files_list.append(
-                        "<file src="
+                        "<file src="  # noqa: ISC003
                         + '"'
                         + os.path.join(dll_list_path, dll_element)
                         + runtimes_target
@@ -700,7 +700,7 @@ def generate_files(line_list, args):
                     )
             # plugins.xml
             files_list.append(
-                "<file src="
+                "<file src="  # noqa: ISC003
                 + '"'
                 + os.path.join(dll_list_path, "plugins.xml")
                 + runtimes_target
@@ -711,7 +711,7 @@ def generate_files(line_list, args):
             # OpenVINO 2022.3 doesn't have usb-ma2x8x.mvcmd
             if "2022.3" not in openvino_path:
                 files_list.append(
-                    "<file src="
+                    "<file src="  # noqa: ISC003
                     + '"'
                     + os.path.join(dll_list_path, "usb-ma2x8x.mvcmd")
                     + runtimes_target
@@ -721,7 +721,7 @@ def generate_files(line_list, args):
             for tbb_element in os.listdir(tbb_list_path):
                 if tbb_element.endswith("dll"):
                     files_list.append(
-                        "<file src="
+                        "<file src="  # noqa: ISC003
                         + '"'
                         + os.path.join(tbb_list_path, tbb_element)
                         + runtimes_target
@@ -731,7 +731,7 @@ def generate_files(line_list, args):
 
     if args.execution_provider == "cuda" or is_cuda_gpu_package and not is_ado_packaging_build:
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
             + runtimes_target
@@ -739,7 +739,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
         files_list.append(
-            "<file src="
+            "<file src="  # noqa: ISC003
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["cuda_ep_shared_lib"])
             + runtimes_target
@@ -752,13 +752,13 @@ def generate_files(line_list, args):
         # Process dnnl dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["dnnl"])):
             files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, nuget_dependencies["dnnl"]) + runtimes + " />"
+                "<file src=" + '"' + os.path.join(args.native_build_path, nuget_dependencies["dnnl"]) + runtimes + " />"  # noqa: ISC003
             )
 
         # Process mklml dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["mklml"])):
             files_list.append(
-                "<file src="
+                "<file src="  # noqa: ISC003
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["mklml"])
                 + runtimes
@@ -767,7 +767,7 @@ def generate_files(line_list, args):
 
         if is_linux() and os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["mklml_1"])):
             files_list.append(
-                "<file src="
+                "<file src="  # noqa: ISC003
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["mklml_1"])
                 + runtimes
@@ -777,7 +777,7 @@ def generate_files(line_list, args):
         # Process libiomp5md dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["openmp"])):
             files_list.append(
-                "<file src="
+                "<file src="  # noqa: ISC003
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["openmp"])
                 + runtimes
@@ -787,7 +787,7 @@ def generate_files(line_list, args):
         # Process tvm dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["tvm"])):
             files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, nuget_dependencies["tvm"]) + runtimes + " />"
+                "<file src=" + '"' + os.path.join(args.native_build_path, nuget_dependencies["tvm"]) + runtimes + " />"  # noqa: ISC003
             )
 
         # Some tools to be packaged in nightly build only, should not be released
@@ -798,7 +798,7 @@ def generate_files(line_list, args):
             and os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["onnxruntime_perf_test"]))
         ):
             files_list.append(
-                "<file src="
+                "<file src="  # noqa: ISC003
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["onnxruntime_perf_test"])
                 + runtimes
@@ -811,7 +811,7 @@ def generate_files(line_list, args):
             and os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["onnx_test_runner"]))
         ):
             files_list.append(
-                "<file src="
+                "<file src="  # noqa: ISC003
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["onnx_test_runner"])
                 + runtimes
@@ -828,11 +828,11 @@ def generate_files(line_list, args):
         windowsai_native_rules = os.path.join(args.sources_path, "csharp", "src", windowsai_src, windowsai_rules)
         windowsai_native_targets = os.path.join(args.sources_path, "csharp", "src", windowsai_src, windowsai_targets)
         build = "build\\native"
-        files_list.append("<file src=" + '"' + windowsai_native_props + '" target="' + build + '" />')
+        files_list.append("<file src=" + '"' + windowsai_native_props + '" target="' + build + '" />')  # noqa: ISC003
         # Process native targets
-        files_list.append("<file src=" + '"' + windowsai_native_targets + '" target="' + build + '" />')
+        files_list.append("<file src=" + '"' + windowsai_native_targets + '" target="' + build + '" />')  # noqa: ISC003
         # Process rules
-        files_list.append("<file src=" + '"' + windowsai_native_rules + '" target="' + build + '" />')
+        files_list.append("<file src=" + '"' + windowsai_native_rules + '" target="' + build + '" />')  # noqa: ISC003
         # Process .net5.0 targets
         if args.target_architecture == "x64":
             interop_src = "Microsoft.AI.MachineLearning.Interop"
@@ -840,8 +840,8 @@ def generate_files(line_list, args):
             interop_targets = "Microsoft.AI.MachineLearning.targets"
             windowsai_net50_props = os.path.join(args.sources_path, "csharp", "src", interop_src, interop_props)
             windowsai_net50_targets = os.path.join(args.sources_path, "csharp", "src", interop_src, interop_targets)
-            files_list.append("<file src=" + '"' + windowsai_net50_props + '" target="build\\net5.0" />')
-            files_list.append("<file src=" + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')
+            files_list.append("<file src=" + '"' + windowsai_net50_props + '" target="build\\net5.0" />')  # noqa: ISC003
+            files_list.append("<file src=" + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')  # noqa: ISC003
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package or is_snpe_package:
         # Process props file
@@ -858,10 +858,10 @@ def generate_files(line_list, args):
             args.package_name + ".props",
         )
         os.system(copy_command + " " + source_props + " " + target_props)
-        files_list.append("<file src=" + '"' + target_props + '" target="build\\native" />')
+        files_list.append("<file src=" + '"' + target_props + '" target="build\\native" />')  # noqa: ISC003
         if not is_snpe_package:
-            files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard1.1" />')
-            files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard2.0" />')
+            files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard1.1" />')  # noqa: ISC003
+            files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard2.0" />')  # noqa: ISC003
 
         # Process targets file
         source_targets = os.path.join(
@@ -877,10 +877,10 @@ def generate_files(line_list, args):
             args.package_name + ".targets",
         )
         os.system(copy_command + " " + source_targets + " " + target_targets)
-        files_list.append("<file src=" + '"' + target_targets + '" target="build\\native" />')
+        files_list.append("<file src=" + '"' + target_targets + '" target="build\\native" />')  # noqa: ISC003
         if not is_snpe_package:
-            files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard1.1" />')
-            files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard2.0" />')
+            files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard1.1" />')  # noqa: ISC003
+            files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard2.0" />')  # noqa: ISC003
 
         # Process xamarin targets files
         if args.package_name == "Microsoft.ML.OnnxRuntime":
@@ -967,46 +967,46 @@ def generate_files(line_list, args):
             os.system(copy_command + " " + net6_ios_source_targets + " " + net6_ios_target_targets)
             os.system(copy_command + " " + net6_macos_source_targets + " " + net6_macos_target_targets)
 
-            files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
+            files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')  # noqa: ISC003
             files_list.append(
-                "<file src=" + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid11.0" />'
+                "<file src=" + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid11.0" />'  # noqa: ISC003
             )
 
-            files_list.append("<file src=" + '"' + xamarinios_target_targets + '" target="build\\xamarinios10" />')
+            files_list.append("<file src=" + '"' + xamarinios_target_targets + '" target="build\\xamarinios10" />')  # noqa: ISC003
             files_list.append(
-                "<file src=" + '"' + xamarinios_target_targets + '" target="buildTransitive\\xamarinios10" />'
+                "<file src=" + '"' + xamarinios_target_targets + '" target="buildTransitive\\xamarinios10" />'  # noqa: ISC003
             )
 
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android31.0" />'
+                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android31.0" />'  # noqa: ISC003
             )
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
-            )
-
-            files_list.append("<file src=" + '"' + net6_ios_target_targets + '" target="build\\net6.0-ios15.4" />')
-            files_list.append(
-                "<file src=" + '"' + net6_ios_target_targets + '" target="buildTransitive\\net6.0-ios15.4" />'
+                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'  # noqa: ISC003
             )
 
-            files_list.append("<file src=" + '"' + net6_macos_target_targets + '" target="build\\net6.0-macos12.3" />')
+            files_list.append("<file src=" + '"' + net6_ios_target_targets + '" target="build\\net6.0-ios15.4" />')  # noqa: ISC003
             files_list.append(
-                "<file src=" + '"' + net6_macos_target_targets + '" target="buildTransitive\\net6.0-macos12.3" />'
+                "<file src=" + '"' + net6_ios_target_targets + '" target="buildTransitive\\net6.0-ios15.4" />'  # noqa: ISC003
+            )
+
+            files_list.append("<file src=" + '"' + net6_macos_target_targets + '" target="build\\net6.0-macos12.3" />')  # noqa: ISC003
+            files_list.append(
+                "<file src=" + '"' + net6_macos_target_targets + '" target="buildTransitive\\net6.0-macos12.3" />'  # noqa: ISC003
             )
 
     # Process License, ThirdPartyNotices, Privacy
-    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE.txt") + '" target="LICENSE.txt" />')
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE.txt") + '" target="LICENSE.txt" />')  # noqa: ISC003
     files_list.append(
-        "<file src="
+        "<file src="  # noqa: ISC003
         + '"'
         + os.path.join(args.sources_path, "ThirdPartyNotices.txt")
         + '" target="ThirdPartyNotices.txt" />'
     )
     files_list.append(
-        "<file src=" + '"' + os.path.join(args.sources_path, "docs", "Privacy.md") + '" target="Privacy.md" />'
+        "<file src=" + '"' + os.path.join(args.sources_path, "docs", "Privacy.md") + '" target="Privacy.md" />'  # noqa: ISC003
     )
     files_list.append(
-        "<file src="
+        "<file src="  # noqa: ISC003
         + '"'
         + os.path.join(args.sources_path, "ORT_icon_for_light_bg.png")
         + '" target="ORT_icon_for_light_bg.png" />'

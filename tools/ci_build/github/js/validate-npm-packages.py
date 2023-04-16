@@ -106,13 +106,13 @@ ort_common_ver = (
 )
 
 ort_common_from = (
-    "" if ort_common_ver == "" else ("node" if RELEASE_NODE else ("web" if RELEASE_WEB else "react-native"))
+    "" if ort_common_ver == "" else ("node" if RELEASE_NODE else ("web" if RELEASE_WEB else "react-native"))  # noqa: PLC1901
 )
 
 print("====== output environment variables ======")
 print(f"##vso[task.setvariable variable=ORT_COMMON_FROM]{ort_common_from}")
 
-if tag == "latest" or tag == "" or tag == "rc":
+if tag == "latest" or tag == "" or tag == "rc":  # noqa: PLC1901
     if not RELEASE_NODE or not RELEASE_WEB or not RELEASE_REACT_NATIVE:
         raise Exception("@latest or @rc build must release all packages (node, web, react-native)")
     if count_ort_node_common_tgz != 1:
@@ -139,7 +139,7 @@ print(f"ort_node_ver={ort_node_ver}")
 print(f"ort_web_ver={ort_web_ver}")
 print(f"ort_react_native_ver={ort_react_native_ver}")
 
-if tag == "latest" or tag == "":
+if tag == "latest" or tag == "":  # noqa: PLC1901
     print("Publishing @latest ...")
     if not source_branch.startswith("refs/heads/rel-"):
         raise Exception('@latest build must publish from source branch "refs/heads/rel-*"')
@@ -166,5 +166,5 @@ if (
     and "+" not in ort_web_ver.replace("-rev", "")
     and "+" not in ort_react_native_ver.replace("-rev", "")
 ):
-    if tag != "latest" and tag != "":
+    if tag != "latest" and tag != "":  # noqa: PLC1901
         raise Exception("default version without decorator can only be published in @latest tag")

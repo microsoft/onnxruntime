@@ -73,7 +73,7 @@ class InferenceManager(GraphExecutionManager):
                 and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING
             ):
                 self._first_skip_check_warning = False
-                warnings.warn(
+                warnings.warn(  # noqa: B028
                     f"Fast path enabled - skipping checks."
                     f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
                     f"execution agent recreation: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"

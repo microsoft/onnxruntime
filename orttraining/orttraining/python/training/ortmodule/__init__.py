@@ -25,7 +25,7 @@ def _defined_from_envvar(name, default_value, warn=True):
         new_value = type(default_value)(new_value)
     except (TypeError, ValueError) as e:
         if warn:
-            warnings.warn(f"Unable to overwrite constant {name!r} due to {e!r}.")
+            warnings.warn(f"Unable to overwrite constant {name!r} due to {e!r}.")  # noqa: B028
         return default_value
     return new_value
 
@@ -111,7 +111,7 @@ torch.cuda.manual_seed = override_torch_cuda_manual_seed
 
 
 def _use_deterministic_algorithms(enabled):
-    global ORTMODULE_IS_DETERMINISTIC
+    global ORTMODULE_IS_DETERMINISTIC  # noqa: PLW0603
     ORTMODULE_IS_DETERMINISTIC = enabled
 
 
