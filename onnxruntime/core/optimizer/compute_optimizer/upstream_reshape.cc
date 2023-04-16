@@ -140,19 +140,15 @@ ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
   input_args.push_back(current_node.MutableInputDefs()[current_node_input_index]);
 
   // Prepare the target shape initializer. (Currently, only constant target shape is supported.)
-  std::vector<int64_t> new_shape;
+  InlinedVector<int64_t> new_shape;
   new_shape.push_back(-1);
   auto input_shape = current_node.MutableInputDefs()[current_node_input_index]->Shape();
   for (int k = 2; k < input_shape->dim_size(); ++k) {
     ORT_ENFORCE(input_shape->dim(k).has_dim_value());
     new_shape.push_back(input_shape->dim(k).dim_value());
   }
-  ONNX_NAMESPACE::TensorProto new_shape_const_tensor;
-  new_shape_const_tensor.set_name(graph.GenerateNodeArgName("new_shape"));
-  new_shape_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  new_shape_const_tensor.add_dims(new_shape.size());
-  new_shape_const_tensor.set_raw_data(new_shape.data(), new_shape.size() * sizeof(int64_t));
-  NodeArg* new_shape_arg = &graph_utils::AddInitializer(graph, new_shape_const_tensor);
+  NodeArg* new_shape_arg = CreateInitializerFromVector(graph, {static_cast<int64_t>(new_shape.size())}, new_shape,
+                                                       graph.GenerateNodeArgName("new_shape"));
 
   input_args.push_back(new_shape_arg);
 
