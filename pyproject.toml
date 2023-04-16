@@ -50,6 +50,7 @@ select = [
     "W", # pycodestyle
     "B", # flake8-bugbear
     "N", # pep8-naming
+    "ISC", # flake8-implicit-str-concat
     "YTT", # flake8-2020
     "RUF", # Ruff-specific rules
     "SIM", # flake8-simplify
