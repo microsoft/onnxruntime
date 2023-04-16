@@ -2,9 +2,9 @@ import numpy as np
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import BiasToQuantize  # noqa: F401
 from ..quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,
+    BiasToQuantize,  # noqa: F401
     QuantizedValue,
     QuantizedValueType,
     attribute_to_kwarg,
@@ -79,7 +79,7 @@ class ConvInteger(QuantOperatorBase):
         nodes.extend(nodes_weight)
 
         conv_integer_output = node.output[0] + "_output_quantized"
-        conv_integer_name = node.name + "_quant" if node.name != "" else ""
+        conv_integer_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:
@@ -192,7 +192,7 @@ class QLinearConv(QuantOperatorBase):
             bias_present = True
 
         qlinear_conv_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qlinear_conv_name = qlinear_conv_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_conv_name = qlinear_conv_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:

@@ -1,6 +1,12 @@
 import onnx
 
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    ms_domain,
+)
 from .base_operator import QuantOperatorBase
 
 
@@ -47,7 +53,7 @@ class QLinearPool(QuantOperatorBase):
         for attribute in node.attribute:
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
-        qlinear_node_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_node_name = node.name + "_quant" if node.name else ""
         qnode = onnx.helper.make_node(
             "QLinear" + node.op_type,
             [

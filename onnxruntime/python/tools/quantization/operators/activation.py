@@ -1,6 +1,12 @@
 import onnx
 
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    ms_domain,
+)
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -58,7 +64,7 @@ class QLinearActivation(QuantOperatorBase):
 
         qlinear_activation_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qlinear_activation_name = ""
-        if node.name != "":
+        if node.name:
             qlinear_activation_name = node.name + "_quant"
         kwargs = {}
         for attribute in node.attribute:

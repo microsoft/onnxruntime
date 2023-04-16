@@ -1,6 +1,12 @@
 import onnx
 
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    ms_domain,
+)
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -53,7 +59,7 @@ class QLinearSoftmax(QuantOperatorBase):
         kwargs["domain"] = ms_domain
         # make qlinearsoft has the real opset_version, its default SinceVersion would be 1
         kwargs["opset"] = self.quantizer.opset_version
-        qlinear_node_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_node_name = node.name + "_quant" if node.name else ""
         qnode = onnx.helper.make_node(
             "QLinear" + node.op_type,
             [

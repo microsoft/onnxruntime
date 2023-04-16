@@ -111,7 +111,7 @@ def main():
     argparser.add_argument(
         "model_path_or_dir",
         type=pathlib.Path,
-        help="Path to a single model, or a directory that will be recursively searched " "for models to process.",
+        help="Path to a single model, or a directory that will be recursively searched for models to process.",
     )
 
     argparser.add_argument(
@@ -143,7 +143,9 @@ def main():
         model_files = files_from_file_or_dir(model_path_or_dir, _get_suffix_match_predicate(".onnx"))
         create_config_from_onnx_models(model_files, config_path)
     else:
-        from util.ort_format_model import create_config_from_models as create_config_from_ort_models
+        from util.ort_format_model import (
+            create_config_from_models as create_config_from_ort_models,
+        )
 
         model_files = files_from_file_or_dir(model_path_or_dir, _get_suffix_match_predicate(".ort"))
         create_config_from_ort_models(model_files, config_path, args.enable_type_reduction)

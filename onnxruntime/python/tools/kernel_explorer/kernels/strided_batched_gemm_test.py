@@ -10,7 +10,12 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
+from utils import (
+    get_gemm_basic_sizes,
+    get_gemm_bert_sizes,
+    get_gemm_bound,
+    transab_to_suffix,
+)
 
 
 def dtype_to_suffix(dtype):
@@ -161,7 +166,7 @@ class StridedBatchedGemmMetric(ke.ComputeMetric):
     def report(self):
         prefix = (
             f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-            + f"m={self.m:<4} n={self.n:<4} k={self.k:<4} batch={self.batch:<3} "
+            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} batch={self.batch:<3} "
         )
         if self.duration <= 0:
             return prefix + "not supported"

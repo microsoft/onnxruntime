@@ -1,6 +1,12 @@
 import onnx
 
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    ms_domain,
+)
 from .base_operator import QuantOperatorBase
 
 
@@ -44,7 +50,7 @@ class QGlobalAveragePool(QuantOperatorBase):
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
         kwargs["channels_last"] = 0
-        qnode_name = node.name + "_quant" if node.name != "" else ""
+        qnode_name = node.name + "_quant" if node.name else ""
 
         qnode = onnx.helper.make_node(
             "QLinear" + node.op_type,

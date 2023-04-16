@@ -1,6 +1,12 @@
 import onnx
 
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    ms_domain,
+)
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -31,7 +37,7 @@ class QLinearWhere(QuantOperatorBase):
         if not data_found or q_input_names is None:
             return super().quantize()
         qlinear_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qlinear_output_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_output_name = node.name + "_quant" if node.name else ""
 
         q_output = QuantizedValue(
             node.output[0],
