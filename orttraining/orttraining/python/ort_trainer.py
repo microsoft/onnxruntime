@@ -606,7 +606,7 @@ def _load_multi_checkpoint(model, checkpoint_dir, checkpoint_prefix, strict):
 
     # aggregate other keys in the state_dict.
     # Values will be overwritten for matching keys among workers
-    all_checkpoint_states = dict()
+    all_checkpoint_states = {}
     for checkpoint_file in checkpoint_files:
         checkpoint_state = torch.load(checkpoint_file, map_location="cpu")
         del checkpoint_state["model"]
