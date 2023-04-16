@@ -206,6 +206,8 @@ static Status dft_bluestein_z_chirp(
   size_t N = static_cast<size_t>(dft_length);
   size_t M = next_power_of_2(2 * N - 1);
   auto dft_input_shape = onnxruntime::TensorShape({1, (int64_t)M, 2});
+  T scale = inverse ? 1.f / N : 1.f;
+  T direction = inverse ? 1.f : -1.f;
 
   bool should_recreate_b_fft = b_fft.Shape().Size() != dft_input_shape.Size();
   bool should_recreate_chirp = chirp.Shape().Size() != dft_input_shape.Size();
@@ -225,7 +227,7 @@ static Status dft_bluestein_z_chirp(
     for (size_t n = 0; n < N; n++) {
       std::complex<T>& chirp_n = *(chirp_data + n);
       // chirp
-      auto exponent = -pi * n * n / N;
+      auto exponent = direction * pi * n * n / N;
       chirp_n = std::complex<T>(cos(exponent), sin(exponent));
 
       // b
@@ -242,7 +244,7 @@ static Status dft_bluestein_z_chirp(
     // Forward FFT radix2 for the "b" signal
     // This will be cached and reused!
     ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &b, &b_fft, 0, 1, 0, 1, 1, M, nullptr,
-                                                        false, inverse, V, temp_output)));
+                                                        false, false, V, temp_output)));
   }
 
   // Get data
@@ -276,7 +278,7 @@ static Status dft_bluestein_z_chirp(
 
   // Forward FFT radix2 for the "a" signal
   ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &a, &a_fft, 0, 1, 0, 1, 1, M, nullptr,
-                                        false, inverse, V, temp_output)));
+                                                      false, false, V, temp_output)));
 
   for (size_t i = 0; i < M; i++) {
     std::complex<T>& a_i = *(a_fft_data + i);
@@ -286,7 +288,7 @@ static Status dft_bluestein_z_chirp(
 
   // Inverse FFT radix2 for the "a" signal
   ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &a_fft, &a, 0, 1, 0, 1, 1, M, nullptr,
-                                        false, !inverse, V, temp_output)));
+                                                      false, true, V, temp_output)));
   const auto& Y_shape = Y->Shape();
   size_t dft_output_size = static_cast<size_t>(Y_shape[onnxruntime::narrow<size_t>(axis)]);
 
@@ -297,7 +299,7 @@ static Status dft_bluestein_z_chirp(
     if (i > 0) {
       c_i = *(a_data + M - i); // Why reverse the output?
     }
-    out = c_i * chirp_i;
+    out = c_i * chirp_i * scale;
   }
   return Status::OK();
 }
