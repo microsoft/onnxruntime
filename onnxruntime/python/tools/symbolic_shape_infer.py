@@ -1932,7 +1932,7 @@ class SymbolicShapeInference:
                 if len(symbolic_dimensions) > 0:
                     logger.debug(
                         f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
-                        + f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}"
+                        f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}"
                     )
         else:
             axes = [handle_negative_axis(a, len(input_shape)) for a in axes]

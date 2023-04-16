@@ -2411,7 +2411,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     if sentences is None:
         sentences = [
             "translate English to French: The product is released",
-            "summarize: research continues to show that pets bring real health benefits to their owners."
+            "summarize: research continues to show that pets bring real health benefits to their owners."  # noqa: ISC003
             + "Having a dog around can lead to lower levels of stress for both adults and kids.",
             # "summarize: I enjoy walking in the park. It makes my mind feel calm and refreshed. "
             # + "I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",

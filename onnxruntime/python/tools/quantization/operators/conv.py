@@ -4,7 +4,6 @@ from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,
-    BiasToQuantize,  # noqa: F401
     QuantizedValue,
     QuantizedValueType,
     attribute_to_kwarg,
@@ -102,7 +101,7 @@ class ConvInteger(QuantOperatorBase):
 
         # Add mul operation to multiply scales of two inputs.
         assert len(scale_names) == 2
-        if conv_integer_name != "":
+        if conv_integer_name:
             scales_mul_op = conv_integer_name + "_scales_mul"
         else:
             scales_mul_op = scale_names[0] + "_" + scale_names[1] + "_mul"
@@ -119,7 +118,7 @@ class ConvInteger(QuantOperatorBase):
 
         # Add mul operation to multiply mul_scales_op result with output of ConvInteger
         # and make the output of this node the same as output of original conv node.
-        output_scale_mul_op = conv_integer_name + "_output_scale_mul" if conv_integer_name != "" else ""
+        output_scale_mul_op = conv_integer_name + "_output_scale_mul" if conv_integer_name else ""
         nodes.append(
             get_mul_node(
                 [cast_op_output, scales_mul_op_output],

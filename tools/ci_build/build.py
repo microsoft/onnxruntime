@@ -57,9 +57,9 @@ def _check_python_version():
     # Python 2 is definitely not supported and it should be safer to consider
     # it won't run with python 4:
     if sys.version_info[0] != 3:  # noqa: YTT201
-        raise BuildError("Bad python major version: expecting python 3, found version '{}'".format(sys.version))
+        raise BuildError(f"Bad python major version: expecting python 3, found version '{sys.version}'")
     if sys.version_info[1] < 6:  # noqa: YTT203
-        raise BuildError("Bad python minor version: expecting python 3.6+, found version '{}'".format(sys.version))
+        raise BuildError(f"Bad python minor version: expecting python 3.6+, found version '{sys.version}'")
 
 
 def _str_to_bool(s):
@@ -354,7 +354,7 @@ def parse_arguments():
     parser.add_argument("--use_gdk", action="store_true", help="Build with the GDK toolchain.")
     parser.add_argument(
         "--gdk_edition",
-        default=os.path.normpath(os.environ.get("GameDKLatest", "")).split(os.sep)[-1],
+        default=os.path.normpath(os.environ.get("GAMEDKLATEST", "")).split(os.sep)[-1],
         help="Build with a specific GDK edition. Defaults to the latest installed.",
     )
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
@@ -715,7 +715,7 @@ def resolve_executable_path(command_or_path):
     if command_or_path and command_or_path.strip():
         executable_path = shutil.which(command_or_path)
         if executable_path is None:
-            raise BuildError("Failed to resolve executable path for '{}'.".format(command_or_path))
+            raise BuildError(f"Failed to resolve executable path for '{command_or_path}'.")
         return os.path.abspath(executable_path)
     else:
         return None
@@ -1327,8 +1327,8 @@ def generate_build_tree(
     # (e.g. 191101-2300.1.master) and source version in environment
     # variables. If present, use these values to define the
     # WinML/ORT DLL versions.
-    build_number = os.getenv("Build_BuildNumber")
-    source_version = os.getenv("Build_SourceVersion")
+    build_number = os.getenv("BUILD_BUILDNUMBER")
+    source_version = os.getenv("BUILD_SOURCEVERSION")
     if build_number and source_version:
         build_matches = re.fullmatch(r"(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)", build_number)
         if build_matches:
@@ -2267,7 +2267,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
 
 
 def main():
-    log.debug("Command line arguments:\n  {}".format(.join(shlex.quote(arg) for arg in sys.argv[1:])))
+    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
 
@@ -2517,9 +2517,7 @@ def main():
 
         if is_ubuntu_1604():
             if args.arm or args.arm64:
-                raise BuildError(
-                    "Only Windows ARM(64) cross-compiled builds supported currently through this script"
-                )
+                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
             if not is_docker() and not args.use_acl and not args.use_armnn:
                 install_python_deps()
 
