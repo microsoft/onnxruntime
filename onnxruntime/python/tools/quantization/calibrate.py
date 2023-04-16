@@ -573,6 +573,7 @@ class SmoothCalibrater(CalibraterBase):
         model = clone_model_with_shape_infer(self.model)
 
         self.tensors_to_calibrate, value_infos = self.select_tensors_to_calibrate(model)
+        self.tensors_to_calibrate = sorted(self.tensors_to_calibrate)
         for tensor in self.tensors_to_calibrate:
             if tensor not in self.model_original_outputs:
                 model.graph.output.append(value_infos[tensor])
