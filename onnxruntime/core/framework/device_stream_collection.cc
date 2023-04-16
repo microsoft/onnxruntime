@@ -9,7 +9,7 @@ namespace onnxruntime {
 
 class DeviceStreamCollectionImpl {
  public:
-  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams) {
+  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams), device_(OrtDevice()) {
     device_streams_.resize(num_streams, nullptr);
     owned_streams_.reserve(num_streams);
     auto& providers = sess_state.GetExecutionProviders();
@@ -18,7 +18,7 @@ class DeviceStreamCollectionImpl {
       eps_.push_back(ep);
     }
     is_main_graph_ = sess_state.GetGraphViewer().ParentNode() == nullptr;
-    //root_stream_ = std::make_unique<Stream>(nullptr, OrtDevice());
+    root_stream_ = std::make_unique<Stream>(nullptr, device_);
   }
 
   ~DeviceStreamCollectionImpl() {
@@ -98,6 +98,7 @@ class DeviceStreamCollectionImpl {
   // This is used in ExecutionFrame when memory pattern is enabled, to allocate the peak size memory
   // labelled this stream in the current thread, instead of the default stream which will be used in all the threads (thus caused thread safe issue)
   std::unique_ptr<Stream> root_stream_;
+  OrtDevice device_;
   void ReleaseSingleStreamBuffers();
 };
 
