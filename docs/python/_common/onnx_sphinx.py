@@ -815,7 +815,7 @@ def onnx_documentation_folder(folder, title="ONNX Operators in onnxruntime", flo
 
     # loop on domains
     for dom in sorted(all_schemas):
-        sdom = "ai.onnx" if not dom else dom
+        sdom = dom if dom else "ai.onnx"
         dom_pages = []
 
         do = all_schemas[dom]
