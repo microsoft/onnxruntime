@@ -49,8 +49,12 @@ def restore_torch_functions():
 
 
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, config, data_type=numpy.int64):
-    input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=data_type)
+    if config.model_type in ["vit", "swin"]:
+        input_ids = numpy.random.rand(batch_size, 3, config.image_size, config.image_size).astype(numpy.float32)
+        inputs = {"pixel_values": input_ids}
+        return inputs
 
+    input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=data_type)
     inputs = {"input_ids": input_ids}
 
     if "attention_mask" in input_names:
@@ -240,6 +244,11 @@ def optimize_onnx_model(
             optimization_options.enable_gelu_approximation = True
         if precision == Precision.INT8:
             optimization_options.enable_embed_layer_norm = False
+
+        # For swin models, the num_attention_heads is a list, which isn't supported yet, so set to 0 for now
+        if model_type == "swin":
+            num_attention_heads = 0
+            hidden_size = 0
 
         # Use script to optimize model.
         # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16.
@@ -439,7 +448,11 @@ def validate_and_optimize_onnx(
                 model_fusion_statistics,
             )
 
-    return onnx_model_path, is_valid_onnx_model, None if model_type == "vit" else config.vocab_size
+    return (
+        onnx_model_path,
+        is_valid_onnx_model,
+        config.num_labels if model_type in ["vit", "swin"] else config.vocab_size,
+    )
 
 
 def export_onnx_model_from_pt(
@@ -468,9 +481,11 @@ def export_onnx_model_from_pt(
     example_inputs = None
     max_input_size = None
 
-    if model_type == "vit":
+    if model_type in ["vit", "swin"]:
         image_processor = AutoFeatureExtractor.from_pretrained(model_name, cache_dir=cache_dir)
-        data = numpy.random.randint(low=0, high=256, size=224 * 224 * 3, dtype=numpy.uint8).reshape(224, 224, 3)
+        data = numpy.random.randint(
+            low=0, high=256, size=config.image_size * config.image_size * 3, dtype=numpy.uint8
+        ).reshape(config.image_size, config.image_size, 3)
 
         example_inputs = image_processor(data, return_tensors="pt")
     else:
@@ -509,7 +524,7 @@ def export_onnx_model_from_pt(
         dynamic_axes = None
         output_names = None
 
-        if model_type == "vit":
+        if model_type in ["vit", "swin"]:
             dynamic_axes, output_names = {key: {0: "pixel_values"} for key in example_inputs}, ["logits"]
         else:
             dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
