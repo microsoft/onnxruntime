@@ -114,8 +114,8 @@ def onnx_compile(
                     lib = get_tvm_executor(irmod, executor, tvm_target, params)
         else:
             log.error(
-                f"Tuning log type {tuning_type} is unsupported. "  # noqa: ISC003
-                + f"Only {ANSOR_TYPE} and {AUTO_TVM_TYPE} types are supported"
+                f"Tuning log type {tuning_type} is unsupported. "
+                f"Only {ANSOR_TYPE} and {AUTO_TVM_TYPE} types are supported"
             )
             return None
     else:

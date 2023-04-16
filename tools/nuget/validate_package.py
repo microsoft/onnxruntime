@@ -261,8 +261,8 @@ def validate_nuget(args):
 
     exit_code = 0
 
-    nupkg_copy_name = "NugetCopy" + ".nupkg"  # noqa: ISC003
-    zip_copy_name = "NugetCopy" + ".zip"  # noqa: ISC003
+    nupkg_copy_name = "NugetCopy.nupkg"
+    zip_copy_name = "NugetCopy.zip"
     zip_file = None
 
     # Remove any residual files

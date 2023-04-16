@@ -580,9 +580,9 @@ def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partiti
 
     if is_partitioned:
         assert_msg = (
-            "Couldn't find checkpoint file {}."  # noqa: ISC003
-            + "Optimizer partitioning is enabled using ZeRO. Please make sure that the "
-            + "checkpoint file exists for rank {} of {}."
+            "Couldn't find checkpoint file {}."
+            "Optimizer partitioning is enabled using ZeRO. Please make sure that the "
+            "checkpoint file exists for rank {} of {}."
         ).format(checkpoint_file, model.world_rank, model.world_size)
     else:
         assert_msg = f"Couldn't find checkpoint file {checkpoint_file}."
@@ -619,8 +619,8 @@ def load_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", s
     is_partitioned = False
     if len(checkpoint_files) > 1:
         warnings.warn(
-            f"Found more than one file with prefix {checkpoint_prefix} in directory {checkpoint_dir}."  # noqa: ISC003
-            + "Attempting to load ZeRO checkpoint."
+            f"Found more than one file with prefix {checkpoint_prefix} in directory {checkpoint_dir}."
+            "Attempting to load ZeRO checkpoint."
         )
         is_partitioned = True
     if (not model.deepspeed_zero_stage_) and is_partitioned:
