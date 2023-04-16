@@ -33,9 +33,6 @@ class DeviceStreamCollection {
   // logic sequence doesn't support Stream.
   Stream* GetStream(size_t stream_idx) const;
 
-  // Get the index device stream instances.
-  gsl::span<Stream*> GetStreams() const;
-
   // get the number of device stream instances.
   size_t NumStreams() const;
 

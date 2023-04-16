@@ -84,10 +84,6 @@ class DeviceStreamCollectionImpl {
     device_streams_[idx] = stream;
   }
 
-  gsl::span<Stream*> GetStreams() {
-    return device_streams_;
-  }
-
   Stream* GetStream(size_t stream_idx) const {
     ORT_ENFORCE(stream_idx < num_streams_);
     return device_streams_[stream_idx];
@@ -125,10 +121,6 @@ void DeviceStreamCollection::AddDeviceStream(size_t idx, std::unique_ptr<Stream>
 
 void DeviceStreamCollection::SetDeviceStream(size_t idx, Stream* stream) {
   impl_->SetDeviceStream(idx, stream);
-}
-
-gsl::span<Stream*> DeviceStreamCollection::GetStreams() const {
-  return impl_->GetStreams();
 }
 
 size_t DeviceStreamCollection::NumStreams() const {
