@@ -402,6 +402,7 @@ if is_manylinux:
         ov_libs = [
             "libopenvino_intel_cpu_plugin.so",
             "libopenvino_intel_gpu_plugin.so",
+            "libopenvino_intel_vpux_plugin.so",
             "libopenvino_auto_plugin.so",
             "libopenvino_hetero_plugin.so",
             "libtbb.so.2",

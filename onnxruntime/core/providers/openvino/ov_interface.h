@@ -6,7 +6,7 @@
 #include <vector>
 
 #include <inference_engine.hpp>
-#if defined(OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3)
+#if defined (OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3) || (OPENVINO_2023_0)
 #define OV_API_20
 #include "openvino/openvino.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"

@@ -423,7 +423,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (key == "device_type") {
         std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
                                                            "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                           "GPU.0_FP16", "GPU.1_FP16"};
+                                                           "GPU.0_FP16", "GPU.1_FP16",
+                                                           "VPUX_FP16", "VPUX_U8"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           device_type = value;
         } else if (value.find("HETERO:") == 0) {
@@ -435,7 +436,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
                     "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-                    "'GPU.0_FP16', 'GPU.1_FP16' or from"
+                    "'GPU.0_FP16', 'GPU.1_FP16', 'VPUX_FP16', 'VPUX_U8', or from"
                     " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
