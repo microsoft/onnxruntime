@@ -126,10 +126,10 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // The steps within a sequence are executed in order, and happened on the same device.
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
-    const OrtDevice& device_;
+    const OrtDevice device_;
 
    public:
-    LogicStream(const OrtDevice& device) : device_(device) {}
+    LogicStream(const OrtDevice device) : device_(device) {}
   };
   // a execution plan is composed by multiple logic stream.
   // by default all the nodes with the same device will be group in to the same stream.

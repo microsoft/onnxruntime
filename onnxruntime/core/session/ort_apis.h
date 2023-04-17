@@ -443,4 +443,7 @@ ORT_API_STATUS_IMPL(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOp
 ORT_API(void, ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions*);
 
 ORT_API_STATUS_IMPL(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, const OrtMemoryInfo* memory_info, _Outptr_ void** out);
+
+ORT_API_STATUS_IMPL(CreateAndRegisterCudaAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
+                    _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 }  // namespace OrtApis

@@ -3964,6 +3964,9 @@ struct OrtApi {
 
   ORT_API2_STATUS(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo*, _Outptr_ void** out);
 
+  ORT_API2_STATUS(CreateAndRegisterCudaAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg, 
+                  _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
+
 #ifdef __cplusplus
   OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
 #endif

@@ -144,7 +144,7 @@ struct TestInputData {
                     std::is_same_v<T, std::vector<float>> ||
                     std::is_same_v<T, std::vector<MLFloat16>>)
         CreateMLValue<typename T::value_type>(
-            std::make_shared<CPUAllocator>(), dims, arg, &ortvalue);
+            TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, arg, &ortvalue);
       else
         static_assert("Unspported types!");
     },

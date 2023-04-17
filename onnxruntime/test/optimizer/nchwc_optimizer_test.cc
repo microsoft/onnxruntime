@@ -25,7 +25,7 @@ struct NchwcTestHelper {
   template <typename T>
   NodeArg* MakeInput(const std::vector<int64_t>& shape, const ONNX_NAMESPACE::TypeProto& type_proto) {
     OrtValue input_value;
-    CreateMLValue<T>(std::make_shared<CPUAllocator>(), shape,
+    CreateMLValue<T>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], shape,
                      FillRandomData<T>(shape), &input_value);
     std::string name = graph_.GenerateNodeArgName("input");
     feeds_.insert(std::make_pair(name, input_value));

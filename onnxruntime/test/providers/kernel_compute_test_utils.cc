@@ -57,7 +57,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       OrtValue gpu_value;
       const Tensor& tensor = data.value_.Get<Tensor>();
       Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           std::make_shared<CPUAllocator>(), gpu_value,
+                           execution_providers.Get(ep_type)->CreatePreferredAllocators()[0], gpu_value,
                            tensor.Strides());
       ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *gpu_value.GetMutable<Tensor>()));
       initializer_map[name] = gpu_value;
@@ -101,7 +101,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
                                initializer_map[input_data_[static_cast<size_t>(pair.first)].def_.Name()]
                                    .GetMutable<Tensor>()
                                    ->MutableDataRaw(),
-                               std::make_shared<CPUAllocator>()->Info(), output);
+                               execution_providers.Get(ep_type)->CreatePreferredAllocators()[0]->Info(), output);
           is_may_strided_output = true;
           break;
         }
@@ -109,7 +109,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       ASSERT_TRUE(is_may_strided_output);
     } else {
       Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           std::make_shared<CPUAllocator>(), output);
+                           execution_providers.Get(ep_type)->CreatePreferredAllocators()[0], output);
     }
     outputs.emplace_back(output);
   }
@@ -161,7 +161,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       } else {
         const Tensor& tensor = outputs[i].Get<Tensor>();
         Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                             std::make_shared<CPUAllocator>(), cpu_value,
+                             execution_providers.Get(cpu_ep_type)->CreatePreferredAllocators()[0], cpu_value,
                              tensor.Strides());
         ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>()));
       }

@@ -2275,7 +2275,7 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   for (int i = 0; i < 9; ++i) {
     values_x.push_back(x_f);
   }
-  CreateMLValue<MLFloat16>(std::make_shared<CPUAllocator>(),
+  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                            dims_x, values_x, &ml_value_x);
   feeds.insert(std::make_pair("X", ml_value_x));
 
@@ -3510,13 +3510,13 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
 
   OrtValue mlvalue_b_i;
   std::vector<int64_t> dims_b_i = {3072};
-  CreateMLValue<float>(std::make_shared<CPUAllocator>(), dims_b_i,
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_b_i,
                        random.Uniform<float>(dims_b_i, 0.0f, 1.0f), &mlvalue_b_i);
   feeds.insert(std::make_pair("B_I", mlvalue_b_i));
 
   OrtValue mlvalue_a_i;
   std::vector<int64_t> dims_a_i = {3, 512, 3072};
-  CreateMLValue<float>(std::make_shared<CPUAllocator>(), dims_a_i,
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_a_i,
                        random.Uniform<float>(dims_a_i, 0.0f, 1.0f), &mlvalue_a_i);
   feeds.insert(std::make_pair("A_I", mlvalue_a_i));
 

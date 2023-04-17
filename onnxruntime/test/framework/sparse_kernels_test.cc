@@ -391,7 +391,7 @@ class SparseTensorTests : public testing::Test {
 
   OrtValue Constant(const std::vector<int64_t>& elts, const std::vector<int64_t>& shape) {
     OrtValue mlvalue;
-    CreateMLValue<int64_t>(std::make_shared<CPUAllocator>(), shape, elts, &mlvalue);
+    CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], shape, elts, &mlvalue);
     return mlvalue;
   }
 
@@ -586,7 +586,7 @@ TEST(SparseCrcsFormatTests, Test1) {
   ASSERT_EQ(9U + 1U, outer_indices.size());
 
   // Test owning instance
-  auto default_allocator = std::make_shared<CPUAllocator>();
+  auto default_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
 
   SparseTensor tensor_alloc(DataTypeImpl::GetType<float>(), dense_shape, default_allocator);
   ASSERT_EQ(tensor_alloc.DenseShape(), dense_shape);
@@ -1289,7 +1289,7 @@ TEST(SparseTensorConversionTests, TestDenseToSparseConversion) {
 
 TEST(SparseTensorConversionTests, CsrConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
-  auto cpu_allocator = std::make_shared<CPUAllocator>();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
 
   const TensorShape dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
@@ -1453,7 +1453,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
 // !!! TODO: re-enable it before merge.
 #ifdef FALSE_USE_CUDA
   auto cuda_provider = DefaultCudaExecutionProvider();
-  auto cuda_allocator = std::make_shared<CPUAllocator>();
+  auto cuda_allocator = cuda_provider->CreatePreferredAllocators()[0];
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
     ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
@@ -1509,7 +1509,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
 
 TEST(SparseTensorConversionTests, CooConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
-  auto cpu_allocator = std::make_shared<CPUAllocator>();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
 
   const TensorShapeVector dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
@@ -1681,7 +1681,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
 // !!! TODO Re-enalbe it before merge.
 #ifdef FALSE_USE_CUDA
   auto cuda_provider = DefaultCudaExecutionProvider();
-  auto cuda_allocator = std::make_shared<CPUAllocator>();
+  auto cuda_allocator = cuda_provider->CreatePreferredAllocators()[0];
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
     ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
@@ -1741,7 +1741,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
 
 TEST(SparseTensorConversionTests, BlockSparse) {
   auto* cpu_provider = TestCPUExecutionProvider();
-  auto cpu_allocator = std::make_shared<CPUAllocator>();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
 
   DataTransferManager dtm;
   {
