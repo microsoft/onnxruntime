@@ -898,7 +898,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_sparsity_enable: " << sparsity_enable_
                         << ", trt_builder_optimization_level: " << builder_optimization_level_
                         << ", trt_auxiliary_streams: " << auxiliary_streams_
-                        << ", trt_tactic_sources: " << tactic_sources_;
+                        << ", trt_tactic_sources: " << tactic_sources_
                         << ", trt_profile_min_shapes: " << profile_min_shapes
                         << ", trt_profile_max_shapes: " << profile_max_shapes
                         << ", trt_profile_opt_shapes: " << profile_opt_shapes;
