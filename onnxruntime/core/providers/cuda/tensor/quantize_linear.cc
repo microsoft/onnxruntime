@@ -36,11 +36,9 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   // TO DO: support per-channel
   ORT_ENFORCE(IsScalarOr1ElementVector(&y_scale),
-              "y_scale must be a scalar or 1D tensor of size 1. It has ", y_scale.Shape().NumDimensions(),
-              " dimensions and the first one is ", y_scale.Shape()[0], ".");
+              "y_scale must be a scalar or 1D tensor of size 1.");
   ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point),
-              "y_zero_point must be a scalar or 1D tensor of size 1. It has ", y_zero_point->Shape().NumDimensions(),
-              "dimensions.");
+              "y_zero_point must be a scalar or 1D tensor of size 1.");
 
   const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
   const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
