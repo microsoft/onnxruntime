@@ -297,7 +297,10 @@ static Status dft_bluestein_z_chirp(
     std::complex<T>& out = *(Y_data + i * Y_stride);
     std::complex<T>& c_i = *(a_data + i);
     if (i > 0) {
-      c_i = *(a_data + M - i); // Why reverse the output?
+      // The inverse fft is computed using the same cached vandermonde matrix (V) created by the
+      // forward fft. This reversal causes the output to be reversed as well.
+      // Therefore we undo the reversal when writing the output back out.
+      c_i = *(a_data + M - i); 
     }
     out = c_i * chirp_i * scale;
   }
