@@ -75,7 +75,7 @@ def main(output_path: pathlib.Path, provider_filter: [str]):
         for schema in opdef:
             inputs = schema.inputs
             domain = schema.domain
-            if domain == "":
+            if not domain:
                 domain = "ai.onnx"
             fullname = domain + "." + schema.name
             paramstr = ""
@@ -107,7 +107,7 @@ def main(output_path: pathlib.Path, provider_filter: [str]):
         index = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
         for op in rtpy.get_all_opkernel_def():
             domain = op.domain
-            if domain == "":
+            if not domain:
                 domain = "ai.onnx"
             index[op.provider][domain][op.op_name].append(op)
 
