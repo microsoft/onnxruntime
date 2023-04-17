@@ -65,7 +65,8 @@ jobs:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
     DocUpdateNeeded: false  # Set to true during document generation if there are diffs
     skipComponentGovernanceDetection: true
-    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    EXTERNAL_CACHE_DIR: $(Agent.TempDirectory)/ext_ccache
+    ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     ${{ if eq(parameters.WITH_CACHE, true) }}:
       PS_CACHE_ARG: '-use_cache'
@@ -143,18 +144,16 @@ jobs:
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
     condition: eq(${{ parameters.WITH_CACHE }}, true)
 
-  - task: Cache@2
-    inputs:
-      key: '"$(TODAY)" | ccache | "$(System.StageName)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)" '
-      path: $(CCACHE_DIR)
-      restoreKeys: |
-        "$(TODAY)" | ccache | "$(System.StageName)" | "$(Build.SourceBranch)"
-        "$(TODAY)" | ccache | "$(System.StageName)"
-        "$(TODAY)" | ccache |
-    displayName: Cache Task
-    condition: eq(${{ parameters.WITH_CACHE }}, true)
-
   - ${{ if or(eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.GenerateDocumentation, true)) }}:
+      - task: Cache@2
+        inputs:
+          key: '"$(TODAY)" | ${{ parameters.buildArch }} | ${{ parameters.BuildConfig }} | $(Build.SourcesDirectory)/cmake/deps.txt, $(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1, $(Build.SourcesDirectory)/tools/ci_build/github/windows/helpers.ps1'
+          path: $(EXTERNAL_CACHE_DIR)
+          restoreKeys: |
+            "$(TODAY)" | ${{ parameters.buildArch }} | ${{ parameters.BuildConfig }}
+        displayName: Cache Task
+        condition: eq(${{ parameters.WITH_CACHE }}, true)
+
       - task: PowerShell@2
         displayName: 'Install ONNX'
         inputs:
@@ -166,6 +165,8 @@ jobs:
           ccache -sv
           ccache -z
         displayName: cache stat
+        env:
+          CCACHE_DIR: $(EXTERNAL_CACHE_DIR)
         condition: eq(${{ parameters.WITH_CACHE }}, true)
 
 
@@ -182,6 +183,15 @@ jobs:
       restoreSolution: '$(Build.SourcesDirectory)\packages.config'
       nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
       restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+
+  - task: Cache@2
+    inputs:
+      key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} |"$(Build.SourceVersion)" '
+      path: $(ORT_CACHE_DIR)
+      restoreKeys: |
+        "$(TODAY)" | onnxruntime | "$(System.StageName) | ${{ parameters.BuildConfig }}"
+    displayName: Cache Task
+    condition: eq(${{ parameters.WITH_CACHE }}, true)
 
   - task: PythonScript@0
     displayName: 'Generate cmake config'
@@ -207,6 +217,8 @@ jobs:
       ccache -sv
       ccache -z
     displayName: cache stat
+    env:
+      CCACHE_DIR: $(ORT_CACHE_DIR)
     condition: eq(${{ parameters.WITH_CACHE }}, true)
 
   - powershell: |
