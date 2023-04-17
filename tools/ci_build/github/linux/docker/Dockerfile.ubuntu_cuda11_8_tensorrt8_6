@@ -51,7 +51,7 @@ FROM base as final
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 
 # The local directory into which to clone ORT.
-ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
+ARG ONNXRUNTIME_LOCAL_CODE_DIR=/home/$BUILD_USER/code
 
 # The git branch of ORT to checkout and build.
 ARG ONNXRUNTIME_BRANCH=main
@@ -68,6 +68,10 @@ WORKDIR ${ONNXRUNTIME_LOCAL_CODE_DIR}
 RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
 
+ARG BUILD_UID=1001
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER
+USER $BUILD_USER
 WORKDIR ${ONNXRUNTIME_LOCAL_CODE_DIR}/onnxruntime
 
 # Reset to a specific commit if specified by build args.
@@ -76,7 +80,7 @@ RUN if [ -z "$ONNXRUNTIME_COMMIT_ID" ] ; then echo "Building branch ${ONNXRUNTIM
     git reset --hard ${ONNXRUNTIME_COMMIT_ID} && git submodule update --recursive ; fi
 
 # Build ORT
-RUN /bin/sh build.sh --allow_running_as_root --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"'
+RUN /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"'
 
 # Intall ORT wheel
 RUN pip install ${ONNXRUNTIME_LOCAL_CODE_DIR}/onnxruntime/build/Linux/Release/dist/*.whl
