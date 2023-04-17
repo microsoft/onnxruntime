@@ -99,7 +99,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// CreateInstanceWithOptions() provides a way to create environment with options.
     /// It must be called once before Instance() is called, otherwise it would not have effect.
     /// 
-    /// If the environment is not explicitly created, it would be created when SessionOptions are instantiated.
+    /// If the environment is not explicitly created, it will be created when needed, e.g., when creating a SessionOptions instance.
     /// </summary>
     public sealed class OrtEnv : SafeHandle
     {
