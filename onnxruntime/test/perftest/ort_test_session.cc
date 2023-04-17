@@ -388,6 +388,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_builder_optimization_level = trt_builder_optimization_level;
     tensorrt_options.trt_auxiliary_streams = trt_auxiliary_streams;
     tensorrt_options.trt_tactic_sources = trt_tactic_sources.c_str();
+    tensorrt_options.trt_profile_min_shapes = trt_profile_min_shapes.c_str();
+    tensorrt_options.trt_profile_max_shapes = trt_profile_max_shapes.c_str();
+    tensorrt_options.trt_profile_opt_shapes = trt_profile_opt_shapes.c_str();
     session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
