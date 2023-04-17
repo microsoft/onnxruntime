@@ -53,7 +53,7 @@ class QLinearSoftmax(QuantOperatorBase):
         kwargs["domain"] = ms_domain
         # make qlinearsoft has the real opset_version, its default SinceVersion would be 1
         kwargs["opset"] = self.quantizer.opset_version
-        qlinear_node_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_node_name = node.name + "_quant" if node.name else ""
         qnode = onnx.helper.make_node(
             "QLinear" + node.op_type,
             [
