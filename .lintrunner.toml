@@ -175,18 +175,15 @@ is_formatter = true
 code = 'CLANGFORMAT'
 include_patterns = [
     '**/*.h',
-    '**/*.c',
     '**/*.cc',
     '**/*.hpp',
     '**/*.cpp',
     '**/*.m',
     '**/*.mm',
-    '**/*.cs',
-    '**/*.java',
 ]
 exclude_patterns = [
     'onnxruntime/contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/**', # Contains data chunks
-    'onnxruntime/core/flatbuffers/**', # Generated code
+    'onnxruntime/core/flatbuffers/schema/ort.fbs.h', # Generated code
     'onnxruntime/core/graph/contrib_ops/quantization_defs.cc',
     'onnxruntime/core/mlas/**', # Contains assembly code
 ]
