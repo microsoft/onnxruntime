@@ -176,7 +176,6 @@ code = 'CLANGFORMAT'
 include_patterns = [
     '**/*.h',
     '**/*.c',
-    '**/*.hh',
     '**/*.cc',
     '**/*.hpp',
     '**/*.cpp',
@@ -186,9 +185,10 @@ include_patterns = [
     '**/*.java',
 ]
 exclude_patterns = [
-    'onnxruntime/core/mlas/**', # Contains assembly code
     'onnxruntime/contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/**', # Contains data chunks
+    'onnxruntime/core/flatbuffers/**', # Generated code
     'onnxruntime/core/graph/contrib_ops/quantization_defs.cc',
+    'onnxruntime/core/mlas/**', # Contains assembly code
 ]
 command = [
     'python',
