@@ -28,6 +28,7 @@ parameters:
   displayName: 'Extra build command line arguments'
   type: string
 
+
 stages:
 - stage: Extract_commit
   jobs:
