@@ -40,6 +40,7 @@ using MemoryLocations = std::array<std::int32_t, 16>;
 struct ShardInfo {
     ShardDim shardDims_{0};
     MemoryLocations locations_{0};
+    ShardDim shardDims() const { return shardDims_; }
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic push

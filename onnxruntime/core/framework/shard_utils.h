@@ -78,7 +78,7 @@ struct ShardUtils {
         std::int32_t accumulator = 1;
         for (auto i=0ul; i<numDims; i++)
         {
-            accumulator *= shardDims[i];
+            accumulator *= shardDims.at(i);
         }
         return accumulator;
     }
