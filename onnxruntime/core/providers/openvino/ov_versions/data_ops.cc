@@ -124,6 +124,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Elu", V_2020_4, {"CPU", "GPU"}},
     {"Elu", V_2023_0, {"VPUX"}},
     {"Equal", V_2020_4, {"CPU", "GPU"}},
+    {"Equal", V_2023_0, {"VPUX"}}, // Added for whisper decoder model.
     {"Erf", V_2020_4, {"CPU", "GPU"}},
     {"Erf", V_2023_0, {"VPUX"}},
     {"Exp", V_2020_4, {"CPU", "GPU"}},
@@ -162,6 +163,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
     {"LeakyRelu", V_2023_0, {"VPUX"}},
     {"Less", V_2020_4, {"CPU", "GPU"}},
+    {"Less", V_2023_0, {"VPUX"}}, // Added for whisper decoder model.
     {"LessOrEqual", V_2022_1, {"CPU", "GPU"}},
     {"LessOrEqual", V_2023_0, {"VPUX"}},
     {"Log", V_2020_4, {"CPU", "GPU"}},
@@ -284,6 +286,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Upsample", V_2021_4, {"GPU"}},
     {"Upsample", V_2023_0, {"VPUX"}},
     {"Where", V_2022_1, {"CPU", "GPU"}},
+    {"Where", V_2023_0, {"VPUX"}}, // Added for whisper decoder model.
     {"Xor", V_2022_1, {"CPU", "GPU"}},
 };
 

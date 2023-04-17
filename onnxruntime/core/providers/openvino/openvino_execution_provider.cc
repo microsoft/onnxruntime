@@ -25,6 +25,9 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
 
   if ((int)info.num_of_threads_ <= 0) {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
+  } else if ((int)info.num_of_threads_ > 8) {
+    std::string err_msg = std::string("\n [ERROR] num_of_threads configured during runtime is: ") + std::to_string(info.num_of_threads_) + "\nnum_of_threads configured should be >0 and <=8.\n";
+    ORT_THROW(err_msg);
   } else {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
   }
@@ -49,6 +52,10 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
               break;
             }
             if (info.device_type_ == "CPU" && (info.precision_ == "FP32" || info.precision_ == "FP16")) {
+              device_found = true;
+              break;
+            }
+            if (info.device_type_ == "VPUX" && (info.precision_ == "FP16" || info.precision_ == "U8")) {
               device_found = true;
               break;
             }
