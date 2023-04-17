@@ -189,10 +189,10 @@ jobs:
       ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
         key: ' "$(TODAY)" |  $(System.StageName) | ${{ parameters.BuildConfig }} | merge '
       ${{else}}:
-        key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} |"$(Build.SourceVersion)" '
+        key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} | $(Build.SourceVersion) '
       path: $(ORT_CACHE_DIR)
       restoreKeys: |
-        "$(TODAY)" | onnxruntime | "$(System.StageName) | ${{ parameters.BuildConfig }}"
+        "$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }}
     displayName: Cache Task
     condition: eq(${{ parameters.WITH_CACHE }}, true)
 
@@ -215,6 +215,8 @@ jobs:
       logProjectEvents: false
       workingFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
       createLogFile: true
+    env:
+      CCACHE_DIR: $(ORT_CACHE_DIR)
 
   - powershell: |
       ccache -sv
