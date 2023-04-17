@@ -2095,7 +2095,8 @@ def build_nuget_package(
             is_linux_build,
             ort_build_dir,
             nuget_exe_arg,
-        ] + msbuild_extra_options
+        ]
+        cmd_args.extend(msbuild_extra_options)
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
