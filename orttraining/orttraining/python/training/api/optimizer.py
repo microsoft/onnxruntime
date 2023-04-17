@@ -21,7 +21,7 @@ class Optimizer:
     """
 
     def __init__(self, optimizer_uri: str | os.PathLike, module: Module):
-        self._optimizer = C.Optimizer(str(optimizer_uri), module._model, module._device)
+        self._optimizer = C.Optimizer(os.fspath(optimizer_uri), module._model, module._device)
 
     def step(self) -> None:
         """Updates the model parameters based on the computed gradients.

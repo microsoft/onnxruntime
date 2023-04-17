@@ -20,8 +20,8 @@ class CheckpointState:
             raise TypeError(f"Invalid argument for CheckpointState received {type(state)}")
         self._state = state
 
-    @staticmethod
-    def load_checkpoint(checkpoint_uri: str | os.PathLike) -> CheckpointState:
+    @classmethod
+    def load_checkpoint(cls, checkpoint_uri: str | os.PathLike) -> CheckpointState:
         """Loads the checkpoint state from the checkpoint file
 
         Args:
@@ -30,17 +30,17 @@ class CheckpointState:
         Returns:
             CheckpointState: The checkpoint state object.
         """
-        return CheckpointState(C.load_checkpoint(str(checkpoint_uri)))
+        return cls(C.load_checkpoint(os.fspath(checkpoint_uri)))
 
-    @staticmethod
-    def save_checkpoint(state: CheckpointState, checkpoint_uri: str | os.PathLike) -> None:
+    @classmethod
+    def save_checkpoint(cls, state: CheckpointState, checkpoint_uri: str | os.PathLike) -> None:
         """Saves the checkpoint state to the checkpoint file
 
         Args:
             state: The checkpoint state object.
             checkpoint_uri: The path to the checkpoint file.
         """
-        C.save_checkpoint(state._state, str(checkpoint_uri))
+        C.save_checkpoint(state._state, os.fspath(checkpoint_uri))
 
     def __getitem__(self, name: str) -> int | float | str:
         """Gets the property associated with the given name

@@ -56,9 +56,9 @@ class Module:
             device_id,
         )
         self._model = C.Module(
-            str(train_model_uri),
+            os.fspath(train_model_uri),
             state._state,
-            str(eval_model_uri) if eval_model_uri is not None else None,
+            os.fspath(eval_model_uri) if eval_model_uri is not None else None,
             self._device,
         )
 
@@ -191,7 +191,7 @@ class Module:
             inference_model_uri: The path to the inference model.
             graph_output_names: The list of output names that are required for inferencing.
         """
-        self._model.export_model_for_inferencing(str(inference_model_uri), graph_output_names)
+        self._model.export_model_for_inferencing(os.fspath(inference_model_uri), graph_output_names)
 
     def input_names(self) -> list[str]:
         """Returns the input names of the training or eval model."""
