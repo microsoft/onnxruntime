@@ -20,11 +20,10 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
-/**
- * Tests for the ORT training apis.
- */
+/** Tests for the ORT training apis. */
 @EnabledIfSystemProperty(named = "ENABLE_TRAINING", matches = "1")
 public class TrainingTest {
+
   private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
 
   @Test
@@ -42,7 +41,7 @@ public class TrainingTest {
     String ckptPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
     try (OrtTrainingSession trainingSession =
-             env.createTrainingSession(ckptPath, trainPath, null, null)) {
+        env.createTrainingSession(ckptPath, trainPath, null, null)) {
       Assertions.assertNotNull(trainingSession);
       Set<String> inputNames = trainingSession.getTrainInputNames();
       Assertions.assertFalse(inputNames.isEmpty());
@@ -61,7 +60,7 @@ public class TrainingTest {
         TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_1.out"));
     float[] input = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/input-0.in"));
     try (OrtTrainingSession trainingSession =
-             env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
+        env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
       int[] labels = {1, 1};
 
       // Run train step with pinned inputs and pinned outputs
@@ -139,7 +138,7 @@ public class TrainingTest {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
     try (OrtTrainingSession trainingSession =
-             env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
+        env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
       runTrainStep(trainingSession);
     }
   }
@@ -152,13 +151,14 @@ public class TrainingTest {
     Path tmpPath = Files.createTempDirectory("ort-java-training-test");
     try {
       try (OrtTrainingSession trainingSession =
-               env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
+          env.createTrainingSession(checkpointPath, trainingPath, null, null)) {
+
         // Save checkpoint
         trainingSession.saveCheckpoint(tmpPath, false);
       }
 
       try (OrtTrainingSession trainingSession =
-               env.createTrainingSession(tmpPath.toString(), trainingPath, null, null)) {
+          env.createTrainingSession(tmpPath.toString(), trainingPath, null, null)) {
         // Load saved checkpoint into new session and run train step
         runTrainStep(trainingSession);
       }
@@ -178,7 +178,7 @@ public class TrainingTest {
         TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/loss_2.out"));
     float[] input = TestHelpers.loadTensorFromFile(TestHelpers.getResourcePath("/input-0.in"));
     try (OrtTrainingSession trainingSession =
-             env.createTrainingSession(checkpointPath, trainingPath, null, optimizerPath)) {
+        env.createTrainingSession(checkpointPath, trainingPath, null, optimizerPath)) {
       int[] labels = {1, 1};
 
       // Run train step with pinned inputs and pinned outputs
@@ -220,7 +220,7 @@ public class TrainingTest {
     String optimizerPath = TestHelpers.getResourcePath("/adamw.onnx").toString();
 
     try (OrtTrainingSession trainingSession =
-             env.createTrainingSession(checkpointPath, trainingPath, null, optimizerPath)) {
+        env.createTrainingSession(checkpointPath, trainingPath, null, optimizerPath)) {
       float learningRate = 0.245f;
       trainingSession.setLearningRate(learningRate);
       float actualLearningRate = trainingSession.getLearningRate();
@@ -235,7 +235,7 @@ public class TrainingTest {
     String optimizerPath = TestHelpers.getResourcePath("/adamw.onnx").toString();
 
     try (OrtTrainingSession trainingSession =
-             env.createTrainingSession(checkpointPath, trainingPath, null, optimizerPath)) {
+        env.createTrainingSession(checkpointPath, trainingPath, null, optimizerPath)) {
       float learningRate = 0.1f;
       trainingSession.registerLinearLRScheduler(2, 4, learningRate);
       runTrainStep(trainingSession);

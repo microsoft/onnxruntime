@@ -48,9 +48,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
-/**
- * Tests for the onnx-runtime Java interface.
- */
+/** Tests for the onnx-runtime Java interface. */
 public class InferenceTest {
   private static final Logger logger = Logger.getLogger(InferenceTest.class.getName());
 
@@ -80,7 +78,7 @@ public class InferenceTest {
   public void createSessionFromPath() throws OrtException {
     String modelPath = TestHelpers.getResourcePath("/squeezenet.onnx").toString();
     try (OrtSession.SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       assertNotNull(session);
       assertEquals(1, session.getNumInputs()); // 1 input node
       Map<String, NodeInfo> inputInfoList = session.getInputInfo();
@@ -118,7 +116,7 @@ public class InferenceTest {
   public void morePartialInputsTest() throws OrtException {
     String modelPath = TestHelpers.getResourcePath("/partial-inputs-test-2.onnx").toString();
     try (OrtSession.SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       assertNotNull(session);
       assertEquals(3, session.getNumInputs());
       assertEquals(1, session.getNumOutputs());
@@ -129,12 +127,12 @@ public class InferenceTest {
 
       BiFunction<Result, String, Float> unwrapFunc =
           (r, s) -> {
-        try {
-          return ((float[]) r.get(s).get().getValue())[0];
-        } catch (OrtException e) {
-          return Float.NaN;
-        }
-      };
+            try {
+              return ((float[]) r.get(s).get().getValue())[0];
+            } catch (OrtException e) {
+              return Float.NaN;
+            }
+          };
 
       // Graph has three scalar inputs, a, b, c, and a single output, ab.
       OnnxTensor a = OnnxTensor.createTensor(env, new float[] {2.0f});
@@ -202,7 +200,7 @@ public class InferenceTest {
   public void partialInputsTest() throws OrtException {
     String modelPath = TestHelpers.getResourcePath("/partial-inputs-test.onnx").toString();
     try (OrtSession.SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       assertNotNull(session);
       assertEquals(3, session.getNumInputs());
       assertEquals(3, session.getNumOutputs());
@@ -213,12 +211,12 @@ public class InferenceTest {
 
       BiFunction<Result, String, Float> unwrapFunc =
           (r, s) -> {
-        try {
-          return ((float[]) r.get(s).get().getValue())[0];
-        } catch (OrtException e) {
-          return Float.NaN;
-        }
-      };
+            try {
+              return ((float[]) r.get(s).get().getValue())[0];
+            } catch (OrtException e) {
+              return Float.NaN;
+            }
+          };
 
       // Graph has three scalar inputs, a, b, c, and three outputs, ab, bc, ab + bc.
       OnnxTensor a = OnnxTensor.createTensor(env, new float[] {2.0f});
@@ -338,7 +336,7 @@ public class InferenceTest {
     Path modelPath = TestHelpers.getResourcePath("/squeezenet.onnx");
     byte[] modelBytes = Files.readAllBytes(modelPath);
     try (OrtSession.SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelBytes, options)) {
+        OrtSession session = env.createSession(modelBytes, options)) {
       assertNotNull(session);
       assertEquals(1, session.getNumInputs()); // 1 input node
       Map<String, NodeInfo> inputInfoList = session.getInputInfo();
@@ -473,6 +471,7 @@ public class InferenceTest {
   public void throwWrongInputType() throws OrtException {
     SqueezeNetTuple tuple = openSessionSqueezeNet();
     try (OrtSession session = tuple.session) {
+
       float[] inputData = tuple.inputData;
       NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
@@ -499,6 +498,7 @@ public class InferenceTest {
   public void throwExtraInputs() throws OrtException {
     SqueezeNetTuple tuple = openSessionSqueezeNet();
     try (OrtSession session = tuple.session) {
+
       float[] inputData = tuple.inputData;
       NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
@@ -528,6 +528,7 @@ public class InferenceTest {
     int loop = 10;
     SqueezeNetTuple tuple = openSessionSqueezeNet();
     try (OrtSession session = tuple.session) {
+
       float[] inputData = tuple.inputData;
       float[] expectedOutput = tuple.outputData;
       NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
@@ -777,11 +778,11 @@ public class InferenceTest {
             Stream.of(onnxModelFiles).map(File::getName).collect(Collectors.joining(","));
         throw new RuntimeException(
             "Opset "
-            + opset
-            + " Model "
-            + modelName
-            + ". Can't determine model file name. Found these: "
-            + modelNamesList);
+                + opset
+                + " Model "
+                + modelName
+                + ". Can't determine model file name. Found these: "
+                + modelNamesList);
       }
 
       try (OrtSession session = env.createSession(onnxModelFileName)) {
@@ -831,13 +832,13 @@ public class InferenceTest {
     } catch (OrtException ex) {
       String msg =
           "Opset "
-          + opset
-          + ", Model "
-          + modelName
-          + ": ModelFile = "
-          + onnxModelFileName
-          + " error = "
-          + ex.getMessage();
+              + opset
+              + ", Model "
+              + modelName
+              + ": ModelFile = "
+              + onnxModelFileName
+              + " error = "
+              + ex.getMessage();
       throw new RuntimeException(msg, ex);
     }
   }
@@ -848,7 +849,7 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_types_FLOAT.pb").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       long[] shape = new long[] {1, 5};
       Map<String, OnnxTensor> container = new HashMap<>();
@@ -874,14 +875,15 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_types_FLOAT.pb").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       long[] shape = new long[] {1, 5};
       Map<String, OnnxTensor> container = new HashMap<>();
       float[] inputArr =
           new float[] {
-              1.0f, -2.0f, 3.0f, -4.0f, 5.0f, -6.0f, 7.0f, -8.0f, 9.0f, -10.0f, 11.0f, -12.0f, 13.0f,
-              -14.0f, 15};
+            1.0f, -2.0f, 3.0f, -4.0f, 5.0f, -6.0f, 7.0f, -8.0f, 9.0f, -10.0f, 11.0f, -12.0f, 13.0f,
+            -14.0f, 15
+          };
       FloatBuffer buffer = FloatBuffer.wrap(inputArr);
       FloatBuffer directBuffer =
           ByteBuffer.allocateDirect(inputArr.length * 4)
@@ -933,8 +935,8 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_types_BOOL.pb").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options);
-         OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+        OrtSession session = env.createSession(modelPath, options);
+        OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
       runOptions.setRunTag("monkeys");
       assertEquals("monkeys", runOptions.getRunTag());
       runOptions.setLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
@@ -1049,16 +1051,18 @@ public class InferenceTest {
           // prepare expected inputs and outputs
           float[] flatInputOne =
               new float[] {
-                  1.1f, 2.2f, 3.3f, 4.4f, 5.5f, 6.6f, 7.7f, 8.8f, 9.9f, 10.0f, 11.1f, 12.2f, 13.3f,
-                  14.4f, 15.5f};
+                1.1f, 2.2f, 3.3f, 4.4f, 5.5f, 6.6f, 7.7f, 8.8f, 9.9f, 10.0f, 11.1f, 12.2f, 13.3f,
+                14.4f, 15.5f
+              };
           Object tensorIn = OrtUtil.reshape(flatInputOne, new long[] {3, 5});
           OnnxTensor ov = OnnxTensor.createTensor(env, tensorIn);
           container.put("input_1", ov);
 
           float[] flatInputTwo =
               new float[] {
-                  15.5f, 14.4f, 13.3f, 12.2f, 11.1f, 10.0f, 9.9f, 8.8f, 7.7f, 6.6f, 5.5f, 4.4f, 3.3f,
-                  2.2f, 1.1f};
+                15.5f, 14.4f, 13.3f, 12.2f, 11.1f, 10.0f, 9.9f, 8.8f, 7.7f, 6.6f, 5.5f, 4.4f, 3.3f,
+                2.2f, 1.1f
+              };
           tensorIn = OrtUtil.reshape(flatInputTwo, new long[] {3, 5});
           ov = OnnxTensor.createTensor(env, tensorIn);
           container.put("input_2", ov);
@@ -1161,7 +1165,7 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_types_BOOL.pb").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
       boolean[] flatInput = new boolean[] {true, false, true, false, true};
@@ -1182,7 +1186,7 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_types_INT32.pb").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
       int[] flatInput = new int[] {1, -2, -3, Integer.MIN_VALUE, Integer.MAX_VALUE};
@@ -1203,7 +1207,7 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_types_DOUBLE.pb").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
       double[] flatInput = new double[] {1.0, 2.0, -3.0, 5, 5};
@@ -1224,7 +1228,7 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_types_INT8.pb").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
       byte[] flatInput = new byte[] {1, 2, -3, Byte.MIN_VALUE, Byte.MAX_VALUE};
@@ -1244,7 +1248,7 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_types_UINT8.pb").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
       byte[] flatInput = new byte[] {1, 2, -3, Byte.MIN_VALUE, Byte.MAX_VALUE};
@@ -1266,7 +1270,7 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_types_INT16.pb").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
       short[] flatInput = new short[] {1, 2, 3, Short.MIN_VALUE, Short.MAX_VALUE};
@@ -1287,7 +1291,7 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_types_INT64.pb").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
       long[] flatInput = new long[] {1, 2, -3, Long.MIN_VALUE, Long.MAX_VALUE};
@@ -1312,7 +1316,8 @@ public class InferenceTest {
 
     String modelPath = TestHelpers.getResourcePath("/test_sequence_map_int_float.pb").toString();
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
+
       Map<String, NodeInfo> outputInfos = session.getOutputInfo();
       Iterator<NodeInfo> valuesItr = outputInfos.values().iterator();
       NodeInfo firstOutputInfo = valuesItr.next();
@@ -1378,7 +1383,8 @@ public class InferenceTest {
     // https://github.com/onnx/sklearn-onnx/blob/master/docs/examples/plot_pipeline_lightgbm.py
     String modelPath = TestHelpers.getResourcePath("/test_sequence_map_string_float.pb").toString();
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
+
       Map<String, NodeInfo> outputInfos = session.getOutputInfo();
       Iterator<NodeInfo> valuesItr = outputInfos.values().iterator();
       NodeInfo firstOutputInfo = valuesItr.next();
@@ -1440,7 +1446,7 @@ public class InferenceTest {
     String modelPath = TestHelpers.getResourcePath("/test_sequence_tensors.onnx").toString();
 
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
       Map<String, NodeInfo> outputInfos = session.getOutputInfo();
       NodeInfo outputInfo = outputInfos.get("output_sequence");
       assertTrue(outputInfo.getInfo() instanceof SequenceInfo);
@@ -1528,7 +1534,8 @@ public class InferenceTest {
   public void testStringIdentity() throws OrtException {
     String modelPath = TestHelpers.getResourcePath("/identity_string.onnx").toString();
     try (SessionOptions options = new SessionOptions();
-         OrtSession session = env.createSession(modelPath, options)) {
+        OrtSession session = env.createSession(modelPath, options)) {
+
       Map<String, NodeInfo> outputInfos = session.getOutputInfo();
       ValueInfo firstOutputInfo = outputInfos.values().iterator().next().getInfo();
       assertTrue(firstOutputInfo instanceof TensorInfo);
@@ -1585,9 +1592,7 @@ public class InferenceTest {
     }
   }
 
-  /**
-   * Carrier tuple for the squeeze net model.
-   */
+  /** Carrier tuple for the squeeze net model. */
   public static class SqueezeNetTuple {
     public final OrtSession session;
     public final float[] inputData;

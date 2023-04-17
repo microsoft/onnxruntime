@@ -15,22 +15,21 @@
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseAPIBase(JNIEnv* jniEnv, jclass clazz,
                                                                           jint apiVersion) {
-  (void)jniEnv;
-  (void)clazz;  // required JNI parameters not needed by functions which don't call back into Java.
+  (void)jniEnv; (void)clazz;  // required JNI parameters not needed by functions which don't call back into Java.
   const OrtApi* ortPtr = OrtGetApiBase()->GetApi((uint32_t)apiVersion);
-  return (jlong)ortPtr;
+  return (jlong) ortPtr;
 }
 /*
  * Class:     ai_onnxruntime_OnnxRuntime
  * Method:    initialiseTrainingAPIBase
  * Signature: (JI)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseTrainingAPIBase(JNIEnv* jniEnv, jclass clazz, jlong apiHandle, jint trainingApiVersion) {
-  (void)jniEnv;
-  (void)clazz;  // required JNI parameters not needed by functions which don't call back into Java.
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseTrainingAPIBase
+  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jint trainingApiVersion) {
+  (void)jniEnv; (void)clazz;  // required JNI parameters not needed by functions which don't call back into Java.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainingApi = api->GetTrainingApi((uint32_t)trainingApiVersion);
-  return (jlong)trainingApi;
+  return (jlong) trainingApi;
 }
 
 /*
@@ -40,8 +39,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseTrainingAPIBas
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxRuntime_getAvailableProviders(JNIEnv* jniEnv, jclass clazz,
                                                                                      jlong apiHandle) {
-  (void)jniEnv;
-  (void)clazz;  // required JNI parameters not needed by functions which don't call back into Java.
+  (void)jniEnv; (void)clazz;  // required JNI parameters not needed by functions which don't call back into Java.
   const OrtApi* api = (const OrtApi*)apiHandle;
 
   char** providers = NULL;
@@ -75,7 +73,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxRuntime_getAvailableProvi
  * Method:    initialiseVersion
  * Signature: ()Ljava/lang/String;
  */
-JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseVersion(JNIEnv* jniEnv, jclass clazz) {
+JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseVersion
+  (JNIEnv * jniEnv, jclass clazz) {
   (void)clazz;  // required JNI parameter not needed by functions which don't access their host class.
   const char* version = OrtGetApiBase()->GetVersionString();
   assert(version != NULL);

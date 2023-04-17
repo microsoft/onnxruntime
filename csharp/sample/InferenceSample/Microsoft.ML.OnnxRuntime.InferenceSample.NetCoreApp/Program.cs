@@ -6,16 +6,16 @@ using Microsoft.ML.OnnxRuntime.InferenceSample;
 
 namespace CSharpUsage
 {
-class Program
-{
-    public static void Main(string[] args)
+    class Program
     {
-        Console.WriteLine("Using API");
-        using (var inferenceSampleApi = new InferenceSampleApi())
+        public static void Main(string[] args)
         {
-            inferenceSampleApi.Execute();
+            Console.WriteLine("Using API");
+            using (var inferenceSampleApi = new InferenceSampleApi())
+            {
+                inferenceSampleApi.Execute();
+            }
+            Console.WriteLine("Done");
         }
-        Console.WriteLine("Done");
     }
-}
 }

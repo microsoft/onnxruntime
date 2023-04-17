@@ -4,9 +4,7 @@
  */
 package ai.onnxruntime.providers;
 
-/**
- * Flags for the NNAPI provider.
- */
+/** Flags for the NNAPI provider. */
 public enum NNAPIFlags implements OrtFlags {
   USE_FP16(1), // NNAPI_FLAG_USE_FP16(0x001)
   USE_NCHW(2), // NNAPI_FLAG_USE_NCHW(0x002)

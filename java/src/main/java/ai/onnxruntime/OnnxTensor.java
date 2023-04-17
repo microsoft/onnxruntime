@@ -333,9 +333,9 @@ public class OnnxTensor extends OnnxTensorLike {
           if (data == null) {
             throw new OrtException(
                 "Failed to convert a boxed primitive to an array, this is an error with the ORT Java API, please report this message & stack trace. JavaType = "
-                + info.type
-                + ", object = "
-                + data);
+                    + info.type
+                    + ", object = "
+                    + data);
           }
         }
         return new OnnxTensor(

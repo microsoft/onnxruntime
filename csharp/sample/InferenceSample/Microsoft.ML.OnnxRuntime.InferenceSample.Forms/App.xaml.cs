@@ -2,22 +2,19 @@
 
 namespace Microsoft.ML.OnnxRuntime.InferenceSample.Forms
 {
-public partial class App : Application
-{
-    public App()
+    public partial class App : Application
     {
-        InitializeComponent();
+        public App()
+        {
+            InitializeComponent();
 
-        MainPage = new MainPage();
+            MainPage = new MainPage();
+        }
+
+        protected override void OnStart() {}
+
+        protected override void OnSleep() {}
+
+        protected override void OnResume() {}
     }
-
-    protected override void OnStart()
-    {}
-
-    protected override void OnSleep()
-    {}
-
-    protected override void OnResume()
-    {}
-}
 }

@@ -6,9 +6,7 @@ package ai.onnxruntime;
 
 import ai.onnxruntime.TensorInfo.OnnxTensorType;
 
-/**
- * An enum representing onnxruntime supported Java primitive types (and String).
- */
+/** An enum representing onnxruntime supported Java primitive types (and String). */
 public enum OnnxJavaType {
   FLOAT(1, float.class, 4),
   DOUBLE(2, double.class, 8),

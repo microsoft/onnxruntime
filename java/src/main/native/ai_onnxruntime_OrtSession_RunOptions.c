@@ -13,12 +13,13 @@
  * Method:    createRunOptions
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_createRunOptions(JNIEnv* jniEnv, jclass jclazz, jlong apiHandle) {
-  (void)jclazz;  // Required JNI parameter not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  OrtRunOptions* opts;
-  checkOrtStatus(jniEnv, api, api->CreateRunOptions(&opts));
-  return (jlong)opts;
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_createRunOptions
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle) {
+    (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtRunOptions* opts;
+    checkOrtStatus(jniEnv, api, api->CreateRunOptions(&opts));
+    return (jlong) opts;
 }
 
 /*
@@ -26,10 +27,11 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_createRun
  * Method:    setLogLevel
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setLogLevel(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jint logLevel) {
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  checkOrtStatus(jniEnv, api, api->RunOptionsSetRunLogSeverityLevel((OrtRunOptions*)nativeHandle, logLevel));
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setLogLevel
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jint logLevel) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  checkOrtStatus(jniEnv, api, api->RunOptionsSetRunLogSeverityLevel((OrtRunOptions*) nativeHandle, logLevel));
 }
 
 /*
@@ -37,11 +39,12 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setLogLeve
  * Method:    getLogLevel
  * Signature: (JJ)I
  */
-JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getLogLevel(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle) {
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
+JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getLogLevel
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
   int logLevel;
-  checkOrtStatus(jniEnv, api, api->RunOptionsGetRunLogSeverityLevel((OrtRunOptions*)nativeHandle, &logLevel));
+  checkOrtStatus(jniEnv, api, api->RunOptionsGetRunLogSeverityLevel((OrtRunOptions*) nativeHandle, &logLevel));
   return (jint)logLevel;
 }
 
@@ -50,10 +53,11 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getLogLeve
  * Method:    setLogVerbosityLevel
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setLogVerbosityLevel(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jint logLevel) {
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  checkOrtStatus(jniEnv, api, api->RunOptionsSetRunLogVerbosityLevel((OrtRunOptions*)nativeHandle, logLevel));
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setLogVerbosityLevel
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jint logLevel) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  checkOrtStatus(jniEnv, api, api->RunOptionsSetRunLogVerbosityLevel((OrtRunOptions*) nativeHandle, logLevel));
 }
 
 /*
@@ -61,11 +65,12 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setLogVerb
  * Method:    getLogVerbosityLevel
  * Signature: (JJ)I
  */
-JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getLogVerbosityLevel(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle) {
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
+JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getLogVerbosityLevel
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
   int logLevel;
-  checkOrtStatus(jniEnv, api, api->RunOptionsGetRunLogVerbosityLevel((OrtRunOptions*)nativeHandle, &logLevel));
+  checkOrtStatus(jniEnv, api, api->RunOptionsGetRunLogVerbosityLevel((OrtRunOptions*) nativeHandle, &logLevel));
   return (jint)logLevel;
 }
 
@@ -74,11 +79,12 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getLogVerb
  * Method:    setRunTag
  * Signature: (JJLjava/lang/String;)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setRunTag(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jstring runTag) {
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setRunTag
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jstring runTag) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
   const char* runTagStr = (*jniEnv)->GetStringUTFChars(jniEnv, runTag, NULL);
-  checkOrtStatus(jniEnv, api, api->RunOptionsSetRunTag((OrtRunOptions*)nativeHandle, runTagStr));
+  checkOrtStatus(jniEnv, api, api->RunOptionsSetRunTag((OrtRunOptions*) nativeHandle, runTagStr));
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, runTag, runTagStr);
 }
 
@@ -87,12 +93,13 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setRunTag(
  * Method:    getRunTag
  * Signature: (JJ)Ljava/lang/String;
  */
-JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getRunTag(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle) {
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
+JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getRunTag
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
   const char* runTagStr;
   // This is a reference to the C str, and should not be freed.
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->RunOptionsGetRunTag((OrtRunOptions*)nativeHandle, &runTagStr));
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->RunOptionsGetRunTag((OrtRunOptions*) nativeHandle, &runTagStr));
   if (code == ORT_OK) {
     jstring runTag = (*jniEnv)->NewStringUTF(jniEnv, runTagStr);
     return runTag;
@@ -106,12 +113,13 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getRunT
  * Method:    addRunConfigEntry
  * Signature: (JJLjava/lang/String;Ljava/lang/String;)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_addRunConfigEntry(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jstring keyStr, jstring valueStr) {
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_addRunConfigEntry
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jstring keyStr, jstring valueStr) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
   const char* key = (*jniEnv)->GetStringUTFChars(jniEnv, keyStr, NULL);
   const char* value = (*jniEnv)->GetStringUTFChars(jniEnv, valueStr, NULL);
-  checkOrtStatus(jniEnv, api, api->AddRunConfigEntry((OrtRunOptions*)nativeHandle, key, value));
+  checkOrtStatus(jniEnv, api, api->AddRunConfigEntry((OrtRunOptions*) nativeHandle, key, value));
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, keyStr, key);
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, valueStr, value);
 }
@@ -121,10 +129,11 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_addRunConf
  * Method:    setTerminate
  * Signature: (JJZ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setTerminate(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jboolean terminate) {
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  OrtRunOptions* runOptions = (OrtRunOptions*)nativeHandle;
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setTerminate
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jboolean terminate) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  OrtRunOptions* runOptions = (OrtRunOptions*) nativeHandle;
   if (terminate) {
     checkOrtStatus(jniEnv, api, api->RunOptionsSetTerminate(runOptions));
   } else {
@@ -137,9 +146,9 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setTermina
  * Method:    close
  * Signature: (JJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_close(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-  (void)jniEnv;
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  api->ReleaseRunOptions((OrtRunOptions*)handle);
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_close
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+  (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  api->ReleaseRunOptions((OrtRunOptions*) handle);
 }

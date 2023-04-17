@@ -4,9 +4,7 @@
  */
 package ai.onnxruntime;
 
-/**
- * An exception which contains the error message and code produced by the native onnxruntime.
- */
+/** An exception which contains the error message and code produced by the native onnxruntime. */
 public class OrtException extends Exception {
   private static final long serialVersionUID = 1L;
 

@@ -23,10 +23,9 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Assertions;
 
-/**
- * Test helpers for manipulating primitive arrays.
- */
+/** Test helpers for manipulating primitive arrays. */
 public class TestHelpers {
+
   private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
 
   static void deleteDirectoryTree(Path input) throws IOException {
@@ -174,7 +173,7 @@ public class TestHelpers {
         if (iClazz.getComponentType().isArray()) {
           flatten((Object[]) i, output, primitiveClazz);
         } else if ((iClazz.getComponentType().isPrimitive()
-                       || iClazz.getComponentType().equals(String.class))
+                || iClazz.getComponentType().equals(String.class))
             && iClazz.getComponentType().equals(primitiveClazz)) {
           flattenBase(i, output, primitiveClazz);
         } else {
@@ -388,15 +387,15 @@ public class TestHelpers {
           // throw error
           throw new IllegalStateException(
               "No matching Tensor found in InputOutputMetadata corresponding to the serialized tensor loaded from "
-              + filename);
+                  + filename);
         }
       }
     } else {
       // throw error
       throw new IllegalStateException(
           "While reading the serialized tensor loaded from "
-          + filename
-          + ", metaDataDict has 0 elements");
+              + filename
+              + ", metaDataDict has 0 elements");
     }
 
     Assertions.assertEquals(tensorElemType, nodeMeta.type);

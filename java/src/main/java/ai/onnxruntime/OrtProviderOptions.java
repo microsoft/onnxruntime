@@ -6,9 +6,7 @@ package ai.onnxruntime;
 
 import java.io.IOException;
 
-/**
- * An abstract base class for execution provider options classes.
- */
+/** An abstract base class for execution provider options classes. */
 // Note this lives in ai.onnxruntime to allow subclasses to access the OnnxRuntime.ortApiHandle
 // package private field.
 public abstract class OrtProviderOptions implements AutoCloseable {
@@ -107,9 +105,7 @@ public abstract class OrtProviderOptions implements AutoCloseable {
     return createFunction.create();
   }
 
-  /**
-   * Functional interface mirroring a Java supplier, but can throw OrtException.
-   */
+  /** Functional interface mirroring a Java supplier, but can throw OrtException. */
   @FunctionalInterface
   public interface OrtProviderSupplier {
     /**

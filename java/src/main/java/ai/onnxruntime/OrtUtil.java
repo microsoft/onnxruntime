@@ -16,13 +16,10 @@ import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 
-/**
- * Util code for interacting with Java arrays.
- */
+/** Util code for interacting with Java arrays. */
 public final class OrtUtil {
-  /**
-   * Private constructor for static util class.
-   */
+
+  /** Private constructor for static util class. */
   private OrtUtil() {}
 
   /**
@@ -38,8 +35,8 @@ public final class OrtUtil {
     if (shape.length == 0 || shape.length > TensorInfo.MAX_DIMENSIONS) {
       throw new IllegalArgumentException(
           "Arrays with less than 1 and greater than "
-          + TensorInfo.MAX_DIMENSIONS
-          + " dimensions are not supported.");
+              + TensorInfo.MAX_DIMENSIONS
+              + " dimensions are not supported.");
     }
     int[] newShape = new int[shape.length];
     for (int i = 0; i < shape.length; i++) {
@@ -47,7 +44,7 @@ public final class OrtUtil {
       if (curDim < 0 || curDim > Integer.MAX_VALUE) {
         throw new IllegalArgumentException(
             "Invalid shape for a Java array, expected non-negative entries smaller than Integer.MAX_VALUE. Found "
-            + Arrays.toString(shape));
+                + Arrays.toString(shape));
       } else {
         newShape[i] = (int) curDim;
       }
@@ -68,8 +65,8 @@ public final class OrtUtil {
     if (shape.length == 0 || shape.length > 8) {
       throw new IllegalArgumentException(
           "Arrays with less than 1 and greater than "
-          + TensorInfo.MAX_DIMENSIONS
-          + " dimensions are not supported.");
+              + TensorInfo.MAX_DIMENSIONS
+              + " dimensions are not supported.");
     }
     long[] newShape = new long[shape.length];
     for (int i = 0; i < shape.length; i++) {
@@ -77,7 +74,7 @@ public final class OrtUtil {
       if (curDim < 1) {
         throw new IllegalArgumentException(
             "Invalid shape for a Java array, expected positive entries smaller than Integer.MAX_VALUE. Found "
-            + Arrays.toString(shape));
+                + Arrays.toString(shape));
       } else {
         newShape[i] = curDim;
       }
@@ -504,9 +501,9 @@ public final class OrtUtil {
       // should be allocatable (assuming there is enough memory) on all 64-bit JVMs.
       throw new IllegalStateException(
           "Cannot allocate a direct buffer of the requested size and type, size "
-          + data.remaining()
-          + ", type = "
-          + type);
+              + data.remaining()
+              + ", type = "
+              + type);
     }
     // Now we know we're in range
     int bufferSize = data.remaining() * type.size;

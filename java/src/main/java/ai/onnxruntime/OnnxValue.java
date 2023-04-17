@@ -12,9 +12,8 @@ import java.util.Map;
  * to these types one day.
  */
 public interface OnnxValue extends AutoCloseable {
-  /**
-   * The type of the {@link OnnxValue}, mirroring the id in the C API.
-   */
+
+  /** The type of the {@link OnnxValue}, mirroring the id in the C API. */
   public enum OnnxValueType {
     ONNX_TYPE_UNKNOWN(0),
     ONNX_TYPE_TENSOR(1),
@@ -24,9 +23,7 @@ public interface OnnxValue extends AutoCloseable {
     ONNX_TYPE_SPARSETENSOR(5),
     ONNX_TYPE_OPTIONAL(6);
 
-    /**
-     * The id number of this type in the C API.
-     */
+    /** The id number of this type in the C API. */
     public final int value;
 
     OnnxValueType(int value) {
@@ -60,9 +57,7 @@ public interface OnnxValue extends AutoCloseable {
    */
   public ValueInfo getInfo();
 
-  /**
-   * Closes the OnnxValue, freeing it's native memory.
-   */
+  /** Closes the OnnxValue, freeing it's native memory. */
   @Override
   public void close();
 

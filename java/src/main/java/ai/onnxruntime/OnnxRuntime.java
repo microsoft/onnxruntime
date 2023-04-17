@@ -56,88 +56,52 @@ final class OnnxRuntime {
    */
   static final String ONNXRUNTIME_NATIVE_PATH = "onnxruntime.native.path";
 
-  /**
-   * The short name of the ONNX runtime shared library
-   */
+  /** The short name of the ONNX runtime shared library */
   static final String ONNXRUNTIME_LIBRARY_NAME = "onnxruntime";
-  /**
-   * The short name of the ONNX runtime JNI shared library
-   */
+  /** The short name of the ONNX runtime JNI shared library */
   static final String ONNXRUNTIME_JNI_LIBRARY_NAME = "onnxruntime4j_jni";
 
-  /**
-   * The short name of the ONNX runtime shared provider library
-   */
+  /** The short name of the ONNX runtime shared provider library */
   static final String ONNXRUNTIME_LIBRARY_SHARED_NAME = "onnxruntime_providers_shared";
-  /**
-   * The short name of the ONNX runtime CUDA provider library
-   */
+  /** The short name of the ONNX runtime CUDA provider library */
   static final String ONNXRUNTIME_LIBRARY_CUDA_NAME = "onnxruntime_providers_cuda";
-  /**
-   * The short name of the ONNX runtime ROCM provider library
-   */
+  /** The short name of the ONNX runtime ROCM provider library */
   static final String ONNXRUNTIME_LIBRARY_ROCM_NAME = "onnxruntime_providers_rocm";
-  /**
-   * The short name of the ONNX runtime DNNL provider library
-   */
+  /** The short name of the ONNX runtime DNNL provider library */
   static final String ONNXRUNTIME_LIBRARY_DNNL_NAME = "onnxruntime_providers_dnnl";
-  /**
-   * The short name of the ONNX runtime OpenVINO provider library
-   */
+  /** The short name of the ONNX runtime OpenVINO provider library */
   static final String ONNXRUNTIME_LIBRARY_OPENVINO_NAME = "onnxruntime_providers_openvino";
-  /**
-   * The short name of the ONNX runtime TensorRT provider library
-   */
+  /** The short name of the ONNX runtime TensorRT provider library */
   static final String ONNXRUNTIME_LIBRARY_TENSORRT_NAME = "onnxruntime_providers_tensorrt";
 
-  /**
-   * The OS & CPU architecture string
-   */
+  /** The OS & CPU architecture string */
   private static final String OS_ARCH_STR = initOsArch();
 
-  /**
-   * Have the core ONNX Runtime native libraries been loaded
-   */
+  /** Have the core ONNX Runtime native libraries been loaded */
   private static boolean loaded = false;
 
-  /**
-   * The temp directory where native libraries are extracted
-   */
+  /** The temp directory where native libraries are extracted */
   private static Path tempDirectory;
 
-  /**
-   * The value of the {@link #ONNXRUNTIME_NATIVE_PATH} system property
-   */
+  /** The value of the {@link #ONNXRUNTIME_NATIVE_PATH} system property */
   private static String libraryDirPathProperty;
 
-  /**
-   * Tracks if the shared providers have been extracted
-   */
+  /** Tracks if the shared providers have been extracted */
   private static final Set<String> extractedSharedProviders = new HashSet<>();
 
-  /**
-   * The API handle.
-   */
+  /** The API handle. */
   static long ortApiHandle;
 
-  /**
-   * The Training API handle.
-   */
+  /** The Training API handle. */
   static long ortTrainingApiHandle;
 
-  /**
-   * Is training enabled in the native library
-   */
+  /** Is training enabled in the native library */
   static boolean trainingEnabled;
 
-  /**
-   * The available runtime providers
-   */
+  /** The available runtime providers */
   static EnumSet<OrtProvider> providers;
 
-  /**
-   * The version string.
-   */
+  /** The version string. */
   private static String version;
 
   private OnnxRuntime() {}

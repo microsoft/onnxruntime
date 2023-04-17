@@ -16,119 +16,149 @@ using System;
 
 namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
 {
-public class TensorTestsBase
-{
-    public enum TensorType
+    public class TensorTestsBase
     {
-        Dense
-    }
-    ;
-
-    public class TensorConstructor
-    {
-        public TensorType TensorType { get; set; }
-
-        public bool IsReversedStride { get; set; }
-
-        public Tensor<T> CreateFromArray<T>(Array array)
+        public enum TensorType
         {
-            switch (TensorType)
+            Dense
+        };
+
+        public class TensorConstructor
+        {
+            public TensorType TensorType { get; set; }
+
+            public bool IsReversedStride { get; set; }
+
+            public Tensor<T> CreateFromArray<T>(Array array)
             {
-                case TensorType.Dense:
-                    return array.ToTensor<T>(IsReversedStride);
-            }
-
-            throw new ArgumentException(nameof(TensorType));
-        }
-        public Tensor<T> CreateFromDimensions<T>(ReadOnlySpan<int> dimensions)
-        {
-            switch (TensorType)
-            {
-                case TensorType.Dense:
-                    return new DenseTensor<T>(dimensions, IsReversedStride);
-            }
-
-            throw new ArgumentException(nameof(TensorType));
-        }
-
-        public override string ToString()
-        {
-            return $"{TensorType}, {nameof(IsReversedStride)} = {IsReversedStride}";
-        }
-    }
-
-    private static TensorType[] s_tensorTypes = new[] { TensorType.Dense };
-
-    private static bool[] s_reverseStrideValues = new[] { false, true };
-
-    public static IEnumerable<object[]> GetSingleTensorConstructors()
-    {
-        foreach (TensorType tensorType in s_tensorTypes)
-        {
-            foreach (bool isReversedStride in s_reverseStrideValues)
-            {
-                yield return new[] { new TensorConstructor() { TensorType = tensorType,
-                                                               IsReversedStride = isReversedStride } };
-            }
-        }
-    }
-
-    public static IEnumerable<object[]> GetDualTensorConstructors()
-    {
-        foreach (TensorType leftTensorType in s_tensorTypes)
-        {
-            foreach (TensorType rightTensorType in s_tensorTypes)
-            {
-                foreach (bool isLeftReversedStride in s_reverseStrideValues)
+                switch (TensorType)
                 {
-                    foreach (bool isRightReversedStride in s_reverseStrideValues)
-                    {
-                        yield return new[] { new TensorConstructor() { TensorType = leftTensorType,
-                                                                       IsReversedStride = isLeftReversedStride },
-                                             new TensorConstructor() { TensorType = rightTensorType,
-                                                                       IsReversedStride = isRightReversedStride } };
-                    }
+                    case TensorType.Dense:
+                        return array.ToTensor<T>(IsReversedStride);
                 }
+
+                throw new ArgumentException(nameof(TensorType));
+            }
+            public Tensor<T> CreateFromDimensions<T>(ReadOnlySpan<int> dimensions)
+            {
+                switch (TensorType)
+                {
+                    case TensorType.Dense:
+                        return new DenseTensor<T>(dimensions, IsReversedStride);
+                }
+
+                throw new ArgumentException(nameof(TensorType));
+            }
+
+            public override string ToString()
+            {
+                return $"{TensorType}, {nameof(IsReversedStride)} = {IsReversedStride}";
             }
         }
-    }
 
-    public static IEnumerable<object[]> GetTensorAndResultConstructor()
-    {
-        foreach (TensorType leftTensorType in s_tensorTypes)
+        private static TensorType[] s_tensorTypes = new[]
         {
-            foreach (TensorType rightTensorType in s_tensorTypes)
+            TensorType.Dense
+        };
+
+        private static bool[] s_reverseStrideValues = new[]
+        {
+            false,
+            true
+        };
+
+        public static IEnumerable<object[]> GetSingleTensorConstructors()
+        {
+            foreach (TensorType tensorType in s_tensorTypes)
             {
                 foreach (bool isReversedStride in s_reverseStrideValues)
                 {
-                    yield return new[] {
-                        new TensorConstructor() { TensorType = leftTensorType, IsReversedStride = isReversedStride },
-                        new TensorConstructor() { TensorType = rightTensorType, IsReversedStride = isReversedStride }
+                    yield return new[]
+                    {
+                        new TensorConstructor()
+                        {
+                            TensorType = tensorType,
+                            IsReversedStride = isReversedStride
+                        }
                     };
                 }
             }
         }
-    }
 
-    public static NativeMemory<T> NativeMemoryFromArray<T>(T[] array)
-    {
-        return NativeMemoryFromArray<T>((Array)array);
-    }
-
-    public static NativeMemory<T> NativeMemoryFromArray<T>(Array array)
-    {
-        // this silly method takes a managed array and copies it over to unmanaged memory,
-        // **only for test purposes**
-
-        var memory = NativeMemory<T>.Allocate(array.Length);
-        var span = memory.GetSpan();
-        int index = 0;
-        foreach (T item in array)
+        public static IEnumerable<object[]> GetDualTensorConstructors()
         {
-            span[index++] = item;
+            foreach (TensorType leftTensorType in s_tensorTypes)
+            {
+                foreach (TensorType rightTensorType in s_tensorTypes)
+                {
+                    foreach (bool isLeftReversedStride in s_reverseStrideValues)
+                    {
+                        foreach (bool isRightReversedStride in s_reverseStrideValues)
+                        {
+                            yield return new[]
+                            {
+                                new TensorConstructor()
+                                {
+                                    TensorType = leftTensorType,
+                                    IsReversedStride = isLeftReversedStride
+                                },
+                                new TensorConstructor()
+                                {
+                                    TensorType = rightTensorType,
+                                    IsReversedStride = isRightReversedStride
+                                }
+                            };
+                        }
+                    }
+                }
+            }
         }
 
-        return memory;
+        public static IEnumerable<object[]> GetTensorAndResultConstructor()
+        {
+            foreach (TensorType leftTensorType in s_tensorTypes)
+            {
+                foreach (TensorType rightTensorType in s_tensorTypes)
+                {
+                    foreach (bool isReversedStride in s_reverseStrideValues)
+                    {
+                        yield return new[]
+                        {
+                            new TensorConstructor()
+                            {
+                                TensorType = leftTensorType,
+                                IsReversedStride = isReversedStride
+                            },
+                            new TensorConstructor()
+                            {
+                                TensorType = rightTensorType,
+                                IsReversedStride = isReversedStride
+                            }
+                        };
+                    }
+                }
+            }
+        }
+
+        public static NativeMemory<T> NativeMemoryFromArray<T>(T[] array)
+        {
+            return NativeMemoryFromArray<T>((Array)array);
+        }
+
+        public static NativeMemory<T> NativeMemoryFromArray<T>(Array array)
+        {
+            // this silly method takes a managed array and copies it over to unmanaged memory,
+            // **only for test purposes**
+
+            var memory = NativeMemory<T>.Allocate(array.Length);
+            var span = memory.GetSpan();
+            int index = 0;
+            foreach (T item in array)
+            {
+                span[index++] = item;
+            }
+
+            return memory;
+        }
     }
-}
 }

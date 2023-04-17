@@ -13,12 +13,13 @@
  * Method:    createThreadingOptions
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_createThreadingOptions(JNIEnv* jniEnv, jclass clazz, jlong apiHandle) {
-  (void)clazz;  // Required JNI parameter not needed by functions which don't need to access their host class.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  OrtThreadingOptions* opts;
-  checkOrtStatus(jniEnv, api, api->CreateThreadingOptions(&opts));
-  return (jlong)opts;
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_createThreadingOptions
+  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle) {
+    (void) clazz; // Required JNI parameter not needed by functions which don't need to access their host class.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtThreadingOptions* opts;
+    checkOrtStatus(jniEnv,api,api->CreateThreadingOptions(&opts));
+    return (jlong) opts;
 }
 
 /*
@@ -26,10 +27,11 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions
  * Method:    setGlobalIntraOpNumThreads
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_setGlobalIntraOpNumThreads(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint numThreads) {
-  (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  checkOrtStatus(jniEnv, api, api->SetGlobalIntraOpNumThreads((OrtThreadingOptions*)handle, numThreads));
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_setGlobalIntraOpNumThreads
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint numThreads) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    checkOrtStatus(jniEnv,api,api->SetGlobalIntraOpNumThreads((OrtThreadingOptions*) handle, numThreads));
 }
 
 /*
@@ -37,10 +39,11 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_
  * Method:    setGlobalInterOpNumThreads
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_setGlobalInterOpNumThreads(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint numThreads) {
-  (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  checkOrtStatus(jniEnv, api, api->SetGlobalInterOpNumThreads((OrtThreadingOptions*)handle, numThreads));
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_setGlobalInterOpNumThreads
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint numThreads) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    checkOrtStatus(jniEnv,api,api->SetGlobalInterOpNumThreads((OrtThreadingOptions*) handle, numThreads));
 }
 
 /*
@@ -48,10 +51,11 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_
  * Method:    setGlobalSpinControl
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_setGlobalSpinControl(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint allowSpinning) {
-  (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  checkOrtStatus(jniEnv, api, api->SetGlobalSpinControl((OrtThreadingOptions*)handle, allowSpinning));
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_setGlobalSpinControl
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint allowSpinning) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    checkOrtStatus(jniEnv,api,api->SetGlobalSpinControl((OrtThreadingOptions*) handle, allowSpinning));
 }
 
 /*
@@ -59,10 +63,11 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_
  * Method:    setGlobalDenormalAsZero
  * Signature: (JJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_setGlobalDenormalAsZero(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-  (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  checkOrtStatus(jniEnv, api, api->SetGlobalDenormalAsZero((OrtThreadingOptions*)handle));
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_setGlobalDenormalAsZero
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    checkOrtStatus(jniEnv,api,api->SetGlobalDenormalAsZero((OrtThreadingOptions*) handle));
 }
 
 /*
@@ -70,9 +75,9 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_
  * Method:    closeThreadingOptions
  * Signature: (JJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_closeThreadingOptions(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-  (void)jniEnv;
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_closeThreadingOptions
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+  (void)jniEnv; (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   api->ReleaseThreadingOptions((OrtThreadingOptions*)handle);
 }

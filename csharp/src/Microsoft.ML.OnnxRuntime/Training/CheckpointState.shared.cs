@@ -6,71 +6,66 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
 #if __ENABLE_TRAINING_APIS__
-/// <summary>
-///  Holds the Checkpoint State as generated/consumed by on-device training APIs
-/// </summary>
-public class CheckpointState : SafeHandle
-{
-    internal IntPtr Handle
-    {
-        get {
-            return handle;
-        }
-    }
-
     /// <summary>
-    /// Creates CheckpointState by loading state from path.
-    /// <param name="checkpointPath"> absolute path to checkpoint file.</param>
+    ///  Holds the Checkpoint State as generated/consumed by on-device training APIs
     /// </summary>
-    public CheckpointState(string checkpointPath) : base(IntPtr.Zero, true)
+    public class CheckpointState : SafeHandle
     {
-        if (NativeTrainingMethods.TrainingEnabled())
+        internal IntPtr Handle
         {
-            var envHandle = OrtEnv.Handle; // just so it is initialized
-            LoadCheckpoint(checkpointPath);
+            get
+            {
+                return handle;
+            }
         }
-        else
+
+        /// <summary>
+        /// Creates CheckpointState by loading state from path.
+        /// <param name="checkpointPath"> absolute path to checkpoint file.</param>
+        /// </summary>
+        public CheckpointState(string checkpointPath)
+            : base(IntPtr.Zero, true)
         {
-            throw new InvalidOperationException(
-                "Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training_apis. \n");
+            if (NativeTrainingMethods.TrainingEnabled())
+            {
+                var envHandle = OrtEnv.Handle; // just so it is initialized
+                LoadCheckpoint(checkpointPath);
+            }
+            else
+            {
+                throw new InvalidOperationException("Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training_apis. \n");
+            }
         }
-    }
 
-    /// <summary>
-    /// Overrides SafeHandle.IsInvalid
-    /// </summary>
-    /// <value>returns true if handle is equal to Zero</value>
-    public override bool IsInvalid
-    {
-        get {
-            return handle == IntPtr.Zero;
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
+
+        /// <summary>
+        /// Loads Checkpoint state from path
+        /// </summary>
+        /// <param name="checkpointPath"> absolute path to checkpoint</param>
+        private void LoadCheckpoint(string checkpointPath)
+        {
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLoadCheckpoint(NativeOnnxValueHelper.GetPlatformSerializedString(checkpointPath), out handle));
         }
-    }
-
-    /// <summary>
-    /// Loads Checkpoint state from path
-    /// </summary>
-    /// <param name="checkpointPath"> absolute path to checkpoint</param>
-    private void LoadCheckpoint(string checkpointPath)
-    {
-        NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLoadCheckpoint(
-            NativeOnnxValueHelper.GetPlatformSerializedString(checkpointPath), out handle));
-    }
 
 #region SafeHandle
-    /// <summary>
-    /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
-    /// the native instance of CheckpointState
-    /// </summary>
-    /// <returns>always returns true</returns>
-    protected override bool ReleaseHandle()
-    {
-        NativeTrainingMethods.OrtReleaseCheckpointState(handle);
-        handle = IntPtr.Zero;
-        return true;
-    }
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of CheckpointState
+        /// </summary>
+        /// <returns>always returns true</returns>
+        protected override bool ReleaseHandle()
+        {
+            NativeTrainingMethods.OrtReleaseCheckpointState(handle);
+            handle = IntPtr.Zero;
+            return true;
+        }
 
 #endregion
-}
+    }
 #endif
 }

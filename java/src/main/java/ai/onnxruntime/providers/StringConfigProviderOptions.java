@@ -69,7 +69,9 @@ abstract class StringConfigProviderOptions extends OrtProviderOptions {
    * @return The serialized options string.
    */
   public String getOptionsString() {
-    return options.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()).collect(Collectors.joining(";", "", ";"));
+    return options.entrySet().stream()
+        .map(e -> e.getKey() + "=" + e.getValue())
+        .collect(Collectors.joining(";", "", ";"));
   }
 
   /**

@@ -14,10 +14,11 @@
  * Method:    loadCheckpoint
  * Signature: (JJLjava/lang/String;)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpointState_loadCheckpoint(JNIEnv* jniEnv, jclass jclazz, jlong apiHandle, jlong trainingApiHandle, jstring directory) {
-  (void)jclazz;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainingApiHandle;
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpointState_loadCheckpoint
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong trainingApiHandle, jstring directory) {
+  (void) jclazz; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  const OrtTrainingApi* trainApi = (const OrtTrainingApi*) trainingApiHandle;
 
   OrtCheckpointState* checkpoint = NULL;
 
@@ -41,7 +42,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpoin
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, directory, cPath);
 #endif
 
-  return (jlong)checkpoint;
+  return (jlong) checkpoint;
 }
 
 /*
@@ -49,9 +50,9 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpoin
  * Method:    close
  * Signature: (JJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpointState_close(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-  (void)jniEnv;
-  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtTrainingApi* api = (const OrtTrainingApi*)apiHandle;
-  api->ReleaseCheckpointState((OrtCheckpointState*)handle);
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpointState_close
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+  (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtTrainingApi* api = (const OrtTrainingApi*) apiHandle;
+  api->ReleaseCheckpointState((OrtCheckpointState*) handle);
 }

@@ -28,15 +28,12 @@ import java.util.regex.Pattern;
  * MNIST.
  */
 public class ScoreMNIST {
+
   private static final Logger logger = Logger.getLogger(ScoreMNIST.class.getName());
-  /**
-   * Pattern for splitting libsvm format files.
-   */
+  /** Pattern for splitting libsvm format files. */
   private static final Pattern splitPattern = Pattern.compile("\\s+");
 
-  /**
-   * A named tuple for sparse classification data.
-   */
+  /** A named tuple for sparse classification data. */
   private static class SparseData {
     public final int[] labels;
     public final List<int[]> indices;
@@ -92,7 +89,7 @@ public class ScoreMNIST {
     String line;
     int maxFeatureID = Integer.MIN_VALUE;
     try (BufferedReader reader = new BufferedReader(new FileReader(path))) {
-      for (;;) {
+      for (; ; ) {
         line = reader.readLine();
         if (line == null) {
           break;
@@ -143,12 +140,12 @@ public class ScoreMNIST {
 
     logger.info(
         "Loaded "
-        + maxFeatureID
-        + " features, "
-        + labels.size()
-        + " samples, from + '"
-        + path
-        + "'.");
+            + maxFeatureID
+            + " features, "
+            + labels.size()
+            + " samples, from + '"
+            + path
+            + "'.");
     return new SparseData(convertInts(labels), indices, values);
   }
 
@@ -268,10 +265,12 @@ public class ScoreMNIST {
 
     OrtEnvironment env = OrtEnvironment.getEnvironment();
     try (OrtSession.SessionOptions opts = new SessionOptions()) {
+
       opts.setOptimizationLevel(OptLevel.BASIC_OPT);
 
       logger.info("Loading model from " + args[0]);
       try (OrtSession session = env.createSession(args[0], opts)) {
+
         logger.info("Inputs:");
         for (NodeInfo i : session.getInputInfo().values()) {
           logger.info(i.toString());
@@ -300,8 +299,9 @@ public class ScoreMNIST {
           }
 
           try (OnnxTensor test =
-                   OnnxTensor.createTensor(env, args.length == 3 ? testDataSKL : testData);
-               Result output = session.run(Collections.singletonMap(inputName, test))) {
+                  OnnxTensor.createTensor(env, args.length == 3 ? testDataSKL : testData);
+              Result output = session.run(Collections.singletonMap(inputName, test))) {
+
             int predLabel;
 
             if (args.length == 3) {

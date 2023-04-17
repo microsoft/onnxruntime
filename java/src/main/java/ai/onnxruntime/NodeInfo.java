@@ -4,10 +4,9 @@
  */
 package ai.onnxruntime;
 
-/**
- * The info for an input or output node from an ONNX model.
- */
+/** The info for an input or output node from an ONNX model. */
 public class NodeInfo {
+
   private final ValueInfo info;
 
   private final String name;

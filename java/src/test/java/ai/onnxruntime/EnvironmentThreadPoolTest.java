@@ -16,10 +16,9 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
-/**
- * This test is in a separate class to ensure it is run in a clean JVM.
- */
+/** This test is in a separate class to ensure it is run in a clean JVM. */
 public class EnvironmentThreadPoolTest {
+
   @EnabledIfSystemProperty(named = "JAVA_FULL_TEST", matches = "1")
   @Test
   public void environmentThreadPoolTest() throws OrtException {
@@ -38,7 +37,7 @@ public class EnvironmentThreadPoolTest {
         OrtEnvironment.getEnvironment(
             OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL, "environmentThreadPoolTest", threadOpts);
     try (OrtSession.SessionOptions options = new OrtSession.SessionOptions();
-         OrtSession.SessionOptions disableThreadOptions = new OrtSession.SessionOptions()) {
+        OrtSession.SessionOptions disableThreadOptions = new OrtSession.SessionOptions()) {
       disableThreadOptions.disablePerSessionThreads();
 
       // Check that the regular session executes

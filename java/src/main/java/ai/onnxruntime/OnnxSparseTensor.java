@@ -119,11 +119,11 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
       OrtUtil.BufferTuple indicesTuple = OrtUtil.prepareBuffer(tensor.getIndices(), indicesType);
       OrtUtil.BufferTuple valuesTuple = OrtUtil.prepareBuffer(tensor.getValues(), info.type);
       if (!((indicesTuple.data instanceof LongBuffer)
-              || (indicesTuple.data instanceof IntBuffer))) {
+          || (indicesTuple.data instanceof IntBuffer))) {
         throw new IllegalStateException(
             "Unexpected type of indices buffer, found "
-            + indicesTuple.data.getClass()
-            + ", expected IntBuffer or LongBuffer");
+                + indicesTuple.data.getClass()
+                + ", expected IntBuffer or LongBuffer");
       }
       // Replace with a type switch when using JDK 17+.
       switch (tensor.getSparsityType()) {
@@ -250,26 +250,28 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   public Buffer getIndicesBuffer() {
     switch (sparseTensorType) {
       case COO:
-      case CSRC: {
-        LongBuffer longBuf =
-            getIndicesBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
-                .order(ByteOrder.nativeOrder())
-                .asLongBuffer();
-        LongBuffer output = LongBuffer.allocate(longBuf.capacity());
-        output.put(longBuf);
-        output.rewind();
-        return output;
-      }
-      case BLOCK_SPARSE: {
-        IntBuffer intBuf =
-            getIndicesBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
-                .order(ByteOrder.nativeOrder())
-                .asIntBuffer();
-        IntBuffer output = IntBuffer.allocate(intBuf.capacity());
-        output.put(intBuf);
-        output.rewind();
-        return output;
-      }
+      case CSRC:
+        {
+          LongBuffer longBuf =
+              getIndicesBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
+                  .order(ByteOrder.nativeOrder())
+                  .asLongBuffer();
+          LongBuffer output = LongBuffer.allocate(longBuf.capacity());
+          output.put(longBuf);
+          output.rewind();
+          return output;
+        }
+      case BLOCK_SPARSE:
+        {
+          IntBuffer intBuf =
+              getIndicesBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
+                  .order(ByteOrder.nativeOrder())
+                  .asIntBuffer();
+          IntBuffer output = IntBuffer.allocate(intBuf.capacity());
+          output.put(intBuf);
+          output.rewind();
+          return output;
+        }
       case UNDEFINED:
       default:
         throw new IllegalStateException("UNDEFINED sparse tensor type.");
@@ -296,7 +298,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     } else {
       throw new IllegalStateException(
           "Inner indices are only available for CSRC sparse tensors, this sparse tensor is "
-          + sparseTensorType);
+              + sparseTensorType);
     }
   }
 
@@ -333,42 +335,47 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
           output.rewind();
           return output;
         }
-      case DOUBLE: {
-        DoubleBuffer doubleBuf = buffer.asDoubleBuffer();
-        DoubleBuffer output = DoubleBuffer.allocate(doubleBuf.capacity());
-        output.put(doubleBuf);
-        output.rewind();
-        return output;
-      }
-      case INT16: {
-        ShortBuffer shortBuf = buffer.asShortBuffer();
-        ShortBuffer output = ShortBuffer.allocate(shortBuf.capacity());
-        output.put(shortBuf);
-        output.rewind();
-        return output;
-      }
-      case INT32: {
-        IntBuffer intBuf = buffer.asIntBuffer();
-        IntBuffer output = IntBuffer.allocate(intBuf.capacity());
-        output.put(intBuf);
-        output.rewind();
-        return output;
-      }
-      case INT64: {
-        LongBuffer longBuf = buffer.asLongBuffer();
-        LongBuffer output = LongBuffer.allocate(longBuf.capacity());
-        output.put(longBuf);
-        output.rewind();
-        return output;
-      }
+      case DOUBLE:
+        {
+          DoubleBuffer doubleBuf = buffer.asDoubleBuffer();
+          DoubleBuffer output = DoubleBuffer.allocate(doubleBuf.capacity());
+          output.put(doubleBuf);
+          output.rewind();
+          return output;
+        }
+      case INT16:
+        {
+          ShortBuffer shortBuf = buffer.asShortBuffer();
+          ShortBuffer output = ShortBuffer.allocate(shortBuf.capacity());
+          output.put(shortBuf);
+          output.rewind();
+          return output;
+        }
+      case INT32:
+        {
+          IntBuffer intBuf = buffer.asIntBuffer();
+          IntBuffer output = IntBuffer.allocate(intBuf.capacity());
+          output.put(intBuf);
+          output.rewind();
+          return output;
+        }
+      case INT64:
+        {
+          LongBuffer longBuf = buffer.asLongBuffer();
+          LongBuffer output = LongBuffer.allocate(longBuf.capacity());
+          output.put(longBuf);
+          output.rewind();
+          return output;
+        }
       case BOOL:
       case INT8:
-      case UINT8: {
-        ByteBuffer output = ByteBuffer.allocate(buffer.capacity());
-        output.put(buffer);
-        output.rewind();
-        return output;
-      }
+      case UINT8:
+        {
+          ByteBuffer output = ByteBuffer.allocate(buffer.capacity());
+          output.put(buffer);
+          output.rewind();
+          return output;
+        }
       case STRING:
         throw new IllegalStateException("Unsupported data type String");
       case UNKNOWN:
@@ -397,7 +404,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     } else {
       throw new IllegalStateException(
           "Inner indices are only available for CSRC sparse tensors, this sparse tensor is "
-          + sparseTensorType);
+              + sparseTensorType);
     }
   }
 
@@ -552,26 +559,16 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * <p>Should be synchronized with OrtSparseFormat in the C API.
    */
   public enum SparseTensorType {
-    /**
-     * Undefined sparse tensor.
-     */
+    /** Undefined sparse tensor. */
     UNDEFINED(0),
-    /**
-     * COO sparse tensor.
-     */
+    /** COO sparse tensor. */
     COO(1),
-    /**
-     * CSR or CSC sparse tensor.
-     */
+    /** CSR or CSC sparse tensor. */
     CSRC(2),
-    /**
-     * Block sparse tensor.
-     */
+    /** Block sparse tensor. */
     BLOCK_SPARSE(4);
 
-    /**
-     * The int value mirroring OrtSparseFormat.
-     */
+    /** The int value mirroring OrtSparseFormat. */
     public final int value;
 
     private static final SparseTensorType[] values = new SparseTensorType[5];
@@ -637,10 +634,10 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
       if (values.remaining() != numNonZero) {
         throw new IllegalArgumentException(
             "Expected numNonZero and data.remaining to be equal, found "
-            + numNonZero
-            + " and "
-            + values.remaining()
-            + " respectively");
+                + numNonZero
+                + " and "
+                + values.remaining()
+                + " respectively");
       }
       if (type == OnnxJavaType.STRING) {
         throw new IllegalArgumentException("String SparseTensors are not supported.");
@@ -727,9 +724,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     public abstract OnnxJavaType getIndicesType();
   }
 
-  /**
-   * The Java side representation of a COO sparse tensor.
-   */
+  /** The Java side representation of a COO sparse tensor. */
   public static final class COOTensor extends SparseTensor<LongBuffer> {
     /**
      * Creates a COO sparse tensor suitable for constructing an ORT Sparse Tensor.
@@ -754,22 +749,22 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
           || (indicesShape[0] != numNonZero)) {
         throw new IllegalArgumentException(
             "Invalid indices shape, expected [numNonZero, dimension] or [numNonZero] found "
-            + Arrays.toString(indicesShape));
+                + Arrays.toString(indicesShape));
       }
       long elementCount = OrtUtil.elementCount(indicesShape);
       if (elementCount != indices.remaining()) {
         throw new IllegalArgumentException(
             "Unexpected number of indices found in buffer, expected "
-            + elementCount
-            + " found "
-            + indices.remaining());
+                + elementCount
+                + " found "
+                + indices.remaining());
       }
       if (values.remaining() != numNonZero) {
         throw new IllegalArgumentException(
             "Expected data.remaining() - "
-            + values.remaining()
-            + " to equal numNonZero - "
-            + numNonZero);
+                + values.remaining()
+                + " to equal numNonZero - "
+                + numNonZero);
       }
     }
 
@@ -784,9 +779,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     }
   }
 
-  /**
-   * The Java side representation of a CSRC sparse tensor.
-   */
+  /** The Java side representation of a CSRC sparse tensor. */
   public static final class CSRCTensor extends SparseTensor<LongBuffer> {
     private final LongBuffer innerIndices;
 
@@ -820,16 +813,16 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
       if (outerIndices.remaining() != expectedRows) {
         throw new IllegalArgumentException(
             "Outer indices should be equal to the number of rows + 1 in the dense shape, found "
-            + outerIndices.remaining()
-            + ", expected "
-            + expectedRows);
+                + outerIndices.remaining()
+                + ", expected "
+                + expectedRows);
       }
       if (innerIndices.remaining() != numNonZero) {
         throw new IllegalArgumentException(
             "Inner indices should be equal to the number of non-zero elements, found "
-            + innerIndices.remaining()
-            + ", expected "
-            + numNonZero);
+                + innerIndices.remaining()
+                + ", expected "
+                + numNonZero);
       }
     }
 
@@ -862,9 +855,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     }
   }
 
-  /**
-   * The Java side representation of a block sparse tensor.
-   */
+  /** The Java side representation of a block sparse tensor. */
   public static final class BlockSparseTensor extends SparseTensor<IntBuffer> {
     /**
      * Construct a block sparse tensor.
@@ -889,9 +880,9 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
       if (OrtUtil.elementCount(valuesShape) != numNonZero) {
         throw new IllegalArgumentException(
             "Expected "
-            + numNonZero
-            + " entries in the data shape, found "
-            + Arrays.toString(valuesShape));
+                + numNonZero
+                + " entries in the data shape, found "
+                + Arrays.toString(valuesShape));
       }
       if (numNonZero != values.remaining()) {
         throw new IllegalArgumentException(
@@ -900,19 +891,19 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
       if (OrtUtil.elementCount(indicesShape) != indices.remaining()) {
         throw new IllegalArgumentException(
             "Expected "
-            + OrtUtil.elementCount(indicesShape)
-            + " elements in the indices buffer, found "
-            + indices.remaining());
+                + OrtUtil.elementCount(indicesShape)
+                + " elements in the indices buffer, found "
+                + indices.remaining());
       }
       if (valuesShape.length < 3) {
         throw new IllegalArgumentException(
             "Expected [numBlocks, blockSize, blockSize] or larger, but data shape was "
-            + Arrays.toString(valuesShape));
+                + Arrays.toString(valuesShape));
       }
       if (indicesShape.length < 2) {
         throw new IllegalArgumentException(
             "Expected [numBlocks, co-ordinates] or larger, but indices shape was "
-            + Arrays.toString(indicesShape));
+                + Arrays.toString(indicesShape));
       }
     }
 

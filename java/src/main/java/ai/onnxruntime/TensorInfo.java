@@ -8,18 +8,13 @@ import java.lang.reflect.Array;
 import java.nio.Buffer;
 import java.util.Arrays;
 
-/**
- * Describes an {@link OnnxTensor}, including it's size, shape and element type.
- */
+/** Describes an {@link OnnxTensor}, including it's size, shape and element type. */
 public class TensorInfo implements ValueInfo {
-  /**
-   * Maximum number of dimensions supported by the Java interface methods.
-   */
+
+  /** Maximum number of dimensions supported by the Java interface methods. */
   public static final int MAX_DIMENSIONS = 8;
 
-  /**
-   * The native element types supported by the ONNX runtime.
-   */
+  /** The native element types supported by the ONNX runtime. */
   public enum OnnxTensorType {
     ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED(0),
     ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8(1), // maps to c type uint8_t
@@ -42,9 +37,7 @@ public class TensorInfo implements ValueInfo {
     ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16(
         16); // Non-IEEE floating-point format based on IEEE754 single-precision
 
-    /**
-     * The int id on the native side.
-     */
+    /** The int id on the native side. */
     public final int value;
 
     private static final OnnxTensorType[] values = new OnnxTensorType[17];
@@ -108,19 +101,13 @@ public class TensorInfo implements ValueInfo {
 
   final long[] shape;
 
-  /**
-   * The Java type of this tensor.
-   */
+  /** The Java type of this tensor. */
   public final OnnxJavaType type;
 
-  /**
-   * The native type of this tensor.
-   */
+  /** The native type of this tensor. */
   public final OnnxTensorType onnxType;
 
-  /**
-   * The number of elements in this tensor.
-   */
+  /** The number of elements in this tensor. */
   final long numElements;
 
   /**
@@ -240,7 +227,7 @@ public class TensorInfo implements ValueInfo {
     if (!validateShape() && numElements != 0) {
       throw new OrtException(
           "This tensor is not representable in Java, it's too big - shape = "
-          + Arrays.toString(shape));
+              + Arrays.toString(shape));
     }
     switch (type) {
       case FLOAT:
@@ -299,10 +286,10 @@ public class TensorInfo implements ValueInfo {
     } else if (dimensions > MAX_DIMENSIONS) {
       throw new OrtException(
           "Cannot create an OnnxTensor with more than "
-          + MAX_DIMENSIONS
-          + " dimensions. Found "
-          + dimensions
-          + " dimensions.");
+              + MAX_DIMENSIONS
+              + " dimensions. Found "
+              + dimensions
+              + " dimensions.");
     }
     OnnxJavaType javaType = OnnxJavaType.mapFromClass(objClass);
 
@@ -337,12 +324,12 @@ public class TensorInfo implements ValueInfo {
     if (elementCount != bufferRemaining) {
       throw new OrtException(
           "Shape "
-          + Arrays.toString(shape)
-          + ", requires "
-          + elementCount
-          + " elements but the buffer has "
-          + bufferRemaining
-          + " elements.");
+              + Arrays.toString(shape)
+              + ", requires "
+              + elementCount
+              + " elements but the buffer has "
+              + bufferRemaining
+              + " elements.");
     }
 
     return new TensorInfo(
@@ -368,12 +355,12 @@ public class TensorInfo implements ValueInfo {
     if (elementCount < bufferRemaining) {
       throw new OrtException(
           "Shape "
-          + Arrays.toString(shape)
-          + ", has at most "
-          + elementCount
-          + " elements but the buffer has "
-          + bufferRemaining
-          + " elements.");
+              + Arrays.toString(shape)
+              + ", has at most "
+              + elementCount
+              + " elements but the buffer has "
+              + bufferRemaining
+              + " elements.");
     }
 
     return new TensorInfo(
@@ -396,8 +383,8 @@ public class TensorInfo implements ValueInfo {
       if (curLength == 0) {
         throw new OrtException(
             "Supplied array has a zero dimension at "
-            + curDim
-            + ", all dimensions must be positive");
+                + curDim
+                + ", all dimensions must be positive");
       } else if (shape[curDim] == 0L) {
         shape[curDim] = curLength;
       } else if (shape[curDim] != curLength) {

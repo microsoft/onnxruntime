@@ -161,8 +161,7 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_OnnxMap_getDoubleValues(JNIEn
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OnnxMap_close(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-  (void)jniEnv;
-  (void)jobj;  // Required JNI parameters not used by functions which don't access their host object.
+  (void)jniEnv; (void)jobj;  // Required JNI parameters not used by functions which don't access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   api->ReleaseValue((OrtValue*)handle);
 }
