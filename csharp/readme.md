@@ -20,6 +20,8 @@ or copy the entire file and remove the mobile projects (anything with iOS, Andro
 
 ### Requirements:
 
+#### Windows
+
 NOTE: The usage of this solution is primarily for ORT developers creating the managed Microsoft.ML.OnnxRuntime.Managed
       nuget package. Due to that, the requirements are quite specific.
 
@@ -40,7 +42,25 @@ Download from https://www.nuget.org/downloads.
 Put in a folder (e.g. C:\Program Files (x86)\NuGet).
 Add that folder to your PATH.
 
+#### Linux
+
+1. Install [.Net SDK](https://dotnet.microsoft.com/download).
+2. Install Mono.
+   ```bash
+   wget http://download.mono-project.com/repo/xamarin.gpg && sudo apt-key add xamarin.gpg && rm xamarin.gpg
+   echo "deb https://download.mono-project.com/repo/ubuntu stable-bionic main" | sudo tee /etc/apt/sources.list.d/mono-official-stable.list
+   sudo apt update -y && apt install -y mono-devel
+   ```
+3. Install `nupkg.exe`
+   ```bash
+   wget https://dist.nuget.org/win-x86-commandline/latest/nuget.exe && sudo mv nuget.exe /usr/local/bin/nuget.exe
+   echo 'mono /usr/local/bin/nuget.exe $@' | sudo tee /usr/local/bin/nuget
+   chmod a+x /usr/local/bin/nuget
+   ```
+
 ### Magic incantations to build the nuget managed package locally:
+
+#### Windows
 
 If we're starting with VS 2022 17.2.4 we should have dotnet sdk 6.0.301
 
@@ -68,3 +88,31 @@ Create project.assets.json in obj dir with all targets so the nuget package crea
 
 Create nuget package
   `msbuild .\OnnxRuntime.CSharp.proj -t:CreatePackage -p:OrtPackageId=Microsoft.ML.OnnxRuntime -p:Configuration=Debug -p:Platform="Any CPU"`
+
+#### Linux
+
+For example, to build a CUDA GPU package, just run:
+```bash
+./build.sh \
+  --config="Release" \
+  --cmake_generator Ninja \
+  --use_cuda \
+    --cuda_home=/usr/local/cuda \
+    --cudnn_home=/usr \
+  --build_nuget \
+  --msbuild_extra_options \
+    /p:SelectedTargets=Net6 \
+    /p:Net6Targets=net6.0 \
+    /p:TargetFrameworks=netstandard2.0 \
+    /p:IsLinuxBuild=true
+```
+**Note**: build pure cpu development package is not supported at the moment.
+
+A `.nupkg` file will be produced at you build root, say, `build/Release`.
+
+To consume the package, in your .net project,
+```bash
+nuget add <path/to/packages.nuget> -Source ./packages/
+dotnet add package microsoft.ml.onnxruntime.managed -s ./packages --prerelease
+dotnet add package microsoft.ml.onnxruntime.gpu -s ./packages --prerelease
+```
