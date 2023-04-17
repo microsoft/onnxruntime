@@ -336,7 +336,8 @@ bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vect
   return true;
 }
 
-/* Make input-name and shape as a pair.
+/* 
+ * Make input-name and shape as a pair.
  * This helper function is being used by ParseProfileShapes().  
  *
  * For example:
@@ -379,7 +380,8 @@ bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std:
   return true;
 }
 
-/* Parse explicit profile min/max/opt shapes from TensorRT EP provider options.
+/* 
+ * Parse explicit profile min/max/opt shapes from TensorRT EP provider options.
  *
  * For example:
  * The provider option is --trt_profile_min_shapes="input_id:32x1,attention_mask:32x1,input_id:32x41,attention_mask:32x41",

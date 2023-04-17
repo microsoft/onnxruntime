@@ -99,11 +99,6 @@ struct TensorrtFuncState {
   std::unique_ptr<nvinfer1::INetworkDefinition>* network = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
-  bool has_explicit_profile = false;
-  int num_profiles = 0;
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes;
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes;
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes;
   std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
