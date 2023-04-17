@@ -7,7 +7,9 @@ package ai.onnxruntime;
 import java.util.HashMap;
 import java.util.Map;
 
-/** The execution providers available through the Java API. */
+/**
+ * The execution providers available through the Java API.
+ */
 public enum OrtProvider {
   CPU("CPUExecutionProvider"),
   CUDA("CUDAExecutionProvider"),

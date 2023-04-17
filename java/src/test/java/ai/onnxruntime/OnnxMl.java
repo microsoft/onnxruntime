@@ -23,7 +23,8 @@ public final class OnnxMl {
    *
    * Protobuf enum {@code onnx.Version}
    */
-  public enum Version implements com.google.protobuf.ProtocolMessageEnum {
+  public enum Version implements com
+  .google.protobuf.ProtocolMessageEnum {
     /**
      *
      *
@@ -35,84 +36,84 @@ public final class OnnxMl {
      * <code>_START_VERSION = 0;</code>
      */
     _START_VERSION(0),
-    /**
-     *
-     *
-     * <pre>
-     * The version field is always serialized and we will use it to store the
-     * version that the  graph is generated from. This helps us set up version
-     * control.
-     * For the IR, we are using simple numbers starting with with 0x00000001,
-     * which was the version we published on Oct 10, 2017.
-     * </pre>
-     *
-     * <code>IR_VERSION_2017_10_10 = 1;</code>
-     */
-    IR_VERSION_2017_10_10(1),
-    /**
-     *
-     *
-     * <pre>
-     * IR_VERSION 2 published on Oct 30, 2017
-     * - Added type discriminator to AttributeProto to support proto3 users
-     * </pre>
-     *
-     * <code>IR_VERSION_2017_10_30 = 2;</code>
-     */
-    IR_VERSION_2017_10_30(2),
-    /**
-     *
-     *
-     * <pre>
-     * IR VERSION 3 published on Nov 3, 2017
-     * - For operator versioning:
-     *    - Added new message OperatorSetIdProto
-     *    - Added opset_import in ModelProto
-     * - For vendor extensions, added domain in NodeProto
-     * </pre>
-     *
-     * <code>IR_VERSION_2017_11_3 = 3;</code>
-     */
-    IR_VERSION_2017_11_3(3),
-    /**
-     *
-     *
-     * <pre>
-     * IR VERSION 4 published on Jan 22, 2019
-     * - Relax constraint that initializers should be a subset of graph inputs
-     * - Add type BFLOAT16
-     * </pre>
-     *
-     * <code>IR_VERSION_2019_1_22 = 4;</code>
-     */
-    IR_VERSION_2019_1_22(4),
-    /**
-     *
-     *
-     * <pre>
-     * IR VERSION 5 published on March 18, 2019
-     * - Add message TensorAnnotation.
-     * - Add quantization annotation in GraphProto to map tensor with its scale and zero point quantization parameters.
-     * </pre>
-     *
-     * <code>IR_VERSION_2019_3_18 = 5;</code>
-     */
-    IR_VERSION_2019_3_18(5),
-    /**
-     *
-     *
-     * <pre>
-     * IR VERSION 6 published on Sep 19, 2019
-     * - Add support for sparse tensor constants stored in model.
-     *   - Add message SparseTensorProto
-     *   - Add sparse initializers
-     * </pre>
-     *
-     * <code>IR_VERSION = 6;</code>
-     */
-    IR_VERSION(6),
-    UNRECOGNIZED(-1),
-    ;
+        /**
+         *
+         *
+         * <pre>
+         * The version field is always serialized and we will use it to store the
+         * version that the  graph is generated from. This helps us set up version
+         * control.
+         * For the IR, we are using simple numbers starting with with 0x00000001,
+         * which was the version we published on Oct 10, 2017.
+         * </pre>
+         *
+         * <code>IR_VERSION_2017_10_10 = 1;</code>
+         */
+        IR_VERSION_2017_10_10(1),
+        /**
+         *
+         *
+         * <pre>
+         * IR_VERSION 2 published on Oct 30, 2017
+         * - Added type discriminator to AttributeProto to support proto3 users
+         * </pre>
+         *
+         * <code>IR_VERSION_2017_10_30 = 2;</code>
+         */
+        IR_VERSION_2017_10_30(2),
+        /**
+         *
+         *
+         * <pre>
+         * IR VERSION 3 published on Nov 3, 2017
+         * - For operator versioning:
+         *    - Added new message OperatorSetIdProto
+         *    - Added opset_import in ModelProto
+         * - For vendor extensions, added domain in NodeProto
+         * </pre>
+         *
+         * <code>IR_VERSION_2017_11_3 = 3;</code>
+         */
+        IR_VERSION_2017_11_3(3),
+        /**
+         *
+         *
+         * <pre>
+         * IR VERSION 4 published on Jan 22, 2019
+         * - Relax constraint that initializers should be a subset of graph inputs
+         * - Add type BFLOAT16
+         * </pre>
+         *
+         * <code>IR_VERSION_2019_1_22 = 4;</code>
+         */
+        IR_VERSION_2019_1_22(4),
+        /**
+         *
+         *
+         * <pre>
+         * IR VERSION 5 published on March 18, 2019
+         * - Add message TensorAnnotation.
+         * - Add quantization annotation in GraphProto to map tensor with its scale and zero point quantization parameters.
+         * </pre>
+         *
+         * <code>IR_VERSION_2019_3_18 = 5;</code>
+         */
+        IR_VERSION_2019_3_18(5),
+        /**
+         *
+         *
+         * <pre>
+         * IR VERSION 6 published on Sep 19, 2019
+         * - Add support for sparse tensor constants stored in model.
+         *   - Add message SparseTensorProto
+         *   - Add sparse initializers
+         * </pre>
+         *
+         * <code>IR_VERSION = 6;</code>
+         */
+        IR_VERSION(6),
+        UNRECOGNIZED(-1),
+        ;
 
     /**
      *
@@ -210,7 +211,9 @@ public final class OnnxMl {
       return value;
     }
 
-    /** @deprecated Use {@link #forNumber(int)} instead. */
+    /**
+     * @deprecated Use {@link #forNumber(int)} instead.
+     */
     @java.lang.Deprecated
     public static Version valueOf(int value) {
       return forNumber(value);
@@ -290,17 +293,26 @@ public final class OnnxMl {
    *
    * Protobuf enum {@code onnx.OperatorStatus}
    */
-  public enum OperatorStatus implements com.google.protobuf.ProtocolMessageEnum {
-    /** <code>EXPERIMENTAL = 0;</code> */
+  public enum OperatorStatus implements com
+  .google.protobuf.ProtocolMessageEnum {
+    /**
+     * <code>EXPERIMENTAL = 0;</code>
+     */
     EXPERIMENTAL(0),
-    /** <code>STABLE = 1;</code> */
-    STABLE(1),
-    UNRECOGNIZED(-1),
-    ;
+        /**
+           <code>STABLE = 1;</code>
+         */
+        STABLE(1),
+        UNRECOGNIZED(-1),
+        ;
 
-    /** <code>EXPERIMENTAL = 0;</code> */
+    /**
+     * <code>EXPERIMENTAL = 0;</code>
+     */
     public static final int EXPERIMENTAL_VALUE = 0;
-    /** <code>STABLE = 1;</code> */
+    /**
+     * <code>STABLE = 1;</code>
+     */
     public static final int STABLE_VALUE = 1;
 
     public final int getNumber() {
@@ -311,7 +323,9 @@ public final class OnnxMl {
       return value;
     }
 
-    /** @deprecated Use {@link #forNumber(int)} instead. */
+    /**
+     * @deprecated Use {@link #forNumber(int)} instead.
+     */
     @java.lang.Deprecated
     public static OperatorStatus valueOf(int value) {
       return forNumber(value);
@@ -374,9 +388,8 @@ public final class OnnxMl {
 
   public interface AttributeProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.AttributeProto)
-      com.google.protobuf.MessageOrBuilder {
-
+          // @@protoc_insertion_point(interface_extends:onnx.AttributeProto)
+          com.google.protobuf.MessageOrBuilder {
     /**
      *
      *
@@ -864,8 +877,8 @@ public final class OnnxMl {
    */
   public static final class AttributeProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.AttributeProto)
-      AttributeProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.AttributeProto)
+          AttributeProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use AttributeProto.newBuilder() to construct.
     private AttributeProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -912,184 +925,165 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+            case 10: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                name_ = s;
-                break;
+              name_ = s;
+              break;
+            }
+            case 21: {
+              f_ = input.readFloat();
+              break;
+            }
+            case 24: {
+              i_ = input.readInt64();
+              break;
+            }
+            case 34: {
+              s_ = input.readBytes();
+              break;
+            }
+            case 42: {
+              OnnxMl.TensorProto.Builder subBuilder = null;
+              if (t_ != null) {
+                subBuilder = t_.toBuilder();
               }
-            case 21:
-              {
-                f_ = input.readFloat();
-                break;
+              t_ = input.readMessage(OnnxMl.TensorProto.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom(t_);
+                t_ = subBuilder.buildPartial();
               }
-            case 24:
-              {
-                i_ = input.readInt64();
-                break;
-              }
-            case 34:
-              {
-                s_ = input.readBytes();
-                break;
-              }
-            case 42:
-              {
-                OnnxMl.TensorProto.Builder subBuilder = null;
-                if (t_ != null) {
-                  subBuilder = t_.toBuilder();
-                }
-                t_ = input.readMessage(OnnxMl.TensorProto.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom(t_);
-                  t_ = subBuilder.buildPartial();
-                }
 
-                break;
+              break;
+            }
+            case 50: {
+              OnnxMl.GraphProto.Builder subBuilder = null;
+              if (g_ != null) {
+                subBuilder = g_.toBuilder();
               }
-            case 50:
-              {
-                OnnxMl.GraphProto.Builder subBuilder = null;
-                if (g_ != null) {
-                  subBuilder = g_.toBuilder();
-                }
-                g_ = input.readMessage(OnnxMl.GraphProto.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom(g_);
-                  g_ = subBuilder.buildPartial();
-                }
+              g_ = input.readMessage(OnnxMl.GraphProto.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom(g_);
+                g_ = subBuilder.buildPartial();
+              }
 
-                break;
+              break;
+            }
+            case 61: {
+              if (!((mutable_bitField0_ & 0x00000400) == 0x00000400)) {
+                floats_ = new java.util.ArrayList<java.lang.Float>();
+                mutable_bitField0_ |= 0x00000400;
               }
-            case 61:
-              {
-                if (!((mutable_bitField0_ & 0x00000400) == 0x00000400)) {
-                  floats_ = new java.util.ArrayList<java.lang.Float>();
-                  mutable_bitField0_ |= 0x00000400;
-                }
+              floats_.add(input.readFloat());
+              break;
+            }
+            case 58: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00000400) == 0x00000400)
+                  && input.getBytesUntilLimit() > 0) {
+                floats_ = new java.util.ArrayList<java.lang.Float>();
+                mutable_bitField0_ |= 0x00000400;
+              }
+              while (input.getBytesUntilLimit() > 0) {
                 floats_.add(input.readFloat());
-                break;
               }
-            case 58:
-              {
-                int length = input.readRawVarint32();
-                int limit = input.pushLimit(length);
-                if (!((mutable_bitField0_ & 0x00000400) == 0x00000400)
-                    && input.getBytesUntilLimit() > 0) {
-                  floats_ = new java.util.ArrayList<java.lang.Float>();
-                  mutable_bitField0_ |= 0x00000400;
-                }
-                while (input.getBytesUntilLimit() > 0) {
-                  floats_.add(input.readFloat());
-                }
-                input.popLimit(limit);
-                break;
+              input.popLimit(limit);
+              break;
+            }
+            case 64: {
+              if (!((mutable_bitField0_ & 0x00000800) == 0x00000800)) {
+                ints_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00000800;
               }
-            case 64:
-              {
-                if (!((mutable_bitField0_ & 0x00000800) == 0x00000800)) {
-                  ints_ = new java.util.ArrayList<java.lang.Long>();
-                  mutable_bitField0_ |= 0x00000800;
-                }
+              ints_.add(input.readInt64());
+              break;
+            }
+            case 66: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00000800) == 0x00000800)
+                  && input.getBytesUntilLimit() > 0) {
+                ints_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00000800;
+              }
+              while (input.getBytesUntilLimit() > 0) {
                 ints_.add(input.readInt64());
-                break;
               }
-            case 66:
-              {
-                int length = input.readRawVarint32();
-                int limit = input.pushLimit(length);
-                if (!((mutable_bitField0_ & 0x00000800) == 0x00000800)
-                    && input.getBytesUntilLimit() > 0) {
-                  ints_ = new java.util.ArrayList<java.lang.Long>();
-                  mutable_bitField0_ |= 0x00000800;
-                }
-                while (input.getBytesUntilLimit() > 0) {
-                  ints_.add(input.readInt64());
-                }
-                input.popLimit(limit);
-                break;
+              input.popLimit(limit);
+              break;
+            }
+            case 74: {
+              if (!((mutable_bitField0_ & 0x00001000) == 0x00001000)) {
+                strings_ = new java.util.ArrayList<com.google.protobuf.ByteString>();
+                mutable_bitField0_ |= 0x00001000;
               }
-            case 74:
-              {
-                if (!((mutable_bitField0_ & 0x00001000) == 0x00001000)) {
-                  strings_ = new java.util.ArrayList<com.google.protobuf.ByteString>();
-                  mutable_bitField0_ |= 0x00001000;
-                }
-                strings_.add(input.readBytes());
-                break;
+              strings_.add(input.readBytes());
+              break;
+            }
+            case 82: {
+              if (!((mutable_bitField0_ & 0x00002000) == 0x00002000)) {
+                tensors_ = new java.util.ArrayList<OnnxMl.TensorProto>();
+                mutable_bitField0_ |= 0x00002000;
               }
-            case 82:
-              {
-                if (!((mutable_bitField0_ & 0x00002000) == 0x00002000)) {
-                  tensors_ = new java.util.ArrayList<OnnxMl.TensorProto>();
-                  mutable_bitField0_ |= 0x00002000;
-                }
-                tensors_.add(input.readMessage(OnnxMl.TensorProto.parser(), extensionRegistry));
-                break;
+              tensors_.add(input.readMessage(OnnxMl.TensorProto.parser(), extensionRegistry));
+              break;
+            }
+            case 90: {
+              if (!((mutable_bitField0_ & 0x00004000) == 0x00004000)) {
+                graphs_ = new java.util.ArrayList<OnnxMl.GraphProto>();
+                mutable_bitField0_ |= 0x00004000;
               }
-            case 90:
-              {
-                if (!((mutable_bitField0_ & 0x00004000) == 0x00004000)) {
-                  graphs_ = new java.util.ArrayList<OnnxMl.GraphProto>();
-                  mutable_bitField0_ |= 0x00004000;
-                }
-                graphs_.add(input.readMessage(OnnxMl.GraphProto.parser(), extensionRegistry));
-                break;
-              }
-            case 106:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              graphs_.add(input.readMessage(OnnxMl.GraphProto.parser(), extensionRegistry));
+              break;
+            }
+            case 106: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                docString_ = s;
-                break;
-              }
-            case 160:
-              {
-                int rawValue = input.readEnum();
+              docString_ = s;
+              break;
+            }
+            case 160: {
+              int rawValue = input.readEnum();
 
-                type_ = rawValue;
-                break;
-              }
-            case 170:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              type_ = rawValue;
+              break;
+            }
+            case 170: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                refAttrName_ = s;
-                break;
+              refAttrName_ = s;
+              break;
+            }
+            case 178: {
+              OnnxMl.SparseTensorProto.Builder subBuilder = null;
+              if (sparseTensor_ != null) {
+                subBuilder = sparseTensor_.toBuilder();
               }
-            case 178:
-              {
-                OnnxMl.SparseTensorProto.Builder subBuilder = null;
-                if (sparseTensor_ != null) {
-                  subBuilder = sparseTensor_.toBuilder();
-                }
-                sparseTensor_ =
-                    input.readMessage(OnnxMl.SparseTensorProto.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom(sparseTensor_);
-                  sparseTensor_ = subBuilder.buildPartial();
-                }
+              sparseTensor_ =
+                  input.readMessage(OnnxMl.SparseTensorProto.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom(sparseTensor_);
+                sparseTensor_ = subBuilder.buildPartial();
+              }
 
-                break;
+              break;
+            }
+            case 186: {
+              if (!((mutable_bitField0_ & 0x00008000) == 0x00008000)) {
+                sparseTensors_ = new java.util.ArrayList<OnnxMl.SparseTensorProto>();
+                mutable_bitField0_ |= 0x00008000;
               }
-            case 186:
-              {
-                if (!((mutable_bitField0_ & 0x00008000) == 0x00008000)) {
-                  sparseTensors_ = new java.util.ArrayList<OnnxMl.SparseTensorProto>();
-                  mutable_bitField0_ |= 0x00008000;
-                }
-                sparseTensors_.add(
-                    input.readMessage(OnnxMl.SparseTensorProto.parser(), extensionRegistry));
-                break;
+              sparseTensors_.add(
+                  input.readMessage(OnnxMl.SparseTensorProto.parser(), extensionRegistry));
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -1126,7 +1120,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_AttributeProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.AttributeProto.class, OnnxMl.AttributeProto.Builder.class);
@@ -1142,61 +1136,114 @@ public final class OnnxMl {
      *
      * Protobuf enum {@code onnx.AttributeProto.AttributeType}
      */
-    public enum AttributeType implements com.google.protobuf.ProtocolMessageEnum {
-      /** <code>UNDEFINED = 0;</code> */
+    public enum AttributeType implements com
+    .google.protobuf.ProtocolMessageEnum {
+      /**
+       * <code>UNDEFINED = 0;</code>
+       */
       UNDEFINED(0),
-      /** <code>FLOAT = 1;</code> */
-      FLOAT(1),
-      /** <code>INT = 2;</code> */
-      INT(2),
-      /** <code>STRING = 3;</code> */
-      STRING(3),
-      /** <code>TENSOR = 4;</code> */
-      TENSOR(4),
-      /** <code>GRAPH = 5;</code> */
-      GRAPH(5),
-      /** <code>SPARSE_TENSOR = 11;</code> */
-      SPARSE_TENSOR(11),
-      /** <code>FLOATS = 6;</code> */
-      FLOATS(6),
-      /** <code>INTS = 7;</code> */
-      INTS(7),
-      /** <code>STRINGS = 8;</code> */
-      STRINGS(8),
-      /** <code>TENSORS = 9;</code> */
-      TENSORS(9),
-      /** <code>GRAPHS = 10;</code> */
-      GRAPHS(10),
-      /** <code>SPARSE_TENSORS = 12;</code> */
-      SPARSE_TENSORS(12),
-      UNRECOGNIZED(-1),
-      ;
+          /**
+             <code>FLOAT = 1;</code>
+           */
+          FLOAT(1),
+          /**
+             <code>INT = 2;</code>
+           */
+          INT(2),
+          /**
+             <code>STRING = 3;</code>
+           */
+          STRING(3),
+          /**
+             <code>TENSOR = 4;</code>
+           */
+          TENSOR(4),
+          /**
+             <code>GRAPH = 5;</code>
+           */
+          GRAPH(5),
+          /**
+             <code>SPARSE_TENSOR = 11;</code>
+           */
+          SPARSE_TENSOR(11),
+          /**
+             <code>FLOATS = 6;</code>
+           */
+          FLOATS(6),
+          /**
+             <code>INTS = 7;</code>
+           */
+          INTS(7),
+          /**
+             <code>STRINGS = 8;</code>
+           */
+          STRINGS(8),
+          /**
+             <code>TENSORS = 9;</code>
+           */
+          TENSORS(9),
+          /**
+             <code>GRAPHS = 10;</code>
+           */
+          GRAPHS(10),
+          /**
+             <code>SPARSE_TENSORS = 12;</code>
+           */
+          SPARSE_TENSORS(12),
+          UNRECOGNIZED(-1),
+          ;
 
-      /** <code>UNDEFINED = 0;</code> */
+      /**
+       * <code>UNDEFINED = 0;</code>
+       */
       public static final int UNDEFINED_VALUE = 0;
-      /** <code>FLOAT = 1;</code> */
+      /**
+       * <code>FLOAT = 1;</code>
+       */
       public static final int FLOAT_VALUE = 1;
-      /** <code>INT = 2;</code> */
+      /**
+       * <code>INT = 2;</code>
+       */
       public static final int INT_VALUE = 2;
-      /** <code>STRING = 3;</code> */
+      /**
+       * <code>STRING = 3;</code>
+       */
       public static final int STRING_VALUE = 3;
-      /** <code>TENSOR = 4;</code> */
+      /**
+       * <code>TENSOR = 4;</code>
+       */
       public static final int TENSOR_VALUE = 4;
-      /** <code>GRAPH = 5;</code> */
+      /**
+       * <code>GRAPH = 5;</code>
+       */
       public static final int GRAPH_VALUE = 5;
-      /** <code>SPARSE_TENSOR = 11;</code> */
+      /**
+       * <code>SPARSE_TENSOR = 11;</code>
+       */
       public static final int SPARSE_TENSOR_VALUE = 11;
-      /** <code>FLOATS = 6;</code> */
+      /**
+       * <code>FLOATS = 6;</code>
+       */
       public static final int FLOATS_VALUE = 6;
-      /** <code>INTS = 7;</code> */
+      /**
+       * <code>INTS = 7;</code>
+       */
       public static final int INTS_VALUE = 7;
-      /** <code>STRINGS = 8;</code> */
+      /**
+       * <code>STRINGS = 8;</code>
+       */
       public static final int STRINGS_VALUE = 8;
-      /** <code>TENSORS = 9;</code> */
+      /**
+       * <code>TENSORS = 9;</code>
+       */
       public static final int TENSORS_VALUE = 9;
-      /** <code>GRAPHS = 10;</code> */
+      /**
+       * <code>GRAPHS = 10;</code>
+       */
       public static final int GRAPHS_VALUE = 10;
-      /** <code>SPARSE_TENSORS = 12;</code> */
+      /**
+       * <code>SPARSE_TENSORS = 12;</code>
+       */
       public static final int SPARSE_TENSORS_VALUE = 12;
 
       public final int getNumber() {
@@ -1207,7 +1254,9 @@ public final class OnnxMl {
         return value;
       }
 
-      /** @deprecated Use {@link #forNumber(int)} instead. */
+      /**
+       * @deprecated Use {@link #forNumber(int)} instead.
+       */
       @java.lang.Deprecated
       public static AttributeType valueOf(int value) {
         return forNumber(value);
@@ -1252,11 +1301,11 @@ public final class OnnxMl {
 
       private static final com.google.protobuf.Internal.EnumLiteMap<AttributeType>
           internalValueMap =
-              new com.google.protobuf.Internal.EnumLiteMap<AttributeType>() {
-                public AttributeType findValueByNumber(int number) {
-                  return AttributeType.forNumber(number);
-                }
-              };
+          new com.google.protobuf.Internal.EnumLiteMap<AttributeType>() {
+            public AttributeType findValueByNumber(int number) {
+              return AttributeType.forNumber(number);
+            }
+          };
 
       public final com.google.protobuf.Descriptors.EnumValueDescriptor getValueDescriptor() {
         return getDescriptor().getValues().get(ordinal());
@@ -1901,7 +1950,7 @@ public final class OnnxMl {
      * <code>repeated .onnx.SparseTensorProto sparse_tensors = 23;</code>
      */
     public java.util.List<? extends OnnxMl.SparseTensorProtoOrBuilder>
-        getSparseTensorsOrBuilderList() {
+    getSparseTensorsOrBuilderList() {
       return sparseTensors_;
     }
     /**
@@ -1946,8 +1995,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -2018,7 +2069,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       if (!getNameBytes().isEmpty()) {
@@ -2112,8 +2164,8 @@ public final class OnnxMl {
       result = result && type_ == other.type_;
       result =
           result
-              && (java.lang.Float.floatToIntBits(getF())
-                  == java.lang.Float.floatToIntBits(other.getF()));
+          && (java.lang.Float.floatToIntBits(getF())
+              == java.lang.Float.floatToIntBits(other.getF()));
       result = result && (getI() == other.getI());
       result = result && getS().equals(other.getS());
       result = result && (hasT() == other.hasT());
@@ -2311,15 +2363,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.AttributeProto)
-        OnnxMl.AttributeProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.AttributeProto)
+            OnnxMl.AttributeProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_AttributeProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_AttributeProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.AttributeProto.class, OnnxMl.AttributeProto.Builder.class);
@@ -2544,7 +2596,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.AttributeProto other) {
-        if (other == OnnxMl.AttributeProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.AttributeProto.getDefaultInstance())
+          return this;
         if (!other.getName().isEmpty()) {
           name_ = other.name_;
           onChanged();
@@ -2628,8 +2681,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00002000);
               tensorsBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getTensorsFieldBuilder()
-                      : null;
+                  ? getTensorsFieldBuilder()
+                  : null;
             } else {
               tensorsBuilder_.addAllMessages(other.tensors_);
             }
@@ -2655,8 +2708,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00004000);
               graphsBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getGraphsFieldBuilder()
-                      : null;
+                  ? getGraphsFieldBuilder()
+                  : null;
             } else {
               graphsBuilder_.addAllMessages(other.graphs_);
             }
@@ -2682,8 +2735,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00008000);
               sparseTensorsBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getSparseTensorsFieldBuilder()
-                      : null;
+                  ? getSparseTensorsFieldBuilder()
+                  : null;
             } else {
               sparseTensorsBuilder_.addAllMessages(other.sparseTensors_);
             }
@@ -2789,7 +2842,6 @@ public final class OnnxMl {
        * <code>string name = 1;</code>
        */
       public Builder clearName() {
-
         name_ = getDefaultInstance().getName();
         onChanged();
         return this;
@@ -2895,7 +2947,6 @@ public final class OnnxMl {
        * <code>string ref_attr_name = 21;</code>
        */
       public Builder clearRefAttrName() {
-
         refAttrName_ = getDefaultInstance().getRefAttrName();
         onChanged();
         return this;
@@ -2992,7 +3043,6 @@ public final class OnnxMl {
        * <code>string doc_string = 13;</code>
        */
       public Builder clearDocString() {
-
         docString_ = getDefaultInstance().getDocString();
         onChanged();
         return this;
@@ -3112,7 +3162,6 @@ public final class OnnxMl {
        * <code>.onnx.AttributeProto.AttributeType type = 20;</code>
        */
       public Builder clearType() {
-
         type_ = 0;
         onChanged();
         return this;
@@ -3141,7 +3190,6 @@ public final class OnnxMl {
        * <code>float f = 2;</code>
        */
       public Builder setF(float value) {
-
         f_ = value;
         onChanged();
         return this;
@@ -3156,7 +3204,6 @@ public final class OnnxMl {
        * <code>float f = 2;</code>
        */
       public Builder clearF() {
-
         f_ = 0F;
         onChanged();
         return this;
@@ -3185,7 +3232,6 @@ public final class OnnxMl {
        * <code>int64 i = 3;</code>
        */
       public Builder setI(long value) {
-
         i_ = value;
         onChanged();
         return this;
@@ -3200,7 +3246,6 @@ public final class OnnxMl {
        * <code>int64 i = 3;</code>
        */
       public Builder clearI() {
-
         i_ = 0L;
         onChanged();
         return this;
@@ -3247,7 +3292,6 @@ public final class OnnxMl {
        * <code>bytes s = 4;</code>
        */
       public Builder clearS() {
-
         s_ = getDefaultInstance().getS();
         onChanged();
         return this;
@@ -3255,7 +3299,7 @@ public final class OnnxMl {
 
       private OnnxMl.TensorProto t_ = null;
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
+          OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
           tBuilder_;
       /**
        *
@@ -3379,7 +3423,6 @@ public final class OnnxMl {
        * <code>.onnx.TensorProto t = 5;</code>
        */
       public OnnxMl.TensorProto.Builder getTBuilder() {
-
         onChanged();
         return getTFieldBuilder().getBuilder();
       }
@@ -3409,8 +3452,8 @@ public final class OnnxMl {
        * <code>.onnx.TensorProto t = 5;</code>
        */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
-          getTFieldBuilder() {
+          OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
+      getTFieldBuilder() {
         if (tBuilder_ == null) {
           tBuilder_ =
               new com.google.protobuf.SingleFieldBuilderV3<
@@ -3423,7 +3466,7 @@ public final class OnnxMl {
 
       private OnnxMl.GraphProto g_ = null;
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
+          OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
           gBuilder_;
       /**
        *
@@ -3547,7 +3590,6 @@ public final class OnnxMl {
        * <code>.onnx.GraphProto g = 6;</code>
        */
       public OnnxMl.GraphProto.Builder getGBuilder() {
-
         onChanged();
         return getGFieldBuilder().getBuilder();
       }
@@ -3577,8 +3619,8 @@ public final class OnnxMl {
        * <code>.onnx.GraphProto g = 6;</code>
        */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
-          getGFieldBuilder() {
+          OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
+      getGFieldBuilder() {
         if (gBuilder_ == null) {
           gBuilder_ =
               new com.google.protobuf.SingleFieldBuilderV3<
@@ -3591,9 +3633,9 @@ public final class OnnxMl {
 
       private OnnxMl.SparseTensorProto sparseTensor_ = null;
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.SparseTensorProto,
-              OnnxMl.SparseTensorProto.Builder,
-              OnnxMl.SparseTensorProtoOrBuilder>
+          OnnxMl.SparseTensorProto,
+          OnnxMl.SparseTensorProto.Builder,
+          OnnxMl.SparseTensorProtoOrBuilder>
           sparseTensorBuilder_;
       /**
        *
@@ -3720,7 +3762,6 @@ public final class OnnxMl {
        * <code>.onnx.SparseTensorProto sparse_tensor = 22;</code>
        */
       public OnnxMl.SparseTensorProto.Builder getSparseTensorBuilder() {
-
         onChanged();
         return getSparseTensorFieldBuilder().getBuilder();
       }
@@ -3752,10 +3793,10 @@ public final class OnnxMl {
        * <code>.onnx.SparseTensorProto sparse_tensor = 22;</code>
        */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.SparseTensorProto,
-              OnnxMl.SparseTensorProto.Builder,
-              OnnxMl.SparseTensorProtoOrBuilder>
-          getSparseTensorFieldBuilder() {
+          OnnxMl.SparseTensorProto,
+          OnnxMl.SparseTensorProto.Builder,
+          OnnxMl.SparseTensorProtoOrBuilder>
+      getSparseTensorFieldBuilder() {
         if (sparseTensorBuilder_ == null) {
           sparseTensorBuilder_ =
               new com.google.protobuf.SingleFieldBuilderV3<
@@ -4101,7 +4142,7 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
+          OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
           tensorsBuilder_;
 
       /**
@@ -4414,8 +4455,8 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
-          getTensorsFieldBuilder() {
+          OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
+      getTensorsFieldBuilder() {
         if (tensorsBuilder_ == null) {
           tensorsBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -4439,7 +4480,7 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
+          OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
           graphsBuilder_;
 
       /**
@@ -4752,8 +4793,8 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
-          getGraphsFieldBuilder() {
+          OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
+      getGraphsFieldBuilder() {
         if (graphsBuilder_ == null) {
           graphsBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -4778,9 +4819,9 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.SparseTensorProto,
-              OnnxMl.SparseTensorProto.Builder,
-              OnnxMl.SparseTensorProtoOrBuilder>
+          OnnxMl.SparseTensorProto,
+          OnnxMl.SparseTensorProto.Builder,
+          OnnxMl.SparseTensorProtoOrBuilder>
           sparseTensorsBuilder_;
 
       /**
@@ -5050,7 +5091,7 @@ public final class OnnxMl {
        * <code>repeated .onnx.SparseTensorProto sparse_tensors = 23;</code>
        */
       public java.util.List<? extends OnnxMl.SparseTensorProtoOrBuilder>
-          getSparseTensorsOrBuilderList() {
+      getSparseTensorsOrBuilderList() {
         if (sparseTensorsBuilder_ != null) {
           return sparseTensorsBuilder_.getMessageOrBuilderList();
         } else {
@@ -5097,10 +5138,10 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.SparseTensorProto,
-              OnnxMl.SparseTensorProto.Builder,
-              OnnxMl.SparseTensorProtoOrBuilder>
-          getSparseTensorsFieldBuilder() {
+          OnnxMl.SparseTensorProto,
+          OnnxMl.SparseTensorProto.Builder,
+          OnnxMl.SparseTensorProtoOrBuilder>
+      getSparseTensorsFieldBuilder() {
         if (sparseTensorsBuilder_ == null) {
           sparseTensorsBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -5170,9 +5211,8 @@ public final class OnnxMl {
 
   public interface ValueInfoProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.ValueInfoProto)
-      com.google.protobuf.MessageOrBuilder {
-
+          // @@protoc_insertion_point(interface_extends:onnx.ValueInfoProto)
+          com.google.protobuf.MessageOrBuilder {
     /**
      *
      *
@@ -5261,8 +5301,8 @@ public final class OnnxMl {
    */
   public static final class ValueInfoProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.ValueInfoProto)
-      ValueInfoProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.ValueInfoProto)
+          ValueInfoProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use ValueInfoProto.newBuilder() to construct.
     private ValueInfoProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -5298,41 +5338,37 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+            case 10: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                name_ = s;
-                break;
+              name_ = s;
+              break;
+            }
+            case 18: {
+              OnnxMl.TypeProto.Builder subBuilder = null;
+              if (type_ != null) {
+                subBuilder = type_.toBuilder();
               }
-            case 18:
-              {
-                OnnxMl.TypeProto.Builder subBuilder = null;
-                if (type_ != null) {
-                  subBuilder = type_.toBuilder();
-                }
-                type_ = input.readMessage(OnnxMl.TypeProto.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom(type_);
-                  type_ = subBuilder.buildPartial();
-                }
+              type_ = input.readMessage(OnnxMl.TypeProto.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom(type_);
+                type_ = subBuilder.buildPartial();
+              }
 
-                break;
-              }
-            case 26:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              break;
+            }
+            case 26: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                docString_ = s;
-                break;
+              docString_ = s;
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -5351,7 +5387,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_ValueInfoProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.ValueInfoProto.class, OnnxMl.ValueInfoProto.Builder.class);
@@ -5490,8 +5526,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -5514,7 +5552,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       if (!getNameBytes().isEmpty()) {
@@ -5680,15 +5719,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.ValueInfoProto)
-        OnnxMl.ValueInfoProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.ValueInfoProto)
+            OnnxMl.ValueInfoProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_ValueInfoProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_ValueInfoProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.ValueInfoProto.class, OnnxMl.ValueInfoProto.Builder.class);
@@ -5705,7 +5744,8 @@ public final class OnnxMl {
       }
 
       private void maybeForceBuilderInitialization() {
-        if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+        if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+        }
       }
 
       @java.lang.Override
@@ -5803,7 +5843,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.ValueInfoProto other) {
-        if (other == OnnxMl.ValueInfoProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.ValueInfoProto.getDefaultInstance())
+          return this;
         if (!other.getName().isEmpty()) {
           name_ = other.name_;
           onChanged();
@@ -5913,7 +5954,6 @@ public final class OnnxMl {
        * <code>string name = 1;</code>
        */
       public Builder clearName() {
-
         name_ = getDefaultInstance().getName();
         onChanged();
         return this;
@@ -5940,7 +5980,7 @@ public final class OnnxMl {
 
       private OnnxMl.TypeProto type_ = null;
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
+          OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
           typeBuilder_;
       /**
        *
@@ -6071,7 +6111,6 @@ public final class OnnxMl {
        * <code>.onnx.TypeProto type = 2;</code>
        */
       public OnnxMl.TypeProto.Builder getTypeBuilder() {
-
         onChanged();
         return getTypeFieldBuilder().getBuilder();
       }
@@ -6103,8 +6142,8 @@ public final class OnnxMl {
        * <code>.onnx.TypeProto type = 2;</code>
        */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
-          getTypeFieldBuilder() {
+          OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
+      getTypeFieldBuilder() {
         if (typeBuilder_ == null) {
           typeBuilder_ =
               new com.google.protobuf.SingleFieldBuilderV3<
@@ -6184,7 +6223,6 @@ public final class OnnxMl {
        * <code>string doc_string = 3;</code>
        */
       public Builder clearDocString() {
-
         docString_ = getDefaultInstance().getDocString();
         onChanged();
         return this;
@@ -6263,9 +6301,8 @@ public final class OnnxMl {
 
   public interface NodeProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.NodeProto)
-      com.google.protobuf.MessageOrBuilder {
-
+          // @@protoc_insertion_point(interface_extends:onnx.NodeProto)
+          com.google.protobuf.MessageOrBuilder {
     /**
      *
      *
@@ -6500,8 +6537,8 @@ public final class OnnxMl {
    */
   public static final class NodeProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.NodeProto)
-      NodeProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.NodeProto)
+          NodeProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use NodeProto.newBuilder() to construct.
     private NodeProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -6542,71 +6579,63 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
-                if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
-                  input_ = new com.google.protobuf.LazyStringArrayList();
-                  mutable_bitField0_ |= 0x00000001;
-                }
-                input_.add(s);
-                break;
+            case 10: {
+              java.lang.String s = input.readStringRequireUtf8();
+              if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
+                input_ = new com.google.protobuf.LazyStringArrayList();
+                mutable_bitField0_ |= 0x00000001;
               }
-            case 18:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
-                if (!((mutable_bitField0_ & 0x00000002) == 0x00000002)) {
-                  output_ = new com.google.protobuf.LazyStringArrayList();
-                  mutable_bitField0_ |= 0x00000002;
-                }
-                output_.add(s);
-                break;
+              input_.add(s);
+              break;
+            }
+            case 18: {
+              java.lang.String s = input.readStringRequireUtf8();
+              if (!((mutable_bitField0_ & 0x00000002) == 0x00000002)) {
+                output_ = new com.google.protobuf.LazyStringArrayList();
+                mutable_bitField0_ |= 0x00000002;
               }
-            case 26:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              output_.add(s);
+              break;
+            }
+            case 26: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                name_ = s;
-                break;
-              }
-            case 34:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              name_ = s;
+              break;
+            }
+            case 34: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                opType_ = s;
-                break;
+              opType_ = s;
+              break;
+            }
+            case 42: {
+              if (!((mutable_bitField0_ & 0x00000020) == 0x00000020)) {
+                attribute_ = new java.util.ArrayList<OnnxMl.AttributeProto>();
+                mutable_bitField0_ |= 0x00000020;
               }
-            case 42:
-              {
-                if (!((mutable_bitField0_ & 0x00000020) == 0x00000020)) {
-                  attribute_ = new java.util.ArrayList<OnnxMl.AttributeProto>();
-                  mutable_bitField0_ |= 0x00000020;
-                }
-                attribute_.add(
-                    input.readMessage(OnnxMl.AttributeProto.parser(), extensionRegistry));
-                break;
-              }
-            case 50:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              attribute_.add(
+                  input.readMessage(OnnxMl.AttributeProto.parser(), extensionRegistry));
+              break;
+            }
+            case 50: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                docString_ = s;
-                break;
-              }
-            case 58:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              docString_ = s;
+              break;
+            }
+            case 58: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                domain_ = s;
-                break;
+              domain_ = s;
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -6634,7 +6663,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_NodeProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(OnnxMl.NodeProto.class, OnnxMl.NodeProto.Builder.class);
     }
@@ -6984,8 +7013,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -7020,7 +7051,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       {
@@ -7223,15 +7255,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.NodeProto)
-        OnnxMl.NodeProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.NodeProto)
+            OnnxMl.NodeProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_NodeProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_NodeProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.NodeProto.class, OnnxMl.NodeProto.Builder.class);
@@ -7375,7 +7407,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.NodeProto other) {
-        if (other == OnnxMl.NodeProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.NodeProto.getDefaultInstance())
+          return this;
         if (!other.input_.isEmpty()) {
           if (input_.isEmpty()) {
             input_ = other.input_;
@@ -7428,8 +7461,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000020);
               attributeBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getAttributeFieldBuilder()
-                      : null;
+                  ? getAttributeFieldBuilder()
+                  : null;
             } else {
               attributeBuilder_.addAllMessages(other.attribute_);
             }
@@ -7829,7 +7862,6 @@ public final class OnnxMl {
        * <code>string name = 3;</code>
        */
       public Builder clearName() {
-
         name_ = getDefaultInstance().getName();
         onChanged();
         return this;
@@ -7924,7 +7956,6 @@ public final class OnnxMl {
        * <code>string op_type = 4;</code>
        */
       public Builder clearOpType() {
-
         opType_ = getDefaultInstance().getOpType();
         onChanged();
         return this;
@@ -8018,7 +8049,6 @@ public final class OnnxMl {
        * <code>string domain = 7;</code>
        */
       public Builder clearDomain() {
-
         domain_ = getDefaultInstance().getDomain();
         onChanged();
         return this;
@@ -8053,7 +8083,7 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.AttributeProto, OnnxMl.AttributeProto.Builder, OnnxMl.AttributeProtoOrBuilder>
+          OnnxMl.AttributeProto, OnnxMl.AttributeProto.Builder, OnnxMl.AttributeProtoOrBuilder>
           attributeBuilder_;
 
       /**
@@ -8367,8 +8397,8 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.AttributeProto, OnnxMl.AttributeProto.Builder, OnnxMl.AttributeProtoOrBuilder>
-          getAttributeFieldBuilder() {
+          OnnxMl.AttributeProto, OnnxMl.AttributeProto.Builder, OnnxMl.AttributeProtoOrBuilder>
+      getAttributeFieldBuilder() {
         if (attributeBuilder_ == null) {
           attributeBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -8453,7 +8483,6 @@ public final class OnnxMl {
        * <code>string doc_string = 6;</code>
        */
       public Builder clearDocString() {
-
         docString_ = getDefaultInstance().getDocString();
         onChanged();
         return this;
@@ -8532,9 +8561,8 @@ public final class OnnxMl {
 
   public interface ModelProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.ModelProto)
-      com.google.protobuf.MessageOrBuilder {
-
+          // @@protoc_insertion_point(interface_extends:onnx.ModelProto)
+          com.google.protobuf.MessageOrBuilder {
     /**
      *
      *
@@ -8861,7 +8889,7 @@ public final class OnnxMl {
      * <code>repeated .onnx.StringStringEntryProto metadata_props = 14;</code>
      */
     java.util.List<? extends OnnxMl.StringStringEntryProtoOrBuilder>
-        getMetadataPropsOrBuilderList();
+    getMetadataPropsOrBuilderList();
     /**
      *
      *
@@ -8887,8 +8915,8 @@ public final class OnnxMl {
    */
   public static final class ModelProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.ModelProto)
-      ModelProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.ModelProto)
+          ModelProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use ModelProto.newBuilder() to construct.
     private ModelProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -8931,94 +8959,83 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 8:
-              {
-                irVersion_ = input.readInt64();
-                break;
-              }
-            case 18:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+            case 8: {
+              irVersion_ = input.readInt64();
+              break;
+            }
+            case 18: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                producerName_ = s;
-                break;
-              }
-            case 26:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              producerName_ = s;
+              break;
+            }
+            case 26: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                producerVersion_ = s;
-                break;
-              }
-            case 34:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              producerVersion_ = s;
+              break;
+            }
+            case 34: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                domain_ = s;
-                break;
-              }
-            case 40:
-              {
-                modelVersion_ = input.readInt64();
-                break;
-              }
-            case 50:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              domain_ = s;
+              break;
+            }
+            case 40: {
+              modelVersion_ = input.readInt64();
+              break;
+            }
+            case 50: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                docString_ = s;
-                break;
+              docString_ = s;
+              break;
+            }
+            case 58: {
+              OnnxMl.GraphProto.Builder subBuilder = null;
+              if (graph_ != null) {
+                subBuilder = graph_.toBuilder();
               }
-            case 58:
-              {
-                OnnxMl.GraphProto.Builder subBuilder = null;
-                if (graph_ != null) {
-                  subBuilder = graph_.toBuilder();
-                }
-                graph_ = input.readMessage(OnnxMl.GraphProto.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom(graph_);
-                  graph_ = subBuilder.buildPartial();
-                }
+              graph_ = input.readMessage(OnnxMl.GraphProto.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom(graph_);
+                graph_ = subBuilder.buildPartial();
+              }
 
-                break;
+              break;
+            }
+            case 66: {
+              if (!((mutable_bitField0_ & 0x00000002) == 0x00000002)) {
+                opsetImport_ = new java.util.ArrayList<OnnxMl.OperatorSetIdProto>();
+                mutable_bitField0_ |= 0x00000002;
               }
-            case 66:
-              {
-                if (!((mutable_bitField0_ & 0x00000002) == 0x00000002)) {
-                  opsetImport_ = new java.util.ArrayList<OnnxMl.OperatorSetIdProto>();
-                  mutable_bitField0_ |= 0x00000002;
-                }
-                opsetImport_.add(
-                    input.readMessage(OnnxMl.OperatorSetIdProto.parser(), extensionRegistry));
-                break;
+              opsetImport_.add(
+                  input.readMessage(OnnxMl.OperatorSetIdProto.parser(), extensionRegistry));
+              break;
+            }
+            case 114: {
+              if (!((mutable_bitField0_ & 0x00000200) == 0x00000200)) {
+                metadataProps_ = new java.util.ArrayList<OnnxMl.StringStringEntryProto>();
+                mutable_bitField0_ |= 0x00000200;
               }
-            case 114:
-              {
-                if (!((mutable_bitField0_ & 0x00000200) == 0x00000200)) {
-                  metadataProps_ = new java.util.ArrayList<OnnxMl.StringStringEntryProto>();
-                  mutable_bitField0_ |= 0x00000200;
-                }
-                metadataProps_.add(
-                    input.readMessage(OnnxMl.StringStringEntryProto.parser(), extensionRegistry));
-                break;
+              metadataProps_.add(
+                  input.readMessage(OnnxMl.StringStringEntryProto.parser(), extensionRegistry));
+              break;
+            }
+            case 802: {
+              if (!((mutable_bitField0_ & 0x00000100) == 0x00000100)) {
+                functions_ = new java.util.ArrayList<OnnxMl.FunctionProto>();
+                mutable_bitField0_ |= 0x00000100;
               }
-            case 802:
-              {
-                if (!((mutable_bitField0_ & 0x00000100) == 0x00000100)) {
-                  functions_ = new java.util.ArrayList<OnnxMl.FunctionProto>();
-                  mutable_bitField0_ |= 0x00000100;
-                }
-                functions_.add(input.readMessage(OnnxMl.FunctionProto.parser(), extensionRegistry));
-                break;
+              functions_.add(input.readMessage(OnnxMl.FunctionProto.parser(), extensionRegistry));
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -9046,7 +9063,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_ModelProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.ModelProto.class, OnnxMl.ModelProto.Builder.class);
@@ -9105,7 +9122,7 @@ public final class OnnxMl {
      * <code>repeated .onnx.OperatorSetIdProto opset_import = 8;</code>
      */
     public java.util.List<? extends OnnxMl.OperatorSetIdProtoOrBuilder>
-        getOpsetImportOrBuilderList() {
+    getOpsetImportOrBuilderList() {
       return opsetImport_;
     }
     /**
@@ -9492,7 +9509,7 @@ public final class OnnxMl {
      * <code>repeated .onnx.StringStringEntryProto metadata_props = 14;</code>
      */
     public java.util.List<? extends OnnxMl.StringStringEntryProtoOrBuilder>
-        getMetadataPropsOrBuilderList() {
+    getMetadataPropsOrBuilderList() {
       return metadataProps_;
     }
     /**
@@ -9537,8 +9554,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -9582,7 +9601,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       if (irVersion_ != 0L) {
@@ -9798,15 +9818,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.ModelProto)
-        OnnxMl.ModelProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.ModelProto)
+            OnnxMl.ModelProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_ModelProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_ModelProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.ModelProto.class, OnnxMl.ModelProto.Builder.class);
@@ -9985,7 +10005,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.ModelProto other) {
-        if (other == OnnxMl.ModelProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.ModelProto.getDefaultInstance())
+          return this;
         if (other.getIrVersion() != 0L) {
           setIrVersion(other.getIrVersion());
         }
@@ -10009,8 +10030,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000002);
               opsetImportBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getOpsetImportFieldBuilder()
-                      : null;
+                  ? getOpsetImportFieldBuilder()
+                  : null;
             } else {
               opsetImportBuilder_.addAllMessages(other.opsetImport_);
             }
@@ -10058,8 +10079,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000100);
               functionsBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getFunctionsFieldBuilder()
-                      : null;
+                  ? getFunctionsFieldBuilder()
+                  : null;
             } else {
               functionsBuilder_.addAllMessages(other.functions_);
             }
@@ -10085,8 +10106,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000200);
               metadataPropsBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getMetadataPropsFieldBuilder()
-                      : null;
+                  ? getMetadataPropsFieldBuilder()
+                  : null;
             } else {
               metadataPropsBuilder_.addAllMessages(other.metadataProps_);
             }
@@ -10148,7 +10169,6 @@ public final class OnnxMl {
        * <code>int64 ir_version = 1;</code>
        */
       public Builder setIrVersion(long value) {
-
         irVersion_ = value;
         onChanged();
         return this;
@@ -10164,7 +10184,6 @@ public final class OnnxMl {
        * <code>int64 ir_version = 1;</code>
        */
       public Builder clearIrVersion() {
-
         irVersion_ = 0L;
         onChanged();
         return this;
@@ -10181,9 +10200,9 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.OperatorSetIdProto,
-              OnnxMl.OperatorSetIdProto.Builder,
-              OnnxMl.OperatorSetIdProtoOrBuilder>
+          OnnxMl.OperatorSetIdProto,
+          OnnxMl.OperatorSetIdProto.Builder,
+          OnnxMl.OperatorSetIdProtoOrBuilder>
           opsetImportBuilder_;
 
       /**
@@ -10543,7 +10562,7 @@ public final class OnnxMl {
        * <code>repeated .onnx.OperatorSetIdProto opset_import = 8;</code>
        */
       public java.util.List<? extends OnnxMl.OperatorSetIdProtoOrBuilder>
-          getOpsetImportOrBuilderList() {
+      getOpsetImportOrBuilderList() {
         if (opsetImportBuilder_ != null) {
           return opsetImportBuilder_.getMessageOrBuilderList();
         } else {
@@ -10608,10 +10627,10 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.OperatorSetIdProto,
-              OnnxMl.OperatorSetIdProto.Builder,
-              OnnxMl.OperatorSetIdProtoOrBuilder>
-          getOpsetImportFieldBuilder() {
+          OnnxMl.OperatorSetIdProto,
+          OnnxMl.OperatorSetIdProto.Builder,
+          OnnxMl.OperatorSetIdProtoOrBuilder>
+      getOpsetImportFieldBuilder() {
         if (opsetImportBuilder_ == null) {
           opsetImportBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -10704,7 +10723,6 @@ public final class OnnxMl {
        * <code>string producer_name = 2;</code>
        */
       public Builder clearProducerName() {
-
         producerName_ = getDefaultInstance().getProducerName();
         onChanged();
         return this;
@@ -10808,7 +10826,6 @@ public final class OnnxMl {
        * <code>string producer_version = 3;</code>
        */
       public Builder clearProducerVersion() {
-
         producerVersion_ = getDefaultInstance().getProducerVersion();
         onChanged();
         return this;
@@ -10920,7 +10937,6 @@ public final class OnnxMl {
        * <code>string domain = 4;</code>
        */
       public Builder clearDomain() {
-
         domain_ = getDefaultInstance().getDomain();
         onChanged();
         return this;
@@ -10972,7 +10988,6 @@ public final class OnnxMl {
        * <code>int64 model_version = 5;</code>
        */
       public Builder setModelVersion(long value) {
-
         modelVersion_ = value;
         onChanged();
         return this;
@@ -10987,7 +11002,6 @@ public final class OnnxMl {
        * <code>int64 model_version = 5;</code>
        */
       public Builder clearModelVersion() {
-
         modelVersion_ = 0L;
         onChanged();
         return this;
@@ -11062,7 +11076,6 @@ public final class OnnxMl {
        * <code>string doc_string = 6;</code>
        */
       public Builder clearDocString() {
-
         docString_ = getDefaultInstance().getDocString();
         onChanged();
         return this;
@@ -11089,7 +11102,7 @@ public final class OnnxMl {
 
       private OnnxMl.GraphProto graph_ = null;
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
+          OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
           graphBuilder_;
       /**
        *
@@ -11213,7 +11226,6 @@ public final class OnnxMl {
        * <code>.onnx.GraphProto graph = 7;</code>
        */
       public OnnxMl.GraphProto.Builder getGraphBuilder() {
-
         onChanged();
         return getGraphFieldBuilder().getBuilder();
       }
@@ -11243,8 +11255,8 @@ public final class OnnxMl {
        * <code>.onnx.GraphProto graph = 7;</code>
        */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
-          getGraphFieldBuilder() {
+          OnnxMl.GraphProto, OnnxMl.GraphProto.Builder, OnnxMl.GraphProtoOrBuilder>
+      getGraphFieldBuilder() {
         if (graphBuilder_ == null) {
           graphBuilder_ =
               new com.google.protobuf.SingleFieldBuilderV3<
@@ -11265,7 +11277,7 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.FunctionProto, OnnxMl.FunctionProto.Builder, OnnxMl.FunctionProtoOrBuilder>
+          OnnxMl.FunctionProto, OnnxMl.FunctionProto.Builder, OnnxMl.FunctionProtoOrBuilder>
           functionsBuilder_;
 
       /**
@@ -11579,8 +11591,8 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.FunctionProto, OnnxMl.FunctionProto.Builder, OnnxMl.FunctionProtoOrBuilder>
-          getFunctionsFieldBuilder() {
+          OnnxMl.FunctionProto, OnnxMl.FunctionProto.Builder, OnnxMl.FunctionProtoOrBuilder>
+      getFunctionsFieldBuilder() {
         if (functionsBuilder_ == null) {
           functionsBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -11607,9 +11619,9 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.StringStringEntryProto,
-              OnnxMl.StringStringEntryProto.Builder,
-              OnnxMl.StringStringEntryProtoOrBuilder>
+          OnnxMl.StringStringEntryProto,
+          OnnxMl.StringStringEntryProto.Builder,
+          OnnxMl.StringStringEntryProtoOrBuilder>
           metadataPropsBuilder_;
 
       /**
@@ -11881,7 +11893,7 @@ public final class OnnxMl {
        * <code>repeated .onnx.StringStringEntryProto metadata_props = 14;</code>
        */
       public java.util.List<? extends OnnxMl.StringStringEntryProtoOrBuilder>
-          getMetadataPropsOrBuilderList() {
+      getMetadataPropsOrBuilderList() {
         if (metadataPropsBuilder_ != null) {
           return metadataPropsBuilder_.getMessageOrBuilderList();
         } else {
@@ -11928,10 +11940,10 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.StringStringEntryProto,
-              OnnxMl.StringStringEntryProto.Builder,
-              OnnxMl.StringStringEntryProtoOrBuilder>
-          getMetadataPropsFieldBuilder() {
+          OnnxMl.StringStringEntryProto,
+          OnnxMl.StringStringEntryProto.Builder,
+          OnnxMl.StringStringEntryProtoOrBuilder>
+      getMetadataPropsFieldBuilder() {
         if (metadataPropsBuilder_ == null) {
           metadataPropsBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -12001,17 +12013,24 @@ public final class OnnxMl {
 
   public interface StringStringEntryProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.StringStringEntryProto)
-      com.google.protobuf.MessageOrBuilder {
-
-    /** <code>string key = 1;</code> */
+          // @@protoc_insertion_point(interface_extends:onnx.StringStringEntryProto)
+          com.google.protobuf.MessageOrBuilder {
+    /**
+     * <code>string key = 1;</code>
+     */
     java.lang.String getKey();
-    /** <code>string key = 1;</code> */
+    /**
+     * <code>string key = 1;</code>
+     */
     com.google.protobuf.ByteString getKeyBytes();
 
-    /** <code>string value = 2;</code> */
+    /**
+     * <code>string value = 2;</code>
+     */
     java.lang.String getValue();
-    /** <code>string value = 2;</code> */
+    /**
+     * <code>string value = 2;</code>
+     */
     com.google.protobuf.ByteString getValueBytes();
   }
   /**
@@ -12026,8 +12045,8 @@ public final class OnnxMl {
    */
   public static final class StringStringEntryProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.StringStringEntryProto)
-      StringStringEntryProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.StringStringEntryProto)
+          StringStringEntryProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use StringStringEntryProto.newBuilder() to construct.
     private StringStringEntryProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -12063,27 +12082,24 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+            case 10: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                key_ = s;
-                break;
-              }
-            case 18:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              key_ = s;
+              break;
+            }
+            case 18: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                value_ = s;
-                break;
+              value_ = s;
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -12102,7 +12118,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_StringStringEntryProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.StringStringEntryProto.class, OnnxMl.StringStringEntryProto.Builder.class);
@@ -12110,7 +12126,9 @@ public final class OnnxMl {
 
     public static final int KEY_FIELD_NUMBER = 1;
     private volatile java.lang.Object key_;
-    /** <code>string key = 1;</code> */
+    /**
+     * <code>string key = 1;</code>
+     */
     public java.lang.String getKey() {
       java.lang.Object ref = key_;
       if (ref instanceof java.lang.String) {
@@ -12122,7 +12140,9 @@ public final class OnnxMl {
         return s;
       }
     }
-    /** <code>string key = 1;</code> */
+    /**
+     * <code>string key = 1;</code>
+     */
     public com.google.protobuf.ByteString getKeyBytes() {
       java.lang.Object ref = key_;
       if (ref instanceof java.lang.String) {
@@ -12137,7 +12157,9 @@ public final class OnnxMl {
 
     public static final int VALUE_FIELD_NUMBER = 2;
     private volatile java.lang.Object value_;
-    /** <code>string value = 2;</code> */
+    /**
+     * <code>string value = 2;</code>
+     */
     public java.lang.String getValue() {
       java.lang.Object ref = value_;
       if (ref instanceof java.lang.String) {
@@ -12149,7 +12171,9 @@ public final class OnnxMl {
         return s;
       }
     }
-    /** <code>string value = 2;</code> */
+    /**
+     * <code>string value = 2;</code>
+     */
     public com.google.protobuf.ByteString getValueBytes() {
       java.lang.Object ref = value_;
       if (ref instanceof java.lang.String) {
@@ -12167,8 +12191,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -12188,7 +12214,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       if (!getKeyBytes().isEmpty()) {
@@ -12343,15 +12370,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.StringStringEntryProto)
-        OnnxMl.StringStringEntryProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.StringStringEntryProto)
+            OnnxMl.StringStringEntryProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_StringStringEntryProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_StringStringEntryProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.StringStringEntryProto.class, OnnxMl.StringStringEntryProto.Builder.class);
@@ -12368,7 +12395,8 @@ public final class OnnxMl {
       }
 
       private void maybeForceBuilderInitialization() {
-        if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+        if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+        }
       }
 
       @java.lang.Override
@@ -12455,7 +12483,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.StringStringEntryProto other) {
-        if (other == OnnxMl.StringStringEntryProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.StringStringEntryProto.getDefaultInstance())
+          return this;
         if (!other.getKey().isEmpty()) {
           key_ = other.key_;
           onChanged();
@@ -12494,7 +12523,9 @@ public final class OnnxMl {
       }
 
       private java.lang.Object key_ = "";
-      /** <code>string key = 1;</code> */
+      /**
+       * <code>string key = 1;</code>
+       */
       public java.lang.String getKey() {
         java.lang.Object ref = key_;
         if (!(ref instanceof java.lang.String)) {
@@ -12506,7 +12537,9 @@ public final class OnnxMl {
           return (java.lang.String) ref;
         }
       }
-      /** <code>string key = 1;</code> */
+      /**
+       * <code>string key = 1;</code>
+       */
       public com.google.protobuf.ByteString getKeyBytes() {
         java.lang.Object ref = key_;
         if (ref instanceof String) {
@@ -12518,7 +12551,9 @@ public final class OnnxMl {
           return (com.google.protobuf.ByteString) ref;
         }
       }
-      /** <code>string key = 1;</code> */
+      /**
+       * <code>string key = 1;</code>
+       */
       public Builder setKey(java.lang.String value) {
         if (value == null) {
           throw new NullPointerException();
@@ -12528,14 +12563,17 @@ public final class OnnxMl {
         onChanged();
         return this;
       }
-      /** <code>string key = 1;</code> */
+      /**
+       * <code>string key = 1;</code>
+       */
       public Builder clearKey() {
-
         key_ = getDefaultInstance().getKey();
         onChanged();
         return this;
       }
-      /** <code>string key = 1;</code> */
+      /**
+       * <code>string key = 1;</code>
+       */
       public Builder setKeyBytes(com.google.protobuf.ByteString value) {
         if (value == null) {
           throw new NullPointerException();
@@ -12548,7 +12586,9 @@ public final class OnnxMl {
       }
 
       private java.lang.Object value_ = "";
-      /** <code>string value = 2;</code> */
+      /**
+       * <code>string value = 2;</code>
+       */
       public java.lang.String getValue() {
         java.lang.Object ref = value_;
         if (!(ref instanceof java.lang.String)) {
@@ -12560,7 +12600,9 @@ public final class OnnxMl {
           return (java.lang.String) ref;
         }
       }
-      /** <code>string value = 2;</code> */
+      /**
+       * <code>string value = 2;</code>
+       */
       public com.google.protobuf.ByteString getValueBytes() {
         java.lang.Object ref = value_;
         if (ref instanceof String) {
@@ -12572,7 +12614,9 @@ public final class OnnxMl {
           return (com.google.protobuf.ByteString) ref;
         }
       }
-      /** <code>string value = 2;</code> */
+      /**
+       * <code>string value = 2;</code>
+       */
       public Builder setValue(java.lang.String value) {
         if (value == null) {
           throw new NullPointerException();
@@ -12582,14 +12626,17 @@ public final class OnnxMl {
         onChanged();
         return this;
       }
-      /** <code>string value = 2;</code> */
+      /**
+       * <code>string value = 2;</code>
+       */
       public Builder clearValue() {
-
         value_ = getDefaultInstance().getValue();
         onChanged();
         return this;
       }
-      /** <code>string value = 2;</code> */
+      /**
+       * <code>string value = 2;</code>
+       */
       public Builder setValueBytes(com.google.protobuf.ByteString value) {
         if (value == null) {
           throw new NullPointerException();
@@ -12655,12 +12702,15 @@ public final class OnnxMl {
 
   public interface TensorAnnotationOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.TensorAnnotation)
-      com.google.protobuf.MessageOrBuilder {
-
-    /** <code>string tensor_name = 1;</code> */
+          // @@protoc_insertion_point(interface_extends:onnx.TensorAnnotation)
+          com.google.protobuf.MessageOrBuilder {
+    /**
+     * <code>string tensor_name = 1;</code>
+     */
     java.lang.String getTensorName();
-    /** <code>string tensor_name = 1;</code> */
+    /**
+     * <code>string tensor_name = 1;</code>
+     */
     com.google.protobuf.ByteString getTensorNameBytes();
 
     /**
@@ -12715,7 +12765,7 @@ public final class OnnxMl {
      * <code>repeated .onnx.StringStringEntryProto quant_parameter_tensor_names = 2;</code>
      */
     java.util.List<? extends OnnxMl.StringStringEntryProtoOrBuilder>
-        getQuantParameterTensorNamesOrBuilderList();
+    getQuantParameterTensorNamesOrBuilderList();
     /**
      *
      *
@@ -12730,11 +12780,13 @@ public final class OnnxMl {
      */
     OnnxMl.StringStringEntryProtoOrBuilder getQuantParameterTensorNamesOrBuilder(int index);
   }
-  /** Protobuf type {@code onnx.TensorAnnotation} */
+  /**
+   * Protobuf type {@code onnx.TensorAnnotation}
+   */
   public static final class TensorAnnotation extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.TensorAnnotation)
-      TensorAnnotationOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.TensorAnnotation)
+          TensorAnnotationOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use TensorAnnotation.newBuilder() to construct.
     private TensorAnnotation(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -12770,31 +12822,28 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+            case 10: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                tensorName_ = s;
-                break;
+              tensorName_ = s;
+              break;
+            }
+            case 18: {
+              if (!((mutable_bitField0_ & 0x00000002) == 0x00000002)) {
+                quantParameterTensorNames_ =
+                    new java.util.ArrayList<OnnxMl.StringStringEntryProto>();
+                mutable_bitField0_ |= 0x00000002;
               }
-            case 18:
-              {
-                if (!((mutable_bitField0_ & 0x00000002) == 0x00000002)) {
-                  quantParameterTensorNames_ =
-                      new java.util.ArrayList<OnnxMl.StringStringEntryProto>();
-                  mutable_bitField0_ |= 0x00000002;
-                }
-                quantParameterTensorNames_.add(
-                    input.readMessage(OnnxMl.StringStringEntryProto.parser(), extensionRegistry));
-                break;
+              quantParameterTensorNames_.add(
+                  input.readMessage(OnnxMl.StringStringEntryProto.parser(), extensionRegistry));
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -12817,7 +12866,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_TensorAnnotation_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.TensorAnnotation.class, OnnxMl.TensorAnnotation.Builder.class);
@@ -12826,7 +12875,9 @@ public final class OnnxMl {
     private int bitField0_;
     public static final int TENSOR_NAME_FIELD_NUMBER = 1;
     private volatile java.lang.Object tensorName_;
-    /** <code>string tensor_name = 1;</code> */
+    /**
+     * <code>string tensor_name = 1;</code>
+     */
     public java.lang.String getTensorName() {
       java.lang.Object ref = tensorName_;
       if (ref instanceof java.lang.String) {
@@ -12838,7 +12889,9 @@ public final class OnnxMl {
         return s;
       }
     }
-    /** <code>string tensor_name = 1;</code> */
+    /**
+     * <code>string tensor_name = 1;</code>
+     */
     public com.google.protobuf.ByteString getTensorNameBytes() {
       java.lang.Object ref = tensorName_;
       if (ref instanceof java.lang.String) {
@@ -12881,7 +12934,7 @@ public final class OnnxMl {
      * <code>repeated .onnx.StringStringEntryProto quant_parameter_tensor_names = 2;</code>
      */
     public java.util.List<? extends OnnxMl.StringStringEntryProtoOrBuilder>
-        getQuantParameterTensorNamesOrBuilderList() {
+    getQuantParameterTensorNamesOrBuilderList() {
       return quantParameterTensorNames_;
     }
     /**
@@ -12935,8 +12988,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -12956,7 +13011,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       if (!getTensorNameBytes().isEmpty()) {
@@ -12986,8 +13042,8 @@ public final class OnnxMl {
       result = result && getTensorName().equals(other.getTensorName());
       result =
           result
-              && getQuantParameterTensorNamesList()
-                  .equals(other.getQuantParameterTensorNamesList());
+          && getQuantParameterTensorNamesList()
+                 .equals(other.getQuantParameterTensorNamesList());
       result = result && unknownFields.equals(other.unknownFields);
       return result;
     }
@@ -13105,19 +13161,21 @@ public final class OnnxMl {
       Builder builder = new Builder(parent);
       return builder;
     }
-    /** Protobuf type {@code onnx.TensorAnnotation} */
+    /**
+     * Protobuf type {@code onnx.TensorAnnotation}
+     */
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.TensorAnnotation)
-        OnnxMl.TensorAnnotationOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.TensorAnnotation)
+            OnnxMl.TensorAnnotationOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_TensorAnnotation_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TensorAnnotation_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TensorAnnotation.class, OnnxMl.TensorAnnotation.Builder.class);
@@ -13239,7 +13297,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.TensorAnnotation other) {
-        if (other == OnnxMl.TensorAnnotation.getDefaultInstance()) return this;
+        if (other == OnnxMl.TensorAnnotation.getDefaultInstance())
+          return this;
         if (!other.getTensorName().isEmpty()) {
           tensorName_ = other.tensorName_;
           onChanged();
@@ -13264,8 +13323,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000002);
               quantParameterTensorNamesBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getQuantParameterTensorNamesFieldBuilder()
-                      : null;
+                  ? getQuantParameterTensorNamesFieldBuilder()
+                  : null;
             } else {
               quantParameterTensorNamesBuilder_.addAllMessages(other.quantParameterTensorNames_);
             }
@@ -13303,7 +13362,9 @@ public final class OnnxMl {
       private int bitField0_;
 
       private java.lang.Object tensorName_ = "";
-      /** <code>string tensor_name = 1;</code> */
+      /**
+       * <code>string tensor_name = 1;</code>
+       */
       public java.lang.String getTensorName() {
         java.lang.Object ref = tensorName_;
         if (!(ref instanceof java.lang.String)) {
@@ -13315,7 +13376,9 @@ public final class OnnxMl {
           return (java.lang.String) ref;
         }
       }
-      /** <code>string tensor_name = 1;</code> */
+      /**
+       * <code>string tensor_name = 1;</code>
+       */
       public com.google.protobuf.ByteString getTensorNameBytes() {
         java.lang.Object ref = tensorName_;
         if (ref instanceof String) {
@@ -13327,7 +13390,9 @@ public final class OnnxMl {
           return (com.google.protobuf.ByteString) ref;
         }
       }
-      /** <code>string tensor_name = 1;</code> */
+      /**
+       * <code>string tensor_name = 1;</code>
+       */
       public Builder setTensorName(java.lang.String value) {
         if (value == null) {
           throw new NullPointerException();
@@ -13337,14 +13402,17 @@ public final class OnnxMl {
         onChanged();
         return this;
       }
-      /** <code>string tensor_name = 1;</code> */
+      /**
+       * <code>string tensor_name = 1;</code>
+       */
       public Builder clearTensorName() {
-
         tensorName_ = getDefaultInstance().getTensorName();
         onChanged();
         return this;
       }
-      /** <code>string tensor_name = 1;</code> */
+      /**
+       * <code>string tensor_name = 1;</code>
+       */
       public Builder setTensorNameBytes(com.google.protobuf.ByteString value) {
         if (value == null) {
           throw new NullPointerException();
@@ -13368,9 +13436,9 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.StringStringEntryProto,
-              OnnxMl.StringStringEntryProto.Builder,
-              OnnxMl.StringStringEntryProtoOrBuilder>
+          OnnxMl.StringStringEntryProto,
+          OnnxMl.StringStringEntryProto.Builder,
+          OnnxMl.StringStringEntryProtoOrBuilder>
           quantParameterTensorNamesBuilder_;
 
       /**
@@ -13690,7 +13758,7 @@ public final class OnnxMl {
        * <code>repeated .onnx.StringStringEntryProto quant_parameter_tensor_names = 2;</code>
        */
       public java.util.List<? extends OnnxMl.StringStringEntryProtoOrBuilder>
-          getQuantParameterTensorNamesOrBuilderList() {
+      getQuantParameterTensorNamesOrBuilderList() {
         if (quantParameterTensorNamesBuilder_ != null) {
           return quantParameterTensorNamesBuilder_.getMessageOrBuilderList();
         } else {
@@ -13742,15 +13810,15 @@ public final class OnnxMl {
        * <code>repeated .onnx.StringStringEntryProto quant_parameter_tensor_names = 2;</code>
        */
       public java.util.List<OnnxMl.StringStringEntryProto.Builder>
-          getQuantParameterTensorNamesBuilderList() {
+      getQuantParameterTensorNamesBuilderList() {
         return getQuantParameterTensorNamesFieldBuilder().getBuilderList();
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.StringStringEntryProto,
-              OnnxMl.StringStringEntryProto.Builder,
-              OnnxMl.StringStringEntryProtoOrBuilder>
-          getQuantParameterTensorNamesFieldBuilder() {
+          OnnxMl.StringStringEntryProto,
+          OnnxMl.StringStringEntryProto.Builder,
+          OnnxMl.StringStringEntryProtoOrBuilder>
+      getQuantParameterTensorNamesFieldBuilder() {
         if (quantParameterTensorNamesBuilder_ == null) {
           quantParameterTensorNamesBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -13820,9 +13888,8 @@ public final class OnnxMl {
 
   public interface GraphProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.GraphProto)
-      com.google.protobuf.MessageOrBuilder {
-
+          // @@protoc_insertion_point(interface_extends:onnx.GraphProto)
+          com.google.protobuf.MessageOrBuilder {
     /**
      *
      *
@@ -14079,15 +14146,25 @@ public final class OnnxMl {
      */
     OnnxMl.ValueInfoProtoOrBuilder getInputOrBuilder(int index);
 
-    /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+    /**
+     * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+     */
     java.util.List<OnnxMl.ValueInfoProto> getOutputList();
-    /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+    /**
+     * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+     */
     OnnxMl.ValueInfoProto getOutput(int index);
-    /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+    /**
+     * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+     */
     int getOutputCount();
-    /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+    /**
+     * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+     */
     java.util.List<? extends OnnxMl.ValueInfoProtoOrBuilder> getOutputOrBuilderList();
-    /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+    /**
+     * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+     */
     OnnxMl.ValueInfoProtoOrBuilder getOutputOrBuilder(int index);
 
     /**
@@ -14198,7 +14275,7 @@ public final class OnnxMl {
      * <code>repeated .onnx.TensorAnnotation quantization_annotation = 14;</code>
      */
     java.util.List<? extends OnnxMl.TensorAnnotationOrBuilder>
-        getQuantizationAnnotationOrBuilderList();
+    getQuantizationAnnotationOrBuilderList();
     /**
      *
      *
@@ -14228,8 +14305,8 @@ public final class OnnxMl {
    */
   public static final class GraphProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.GraphProto)
-      GraphProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.GraphProto)
+          GraphProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use GraphProto.newBuilder() to construct.
     private GraphProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -14272,93 +14349,83 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
-                  node_ = new java.util.ArrayList<OnnxMl.NodeProto>();
-                  mutable_bitField0_ |= 0x00000001;
-                }
-                node_.add(input.readMessage(OnnxMl.NodeProto.parser(), extensionRegistry));
-                break;
+            case 10: {
+              if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
+                node_ = new java.util.ArrayList<OnnxMl.NodeProto>();
+                mutable_bitField0_ |= 0x00000001;
               }
-            case 18:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              node_.add(input.readMessage(OnnxMl.NodeProto.parser(), extensionRegistry));
+              break;
+            }
+            case 18: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                name_ = s;
-                break;
+              name_ = s;
+              break;
+            }
+            case 42: {
+              if (!((mutable_bitField0_ & 0x00000004) == 0x00000004)) {
+                initializer_ = new java.util.ArrayList<OnnxMl.TensorProto>();
+                mutable_bitField0_ |= 0x00000004;
               }
-            case 42:
-              {
-                if (!((mutable_bitField0_ & 0x00000004) == 0x00000004)) {
-                  initializer_ = new java.util.ArrayList<OnnxMl.TensorProto>();
-                  mutable_bitField0_ |= 0x00000004;
-                }
-                initializer_.add(input.readMessage(OnnxMl.TensorProto.parser(), extensionRegistry));
-                break;
-              }
-            case 82:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              initializer_.add(input.readMessage(OnnxMl.TensorProto.parser(), extensionRegistry));
+              break;
+            }
+            case 82: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                docString_ = s;
-                break;
+              docString_ = s;
+              break;
+            }
+            case 90: {
+              if (!((mutable_bitField0_ & 0x00000020) == 0x00000020)) {
+                input_ = new java.util.ArrayList<OnnxMl.ValueInfoProto>();
+                mutable_bitField0_ |= 0x00000020;
               }
-            case 90:
-              {
-                if (!((mutable_bitField0_ & 0x00000020) == 0x00000020)) {
-                  input_ = new java.util.ArrayList<OnnxMl.ValueInfoProto>();
-                  mutable_bitField0_ |= 0x00000020;
-                }
-                input_.add(input.readMessage(OnnxMl.ValueInfoProto.parser(), extensionRegistry));
-                break;
+              input_.add(input.readMessage(OnnxMl.ValueInfoProto.parser(), extensionRegistry));
+              break;
+            }
+            case 98: {
+              if (!((mutable_bitField0_ & 0x00000040) == 0x00000040)) {
+                output_ = new java.util.ArrayList<OnnxMl.ValueInfoProto>();
+                mutable_bitField0_ |= 0x00000040;
               }
-            case 98:
-              {
-                if (!((mutable_bitField0_ & 0x00000040) == 0x00000040)) {
-                  output_ = new java.util.ArrayList<OnnxMl.ValueInfoProto>();
-                  mutable_bitField0_ |= 0x00000040;
-                }
-                output_.add(input.readMessage(OnnxMl.ValueInfoProto.parser(), extensionRegistry));
-                break;
+              output_.add(input.readMessage(OnnxMl.ValueInfoProto.parser(), extensionRegistry));
+              break;
+            }
+            case 106: {
+              if (!((mutable_bitField0_ & 0x00000080) == 0x00000080)) {
+                valueInfo_ = new java.util.ArrayList<OnnxMl.ValueInfoProto>();
+                mutable_bitField0_ |= 0x00000080;
               }
-            case 106:
-              {
-                if (!((mutable_bitField0_ & 0x00000080) == 0x00000080)) {
-                  valueInfo_ = new java.util.ArrayList<OnnxMl.ValueInfoProto>();
-                  mutable_bitField0_ |= 0x00000080;
-                }
-                valueInfo_.add(
-                    input.readMessage(OnnxMl.ValueInfoProto.parser(), extensionRegistry));
-                break;
+              valueInfo_.add(
+                  input.readMessage(OnnxMl.ValueInfoProto.parser(), extensionRegistry));
+              break;
+            }
+            case 114: {
+              if (!((mutable_bitField0_ & 0x00000100) == 0x00000100)) {
+                quantizationAnnotation_ = new java.util.ArrayList<OnnxMl.TensorAnnotation>();
+                mutable_bitField0_ |= 0x00000100;
               }
-            case 114:
-              {
-                if (!((mutable_bitField0_ & 0x00000100) == 0x00000100)) {
-                  quantizationAnnotation_ = new java.util.ArrayList<OnnxMl.TensorAnnotation>();
-                  mutable_bitField0_ |= 0x00000100;
-                }
-                quantizationAnnotation_.add(
-                    input.readMessage(OnnxMl.TensorAnnotation.parser(), extensionRegistry));
-                break;
+              quantizationAnnotation_.add(
+                  input.readMessage(OnnxMl.TensorAnnotation.parser(), extensionRegistry));
+              break;
+            }
+            case 122: {
+              if (!((mutable_bitField0_ & 0x00000008) == 0x00000008)) {
+                sparseInitializer_ = new java.util.ArrayList<OnnxMl.SparseTensorProto>();
+                mutable_bitField0_ |= 0x00000008;
               }
-            case 122:
-              {
-                if (!((mutable_bitField0_ & 0x00000008) == 0x00000008)) {
-                  sparseInitializer_ = new java.util.ArrayList<OnnxMl.SparseTensorProto>();
-                  mutable_bitField0_ |= 0x00000008;
-                }
-                sparseInitializer_.add(
-                    input.readMessage(OnnxMl.SparseTensorProto.parser(), extensionRegistry));
-                break;
+              sparseInitializer_.add(
+                  input.readMessage(OnnxMl.SparseTensorProto.parser(), extensionRegistry));
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -14398,7 +14465,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_GraphProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.GraphProto.class, OnnxMl.GraphProto.Builder.class);
@@ -14608,7 +14675,7 @@ public final class OnnxMl {
      * <code>repeated .onnx.SparseTensorProto sparse_initializer = 15;</code>
      */
     public java.util.List<? extends OnnxMl.SparseTensorProtoOrBuilder>
-        getSparseInitializerOrBuilderList() {
+    getSparseInitializerOrBuilderList() {
       return sparseInitializer_;
     }
     /**
@@ -14756,23 +14823,33 @@ public final class OnnxMl {
 
     public static final int OUTPUT_FIELD_NUMBER = 12;
     private java.util.List<OnnxMl.ValueInfoProto> output_;
-    /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+    /**
+     * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+     */
     public java.util.List<OnnxMl.ValueInfoProto> getOutputList() {
       return output_;
     }
-    /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+    /**
+     * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+     */
     public java.util.List<? extends OnnxMl.ValueInfoProtoOrBuilder> getOutputOrBuilderList() {
       return output_;
     }
-    /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+    /**
+     * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+     */
     public int getOutputCount() {
       return output_.size();
     }
-    /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+    /**
+     * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+     */
     public OnnxMl.ValueInfoProto getOutput(int index) {
       return output_.get(index);
     }
-    /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+    /**
+     * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+     */
     public OnnxMl.ValueInfoProtoOrBuilder getOutputOrBuilder(int index) {
       return output_.get(index);
     }
@@ -14875,7 +14952,7 @@ public final class OnnxMl {
      * <code>repeated .onnx.TensorAnnotation quantization_annotation = 14;</code>
      */
     public java.util.List<? extends OnnxMl.TensorAnnotationOrBuilder>
-        getQuantizationAnnotationOrBuilderList() {
+    getQuantizationAnnotationOrBuilderList() {
       return quantizationAnnotation_;
     }
     /**
@@ -14929,8 +15006,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -14971,7 +15050,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       for (int i = 0; i < node_.size(); i++) {
@@ -15189,15 +15269,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.GraphProto)
-        OnnxMl.GraphProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.GraphProto)
+            OnnxMl.GraphProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_GraphProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_GraphProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.GraphProto.class, OnnxMl.GraphProto.Builder.class);
@@ -15418,7 +15498,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.GraphProto other) {
-        if (other == OnnxMl.GraphProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.GraphProto.getDefaultInstance())
+          return this;
         if (nodeBuilder_ == null) {
           if (!other.node_.isEmpty()) {
             if (node_.isEmpty()) {
@@ -15439,8 +15520,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000001);
               nodeBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getNodeFieldBuilder()
-                      : null;
+                  ? getNodeFieldBuilder()
+                  : null;
             } else {
               nodeBuilder_.addAllMessages(other.node_);
             }
@@ -15470,8 +15551,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000004);
               initializerBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getInitializerFieldBuilder()
-                      : null;
+                  ? getInitializerFieldBuilder()
+                  : null;
             } else {
               initializerBuilder_.addAllMessages(other.initializer_);
             }
@@ -15497,8 +15578,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000008);
               sparseInitializerBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getSparseInitializerFieldBuilder()
-                      : null;
+                  ? getSparseInitializerFieldBuilder()
+                  : null;
             } else {
               sparseInitializerBuilder_.addAllMessages(other.sparseInitializer_);
             }
@@ -15528,8 +15609,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000020);
               inputBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getInputFieldBuilder()
-                      : null;
+                  ? getInputFieldBuilder()
+                  : null;
             } else {
               inputBuilder_.addAllMessages(other.input_);
             }
@@ -15555,8 +15636,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000040);
               outputBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getOutputFieldBuilder()
-                      : null;
+                  ? getOutputFieldBuilder()
+                  : null;
             } else {
               outputBuilder_.addAllMessages(other.output_);
             }
@@ -15582,8 +15663,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000080);
               valueInfoBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getValueInfoFieldBuilder()
-                      : null;
+                  ? getValueInfoFieldBuilder()
+                  : null;
             } else {
               valueInfoBuilder_.addAllMessages(other.valueInfo_);
             }
@@ -15609,8 +15690,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000100);
               quantizationAnnotationBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getQuantizationAnnotationFieldBuilder()
-                      : null;
+                  ? getQuantizationAnnotationFieldBuilder()
+                  : null;
             } else {
               quantizationAnnotationBuilder_.addAllMessages(other.quantizationAnnotation_);
             }
@@ -15657,7 +15738,7 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.NodeProto, OnnxMl.NodeProto.Builder, OnnxMl.NodeProtoOrBuilder>
+          OnnxMl.NodeProto, OnnxMl.NodeProto.Builder, OnnxMl.NodeProtoOrBuilder>
           nodeBuilder_;
 
       /**
@@ -15970,8 +16051,8 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.NodeProto, OnnxMl.NodeProto.Builder, OnnxMl.NodeProtoOrBuilder>
-          getNodeFieldBuilder() {
+          OnnxMl.NodeProto, OnnxMl.NodeProto.Builder, OnnxMl.NodeProtoOrBuilder>
+      getNodeFieldBuilder() {
         if (nodeBuilder_ == null) {
           nodeBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -16054,7 +16135,6 @@ public final class OnnxMl {
        * <code>string name = 2;</code>
        */
       public Builder clearName() {
-
         name_ = getDefaultInstance().getName();
         onChanged();
         return this;
@@ -16089,7 +16169,7 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
+          OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
           initializerBuilder_;
 
       /**
@@ -16439,8 +16519,8 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
-          getInitializerFieldBuilder() {
+          OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
+      getInitializerFieldBuilder() {
         if (initializerBuilder_ == null) {
           initializerBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -16466,9 +16546,9 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.SparseTensorProto,
-              OnnxMl.SparseTensorProto.Builder,
-              OnnxMl.SparseTensorProtoOrBuilder>
+          OnnxMl.SparseTensorProto,
+          OnnxMl.SparseTensorProto.Builder,
+          OnnxMl.SparseTensorProtoOrBuilder>
           sparseInitializerBuilder_;
 
       /**
@@ -16740,7 +16820,7 @@ public final class OnnxMl {
        * <code>repeated .onnx.SparseTensorProto sparse_initializer = 15;</code>
        */
       public java.util.List<? extends OnnxMl.SparseTensorProtoOrBuilder>
-          getSparseInitializerOrBuilderList() {
+      getSparseInitializerOrBuilderList() {
         if (sparseInitializerBuilder_ != null) {
           return sparseInitializerBuilder_.getMessageOrBuilderList();
         } else {
@@ -16787,10 +16867,10 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.SparseTensorProto,
-              OnnxMl.SparseTensorProto.Builder,
-              OnnxMl.SparseTensorProtoOrBuilder>
-          getSparseInitializerFieldBuilder() {
+          OnnxMl.SparseTensorProto,
+          OnnxMl.SparseTensorProto.Builder,
+          OnnxMl.SparseTensorProtoOrBuilder>
+      getSparseInitializerFieldBuilder() {
         if (sparseInitializerBuilder_ == null) {
           sparseInitializerBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -16875,7 +16955,6 @@ public final class OnnxMl {
        * <code>string doc_string = 10;</code>
        */
       public Builder clearDocString() {
-
         docString_ = getDefaultInstance().getDocString();
         onChanged();
         return this;
@@ -16910,7 +16989,7 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
+          OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
           inputBuilder_;
 
       /**
@@ -17223,8 +17302,8 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
-          getInputFieldBuilder() {
+          OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
+      getInputFieldBuilder() {
         if (inputBuilder_ == null) {
           inputBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -17250,10 +17329,12 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
+          OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
           outputBuilder_;
 
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public java.util.List<OnnxMl.ValueInfoProto> getOutputList() {
         if (outputBuilder_ == null) {
           return java.util.Collections.unmodifiableList(output_);
@@ -17261,7 +17342,9 @@ public final class OnnxMl {
           return outputBuilder_.getMessageList();
         }
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public int getOutputCount() {
         if (outputBuilder_ == null) {
           return output_.size();
@@ -17269,7 +17352,9 @@ public final class OnnxMl {
           return outputBuilder_.getCount();
         }
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public OnnxMl.ValueInfoProto getOutput(int index) {
         if (outputBuilder_ == null) {
           return output_.get(index);
@@ -17277,7 +17362,9 @@ public final class OnnxMl {
           return outputBuilder_.getMessage(index);
         }
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public Builder setOutput(int index, OnnxMl.ValueInfoProto value) {
         if (outputBuilder_ == null) {
           if (value == null) {
@@ -17291,7 +17378,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public Builder setOutput(int index, OnnxMl.ValueInfoProto.Builder builderForValue) {
         if (outputBuilder_ == null) {
           ensureOutputIsMutable();
@@ -17302,7 +17391,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public Builder addOutput(OnnxMl.ValueInfoProto value) {
         if (outputBuilder_ == null) {
           if (value == null) {
@@ -17316,7 +17407,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public Builder addOutput(int index, OnnxMl.ValueInfoProto value) {
         if (outputBuilder_ == null) {
           if (value == null) {
@@ -17330,7 +17423,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public Builder addOutput(OnnxMl.ValueInfoProto.Builder builderForValue) {
         if (outputBuilder_ == null) {
           ensureOutputIsMutable();
@@ -17341,7 +17436,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public Builder addOutput(int index, OnnxMl.ValueInfoProto.Builder builderForValue) {
         if (outputBuilder_ == null) {
           ensureOutputIsMutable();
@@ -17352,7 +17449,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public Builder addAllOutput(java.lang.Iterable<? extends OnnxMl.ValueInfoProto> values) {
         if (outputBuilder_ == null) {
           ensureOutputIsMutable();
@@ -17363,7 +17462,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public Builder clearOutput() {
         if (outputBuilder_ == null) {
           output_ = java.util.Collections.emptyList();
@@ -17374,7 +17475,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public Builder removeOutput(int index) {
         if (outputBuilder_ == null) {
           ensureOutputIsMutable();
@@ -17385,11 +17488,15 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public OnnxMl.ValueInfoProto.Builder getOutputBuilder(int index) {
         return getOutputFieldBuilder().getBuilder(index);
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public OnnxMl.ValueInfoProtoOrBuilder getOutputOrBuilder(int index) {
         if (outputBuilder_ == null) {
           return output_.get(index);
@@ -17397,7 +17504,9 @@ public final class OnnxMl {
           return outputBuilder_.getMessageOrBuilder(index);
         }
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public java.util.List<? extends OnnxMl.ValueInfoProtoOrBuilder> getOutputOrBuilderList() {
         if (outputBuilder_ != null) {
           return outputBuilder_.getMessageOrBuilderList();
@@ -17405,23 +17514,29 @@ public final class OnnxMl {
           return java.util.Collections.unmodifiableList(output_);
         }
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public OnnxMl.ValueInfoProto.Builder addOutputBuilder() {
         return getOutputFieldBuilder().addBuilder(OnnxMl.ValueInfoProto.getDefaultInstance());
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public OnnxMl.ValueInfoProto.Builder addOutputBuilder(int index) {
         return getOutputFieldBuilder()
             .addBuilder(index, OnnxMl.ValueInfoProto.getDefaultInstance());
       }
-      /** <code>repeated .onnx.ValueInfoProto output = 12;</code> */
+      /**
+       * <code>repeated .onnx.ValueInfoProto output = 12;</code>
+       */
       public java.util.List<OnnxMl.ValueInfoProto.Builder> getOutputBuilderList() {
         return getOutputFieldBuilder().getBuilderList();
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
-          getOutputFieldBuilder() {
+          OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
+      getOutputFieldBuilder() {
         if (outputBuilder_ == null) {
           outputBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -17447,7 +17562,7 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
+          OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
           valueInfoBuilder_;
 
       /**
@@ -17779,8 +17894,8 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
-          getValueInfoFieldBuilder() {
+          OnnxMl.ValueInfoProto, OnnxMl.ValueInfoProto.Builder, OnnxMl.ValueInfoProtoOrBuilder>
+      getValueInfoFieldBuilder() {
         if (valueInfoBuilder_ == null) {
           valueInfoBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -17808,9 +17923,9 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.TensorAnnotation,
-              OnnxMl.TensorAnnotation.Builder,
-              OnnxMl.TensorAnnotationOrBuilder>
+          OnnxMl.TensorAnnotation,
+          OnnxMl.TensorAnnotation.Builder,
+          OnnxMl.TensorAnnotationOrBuilder>
           quantizationAnnotationBuilder_;
 
       /**
@@ -18127,7 +18242,7 @@ public final class OnnxMl {
        * <code>repeated .onnx.TensorAnnotation quantization_annotation = 14;</code>
        */
       public java.util.List<? extends OnnxMl.TensorAnnotationOrBuilder>
-          getQuantizationAnnotationOrBuilderList() {
+      getQuantizationAnnotationOrBuilderList() {
         if (quantizationAnnotationBuilder_ != null) {
           return quantizationAnnotationBuilder_.getMessageOrBuilderList();
         } else {
@@ -18179,15 +18294,15 @@ public final class OnnxMl {
        * <code>repeated .onnx.TensorAnnotation quantization_annotation = 14;</code>
        */
       public java.util.List<OnnxMl.TensorAnnotation.Builder>
-          getQuantizationAnnotationBuilderList() {
+      getQuantizationAnnotationBuilderList() {
         return getQuantizationAnnotationFieldBuilder().getBuilderList();
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.TensorAnnotation,
-              OnnxMl.TensorAnnotation.Builder,
-              OnnxMl.TensorAnnotationOrBuilder>
-          getQuantizationAnnotationFieldBuilder() {
+          OnnxMl.TensorAnnotation,
+          OnnxMl.TensorAnnotation.Builder,
+          OnnxMl.TensorAnnotationOrBuilder>
+      getQuantizationAnnotationFieldBuilder() {
         if (quantizationAnnotationBuilder_ == null) {
           quantizationAnnotationBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -18257,9 +18372,8 @@ public final class OnnxMl {
 
   public interface TensorProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.TensorProto)
-      com.google.protobuf.MessageOrBuilder {
-
+          // @@protoc_insertion_point(interface_extends:onnx.TensorProto)
+          com.google.protobuf.MessageOrBuilder {
     /**
      *
      *
@@ -18303,11 +18417,17 @@ public final class OnnxMl {
      */
     int getDataType();
 
-    /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+    /**
+     * <code>.onnx.TensorProto.Segment segment = 3;</code>
+     */
     boolean hasSegment();
-    /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+    /**
+     * <code>.onnx.TensorProto.Segment segment = 3;</code>
+     */
     OnnxMl.TensorProto.Segment getSegment();
-    /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+    /**
+     * <code>.onnx.TensorProto.Segment segment = 3;</code>
+     */
     OnnxMl.TensorProto.SegmentOrBuilder getSegmentOrBuilder();
 
     /**
@@ -18754,8 +18874,8 @@ public final class OnnxMl {
    */
   public static final class TensorProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.TensorProto)
-      TensorProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.TensorProto)
+          TensorProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use TensorProto.newBuilder() to construct.
     private TensorProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -18802,222 +18922,201 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 8:
-              {
-                if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
-                  dims_ = new java.util.ArrayList<java.lang.Long>();
-                  mutable_bitField0_ |= 0x00000001;
-                }
+            case 8: {
+              if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
+                dims_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00000001;
+              }
+              dims_.add(input.readInt64());
+              break;
+            }
+            case 10: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)
+                  && input.getBytesUntilLimit() > 0) {
+                dims_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00000001;
+              }
+              while (input.getBytesUntilLimit() > 0) {
                 dims_.add(input.readInt64());
-                break;
               }
-            case 10:
-              {
-                int length = input.readRawVarint32();
-                int limit = input.pushLimit(length);
-                if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)
-                    && input.getBytesUntilLimit() > 0) {
-                  dims_ = new java.util.ArrayList<java.lang.Long>();
-                  mutable_bitField0_ |= 0x00000001;
-                }
-                while (input.getBytesUntilLimit() > 0) {
-                  dims_.add(input.readInt64());
-                }
-                input.popLimit(limit);
-                break;
+              input.popLimit(limit);
+              break;
+            }
+            case 16: {
+              dataType_ = input.readInt32();
+              break;
+            }
+            case 26: {
+              OnnxMl.TensorProto.Segment.Builder subBuilder = null;
+              if (segment_ != null) {
+                subBuilder = segment_.toBuilder();
               }
-            case 16:
-              {
-                dataType_ = input.readInt32();
-                break;
+              segment_ =
+                  input.readMessage(OnnxMl.TensorProto.Segment.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom(segment_);
+                segment_ = subBuilder.buildPartial();
               }
-            case 26:
-              {
-                OnnxMl.TensorProto.Segment.Builder subBuilder = null;
-                if (segment_ != null) {
-                  subBuilder = segment_.toBuilder();
-                }
-                segment_ =
-                    input.readMessage(OnnxMl.TensorProto.Segment.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom(segment_);
-                  segment_ = subBuilder.buildPartial();
-                }
 
-                break;
+              break;
+            }
+            case 37: {
+              if (!((mutable_bitField0_ & 0x00000008) == 0x00000008)) {
+                floatData_ = new java.util.ArrayList<java.lang.Float>();
+                mutable_bitField0_ |= 0x00000008;
               }
-            case 37:
-              {
-                if (!((mutable_bitField0_ & 0x00000008) == 0x00000008)) {
-                  floatData_ = new java.util.ArrayList<java.lang.Float>();
-                  mutable_bitField0_ |= 0x00000008;
-                }
+              floatData_.add(input.readFloat());
+              break;
+            }
+            case 34: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00000008) == 0x00000008)
+                  && input.getBytesUntilLimit() > 0) {
+                floatData_ = new java.util.ArrayList<java.lang.Float>();
+                mutable_bitField0_ |= 0x00000008;
+              }
+              while (input.getBytesUntilLimit() > 0) {
                 floatData_.add(input.readFloat());
-                break;
               }
-            case 34:
-              {
-                int length = input.readRawVarint32();
-                int limit = input.pushLimit(length);
-                if (!((mutable_bitField0_ & 0x00000008) == 0x00000008)
-                    && input.getBytesUntilLimit() > 0) {
-                  floatData_ = new java.util.ArrayList<java.lang.Float>();
-                  mutable_bitField0_ |= 0x00000008;
-                }
-                while (input.getBytesUntilLimit() > 0) {
-                  floatData_.add(input.readFloat());
-                }
-                input.popLimit(limit);
-                break;
+              input.popLimit(limit);
+              break;
+            }
+            case 40: {
+              if (!((mutable_bitField0_ & 0x00000010) == 0x00000010)) {
+                int32Data_ = new java.util.ArrayList<java.lang.Integer>();
+                mutable_bitField0_ |= 0x00000010;
               }
-            case 40:
-              {
-                if (!((mutable_bitField0_ & 0x00000010) == 0x00000010)) {
-                  int32Data_ = new java.util.ArrayList<java.lang.Integer>();
-                  mutable_bitField0_ |= 0x00000010;
-                }
+              int32Data_.add(input.readInt32());
+              break;
+            }
+            case 42: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00000010) == 0x00000010)
+                  && input.getBytesUntilLimit() > 0) {
+                int32Data_ = new java.util.ArrayList<java.lang.Integer>();
+                mutable_bitField0_ |= 0x00000010;
+              }
+              while (input.getBytesUntilLimit() > 0) {
                 int32Data_.add(input.readInt32());
-                break;
               }
-            case 42:
-              {
-                int length = input.readRawVarint32();
-                int limit = input.pushLimit(length);
-                if (!((mutable_bitField0_ & 0x00000010) == 0x00000010)
-                    && input.getBytesUntilLimit() > 0) {
-                  int32Data_ = new java.util.ArrayList<java.lang.Integer>();
-                  mutable_bitField0_ |= 0x00000010;
-                }
-                while (input.getBytesUntilLimit() > 0) {
-                  int32Data_.add(input.readInt32());
-                }
-                input.popLimit(limit);
-                break;
+              input.popLimit(limit);
+              break;
+            }
+            case 50: {
+              if (!((mutable_bitField0_ & 0x00000020) == 0x00000020)) {
+                stringData_ = new java.util.ArrayList<com.google.protobuf.ByteString>();
+                mutable_bitField0_ |= 0x00000020;
               }
-            case 50:
-              {
-                if (!((mutable_bitField0_ & 0x00000020) == 0x00000020)) {
-                  stringData_ = new java.util.ArrayList<com.google.protobuf.ByteString>();
-                  mutable_bitField0_ |= 0x00000020;
-                }
-                stringData_.add(input.readBytes());
-                break;
+              stringData_.add(input.readBytes());
+              break;
+            }
+            case 56: {
+              if (!((mutable_bitField0_ & 0x00000040) == 0x00000040)) {
+                int64Data_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00000040;
               }
-            case 56:
-              {
-                if (!((mutable_bitField0_ & 0x00000040) == 0x00000040)) {
-                  int64Data_ = new java.util.ArrayList<java.lang.Long>();
-                  mutable_bitField0_ |= 0x00000040;
-                }
+              int64Data_.add(input.readInt64());
+              break;
+            }
+            case 58: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00000040) == 0x00000040)
+                  && input.getBytesUntilLimit() > 0) {
+                int64Data_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00000040;
+              }
+              while (input.getBytesUntilLimit() > 0) {
                 int64Data_.add(input.readInt64());
-                break;
               }
-            case 58:
-              {
-                int length = input.readRawVarint32();
-                int limit = input.pushLimit(length);
-                if (!((mutable_bitField0_ & 0x00000040) == 0x00000040)
-                    && input.getBytesUntilLimit() > 0) {
-                  int64Data_ = new java.util.ArrayList<java.lang.Long>();
-                  mutable_bitField0_ |= 0x00000040;
-                }
-                while (input.getBytesUntilLimit() > 0) {
-                  int64Data_.add(input.readInt64());
-                }
-                input.popLimit(limit);
-                break;
-              }
-            case 66:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              input.popLimit(limit);
+              break;
+            }
+            case 66: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                name_ = s;
-                break;
+              name_ = s;
+              break;
+            }
+            case 74: {
+              rawData_ = input.readBytes();
+              break;
+            }
+            case 81: {
+              if (!((mutable_bitField0_ & 0x00001000) == 0x00001000)) {
+                doubleData_ = new java.util.ArrayList<java.lang.Double>();
+                mutable_bitField0_ |= 0x00001000;
               }
-            case 74:
-              {
-                rawData_ = input.readBytes();
-                break;
+              doubleData_.add(input.readDouble());
+              break;
+            }
+            case 82: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00001000) == 0x00001000)
+                  && input.getBytesUntilLimit() > 0) {
+                doubleData_ = new java.util.ArrayList<java.lang.Double>();
+                mutable_bitField0_ |= 0x00001000;
               }
-            case 81:
-              {
-                if (!((mutable_bitField0_ & 0x00001000) == 0x00001000)) {
-                  doubleData_ = new java.util.ArrayList<java.lang.Double>();
-                  mutable_bitField0_ |= 0x00001000;
-                }
+              while (input.getBytesUntilLimit() > 0) {
                 doubleData_.add(input.readDouble());
-                break;
               }
-            case 82:
-              {
-                int length = input.readRawVarint32();
-                int limit = input.pushLimit(length);
-                if (!((mutable_bitField0_ & 0x00001000) == 0x00001000)
-                    && input.getBytesUntilLimit() > 0) {
-                  doubleData_ = new java.util.ArrayList<java.lang.Double>();
-                  mutable_bitField0_ |= 0x00001000;
-                }
-                while (input.getBytesUntilLimit() > 0) {
-                  doubleData_.add(input.readDouble());
-                }
-                input.popLimit(limit);
-                break;
+              input.popLimit(limit);
+              break;
+            }
+            case 88: {
+              if (!((mutable_bitField0_ & 0x00002000) == 0x00002000)) {
+                uint64Data_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00002000;
               }
-            case 88:
-              {
-                if (!((mutable_bitField0_ & 0x00002000) == 0x00002000)) {
-                  uint64Data_ = new java.util.ArrayList<java.lang.Long>();
-                  mutable_bitField0_ |= 0x00002000;
-                }
+              uint64Data_.add(input.readUInt64());
+              break;
+            }
+            case 90: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00002000) == 0x00002000)
+                  && input.getBytesUntilLimit() > 0) {
+                uint64Data_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00002000;
+              }
+              while (input.getBytesUntilLimit() > 0) {
                 uint64Data_.add(input.readUInt64());
-                break;
               }
-            case 90:
-              {
-                int length = input.readRawVarint32();
-                int limit = input.pushLimit(length);
-                if (!((mutable_bitField0_ & 0x00002000) == 0x00002000)
-                    && input.getBytesUntilLimit() > 0) {
-                  uint64Data_ = new java.util.ArrayList<java.lang.Long>();
-                  mutable_bitField0_ |= 0x00002000;
-                }
-                while (input.getBytesUntilLimit() > 0) {
-                  uint64Data_.add(input.readUInt64());
-                }
-                input.popLimit(limit);
-                break;
-              }
-            case 98:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              input.popLimit(limit);
+              break;
+            }
+            case 98: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                docString_ = s;
-                break;
+              docString_ = s;
+              break;
+            }
+            case 106: {
+              if (!((mutable_bitField0_ & 0x00000400) == 0x00000400)) {
+                externalData_ = new java.util.ArrayList<OnnxMl.StringStringEntryProto>();
+                mutable_bitField0_ |= 0x00000400;
               }
-            case 106:
-              {
-                if (!((mutable_bitField0_ & 0x00000400) == 0x00000400)) {
-                  externalData_ = new java.util.ArrayList<OnnxMl.StringStringEntryProto>();
-                  mutable_bitField0_ |= 0x00000400;
-                }
-                externalData_.add(
-                    input.readMessage(OnnxMl.StringStringEntryProto.parser(), extensionRegistry));
-                break;
-              }
-            case 112:
-              {
-                int rawValue = input.readEnum();
+              externalData_.add(
+                  input.readMessage(OnnxMl.StringStringEntryProto.parser(), extensionRegistry));
+              break;
+            }
+            case 112: {
+              int rawValue = input.readEnum();
 
-                dataLocation_ = rawValue;
-                break;
+              dataLocation_ = rawValue;
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -19060,159 +19159,172 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_TensorProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.TensorProto.class, OnnxMl.TensorProto.Builder.class);
     }
 
-    /** Protobuf enum {@code onnx.TensorProto.DataType} */
-    public enum DataType implements com.google.protobuf.ProtocolMessageEnum {
-      /** <code>UNDEFINED = 0;</code> */
+    /**
+     * Protobuf enum {@code onnx.TensorProto.DataType}
+     */
+    public enum DataType implements com
+    .google.protobuf.ProtocolMessageEnum {
+      /**
+       * <code>UNDEFINED = 0;</code>
+       */
       UNDEFINED(0),
-      /**
-       *
-       *
-       * <pre>
-       * Basic types.
-       * </pre>
-       *
-       * <code>FLOAT = 1;</code>
-       */
-      FLOAT(1),
-      /**
-       *
-       *
-       * <pre>
-       * uint8_t
-       * </pre>
-       *
-       * <code>UINT8 = 2;</code>
-       */
-      UINT8(2),
-      /**
-       *
-       *
-       * <pre>
-       * int8_t
-       * </pre>
-       *
-       * <code>INT8 = 3;</code>
-       */
-      INT8(3),
-      /**
-       *
-       *
-       * <pre>
-       * uint16_t
-       * </pre>
-       *
-       * <code>UINT16 = 4;</code>
-       */
-      UINT16(4),
-      /**
-       *
-       *
-       * <pre>
-       * int16_t
-       * </pre>
-       *
-       * <code>INT16 = 5;</code>
-       */
-      INT16(5),
-      /**
-       *
-       *
-       * <pre>
-       * int32_t
-       * </pre>
-       *
-       * <code>INT32 = 6;</code>
-       */
-      INT32(6),
-      /**
-       *
-       *
-       * <pre>
-       * int64_t
-       * </pre>
-       *
-       * <code>INT64 = 7;</code>
-       */
-      INT64(7),
-      /**
-       *
-       *
-       * <pre>
-       * string
-       * </pre>
-       *
-       * <code>STRING = 8;</code>
-       */
-      STRING(8),
-      /**
-       *
-       *
-       * <pre>
-       * bool
-       * </pre>
-       *
-       * <code>BOOL = 9;</code>
-       */
-      BOOL(9),
-      /**
-       *
-       *
-       * <pre>
-       * IEEE754 half-precision floating-point format (16 bits wide).
-       * This format has 1 sign bit, 5 exponent bits, and 10 mantissa bits.
-       * </pre>
-       *
-       * <code>FLOAT16 = 10;</code>
-       */
-      FLOAT16(10),
-      /** <code>DOUBLE = 11;</code> */
-      DOUBLE(11),
-      /** <code>UINT32 = 12;</code> */
-      UINT32(12),
-      /** <code>UINT64 = 13;</code> */
-      UINT64(13),
-      /**
-       *
-       *
-       * <pre>
-       * complex with float32 real and imaginary components
-       * </pre>
-       *
-       * <code>COMPLEX64 = 14;</code>
-       */
-      COMPLEX64(14),
-      /**
-       *
-       *
-       * <pre>
-       * complex with float64 real and imaginary components
-       * </pre>
-       *
-       * <code>COMPLEX128 = 15;</code>
-       */
-      COMPLEX128(15),
-      /**
-       *
-       *
-       * <pre>
-       * Non-IEEE floating-point format based on IEEE754 single-precision
-       * floating-point number truncated to 16 bits.
-       * This format has 1 sign bit, 8 exponent bits, and 7 mantissa bits.
-       * </pre>
-       *
-       * <code>BFLOAT16 = 16;</code>
-       */
-      BFLOAT16(16),
-      UNRECOGNIZED(-1),
-      ;
+          /**
+           *
+           *
+           * <pre>
+           * Basic types.
+           * </pre>
+           *
+           * <code>FLOAT = 1;</code>
+           */
+          FLOAT(1),
+          /**
+           *
+           *
+           * <pre>
+           * uint8_t
+           * </pre>
+           *
+           * <code>UINT8 = 2;</code>
+           */
+          UINT8(2),
+          /**
+           *
+           *
+           * <pre>
+           * int8_t
+           * </pre>
+           *
+           * <code>INT8 = 3;</code>
+           */
+          INT8(3),
+          /**
+           *
+           *
+           * <pre>
+           * uint16_t
+           * </pre>
+           *
+           * <code>UINT16 = 4;</code>
+           */
+          UINT16(4),
+          /**
+           *
+           *
+           * <pre>
+           * int16_t
+           * </pre>
+           *
+           * <code>INT16 = 5;</code>
+           */
+          INT16(5),
+          /**
+           *
+           *
+           * <pre>
+           * int32_t
+           * </pre>
+           *
+           * <code>INT32 = 6;</code>
+           */
+          INT32(6),
+          /**
+           *
+           *
+           * <pre>
+           * int64_t
+           * </pre>
+           *
+           * <code>INT64 = 7;</code>
+           */
+          INT64(7),
+          /**
+           *
+           *
+           * <pre>
+           * string
+           * </pre>
+           *
+           * <code>STRING = 8;</code>
+           */
+          STRING(8),
+          /**
+           *
+           *
+           * <pre>
+           * bool
+           * </pre>
+           *
+           * <code>BOOL = 9;</code>
+           */
+          BOOL(9),
+          /**
+           *
+           *
+           * <pre>
+           * IEEE754 half-precision floating-point format (16 bits wide).
+           * This format has 1 sign bit, 5 exponent bits, and 10 mantissa bits.
+           * </pre>
+           *
+           * <code>FLOAT16 = 10;</code>
+           */
+          FLOAT16(10),
+          /**
+             <code>DOUBLE = 11;</code>
+           */
+          DOUBLE(11),
+          /**
+             <code>UINT32 = 12;</code>
+           */
+          UINT32(12),
+          /**
+             <code>UINT64 = 13;</code>
+           */
+          UINT64(13),
+          /**
+           *
+           *
+           * <pre>
+           * complex with float32 real and imaginary components
+           * </pre>
+           *
+           * <code>COMPLEX64 = 14;</code>
+           */
+          COMPLEX64(14),
+          /**
+           *
+           *
+           * <pre>
+           * complex with float64 real and imaginary components
+           * </pre>
+           *
+           * <code>COMPLEX128 = 15;</code>
+           */
+          COMPLEX128(15),
+          /**
+           *
+           *
+           * <pre>
+           * Non-IEEE floating-point format based on IEEE754 single-precision
+           * floating-point number truncated to 16 bits.
+           * This format has 1 sign bit, 8 exponent bits, and 7 mantissa bits.
+           * </pre>
+           *
+           * <code>BFLOAT16 = 16;</code>
+           */
+          BFLOAT16(16),
+          UNRECOGNIZED(-1),
+          ;
 
-      /** <code>UNDEFINED = 0;</code> */
+      /**
+       * <code>UNDEFINED = 0;</code>
+       */
       public static final int UNDEFINED_VALUE = 0;
       /**
        *
@@ -19315,11 +19427,17 @@ public final class OnnxMl {
        * <code>FLOAT16 = 10;</code>
        */
       public static final int FLOAT16_VALUE = 10;
-      /** <code>DOUBLE = 11;</code> */
+      /**
+       * <code>DOUBLE = 11;</code>
+       */
       public static final int DOUBLE_VALUE = 11;
-      /** <code>UINT32 = 12;</code> */
+      /**
+       * <code>UINT32 = 12;</code>
+       */
       public static final int UINT32_VALUE = 12;
-      /** <code>UINT64 = 13;</code> */
+      /**
+       * <code>UINT64 = 13;</code>
+       */
       public static final int UINT64_VALUE = 13;
       /**
        *
@@ -19362,7 +19480,9 @@ public final class OnnxMl {
         return value;
       }
 
-      /** @deprecated Use {@link #forNumber(int)} instead. */
+      /**
+       * @deprecated Use {@link #forNumber(int)} instead.
+       */
       @java.lang.Deprecated
       public static DataType valueOf(int value) {
         return forNumber(value);
@@ -19464,17 +19584,26 @@ public final class OnnxMl {
      *
      * Protobuf enum {@code onnx.TensorProto.DataLocation}
      */
-    public enum DataLocation implements com.google.protobuf.ProtocolMessageEnum {
-      /** <code>DEFAULT = 0;</code> */
+    public enum DataLocation implements com
+    .google.protobuf.ProtocolMessageEnum {
+      /**
+       * <code>DEFAULT = 0;</code>
+       */
       DEFAULT(0),
-      /** <code>EXTERNAL = 1;</code> */
-      EXTERNAL(1),
-      UNRECOGNIZED(-1),
-      ;
+          /**
+             <code>EXTERNAL = 1;</code>
+           */
+          EXTERNAL(1),
+          UNRECOGNIZED(-1),
+          ;
 
-      /** <code>DEFAULT = 0;</code> */
+      /**
+       * <code>DEFAULT = 0;</code>
+       */
       public static final int DEFAULT_VALUE = 0;
-      /** <code>EXTERNAL = 1;</code> */
+      /**
+       * <code>EXTERNAL = 1;</code>
+       */
       public static final int EXTERNAL_VALUE = 1;
 
       public final int getNumber() {
@@ -19485,7 +19614,9 @@ public final class OnnxMl {
         return value;
       }
 
-      /** @deprecated Use {@link #forNumber(int)} instead. */
+      /**
+       * @deprecated Use {@link #forNumber(int)} instead.
+       */
       @java.lang.Deprecated
       public static DataLocation valueOf(int value) {
         return forNumber(value);
@@ -19548,13 +19679,16 @@ public final class OnnxMl {
 
     public interface SegmentOrBuilder
         extends
-        // @@protoc_insertion_point(interface_extends:onnx.TensorProto.Segment)
-        com.google.protobuf.MessageOrBuilder {
-
-      /** <code>int64 begin = 1;</code> */
+            // @@protoc_insertion_point(interface_extends:onnx.TensorProto.Segment)
+            com.google.protobuf.MessageOrBuilder {
+      /**
+       * <code>int64 begin = 1;</code>
+       */
       long getBegin();
 
-      /** <code>int64 end = 2;</code> */
+      /**
+       * <code>int64 end = 2;</code>
+       */
       long getEnd();
     }
     /**
@@ -19570,8 +19704,8 @@ public final class OnnxMl {
      */
     public static final class Segment extends com.google.protobuf.GeneratedMessageV3
         implements
-        // @@protoc_insertion_point(message_implements:onnx.TensorProto.Segment)
-        SegmentOrBuilder {
+            // @@protoc_insertion_point(message_implements:onnx.TensorProto.Segment)
+            SegmentOrBuilder {
       private static final long serialVersionUID = 0L;
       // Use Segment.newBuilder() to construct.
       private Segment(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -19607,23 +19741,20 @@ public final class OnnxMl {
               case 0:
                 done = true;
                 break;
-              case 8:
-                {
-                  begin_ = input.readInt64();
-                  break;
+              case 8: {
+                begin_ = input.readInt64();
+                break;
+              }
+              case 16: {
+                end_ = input.readInt64();
+                break;
+              }
+              default: {
+                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                  done = true;
                 }
-              case 16:
-                {
-                  end_ = input.readInt64();
-                  break;
-                }
-              default:
-                {
-                  if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                    done = true;
-                  }
-                  break;
-                }
+                break;
+              }
             }
           }
         } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -19643,7 +19774,7 @@ public final class OnnxMl {
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TensorProto_Segment_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TensorProto.Segment.class, OnnxMl.TensorProto.Segment.Builder.class);
@@ -19651,14 +19782,18 @@ public final class OnnxMl {
 
       public static final int BEGIN_FIELD_NUMBER = 1;
       private long begin_;
-      /** <code>int64 begin = 1;</code> */
+      /**
+       * <code>int64 begin = 1;</code>
+       */
       public long getBegin() {
         return begin_;
       }
 
       public static final int END_FIELD_NUMBER = 2;
       private long end_;
-      /** <code>int64 end = 2;</code> */
+      /**
+       * <code>int64 end = 2;</code>
+       */
       public long getEnd() {
         return end_;
       }
@@ -19668,8 +19803,10 @@ public final class OnnxMl {
       @java.lang.Override
       public final boolean isInitialized() {
         byte isInitialized = memoizedIsInitialized;
-        if (isInitialized == 1) return true;
-        if (isInitialized == 0) return false;
+        if (isInitialized == 1)
+          return true;
+        if (isInitialized == 0)
+          return false;
 
         memoizedIsInitialized = 1;
         return true;
@@ -19689,7 +19826,8 @@ public final class OnnxMl {
       @java.lang.Override
       public int getSerializedSize() {
         int size = memoizedSize;
-        if (size != -1) return size;
+        if (size != -1)
+          return size;
 
         size = 0;
         if (begin_ != 0L) {
@@ -19845,15 +19983,15 @@ public final class OnnxMl {
       public static final class Builder
           extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
           implements
-          // @@protoc_insertion_point(builder_implements:onnx.TensorProto.Segment)
-          OnnxMl.TensorProto.SegmentOrBuilder {
+              // @@protoc_insertion_point(builder_implements:onnx.TensorProto.Segment)
+              OnnxMl.TensorProto.SegmentOrBuilder {
         public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
           return OnnxMl.internal_static_onnx_TensorProto_Segment_descriptor;
         }
 
         @java.lang.Override
         protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-            internalGetFieldAccessorTable() {
+        internalGetFieldAccessorTable() {
           return OnnxMl.internal_static_onnx_TensorProto_Segment_fieldAccessorTable
               .ensureFieldAccessorsInitialized(
                   OnnxMl.TensorProto.Segment.class, OnnxMl.TensorProto.Segment.Builder.class);
@@ -19870,7 +20008,8 @@ public final class OnnxMl {
         }
 
         private void maybeForceBuilderInitialization() {
-          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+          }
         }
 
         @java.lang.Override
@@ -19957,7 +20096,8 @@ public final class OnnxMl {
         }
 
         public Builder mergeFrom(OnnxMl.TensorProto.Segment other) {
-          if (other == OnnxMl.TensorProto.Segment.getDefaultInstance()) return this;
+          if (other == OnnxMl.TensorProto.Segment.getDefaultInstance())
+            return this;
           if (other.getBegin() != 0L) {
             setBegin(other.getBegin());
           }
@@ -19994,40 +20134,48 @@ public final class OnnxMl {
         }
 
         private long begin_;
-        /** <code>int64 begin = 1;</code> */
+        /**
+         * <code>int64 begin = 1;</code>
+         */
         public long getBegin() {
           return begin_;
         }
-        /** <code>int64 begin = 1;</code> */
+        /**
+         * <code>int64 begin = 1;</code>
+         */
         public Builder setBegin(long value) {
-
           begin_ = value;
           onChanged();
           return this;
         }
-        /** <code>int64 begin = 1;</code> */
+        /**
+         * <code>int64 begin = 1;</code>
+         */
         public Builder clearBegin() {
-
           begin_ = 0L;
           onChanged();
           return this;
         }
 
         private long end_;
-        /** <code>int64 end = 2;</code> */
+        /**
+         * <code>int64 end = 2;</code>
+         */
         public long getEnd() {
           return end_;
         }
-        /** <code>int64 end = 2;</code> */
+        /**
+         * <code>int64 end = 2;</code>
+         */
         public Builder setEnd(long value) {
-
           end_ = value;
           onChanged();
           return this;
         }
-        /** <code>int64 end = 2;</code> */
+        /**
+         * <code>int64 end = 2;</code>
+         */
         public Builder clearEnd() {
-
           end_ = 0L;
           onChanged();
           return this;
@@ -20145,15 +20293,21 @@ public final class OnnxMl {
 
     public static final int SEGMENT_FIELD_NUMBER = 3;
     private OnnxMl.TensorProto.Segment segment_;
-    /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+    /**
+     * <code>.onnx.TensorProto.Segment segment = 3;</code>
+     */
     public boolean hasSegment() {
       return segment_ != null;
     }
-    /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+    /**
+     * <code>.onnx.TensorProto.Segment segment = 3;</code>
+     */
     public OnnxMl.TensorProto.Segment getSegment() {
       return segment_ == null ? OnnxMl.TensorProto.Segment.getDefaultInstance() : segment_;
     }
-    /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+    /**
+     * <code>.onnx.TensorProto.Segment segment = 3;</code>
+     */
     public OnnxMl.TensorProto.SegmentOrBuilder getSegmentOrBuilder() {
       return getSegment();
     }
@@ -20518,7 +20672,7 @@ public final class OnnxMl {
      * <code>repeated .onnx.StringStringEntryProto external_data = 13;</code>
      */
     public java.util.List<? extends OnnxMl.StringStringEntryProtoOrBuilder>
-        getExternalDataOrBuilderList() {
+    getExternalDataOrBuilderList() {
       return externalData_;
     }
     /**
@@ -20723,8 +20877,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -20805,7 +20961,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       {
@@ -21112,15 +21269,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.TensorProto)
-        OnnxMl.TensorProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.TensorProto)
+            OnnxMl.TensorProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_TensorProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TensorProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TensorProto.class, OnnxMl.TensorProto.Builder.class);
@@ -21313,7 +21470,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.TensorProto other) {
-        if (other == OnnxMl.TensorProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.TensorProto.getDefaultInstance())
+          return this;
         if (!other.dims_.isEmpty()) {
           if (dims_.isEmpty()) {
             dims_ = other.dims_;
@@ -21401,8 +21559,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000400);
               externalDataBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getExternalDataFieldBuilder()
-                      : null;
+                  ? getExternalDataFieldBuilder()
+                  : null;
             } else {
               externalDataBuilder_.addAllMessages(other.externalData_);
             }
@@ -21592,7 +21750,6 @@ public final class OnnxMl {
        * <code>int32 data_type = 2;</code>
        */
       public Builder setDataType(int value) {
-
         dataType_ = value;
         onChanged();
         return this;
@@ -21608,7 +21765,6 @@ public final class OnnxMl {
        * <code>int32 data_type = 2;</code>
        */
       public Builder clearDataType() {
-
         dataType_ = 0;
         onChanged();
         return this;
@@ -21616,15 +21772,19 @@ public final class OnnxMl {
 
       private OnnxMl.TensorProto.Segment segment_ = null;
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TensorProto.Segment,
-              OnnxMl.TensorProto.Segment.Builder,
-              OnnxMl.TensorProto.SegmentOrBuilder>
+          OnnxMl.TensorProto.Segment,
+          OnnxMl.TensorProto.Segment.Builder,
+          OnnxMl.TensorProto.SegmentOrBuilder>
           segmentBuilder_;
-      /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+      /**
+       * <code>.onnx.TensorProto.Segment segment = 3;</code>
+       */
       public boolean hasSegment() {
         return segmentBuilder_ != null || segment_ != null;
       }
-      /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+      /**
+       * <code>.onnx.TensorProto.Segment segment = 3;</code>
+       */
       public OnnxMl.TensorProto.Segment getSegment() {
         if (segmentBuilder_ == null) {
           return segment_ == null ? OnnxMl.TensorProto.Segment.getDefaultInstance() : segment_;
@@ -21632,7 +21792,9 @@ public final class OnnxMl {
           return segmentBuilder_.getMessage();
         }
       }
-      /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+      /**
+       * <code>.onnx.TensorProto.Segment segment = 3;</code>
+       */
       public Builder setSegment(OnnxMl.TensorProto.Segment value) {
         if (segmentBuilder_ == null) {
           if (value == null) {
@@ -21646,7 +21808,9 @@ public final class OnnxMl {
 
         return this;
       }
-      /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+      /**
+       * <code>.onnx.TensorProto.Segment segment = 3;</code>
+       */
       public Builder setSegment(OnnxMl.TensorProto.Segment.Builder builderForValue) {
         if (segmentBuilder_ == null) {
           segment_ = builderForValue.build();
@@ -21657,7 +21821,9 @@ public final class OnnxMl {
 
         return this;
       }
-      /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+      /**
+       * <code>.onnx.TensorProto.Segment segment = 3;</code>
+       */
       public Builder mergeSegment(OnnxMl.TensorProto.Segment value) {
         if (segmentBuilder_ == null) {
           if (segment_ != null) {
@@ -21673,7 +21839,9 @@ public final class OnnxMl {
 
         return this;
       }
-      /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+      /**
+       * <code>.onnx.TensorProto.Segment segment = 3;</code>
+       */
       public Builder clearSegment() {
         if (segmentBuilder_ == null) {
           segment_ = null;
@@ -21685,13 +21853,16 @@ public final class OnnxMl {
 
         return this;
       }
-      /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+      /**
+       * <code>.onnx.TensorProto.Segment segment = 3;</code>
+       */
       public OnnxMl.TensorProto.Segment.Builder getSegmentBuilder() {
-
         onChanged();
         return getSegmentFieldBuilder().getBuilder();
       }
-      /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+      /**
+       * <code>.onnx.TensorProto.Segment segment = 3;</code>
+       */
       public OnnxMl.TensorProto.SegmentOrBuilder getSegmentOrBuilder() {
         if (segmentBuilder_ != null) {
           return segmentBuilder_.getMessageOrBuilder();
@@ -21699,12 +21870,14 @@ public final class OnnxMl {
           return segment_ == null ? OnnxMl.TensorProto.Segment.getDefaultInstance() : segment_;
         }
       }
-      /** <code>.onnx.TensorProto.Segment segment = 3;</code> */
+      /**
+       * <code>.onnx.TensorProto.Segment segment = 3;</code>
+       */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TensorProto.Segment,
-              OnnxMl.TensorProto.Segment.Builder,
-              OnnxMl.TensorProto.SegmentOrBuilder>
-          getSegmentFieldBuilder() {
+          OnnxMl.TensorProto.Segment,
+          OnnxMl.TensorProto.Segment.Builder,
+          OnnxMl.TensorProto.SegmentOrBuilder>
+      getSegmentFieldBuilder() {
         if (segmentBuilder_ == null) {
           segmentBuilder_ =
               new com.google.protobuf.SingleFieldBuilderV3<
@@ -22319,7 +22492,6 @@ public final class OnnxMl {
        * <code>string name = 8;</code>
        */
       public Builder clearName() {
-
         name_ = getDefaultInstance().getName();
         onChanged();
         return this;
@@ -22413,7 +22585,6 @@ public final class OnnxMl {
        * <code>string doc_string = 12;</code>
        */
       public Builder clearDocString() {
-
         docString_ = getDefaultInstance().getDocString();
         onChanged();
         return this;
@@ -22515,7 +22686,6 @@ public final class OnnxMl {
        * <code>bytes raw_data = 9;</code>
        */
       public Builder clearRawData() {
-
         rawData_ = getDefaultInstance().getRawData();
         onChanged();
         return this;
@@ -22532,9 +22702,9 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.StringStringEntryProto,
-              OnnxMl.StringStringEntryProto.Builder,
-              OnnxMl.StringStringEntryProtoOrBuilder>
+          OnnxMl.StringStringEntryProto,
+          OnnxMl.StringStringEntryProto.Builder,
+          OnnxMl.StringStringEntryProtoOrBuilder>
           externalDataBuilder_;
 
       /**
@@ -22926,7 +23096,7 @@ public final class OnnxMl {
        * <code>repeated .onnx.StringStringEntryProto external_data = 13;</code>
        */
       public java.util.List<? extends OnnxMl.StringStringEntryProtoOrBuilder>
-          getExternalDataOrBuilderList() {
+      getExternalDataOrBuilderList() {
         if (externalDataBuilder_ != null) {
           return externalDataBuilder_.getMessageOrBuilderList();
         } else {
@@ -22997,10 +23167,10 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.StringStringEntryProto,
-              OnnxMl.StringStringEntryProto.Builder,
-              OnnxMl.StringStringEntryProtoOrBuilder>
-          getExternalDataFieldBuilder() {
+          OnnxMl.StringStringEntryProto,
+          OnnxMl.StringStringEntryProto.Builder,
+          OnnxMl.StringStringEntryProtoOrBuilder>
+      getExternalDataFieldBuilder() {
         if (externalDataBuilder_ == null) {
           externalDataBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -23086,7 +23256,6 @@ public final class OnnxMl {
        * <code>.onnx.TensorProto.DataLocation data_location = 14;</code>
        */
       public Builder clearDataLocation() {
-
         dataLocation_ = 0;
         onChanged();
         return this;
@@ -23412,9 +23581,8 @@ public final class OnnxMl {
 
   public interface SparseTensorProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.SparseTensorProto)
-      com.google.protobuf.MessageOrBuilder {
-
+          // @@protoc_insertion_point(interface_extends:onnx.SparseTensorProto)
+          com.google.protobuf.MessageOrBuilder {
     /**
      *
      *
@@ -23549,8 +23717,8 @@ public final class OnnxMl {
    */
   public static final class SparseTensorProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.SparseTensorProto)
-      SparseTensorProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.SparseTensorProto)
+          SparseTensorProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use SparseTensorProto.newBuilder() to construct.
     private SparseTensorProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -23585,65 +23753,60 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                OnnxMl.TensorProto.Builder subBuilder = null;
-                if (values_ != null) {
-                  subBuilder = values_.toBuilder();
-                }
-                values_ = input.readMessage(OnnxMl.TensorProto.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom(values_);
-                  values_ = subBuilder.buildPartial();
-                }
-
-                break;
+            case 10: {
+              OnnxMl.TensorProto.Builder subBuilder = null;
+              if (values_ != null) {
+                subBuilder = values_.toBuilder();
               }
-            case 18:
-              {
-                OnnxMl.TensorProto.Builder subBuilder = null;
-                if (indices_ != null) {
-                  subBuilder = indices_.toBuilder();
-                }
-                indices_ = input.readMessage(OnnxMl.TensorProto.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom(indices_);
-                  indices_ = subBuilder.buildPartial();
-                }
-
-                break;
+              values_ = input.readMessage(OnnxMl.TensorProto.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom(values_);
+                values_ = subBuilder.buildPartial();
               }
-            case 24:
-              {
-                if (!((mutable_bitField0_ & 0x00000004) == 0x00000004)) {
-                  dims_ = new java.util.ArrayList<java.lang.Long>();
-                  mutable_bitField0_ |= 0x00000004;
-                }
+
+              break;
+            }
+            case 18: {
+              OnnxMl.TensorProto.Builder subBuilder = null;
+              if (indices_ != null) {
+                subBuilder = indices_.toBuilder();
+              }
+              indices_ = input.readMessage(OnnxMl.TensorProto.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom(indices_);
+                indices_ = subBuilder.buildPartial();
+              }
+
+              break;
+            }
+            case 24: {
+              if (!((mutable_bitField0_ & 0x00000004) == 0x00000004)) {
+                dims_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00000004;
+              }
+              dims_.add(input.readInt64());
+              break;
+            }
+            case 26: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00000004) == 0x00000004)
+                  && input.getBytesUntilLimit() > 0) {
+                dims_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00000004;
+              }
+              while (input.getBytesUntilLimit() > 0) {
                 dims_.add(input.readInt64());
-                break;
               }
-            case 26:
-              {
-                int length = input.readRawVarint32();
-                int limit = input.pushLimit(length);
-                if (!((mutable_bitField0_ & 0x00000004) == 0x00000004)
-                    && input.getBytesUntilLimit() > 0) {
-                  dims_ = new java.util.ArrayList<java.lang.Long>();
-                  mutable_bitField0_ |= 0x00000004;
-                }
-                while (input.getBytesUntilLimit() > 0) {
-                  dims_.add(input.readInt64());
-                }
-                input.popLimit(limit);
-                break;
+              input.popLimit(limit);
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -23665,7 +23828,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_SparseTensorProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.SparseTensorProto.class, OnnxMl.SparseTensorProto.Builder.class);
@@ -23826,8 +23989,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -23855,7 +24020,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       if (values_ != null) {
@@ -24036,15 +24202,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.SparseTensorProto)
-        OnnxMl.SparseTensorProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.SparseTensorProto)
+            OnnxMl.SparseTensorProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_SparseTensorProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_SparseTensorProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.SparseTensorProto.class, OnnxMl.SparseTensorProto.Builder.class);
@@ -24061,7 +24227,8 @@ public final class OnnxMl {
       }
 
       private void maybeForceBuilderInitialization() {
-        if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+        if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+        }
       }
 
       @java.lang.Override
@@ -24174,7 +24341,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.SparseTensorProto other) {
-        if (other == OnnxMl.SparseTensorProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.SparseTensorProto.getDefaultInstance())
+          return this;
         if (other.hasValues()) {
           mergeValues(other.getValues());
         }
@@ -24224,7 +24392,7 @@ public final class OnnxMl {
 
       private OnnxMl.TensorProto values_ = null;
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
+          OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
           valuesBuilder_;
       /**
        *
@@ -24355,7 +24523,6 @@ public final class OnnxMl {
        * <code>.onnx.TensorProto values = 1;</code>
        */
       public OnnxMl.TensorProto.Builder getValuesBuilder() {
-
         onChanged();
         return getValuesFieldBuilder().getBuilder();
       }
@@ -24387,8 +24554,8 @@ public final class OnnxMl {
        * <code>.onnx.TensorProto values = 1;</code>
        */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
-          getValuesFieldBuilder() {
+          OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
+      getValuesFieldBuilder() {
         if (valuesBuilder_ == null) {
           valuesBuilder_ =
               new com.google.protobuf.SingleFieldBuilderV3<
@@ -24401,7 +24568,7 @@ public final class OnnxMl {
 
       private OnnxMl.TensorProto indices_ = null;
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
+          OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
           indicesBuilder_;
       /**
        *
@@ -24588,7 +24755,6 @@ public final class OnnxMl {
        * <code>.onnx.TensorProto indices = 2;</code>
        */
       public OnnxMl.TensorProto.Builder getIndicesBuilder() {
-
         onChanged();
         return getIndicesFieldBuilder().getBuilder();
       }
@@ -24636,8 +24802,8 @@ public final class OnnxMl {
        * <code>.onnx.TensorProto indices = 2;</code>
        */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
-          getIndicesFieldBuilder() {
+          OnnxMl.TensorProto, OnnxMl.TensorProto.Builder, OnnxMl.TensorProtoOrBuilder>
+      getIndicesFieldBuilder() {
         if (indicesBuilder_ == null) {
           indicesBuilder_ =
               new com.google.protobuf.SingleFieldBuilderV3<
@@ -24807,18 +24973,27 @@ public final class OnnxMl {
 
   public interface TensorShapeProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.TensorShapeProto)
-      com.google.protobuf.MessageOrBuilder {
-
-    /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+          // @@protoc_insertion_point(interface_extends:onnx.TensorShapeProto)
+          com.google.protobuf.MessageOrBuilder {
+    /**
+     * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+     */
     java.util.List<OnnxMl.TensorShapeProto.Dimension> getDimList();
-    /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+    /**
+     * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+     */
     OnnxMl.TensorShapeProto.Dimension getDim(int index);
-    /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+    /**
+     * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+     */
     int getDimCount();
-    /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+    /**
+     * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+     */
     java.util.List<? extends OnnxMl.TensorShapeProto.DimensionOrBuilder> getDimOrBuilderList();
-    /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+    /**
+     * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+     */
     OnnxMl.TensorShapeProto.DimensionOrBuilder getDimOrBuilder(int index);
   }
   /**
@@ -24834,8 +25009,8 @@ public final class OnnxMl {
    */
   public static final class TensorShapeProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.TensorShapeProto)
-      TensorShapeProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.TensorShapeProto)
+          TensorShapeProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use TensorShapeProto.newBuilder() to construct.
     private TensorShapeProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -24870,24 +25045,22 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
-                  dim_ = new java.util.ArrayList<OnnxMl.TensorShapeProto.Dimension>();
-                  mutable_bitField0_ |= 0x00000001;
-                }
-                dim_.add(
-                    input.readMessage(
-                        OnnxMl.TensorShapeProto.Dimension.parser(), extensionRegistry));
-                break;
+            case 10: {
+              if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
+                dim_ = new java.util.ArrayList<OnnxMl.TensorShapeProto.Dimension>();
+                mutable_bitField0_ |= 0x00000001;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
+              dim_.add(
+                  input.readMessage(
+                      OnnxMl.TensorShapeProto.Dimension.parser(), extensionRegistry));
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -24909,7 +25082,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_TensorShapeProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.TensorShapeProto.class, OnnxMl.TensorShapeProto.Builder.class);
@@ -24917,10 +25090,11 @@ public final class OnnxMl {
 
     public interface DimensionOrBuilder
         extends
-        // @@protoc_insertion_point(interface_extends:onnx.TensorShapeProto.Dimension)
-        com.google.protobuf.MessageOrBuilder {
-
-      /** <code>int64 dim_value = 1;</code> */
+            // @@protoc_insertion_point(interface_extends:onnx.TensorShapeProto.Dimension)
+            com.google.protobuf.MessageOrBuilder {
+      /**
+       * <code>int64 dim_value = 1;</code>
+       */
       long getDimValue();
 
       /**
@@ -24975,11 +25149,13 @@ public final class OnnxMl {
 
       public OnnxMl.TensorShapeProto.Dimension.ValueCase getValueCase();
     }
-    /** Protobuf type {@code onnx.TensorShapeProto.Dimension} */
+    /**
+     * Protobuf type {@code onnx.TensorShapeProto.Dimension}
+     */
     public static final class Dimension extends com.google.protobuf.GeneratedMessageV3
         implements
-        // @@protoc_insertion_point(message_implements:onnx.TensorShapeProto.Dimension)
-        DimensionOrBuilder {
+            // @@protoc_insertion_point(message_implements:onnx.TensorShapeProto.Dimension)
+            DimensionOrBuilder {
       private static final long serialVersionUID = 0L;
       // Use Dimension.newBuilder() to construct.
       private Dimension(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -25014,33 +25190,29 @@ public final class OnnxMl {
               case 0:
                 done = true;
                 break;
-              case 8:
-                {
-                  valueCase_ = 1;
-                  value_ = input.readInt64();
-                  break;
-                }
-              case 18:
-                {
-                  java.lang.String s = input.readStringRequireUtf8();
-                  valueCase_ = 2;
-                  value_ = s;
-                  break;
-                }
-              case 26:
-                {
-                  java.lang.String s = input.readStringRequireUtf8();
+              case 8: {
+                valueCase_ = 1;
+                value_ = input.readInt64();
+                break;
+              }
+              case 18: {
+                java.lang.String s = input.readStringRequireUtf8();
+                valueCase_ = 2;
+                value_ = s;
+                break;
+              }
+              case 26: {
+                java.lang.String s = input.readStringRequireUtf8();
 
-                  denotation_ = s;
-                  break;
+                denotation_ = s;
+                break;
+              }
+              default: {
+                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                  done = true;
                 }
-              default:
-                {
-                  if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                    done = true;
-                  }
-                  break;
-                }
+                break;
+              }
             }
           }
         } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -25060,7 +25232,7 @@ public final class OnnxMl {
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TensorShapeProto_Dimension_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TensorShapeProto.Dimension.class,
@@ -25070,16 +25242,19 @@ public final class OnnxMl {
       private int valueCase_ = 0;
       private java.lang.Object value_;
 
-      public enum ValueCase implements com.google.protobuf.Internal.EnumLite {
+      public enum ValueCase implements com
+      .google.protobuf.Internal.EnumLite {
         DIM_VALUE(1),
-        DIM_PARAM(2),
-        VALUE_NOT_SET(0);
+            DIM_PARAM(2),
+            VALUE_NOT_SET(0);
         private final int value;
 
         private ValueCase(int value) {
           this.value = value;
         }
-        /** @deprecated Use {@link #forNumber(int)} instead. */
+        /**
+         * @deprecated Use {@link #forNumber(int)} instead.
+         */
         @java.lang.Deprecated
         public static ValueCase valueOf(int value) {
           return forNumber(value);
@@ -25108,7 +25283,9 @@ public final class OnnxMl {
       }
 
       public static final int DIM_VALUE_FIELD_NUMBER = 1;
-      /** <code>int64 dim_value = 1;</code> */
+      /**
+       * <code>int64 dim_value = 1;</code>
+       */
       public long getDimValue() {
         if (valueCase_ == 1) {
           return (java.lang.Long) value_;
@@ -25224,8 +25401,10 @@ public final class OnnxMl {
       @java.lang.Override
       public final boolean isInitialized() {
         byte isInitialized = memoizedIsInitialized;
-        if (isInitialized == 1) return true;
-        if (isInitialized == 0) return false;
+        if (isInitialized == 1)
+          return true;
+        if (isInitialized == 0)
+          return false;
 
         memoizedIsInitialized = 1;
         return true;
@@ -25248,7 +25427,8 @@ public final class OnnxMl {
       @java.lang.Override
       public int getSerializedSize() {
         int size = memoizedSize;
-        if (size != -1) return size;
+        if (size != -1)
+          return size;
 
         size = 0;
         if (valueCase_ == 1) {
@@ -25280,7 +25460,8 @@ public final class OnnxMl {
         boolean result = true;
         result = result && getDenotation().equals(other.getDenotation());
         result = result && getValueCase().equals(other.getValueCase());
-        if (!result) return false;
+        if (!result)
+          return false;
         switch (valueCase_) {
           case 1:
             result = result && (getDimValue() == other.getDimValue());
@@ -25416,19 +25597,21 @@ public final class OnnxMl {
         Builder builder = new Builder(parent);
         return builder;
       }
-      /** Protobuf type {@code onnx.TensorShapeProto.Dimension} */
+      /**
+       * Protobuf type {@code onnx.TensorShapeProto.Dimension}
+       */
       public static final class Builder
           extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
           implements
-          // @@protoc_insertion_point(builder_implements:onnx.TensorShapeProto.Dimension)
-          OnnxMl.TensorShapeProto.DimensionOrBuilder {
+              // @@protoc_insertion_point(builder_implements:onnx.TensorShapeProto.Dimension)
+              OnnxMl.TensorShapeProto.DimensionOrBuilder {
         public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
           return OnnxMl.internal_static_onnx_TensorShapeProto_Dimension_descriptor;
         }
 
         @java.lang.Override
         protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-            internalGetFieldAccessorTable() {
+        internalGetFieldAccessorTable() {
           return OnnxMl.internal_static_onnx_TensorShapeProto_Dimension_fieldAccessorTable
               .ensureFieldAccessorsInitialized(
                   OnnxMl.TensorShapeProto.Dimension.class,
@@ -25446,7 +25629,8 @@ public final class OnnxMl {
         }
 
         private void maybeForceBuilderInitialization() {
-          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+          }
         }
 
         @java.lang.Override
@@ -25539,28 +25723,26 @@ public final class OnnxMl {
         }
 
         public Builder mergeFrom(OnnxMl.TensorShapeProto.Dimension other) {
-          if (other == OnnxMl.TensorShapeProto.Dimension.getDefaultInstance()) return this;
+          if (other == OnnxMl.TensorShapeProto.Dimension.getDefaultInstance())
+            return this;
           if (!other.getDenotation().isEmpty()) {
             denotation_ = other.denotation_;
             onChanged();
           }
           switch (other.getValueCase()) {
-            case DIM_VALUE:
-              {
-                setDimValue(other.getDimValue());
-                break;
-              }
-            case DIM_PARAM:
-              {
-                valueCase_ = 2;
-                value_ = other.value_;
-                onChanged();
-                break;
-              }
-            case VALUE_NOT_SET:
-              {
-                break;
-              }
+            case DIM_VALUE: {
+              setDimValue(other.getDimValue());
+              break;
+            }
+            case DIM_PARAM: {
+              valueCase_ = 2;
+              value_ = other.value_;
+              onChanged();
+              break;
+            }
+            case VALUE_NOT_SET: {
+              break;
+            }
           }
           this.mergeUnknownFields(other.unknownFields);
           onChanged();
@@ -25605,21 +25787,27 @@ public final class OnnxMl {
           return this;
         }
 
-        /** <code>int64 dim_value = 1;</code> */
+        /**
+         * <code>int64 dim_value = 1;</code>
+         */
         public long getDimValue() {
           if (valueCase_ == 1) {
             return (java.lang.Long) value_;
           }
           return 0L;
         }
-        /** <code>int64 dim_value = 1;</code> */
+        /**
+         * <code>int64 dim_value = 1;</code>
+         */
         public Builder setDimValue(long value) {
           valueCase_ = 1;
           value_ = value;
           onChanged();
           return this;
         }
-        /** <code>int64 dim_value = 1;</code> */
+        /**
+         * <code>int64 dim_value = 1;</code>
+         */
         public Builder clearDimValue() {
           if (valueCase_ == 1) {
             valueCase_ = 0;
@@ -25819,7 +26007,6 @@ public final class OnnxMl {
          * <code>string denotation = 3;</code>
          */
         public Builder clearDenotation() {
-
           denotation_ = getDefaultInstance().getDenotation();
           onChanged();
           return this;
@@ -25902,24 +26089,34 @@ public final class OnnxMl {
 
     public static final int DIM_FIELD_NUMBER = 1;
     private java.util.List<OnnxMl.TensorShapeProto.Dimension> dim_;
-    /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+    /**
+     * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+     */
     public java.util.List<OnnxMl.TensorShapeProto.Dimension> getDimList() {
       return dim_;
     }
-    /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+    /**
+     * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+     */
     public java.util.List<? extends OnnxMl.TensorShapeProto.DimensionOrBuilder>
-        getDimOrBuilderList() {
+    getDimOrBuilderList() {
       return dim_;
     }
-    /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+    /**
+     * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+     */
     public int getDimCount() {
       return dim_.size();
     }
-    /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+    /**
+     * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+     */
     public OnnxMl.TensorShapeProto.Dimension getDim(int index) {
       return dim_.get(index);
     }
-    /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+    /**
+     * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+     */
     public OnnxMl.TensorShapeProto.DimensionOrBuilder getDimOrBuilder(int index) {
       return dim_.get(index);
     }
@@ -25929,8 +26126,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -25947,7 +26146,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       for (int i = 0; i < dim_.size(); i++) {
@@ -26099,15 +26299,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.TensorShapeProto)
-        OnnxMl.TensorShapeProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.TensorShapeProto)
+            OnnxMl.TensorShapeProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_TensorShapeProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TensorShapeProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TensorShapeProto.class, OnnxMl.TensorShapeProto.Builder.class);
@@ -26223,7 +26423,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.TensorShapeProto other) {
-        if (other == OnnxMl.TensorShapeProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.TensorShapeProto.getDefaultInstance())
+          return this;
         if (dimBuilder_ == null) {
           if (!other.dim_.isEmpty()) {
             if (dim_.isEmpty()) {
@@ -26244,8 +26445,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000001);
               dimBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getDimFieldBuilder()
-                      : null;
+                  ? getDimFieldBuilder()
+                  : null;
             } else {
               dimBuilder_.addAllMessages(other.dim_);
             }
@@ -26293,12 +26494,14 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.TensorShapeProto.Dimension,
-              OnnxMl.TensorShapeProto.Dimension.Builder,
-              OnnxMl.TensorShapeProto.DimensionOrBuilder>
+          OnnxMl.TensorShapeProto.Dimension,
+          OnnxMl.TensorShapeProto.Dimension.Builder,
+          OnnxMl.TensorShapeProto.DimensionOrBuilder>
           dimBuilder_;
 
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public java.util.List<OnnxMl.TensorShapeProto.Dimension> getDimList() {
         if (dimBuilder_ == null) {
           return java.util.Collections.unmodifiableList(dim_);
@@ -26306,7 +26509,9 @@ public final class OnnxMl {
           return dimBuilder_.getMessageList();
         }
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public int getDimCount() {
         if (dimBuilder_ == null) {
           return dim_.size();
@@ -26314,7 +26519,9 @@ public final class OnnxMl {
           return dimBuilder_.getCount();
         }
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public OnnxMl.TensorShapeProto.Dimension getDim(int index) {
         if (dimBuilder_ == null) {
           return dim_.get(index);
@@ -26322,7 +26529,9 @@ public final class OnnxMl {
           return dimBuilder_.getMessage(index);
         }
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public Builder setDim(int index, OnnxMl.TensorShapeProto.Dimension value) {
         if (dimBuilder_ == null) {
           if (value == null) {
@@ -26336,7 +26545,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public Builder setDim(int index, OnnxMl.TensorShapeProto.Dimension.Builder builderForValue) {
         if (dimBuilder_ == null) {
           ensureDimIsMutable();
@@ -26347,7 +26558,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public Builder addDim(OnnxMl.TensorShapeProto.Dimension value) {
         if (dimBuilder_ == null) {
           if (value == null) {
@@ -26361,7 +26574,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public Builder addDim(int index, OnnxMl.TensorShapeProto.Dimension value) {
         if (dimBuilder_ == null) {
           if (value == null) {
@@ -26375,7 +26590,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public Builder addDim(OnnxMl.TensorShapeProto.Dimension.Builder builderForValue) {
         if (dimBuilder_ == null) {
           ensureDimIsMutable();
@@ -26386,7 +26603,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public Builder addDim(int index, OnnxMl.TensorShapeProto.Dimension.Builder builderForValue) {
         if (dimBuilder_ == null) {
           ensureDimIsMutable();
@@ -26397,7 +26616,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public Builder addAllDim(
           java.lang.Iterable<? extends OnnxMl.TensorShapeProto.Dimension> values) {
         if (dimBuilder_ == null) {
@@ -26409,7 +26630,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public Builder clearDim() {
         if (dimBuilder_ == null) {
           dim_ = java.util.Collections.emptyList();
@@ -26420,7 +26643,9 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public Builder removeDim(int index) {
         if (dimBuilder_ == null) {
           ensureDimIsMutable();
@@ -26431,11 +26656,15 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public OnnxMl.TensorShapeProto.Dimension.Builder getDimBuilder(int index) {
         return getDimFieldBuilder().getBuilder(index);
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public OnnxMl.TensorShapeProto.DimensionOrBuilder getDimOrBuilder(int index) {
         if (dimBuilder_ == null) {
           return dim_.get(index);
@@ -26443,35 +26672,43 @@ public final class OnnxMl {
           return dimBuilder_.getMessageOrBuilder(index);
         }
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public java.util.List<? extends OnnxMl.TensorShapeProto.DimensionOrBuilder>
-          getDimOrBuilderList() {
+      getDimOrBuilderList() {
         if (dimBuilder_ != null) {
           return dimBuilder_.getMessageOrBuilderList();
         } else {
           return java.util.Collections.unmodifiableList(dim_);
         }
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public OnnxMl.TensorShapeProto.Dimension.Builder addDimBuilder() {
         return getDimFieldBuilder()
             .addBuilder(OnnxMl.TensorShapeProto.Dimension.getDefaultInstance());
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public OnnxMl.TensorShapeProto.Dimension.Builder addDimBuilder(int index) {
         return getDimFieldBuilder()
             .addBuilder(index, OnnxMl.TensorShapeProto.Dimension.getDefaultInstance());
       }
-      /** <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code> */
+      /**
+       * <code>repeated .onnx.TensorShapeProto.Dimension dim = 1;</code>
+       */
       public java.util.List<OnnxMl.TensorShapeProto.Dimension.Builder> getDimBuilderList() {
         return getDimFieldBuilder().getBuilderList();
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.TensorShapeProto.Dimension,
-              OnnxMl.TensorShapeProto.Dimension.Builder,
-              OnnxMl.TensorShapeProto.DimensionOrBuilder>
-          getDimFieldBuilder() {
+          OnnxMl.TensorShapeProto.Dimension,
+          OnnxMl.TensorShapeProto.Dimension.Builder,
+          OnnxMl.TensorShapeProto.DimensionOrBuilder>
+      getDimFieldBuilder() {
         if (dimBuilder_ == null) {
           dimBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -26541,9 +26778,8 @@ public final class OnnxMl {
 
   public interface TypeProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.TypeProto)
-      com.google.protobuf.MessageOrBuilder {
-
+          // @@protoc_insertion_point(interface_extends:onnx.TypeProto)
+          com.google.protobuf.MessageOrBuilder {
     /**
      *
      *
@@ -26637,18 +26873,30 @@ public final class OnnxMl {
      */
     OnnxMl.TypeProto.MapOrBuilder getMapTypeOrBuilder();
 
-    /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+    /**
+     * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+     */
     boolean hasSparseTensorType();
-    /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+    /**
+     * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+     */
     OnnxMl.TypeProto.SparseTensor getSparseTensorType();
-    /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+    /**
+     * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+     */
     OnnxMl.TypeProto.SparseTensorOrBuilder getSparseTensorTypeOrBuilder();
 
-    /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+    /**
+     * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+     */
     boolean hasOpaqueType();
-    /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+    /**
+     * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+     */
     OnnxMl.TypeProto.Opaque getOpaqueType();
-    /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+    /**
+     * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+     */
     OnnxMl.TypeProto.OpaqueOrBuilder getOpaqueTypeOrBuilder();
 
     /**
@@ -26692,8 +26940,8 @@ public final class OnnxMl {
    */
   public static final class TypeProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.TypeProto)
-      TypeProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.TypeProto)
+          TypeProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use TypeProto.newBuilder() to construct.
     private TypeProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -26728,91 +26976,84 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                OnnxMl.TypeProto.Tensor.Builder subBuilder = null;
-                if (valueCase_ == 1) {
-                  subBuilder = ((OnnxMl.TypeProto.Tensor) value_).toBuilder();
-                }
-                value_ = input.readMessage(OnnxMl.TypeProto.Tensor.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom((OnnxMl.TypeProto.Tensor) value_);
-                  value_ = subBuilder.buildPartial();
-                }
-                valueCase_ = 1;
-                break;
+            case 10: {
+              OnnxMl.TypeProto.Tensor.Builder subBuilder = null;
+              if (valueCase_ == 1) {
+                subBuilder = ((OnnxMl.TypeProto.Tensor) value_).toBuilder();
               }
-            case 34:
-              {
-                OnnxMl.TypeProto.Sequence.Builder subBuilder = null;
-                if (valueCase_ == 4) {
-                  subBuilder = ((OnnxMl.TypeProto.Sequence) value_).toBuilder();
-                }
-                value_ = input.readMessage(OnnxMl.TypeProto.Sequence.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom((OnnxMl.TypeProto.Sequence) value_);
-                  value_ = subBuilder.buildPartial();
-                }
-                valueCase_ = 4;
-                break;
+              value_ = input.readMessage(OnnxMl.TypeProto.Tensor.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom((OnnxMl.TypeProto.Tensor) value_);
+                value_ = subBuilder.buildPartial();
               }
-            case 42:
-              {
-                OnnxMl.TypeProto.Map.Builder subBuilder = null;
-                if (valueCase_ == 5) {
-                  subBuilder = ((OnnxMl.TypeProto.Map) value_).toBuilder();
-                }
-                value_ = input.readMessage(OnnxMl.TypeProto.Map.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom((OnnxMl.TypeProto.Map) value_);
-                  value_ = subBuilder.buildPartial();
-                }
-                valueCase_ = 5;
-                break;
+              valueCase_ = 1;
+              break;
+            }
+            case 34: {
+              OnnxMl.TypeProto.Sequence.Builder subBuilder = null;
+              if (valueCase_ == 4) {
+                subBuilder = ((OnnxMl.TypeProto.Sequence) value_).toBuilder();
               }
-            case 50:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              value_ = input.readMessage(OnnxMl.TypeProto.Sequence.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom((OnnxMl.TypeProto.Sequence) value_);
+                value_ = subBuilder.buildPartial();
+              }
+              valueCase_ = 4;
+              break;
+            }
+            case 42: {
+              OnnxMl.TypeProto.Map.Builder subBuilder = null;
+              if (valueCase_ == 5) {
+                subBuilder = ((OnnxMl.TypeProto.Map) value_).toBuilder();
+              }
+              value_ = input.readMessage(OnnxMl.TypeProto.Map.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom((OnnxMl.TypeProto.Map) value_);
+                value_ = subBuilder.buildPartial();
+              }
+              valueCase_ = 5;
+              break;
+            }
+            case 50: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                denotation_ = s;
-                break;
+              denotation_ = s;
+              break;
+            }
+            case 58: {
+              OnnxMl.TypeProto.Opaque.Builder subBuilder = null;
+              if (valueCase_ == 7) {
+                subBuilder = ((OnnxMl.TypeProto.Opaque) value_).toBuilder();
               }
-            case 58:
-              {
-                OnnxMl.TypeProto.Opaque.Builder subBuilder = null;
-                if (valueCase_ == 7) {
-                  subBuilder = ((OnnxMl.TypeProto.Opaque) value_).toBuilder();
-                }
-                value_ = input.readMessage(OnnxMl.TypeProto.Opaque.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom((OnnxMl.TypeProto.Opaque) value_);
-                  value_ = subBuilder.buildPartial();
-                }
-                valueCase_ = 7;
-                break;
+              value_ = input.readMessage(OnnxMl.TypeProto.Opaque.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom((OnnxMl.TypeProto.Opaque) value_);
+                value_ = subBuilder.buildPartial();
               }
-            case 66:
-              {
-                OnnxMl.TypeProto.SparseTensor.Builder subBuilder = null;
-                if (valueCase_ == 8) {
-                  subBuilder = ((OnnxMl.TypeProto.SparseTensor) value_).toBuilder();
-                }
-                value_ =
-                    input.readMessage(OnnxMl.TypeProto.SparseTensor.parser(), extensionRegistry);
-                if (subBuilder != null) {
-                  subBuilder.mergeFrom((OnnxMl.TypeProto.SparseTensor) value_);
-                  value_ = subBuilder.buildPartial();
-                }
-                valueCase_ = 8;
-                break;
+              valueCase_ = 7;
+              break;
+            }
+            case 66: {
+              OnnxMl.TypeProto.SparseTensor.Builder subBuilder = null;
+              if (valueCase_ == 8) {
+                subBuilder = ((OnnxMl.TypeProto.SparseTensor) value_).toBuilder();
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
+              value_ =
+                  input.readMessage(OnnxMl.TypeProto.SparseTensor.parser(), extensionRegistry);
+              if (subBuilder != null) {
+                subBuilder.mergeFrom((OnnxMl.TypeProto.SparseTensor) value_);
+                value_ = subBuilder.buildPartial();
               }
+              valueCase_ = 8;
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
+              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -26831,16 +27072,15 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_TypeProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(OnnxMl.TypeProto.class, OnnxMl.TypeProto.Builder.class);
     }
 
     public interface TensorOrBuilder
         extends
-        // @@protoc_insertion_point(interface_extends:onnx.TypeProto.Tensor)
-        com.google.protobuf.MessageOrBuilder {
-
+            // @@protoc_insertion_point(interface_extends:onnx.TypeProto.Tensor)
+            com.google.protobuf.MessageOrBuilder {
       /**
        *
        *
@@ -26854,18 +27094,26 @@ public final class OnnxMl {
        */
       int getElemType();
 
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       boolean hasShape();
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       OnnxMl.TensorShapeProto getShape();
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       OnnxMl.TensorShapeProtoOrBuilder getShapeOrBuilder();
     }
-    /** Protobuf type {@code onnx.TypeProto.Tensor} */
+    /**
+     * Protobuf type {@code onnx.TypeProto.Tensor}
+     */
     public static final class Tensor extends com.google.protobuf.GeneratedMessageV3
         implements
-        // @@protoc_insertion_point(message_implements:onnx.TypeProto.Tensor)
-        TensorOrBuilder {
+            // @@protoc_insertion_point(message_implements:onnx.TypeProto.Tensor)
+            TensorOrBuilder {
       private static final long serialVersionUID = 0L;
       // Use Tensor.newBuilder() to construct.
       private Tensor(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -26900,32 +27148,29 @@ public final class OnnxMl {
               case 0:
                 done = true;
                 break;
-              case 8:
-                {
-                  elemType_ = input.readInt32();
-                  break;
+              case 8: {
+                elemType_ = input.readInt32();
+                break;
+              }
+              case 18: {
+                OnnxMl.TensorShapeProto.Builder subBuilder = null;
+                if (shape_ != null) {
+                  subBuilder = shape_.toBuilder();
                 }
-              case 18:
-                {
-                  OnnxMl.TensorShapeProto.Builder subBuilder = null;
-                  if (shape_ != null) {
-                    subBuilder = shape_.toBuilder();
-                  }
-                  shape_ = input.readMessage(OnnxMl.TensorShapeProto.parser(), extensionRegistry);
-                  if (subBuilder != null) {
-                    subBuilder.mergeFrom(shape_);
-                    shape_ = subBuilder.buildPartial();
-                  }
+                shape_ = input.readMessage(OnnxMl.TensorShapeProto.parser(), extensionRegistry);
+                if (subBuilder != null) {
+                  subBuilder.mergeFrom(shape_);
+                  shape_ = subBuilder.buildPartial();
+                }
 
-                  break;
+                break;
+              }
+              default: {
+                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                  done = true;
                 }
-              default:
-                {
-                  if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                    done = true;
-                  }
-                  break;
-                }
+                break;
+              }
             }
           }
         } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -26945,7 +27190,7 @@ public final class OnnxMl {
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TypeProto_Tensor_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TypeProto.Tensor.class, OnnxMl.TypeProto.Tensor.Builder.class);
@@ -26970,15 +27215,21 @@ public final class OnnxMl {
 
       public static final int SHAPE_FIELD_NUMBER = 2;
       private OnnxMl.TensorShapeProto shape_;
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       public boolean hasShape() {
         return shape_ != null;
       }
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       public OnnxMl.TensorShapeProto getShape() {
         return shape_ == null ? OnnxMl.TensorShapeProto.getDefaultInstance() : shape_;
       }
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       public OnnxMl.TensorShapeProtoOrBuilder getShapeOrBuilder() {
         return getShape();
       }
@@ -26988,8 +27239,10 @@ public final class OnnxMl {
       @java.lang.Override
       public final boolean isInitialized() {
         byte isInitialized = memoizedIsInitialized;
-        if (isInitialized == 1) return true;
-        if (isInitialized == 0) return false;
+        if (isInitialized == 1)
+          return true;
+        if (isInitialized == 0)
+          return false;
 
         memoizedIsInitialized = 1;
         return true;
@@ -27009,7 +27262,8 @@ public final class OnnxMl {
       @java.lang.Override
       public int getSerializedSize() {
         int size = memoizedSize;
-        if (size != -1) return size;
+        if (size != -1)
+          return size;
 
         size = 0;
         if (elemType_ != 0) {
@@ -27156,19 +27410,21 @@ public final class OnnxMl {
         Builder builder = new Builder(parent);
         return builder;
       }
-      /** Protobuf type {@code onnx.TypeProto.Tensor} */
+      /**
+       * Protobuf type {@code onnx.TypeProto.Tensor}
+       */
       public static final class Builder
           extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
           implements
-          // @@protoc_insertion_point(builder_implements:onnx.TypeProto.Tensor)
-          OnnxMl.TypeProto.TensorOrBuilder {
+              // @@protoc_insertion_point(builder_implements:onnx.TypeProto.Tensor)
+              OnnxMl.TypeProto.TensorOrBuilder {
         public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
           return OnnxMl.internal_static_onnx_TypeProto_Tensor_descriptor;
         }
 
         @java.lang.Override
         protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-            internalGetFieldAccessorTable() {
+        internalGetFieldAccessorTable() {
           return OnnxMl.internal_static_onnx_TypeProto_Tensor_fieldAccessorTable
               .ensureFieldAccessorsInitialized(
                   OnnxMl.TypeProto.Tensor.class, OnnxMl.TypeProto.Tensor.Builder.class);
@@ -27185,7 +27441,8 @@ public final class OnnxMl {
         }
 
         private void maybeForceBuilderInitialization() {
-          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+          }
         }
 
         @java.lang.Override
@@ -27280,7 +27537,8 @@ public final class OnnxMl {
         }
 
         public Builder mergeFrom(OnnxMl.TypeProto.Tensor other) {
-          if (other == OnnxMl.TypeProto.Tensor.getDefaultInstance()) return this;
+          if (other == OnnxMl.TypeProto.Tensor.getDefaultInstance())
+            return this;
           if (other.getElemType() != 0) {
             setElemType(other.getElemType());
           }
@@ -27343,7 +27601,6 @@ public final class OnnxMl {
          * <code>int32 elem_type = 1;</code>
          */
         public Builder setElemType(int value) {
-
           elemType_ = value;
           onChanged();
           return this;
@@ -27360,7 +27617,6 @@ public final class OnnxMl {
          * <code>int32 elem_type = 1;</code>
          */
         public Builder clearElemType() {
-
           elemType_ = 0;
           onChanged();
           return this;
@@ -27368,15 +27624,19 @@ public final class OnnxMl {
 
         private OnnxMl.TensorShapeProto shape_ = null;
         private com.google.protobuf.SingleFieldBuilderV3<
-                OnnxMl.TensorShapeProto,
-                OnnxMl.TensorShapeProto.Builder,
-                OnnxMl.TensorShapeProtoOrBuilder>
+            OnnxMl.TensorShapeProto,
+            OnnxMl.TensorShapeProto.Builder,
+            OnnxMl.TensorShapeProtoOrBuilder>
             shapeBuilder_;
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public boolean hasShape() {
           return shapeBuilder_ != null || shape_ != null;
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public OnnxMl.TensorShapeProto getShape() {
           if (shapeBuilder_ == null) {
             return shape_ == null ? OnnxMl.TensorShapeProto.getDefaultInstance() : shape_;
@@ -27384,7 +27644,9 @@ public final class OnnxMl {
             return shapeBuilder_.getMessage();
           }
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public Builder setShape(OnnxMl.TensorShapeProto value) {
           if (shapeBuilder_ == null) {
             if (value == null) {
@@ -27398,7 +27660,9 @@ public final class OnnxMl {
 
           return this;
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public Builder setShape(OnnxMl.TensorShapeProto.Builder builderForValue) {
           if (shapeBuilder_ == null) {
             shape_ = builderForValue.build();
@@ -27409,7 +27673,9 @@ public final class OnnxMl {
 
           return this;
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public Builder mergeShape(OnnxMl.TensorShapeProto value) {
           if (shapeBuilder_ == null) {
             if (shape_ != null) {
@@ -27424,7 +27690,9 @@ public final class OnnxMl {
 
           return this;
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public Builder clearShape() {
           if (shapeBuilder_ == null) {
             shape_ = null;
@@ -27436,13 +27704,16 @@ public final class OnnxMl {
 
           return this;
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public OnnxMl.TensorShapeProto.Builder getShapeBuilder() {
-
           onChanged();
           return getShapeFieldBuilder().getBuilder();
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public OnnxMl.TensorShapeProtoOrBuilder getShapeOrBuilder() {
           if (shapeBuilder_ != null) {
             return shapeBuilder_.getMessageOrBuilder();
@@ -27450,12 +27721,14 @@ public final class OnnxMl {
             return shape_ == null ? OnnxMl.TensorShapeProto.getDefaultInstance() : shape_;
           }
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         private com.google.protobuf.SingleFieldBuilderV3<
-                OnnxMl.TensorShapeProto,
-                OnnxMl.TensorShapeProto.Builder,
-                OnnxMl.TensorShapeProtoOrBuilder>
-            getShapeFieldBuilder() {
+            OnnxMl.TensorShapeProto,
+            OnnxMl.TensorShapeProto.Builder,
+            OnnxMl.TensorShapeProtoOrBuilder>
+        getShapeFieldBuilder() {
           if (shapeBuilder_ == null) {
             shapeBuilder_ =
                 new com.google.protobuf.SingleFieldBuilderV3<
@@ -27522,9 +27795,8 @@ public final class OnnxMl {
 
     public interface SequenceOrBuilder
         extends
-        // @@protoc_insertion_point(interface_extends:onnx.TypeProto.Sequence)
-        com.google.protobuf.MessageOrBuilder {
-
+            // @@protoc_insertion_point(interface_extends:onnx.TypeProto.Sequence)
+            com.google.protobuf.MessageOrBuilder {
       /**
        *
        *
@@ -27570,8 +27842,8 @@ public final class OnnxMl {
      */
     public static final class Sequence extends com.google.protobuf.GeneratedMessageV3
         implements
-        // @@protoc_insertion_point(message_implements:onnx.TypeProto.Sequence)
-        SequenceOrBuilder {
+            // @@protoc_insertion_point(message_implements:onnx.TypeProto.Sequence)
+            SequenceOrBuilder {
       private static final long serialVersionUID = 0L;
       // Use Sequence.newBuilder() to construct.
       private Sequence(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -27604,27 +27876,25 @@ public final class OnnxMl {
               case 0:
                 done = true;
                 break;
-              case 10:
-                {
-                  OnnxMl.TypeProto.Builder subBuilder = null;
-                  if (elemType_ != null) {
-                    subBuilder = elemType_.toBuilder();
-                  }
-                  elemType_ = input.readMessage(OnnxMl.TypeProto.parser(), extensionRegistry);
-                  if (subBuilder != null) {
-                    subBuilder.mergeFrom(elemType_);
-                    elemType_ = subBuilder.buildPartial();
-                  }
+              case 10: {
+                OnnxMl.TypeProto.Builder subBuilder = null;
+                if (elemType_ != null) {
+                  subBuilder = elemType_.toBuilder();
+                }
+                elemType_ = input.readMessage(OnnxMl.TypeProto.parser(), extensionRegistry);
+                if (subBuilder != null) {
+                  subBuilder.mergeFrom(elemType_);
+                  elemType_ = subBuilder.buildPartial();
+                }
 
-                  break;
+                break;
+              }
+              default: {
+                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                  done = true;
                 }
-              default:
-                {
-                  if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                    done = true;
-                  }
-                  break;
-                }
+                break;
+              }
             }
           }
         } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -27644,7 +27914,7 @@ public final class OnnxMl {
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TypeProto_Sequence_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TypeProto.Sequence.class, OnnxMl.TypeProto.Sequence.Builder.class);
@@ -27697,8 +27967,10 @@ public final class OnnxMl {
       @java.lang.Override
       public final boolean isInitialized() {
         byte isInitialized = memoizedIsInitialized;
-        if (isInitialized == 1) return true;
-        if (isInitialized == 0) return false;
+        if (isInitialized == 1)
+          return true;
+        if (isInitialized == 0)
+          return false;
 
         memoizedIsInitialized = 1;
         return true;
@@ -27715,7 +27987,8 @@ public final class OnnxMl {
       @java.lang.Override
       public int getSerializedSize() {
         int size = memoizedSize;
-        if (size != -1) return size;
+        if (size != -1)
+          return size;
 
         size = 0;
         if (elemType_ != null) {
@@ -27868,15 +28141,15 @@ public final class OnnxMl {
       public static final class Builder
           extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
           implements
-          // @@protoc_insertion_point(builder_implements:onnx.TypeProto.Sequence)
-          OnnxMl.TypeProto.SequenceOrBuilder {
+              // @@protoc_insertion_point(builder_implements:onnx.TypeProto.Sequence)
+              OnnxMl.TypeProto.SequenceOrBuilder {
         public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
           return OnnxMl.internal_static_onnx_TypeProto_Sequence_descriptor;
         }
 
         @java.lang.Override
         protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-            internalGetFieldAccessorTable() {
+        internalGetFieldAccessorTable() {
           return OnnxMl.internal_static_onnx_TypeProto_Sequence_fieldAccessorTable
               .ensureFieldAccessorsInitialized(
                   OnnxMl.TypeProto.Sequence.class, OnnxMl.TypeProto.Sequence.Builder.class);
@@ -27893,7 +28166,8 @@ public final class OnnxMl {
         }
 
         private void maybeForceBuilderInitialization() {
-          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+          }
         }
 
         @java.lang.Override
@@ -27985,7 +28259,8 @@ public final class OnnxMl {
         }
 
         public Builder mergeFrom(OnnxMl.TypeProto.Sequence other) {
-          if (other == OnnxMl.TypeProto.Sequence.getDefaultInstance()) return this;
+          if (other == OnnxMl.TypeProto.Sequence.getDefaultInstance())
+            return this;
           if (other.hasElemType()) {
             mergeElemType(other.getElemType());
           }
@@ -28020,7 +28295,7 @@ public final class OnnxMl {
 
         private OnnxMl.TypeProto elemType_ = null;
         private com.google.protobuf.SingleFieldBuilderV3<
-                OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
+            OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
             elemTypeBuilder_;
         /**
          *
@@ -28151,7 +28426,6 @@ public final class OnnxMl {
          * <code>.onnx.TypeProto elem_type = 1;</code>
          */
         public OnnxMl.TypeProto.Builder getElemTypeBuilder() {
-
           onChanged();
           return getElemTypeFieldBuilder().getBuilder();
         }
@@ -28183,8 +28457,8 @@ public final class OnnxMl {
          * <code>.onnx.TypeProto elem_type = 1;</code>
          */
         private com.google.protobuf.SingleFieldBuilderV3<
-                OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
-            getElemTypeFieldBuilder() {
+            OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
+        getElemTypeFieldBuilder() {
           if (elemTypeBuilder_ == null) {
             elemTypeBuilder_ =
                 new com.google.protobuf.SingleFieldBuilderV3<
@@ -28249,9 +28523,8 @@ public final class OnnxMl {
 
     public interface MapOrBuilder
         extends
-        // @@protoc_insertion_point(interface_extends:onnx.TypeProto.Map)
-        com.google.protobuf.MessageOrBuilder {
-
+            // @@protoc_insertion_point(interface_extends:onnx.TypeProto.Map)
+            com.google.protobuf.MessageOrBuilder {
       /**
        *
        *
@@ -28307,8 +28580,8 @@ public final class OnnxMl {
      */
     public static final class Map extends com.google.protobuf.GeneratedMessageV3
         implements
-        // @@protoc_insertion_point(message_implements:onnx.TypeProto.Map)
-        MapOrBuilder {
+            // @@protoc_insertion_point(message_implements:onnx.TypeProto.Map)
+            MapOrBuilder {
       private static final long serialVersionUID = 0L;
       // Use Map.newBuilder() to construct.
       private Map(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -28343,32 +28616,29 @@ public final class OnnxMl {
               case 0:
                 done = true;
                 break;
-              case 8:
-                {
-                  keyType_ = input.readInt32();
-                  break;
+              case 8: {
+                keyType_ = input.readInt32();
+                break;
+              }
+              case 18: {
+                OnnxMl.TypeProto.Builder subBuilder = null;
+                if (valueType_ != null) {
+                  subBuilder = valueType_.toBuilder();
                 }
-              case 18:
-                {
-                  OnnxMl.TypeProto.Builder subBuilder = null;
-                  if (valueType_ != null) {
-                    subBuilder = valueType_.toBuilder();
-                  }
-                  valueType_ = input.readMessage(OnnxMl.TypeProto.parser(), extensionRegistry);
-                  if (subBuilder != null) {
-                    subBuilder.mergeFrom(valueType_);
-                    valueType_ = subBuilder.buildPartial();
-                  }
+                valueType_ = input.readMessage(OnnxMl.TypeProto.parser(), extensionRegistry);
+                if (subBuilder != null) {
+                  subBuilder.mergeFrom(valueType_);
+                  valueType_ = subBuilder.buildPartial();
+                }
 
-                  break;
+                break;
+              }
+              default: {
+                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                  done = true;
                 }
-              default:
-                {
-                  if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                    done = true;
-                  }
-                  break;
-                }
+                break;
+              }
             }
           }
         } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -28388,7 +28658,7 @@ public final class OnnxMl {
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TypeProto_Map_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TypeProto.Map.class, OnnxMl.TypeProto.Map.Builder.class);
@@ -28455,8 +28725,10 @@ public final class OnnxMl {
       @java.lang.Override
       public final boolean isInitialized() {
         byte isInitialized = memoizedIsInitialized;
-        if (isInitialized == 1) return true;
-        if (isInitialized == 0) return false;
+        if (isInitialized == 1)
+          return true;
+        if (isInitialized == 0)
+          return false;
 
         memoizedIsInitialized = 1;
         return true;
@@ -28476,7 +28748,8 @@ public final class OnnxMl {
       @java.lang.Override
       public int getSerializedSize() {
         int size = memoizedSize;
-        if (size != -1) return size;
+        if (size != -1)
+          return size;
 
         size = 0;
         if (keyType_ != 0) {
@@ -28635,15 +28908,15 @@ public final class OnnxMl {
       public static final class Builder
           extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
           implements
-          // @@protoc_insertion_point(builder_implements:onnx.TypeProto.Map)
-          OnnxMl.TypeProto.MapOrBuilder {
+              // @@protoc_insertion_point(builder_implements:onnx.TypeProto.Map)
+              OnnxMl.TypeProto.MapOrBuilder {
         public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
           return OnnxMl.internal_static_onnx_TypeProto_Map_descriptor;
         }
 
         @java.lang.Override
         protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-            internalGetFieldAccessorTable() {
+        internalGetFieldAccessorTable() {
           return OnnxMl.internal_static_onnx_TypeProto_Map_fieldAccessorTable
               .ensureFieldAccessorsInitialized(
                   OnnxMl.TypeProto.Map.class, OnnxMl.TypeProto.Map.Builder.class);
@@ -28660,7 +28933,8 @@ public final class OnnxMl {
         }
 
         private void maybeForceBuilderInitialization() {
-          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+          }
         }
 
         @java.lang.Override
@@ -28755,7 +29029,8 @@ public final class OnnxMl {
         }
 
         public Builder mergeFrom(OnnxMl.TypeProto.Map other) {
-          if (other == OnnxMl.TypeProto.Map.getDefaultInstance()) return this;
+          if (other == OnnxMl.TypeProto.Map.getDefaultInstance())
+            return this;
           if (other.getKeyType() != 0) {
             setKeyType(other.getKeyType());
           }
@@ -28818,7 +29093,6 @@ public final class OnnxMl {
          * <code>int32 key_type = 1;</code>
          */
         public Builder setKeyType(int value) {
-
           keyType_ = value;
           onChanged();
           return this;
@@ -28835,7 +29109,6 @@ public final class OnnxMl {
          * <code>int32 key_type = 1;</code>
          */
         public Builder clearKeyType() {
-
           keyType_ = 0;
           onChanged();
           return this;
@@ -28843,7 +29116,7 @@ public final class OnnxMl {
 
         private OnnxMl.TypeProto valueType_ = null;
         private com.google.protobuf.SingleFieldBuilderV3<
-                OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
+            OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
             valueTypeBuilder_;
         /**
          *
@@ -28967,7 +29240,6 @@ public final class OnnxMl {
          * <code>.onnx.TypeProto value_type = 2;</code>
          */
         public OnnxMl.TypeProto.Builder getValueTypeBuilder() {
-
           onChanged();
           return getValueTypeFieldBuilder().getBuilder();
         }
@@ -28997,8 +29269,8 @@ public final class OnnxMl {
          * <code>.onnx.TypeProto value_type = 2;</code>
          */
         private com.google.protobuf.SingleFieldBuilderV3<
-                OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
-            getValueTypeFieldBuilder() {
+            OnnxMl.TypeProto, OnnxMl.TypeProto.Builder, OnnxMl.TypeProtoOrBuilder>
+        getValueTypeFieldBuilder() {
           if (valueTypeBuilder_ == null) {
             valueTypeBuilder_ =
                 new com.google.protobuf.SingleFieldBuilderV3<
@@ -29063,9 +29335,8 @@ public final class OnnxMl {
 
     public interface SparseTensorOrBuilder
         extends
-        // @@protoc_insertion_point(interface_extends:onnx.TypeProto.SparseTensor)
-        com.google.protobuf.MessageOrBuilder {
-
+            // @@protoc_insertion_point(interface_extends:onnx.TypeProto.SparseTensor)
+            com.google.protobuf.MessageOrBuilder {
       /**
        *
        *
@@ -29079,18 +29350,26 @@ public final class OnnxMl {
        */
       int getElemType();
 
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       boolean hasShape();
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       OnnxMl.TensorShapeProto getShape();
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       OnnxMl.TensorShapeProtoOrBuilder getShapeOrBuilder();
     }
-    /** Protobuf type {@code onnx.TypeProto.SparseTensor} */
+    /**
+     * Protobuf type {@code onnx.TypeProto.SparseTensor}
+     */
     public static final class SparseTensor extends com.google.protobuf.GeneratedMessageV3
         implements
-        // @@protoc_insertion_point(message_implements:onnx.TypeProto.SparseTensor)
-        SparseTensorOrBuilder {
+            // @@protoc_insertion_point(message_implements:onnx.TypeProto.SparseTensor)
+            SparseTensorOrBuilder {
       private static final long serialVersionUID = 0L;
       // Use SparseTensor.newBuilder() to construct.
       private SparseTensor(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -29125,32 +29404,29 @@ public final class OnnxMl {
               case 0:
                 done = true;
                 break;
-              case 8:
-                {
-                  elemType_ = input.readInt32();
-                  break;
+              case 8: {
+                elemType_ = input.readInt32();
+                break;
+              }
+              case 18: {
+                OnnxMl.TensorShapeProto.Builder subBuilder = null;
+                if (shape_ != null) {
+                  subBuilder = shape_.toBuilder();
                 }
-              case 18:
-                {
-                  OnnxMl.TensorShapeProto.Builder subBuilder = null;
-                  if (shape_ != null) {
-                    subBuilder = shape_.toBuilder();
-                  }
-                  shape_ = input.readMessage(OnnxMl.TensorShapeProto.parser(), extensionRegistry);
-                  if (subBuilder != null) {
-                    subBuilder.mergeFrom(shape_);
-                    shape_ = subBuilder.buildPartial();
-                  }
+                shape_ = input.readMessage(OnnxMl.TensorShapeProto.parser(), extensionRegistry);
+                if (subBuilder != null) {
+                  subBuilder.mergeFrom(shape_);
+                  shape_ = subBuilder.buildPartial();
+                }
 
-                  break;
+                break;
+              }
+              default: {
+                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                  done = true;
                 }
-              default:
-                {
-                  if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                    done = true;
-                  }
-                  break;
-                }
+                break;
+              }
             }
           }
         } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -29170,7 +29446,7 @@ public final class OnnxMl {
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TypeProto_SparseTensor_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TypeProto.SparseTensor.class, OnnxMl.TypeProto.SparseTensor.Builder.class);
@@ -29195,15 +29471,21 @@ public final class OnnxMl {
 
       public static final int SHAPE_FIELD_NUMBER = 2;
       private OnnxMl.TensorShapeProto shape_;
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       public boolean hasShape() {
         return shape_ != null;
       }
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       public OnnxMl.TensorShapeProto getShape() {
         return shape_ == null ? OnnxMl.TensorShapeProto.getDefaultInstance() : shape_;
       }
-      /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+      /**
+       * <code>.onnx.TensorShapeProto shape = 2;</code>
+       */
       public OnnxMl.TensorShapeProtoOrBuilder getShapeOrBuilder() {
         return getShape();
       }
@@ -29213,8 +29495,10 @@ public final class OnnxMl {
       @java.lang.Override
       public final boolean isInitialized() {
         byte isInitialized = memoizedIsInitialized;
-        if (isInitialized == 1) return true;
-        if (isInitialized == 0) return false;
+        if (isInitialized == 1)
+          return true;
+        if (isInitialized == 0)
+          return false;
 
         memoizedIsInitialized = 1;
         return true;
@@ -29234,7 +29518,8 @@ public final class OnnxMl {
       @java.lang.Override
       public int getSerializedSize() {
         int size = memoizedSize;
-        if (size != -1) return size;
+        if (size != -1)
+          return size;
 
         size = 0;
         if (elemType_ != 0) {
@@ -29381,19 +29666,21 @@ public final class OnnxMl {
         Builder builder = new Builder(parent);
         return builder;
       }
-      /** Protobuf type {@code onnx.TypeProto.SparseTensor} */
+      /**
+       * Protobuf type {@code onnx.TypeProto.SparseTensor}
+       */
       public static final class Builder
           extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
           implements
-          // @@protoc_insertion_point(builder_implements:onnx.TypeProto.SparseTensor)
-          OnnxMl.TypeProto.SparseTensorOrBuilder {
+              // @@protoc_insertion_point(builder_implements:onnx.TypeProto.SparseTensor)
+              OnnxMl.TypeProto.SparseTensorOrBuilder {
         public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
           return OnnxMl.internal_static_onnx_TypeProto_SparseTensor_descriptor;
         }
 
         @java.lang.Override
         protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-            internalGetFieldAccessorTable() {
+        internalGetFieldAccessorTable() {
           return OnnxMl.internal_static_onnx_TypeProto_SparseTensor_fieldAccessorTable
               .ensureFieldAccessorsInitialized(
                   OnnxMl.TypeProto.SparseTensor.class, OnnxMl.TypeProto.SparseTensor.Builder.class);
@@ -29410,7 +29697,8 @@ public final class OnnxMl {
         }
 
         private void maybeForceBuilderInitialization() {
-          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+          }
         }
 
         @java.lang.Override
@@ -29505,7 +29793,8 @@ public final class OnnxMl {
         }
 
         public Builder mergeFrom(OnnxMl.TypeProto.SparseTensor other) {
-          if (other == OnnxMl.TypeProto.SparseTensor.getDefaultInstance()) return this;
+          if (other == OnnxMl.TypeProto.SparseTensor.getDefaultInstance())
+            return this;
           if (other.getElemType() != 0) {
             setElemType(other.getElemType());
           }
@@ -29568,7 +29857,6 @@ public final class OnnxMl {
          * <code>int32 elem_type = 1;</code>
          */
         public Builder setElemType(int value) {
-
           elemType_ = value;
           onChanged();
           return this;
@@ -29585,7 +29873,6 @@ public final class OnnxMl {
          * <code>int32 elem_type = 1;</code>
          */
         public Builder clearElemType() {
-
           elemType_ = 0;
           onChanged();
           return this;
@@ -29593,15 +29880,19 @@ public final class OnnxMl {
 
         private OnnxMl.TensorShapeProto shape_ = null;
         private com.google.protobuf.SingleFieldBuilderV3<
-                OnnxMl.TensorShapeProto,
-                OnnxMl.TensorShapeProto.Builder,
-                OnnxMl.TensorShapeProtoOrBuilder>
+            OnnxMl.TensorShapeProto,
+            OnnxMl.TensorShapeProto.Builder,
+            OnnxMl.TensorShapeProtoOrBuilder>
             shapeBuilder_;
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public boolean hasShape() {
           return shapeBuilder_ != null || shape_ != null;
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public OnnxMl.TensorShapeProto getShape() {
           if (shapeBuilder_ == null) {
             return shape_ == null ? OnnxMl.TensorShapeProto.getDefaultInstance() : shape_;
@@ -29609,7 +29900,9 @@ public final class OnnxMl {
             return shapeBuilder_.getMessage();
           }
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public Builder setShape(OnnxMl.TensorShapeProto value) {
           if (shapeBuilder_ == null) {
             if (value == null) {
@@ -29623,7 +29916,9 @@ public final class OnnxMl {
 
           return this;
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public Builder setShape(OnnxMl.TensorShapeProto.Builder builderForValue) {
           if (shapeBuilder_ == null) {
             shape_ = builderForValue.build();
@@ -29634,7 +29929,9 @@ public final class OnnxMl {
 
           return this;
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public Builder mergeShape(OnnxMl.TensorShapeProto value) {
           if (shapeBuilder_ == null) {
             if (shape_ != null) {
@@ -29649,7 +29946,9 @@ public final class OnnxMl {
 
           return this;
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public Builder clearShape() {
           if (shapeBuilder_ == null) {
             shape_ = null;
@@ -29661,13 +29960,16 @@ public final class OnnxMl {
 
           return this;
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public OnnxMl.TensorShapeProto.Builder getShapeBuilder() {
-
           onChanged();
           return getShapeFieldBuilder().getBuilder();
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         public OnnxMl.TensorShapeProtoOrBuilder getShapeOrBuilder() {
           if (shapeBuilder_ != null) {
             return shapeBuilder_.getMessageOrBuilder();
@@ -29675,12 +29977,14 @@ public final class OnnxMl {
             return shape_ == null ? OnnxMl.TensorShapeProto.getDefaultInstance() : shape_;
           }
         }
-        /** <code>.onnx.TensorShapeProto shape = 2;</code> */
+        /**
+         * <code>.onnx.TensorShapeProto shape = 2;</code>
+         */
         private com.google.protobuf.SingleFieldBuilderV3<
-                OnnxMl.TensorShapeProto,
-                OnnxMl.TensorShapeProto.Builder,
-                OnnxMl.TensorShapeProtoOrBuilder>
-            getShapeFieldBuilder() {
+            OnnxMl.TensorShapeProto,
+            OnnxMl.TensorShapeProto.Builder,
+            OnnxMl.TensorShapeProtoOrBuilder>
+        getShapeFieldBuilder() {
           if (shapeBuilder_ == null) {
             shapeBuilder_ =
                 new com.google.protobuf.SingleFieldBuilderV3<
@@ -29747,9 +30051,8 @@ public final class OnnxMl {
 
     public interface OpaqueOrBuilder
         extends
-        // @@protoc_insertion_point(interface_extends:onnx.TypeProto.Opaque)
-        com.google.protobuf.MessageOrBuilder {
-
+            // @@protoc_insertion_point(interface_extends:onnx.TypeProto.Opaque)
+            com.google.protobuf.MessageOrBuilder {
       /**
        *
        *
@@ -29792,11 +30095,13 @@ public final class OnnxMl {
        */
       com.google.protobuf.ByteString getNameBytes();
     }
-    /** Protobuf type {@code onnx.TypeProto.Opaque} */
+    /**
+     * Protobuf type {@code onnx.TypeProto.Opaque}
+     */
     public static final class Opaque extends com.google.protobuf.GeneratedMessageV3
         implements
-        // @@protoc_insertion_point(message_implements:onnx.TypeProto.Opaque)
-        OpaqueOrBuilder {
+            // @@protoc_insertion_point(message_implements:onnx.TypeProto.Opaque)
+            OpaqueOrBuilder {
       private static final long serialVersionUID = 0L;
       // Use Opaque.newBuilder() to construct.
       private Opaque(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -29832,27 +30137,24 @@ public final class OnnxMl {
               case 0:
                 done = true;
                 break;
-              case 10:
-                {
-                  java.lang.String s = input.readStringRequireUtf8();
+              case 10: {
+                java.lang.String s = input.readStringRequireUtf8();
 
-                  domain_ = s;
-                  break;
-                }
-              case 18:
-                {
-                  java.lang.String s = input.readStringRequireUtf8();
+                domain_ = s;
+                break;
+              }
+              case 18: {
+                java.lang.String s = input.readStringRequireUtf8();
 
-                  name_ = s;
-                  break;
+                name_ = s;
+                break;
+              }
+              default: {
+                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                  done = true;
                 }
-              default:
-                {
-                  if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                    done = true;
-                  }
-                  break;
-                }
+                break;
+              }
             }
           }
         } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -29872,7 +30174,7 @@ public final class OnnxMl {
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TypeProto_Opaque_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TypeProto.Opaque.class, OnnxMl.TypeProto.Opaque.Builder.class);
@@ -29969,8 +30271,10 @@ public final class OnnxMl {
       @java.lang.Override
       public final boolean isInitialized() {
         byte isInitialized = memoizedIsInitialized;
-        if (isInitialized == 1) return true;
-        if (isInitialized == 0) return false;
+        if (isInitialized == 1)
+          return true;
+        if (isInitialized == 0)
+          return false;
 
         memoizedIsInitialized = 1;
         return true;
@@ -29990,7 +30294,8 @@ public final class OnnxMl {
       @java.lang.Override
       public int getSerializedSize() {
         int size = memoizedSize;
-        if (size != -1) return size;
+        if (size != -1)
+          return size;
 
         size = 0;
         if (!getDomainBytes().isEmpty()) {
@@ -30132,19 +30437,21 @@ public final class OnnxMl {
         Builder builder = new Builder(parent);
         return builder;
       }
-      /** Protobuf type {@code onnx.TypeProto.Opaque} */
+      /**
+       * Protobuf type {@code onnx.TypeProto.Opaque}
+       */
       public static final class Builder
           extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
           implements
-          // @@protoc_insertion_point(builder_implements:onnx.TypeProto.Opaque)
-          OnnxMl.TypeProto.OpaqueOrBuilder {
+              // @@protoc_insertion_point(builder_implements:onnx.TypeProto.Opaque)
+              OnnxMl.TypeProto.OpaqueOrBuilder {
         public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
           return OnnxMl.internal_static_onnx_TypeProto_Opaque_descriptor;
         }
 
         @java.lang.Override
         protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-            internalGetFieldAccessorTable() {
+        internalGetFieldAccessorTable() {
           return OnnxMl.internal_static_onnx_TypeProto_Opaque_fieldAccessorTable
               .ensureFieldAccessorsInitialized(
                   OnnxMl.TypeProto.Opaque.class, OnnxMl.TypeProto.Opaque.Builder.class);
@@ -30161,7 +30468,8 @@ public final class OnnxMl {
         }
 
         private void maybeForceBuilderInitialization() {
-          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+          if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+          }
         }
 
         @java.lang.Override
@@ -30248,7 +30556,8 @@ public final class OnnxMl {
         }
 
         public Builder mergeFrom(OnnxMl.TypeProto.Opaque other) {
-          if (other == OnnxMl.TypeProto.Opaque.getDefaultInstance()) return this;
+          if (other == OnnxMl.TypeProto.Opaque.getDefaultInstance())
+            return this;
           if (!other.getDomain().isEmpty()) {
             domain_ = other.domain_;
             onChanged();
@@ -30355,7 +30664,6 @@ public final class OnnxMl {
          * <code>string domain = 1;</code>
          */
         public Builder clearDomain() {
-
           domain_ = getDefaultInstance().getDomain();
           onChanged();
           return this;
@@ -30449,7 +30757,6 @@ public final class OnnxMl {
          * <code>string name = 2;</code>
          */
         public Builder clearName() {
-
           name_ = getDefaultInstance().getName();
           onChanged();
           return this;
@@ -30529,19 +30836,22 @@ public final class OnnxMl {
     private int valueCase_ = 0;
     private java.lang.Object value_;
 
-    public enum ValueCase implements com.google.protobuf.Internal.EnumLite {
+    public enum ValueCase implements com
+    .google.protobuf.Internal.EnumLite {
       TENSOR_TYPE(1),
-      SEQUENCE_TYPE(4),
-      MAP_TYPE(5),
-      SPARSE_TENSOR_TYPE(8),
-      OPAQUE_TYPE(7),
-      VALUE_NOT_SET(0);
+          SEQUENCE_TYPE(4),
+          MAP_TYPE(5),
+          SPARSE_TENSOR_TYPE(8),
+          OPAQUE_TYPE(7),
+          VALUE_NOT_SET(0);
       private final int value;
 
       private ValueCase(int value) {
         this.value = value;
       }
-      /** @deprecated Use {@link #forNumber(int)} instead. */
+      /**
+       * @deprecated Use {@link #forNumber(int)} instead.
+       */
       @java.lang.Deprecated
       public static ValueCase valueOf(int value) {
         return forNumber(value);
@@ -30708,18 +31018,24 @@ public final class OnnxMl {
     }
 
     public static final int SPARSE_TENSOR_TYPE_FIELD_NUMBER = 8;
-    /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+    /**
+     * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+     */
     public boolean hasSparseTensorType() {
       return valueCase_ == 8;
     }
-    /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+    /**
+     * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+     */
     public OnnxMl.TypeProto.SparseTensor getSparseTensorType() {
       if (valueCase_ == 8) {
         return (OnnxMl.TypeProto.SparseTensor) value_;
       }
       return OnnxMl.TypeProto.SparseTensor.getDefaultInstance();
     }
-    /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+    /**
+     * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+     */
     public OnnxMl.TypeProto.SparseTensorOrBuilder getSparseTensorTypeOrBuilder() {
       if (valueCase_ == 8) {
         return (OnnxMl.TypeProto.SparseTensor) value_;
@@ -30728,18 +31044,24 @@ public final class OnnxMl {
     }
 
     public static final int OPAQUE_TYPE_FIELD_NUMBER = 7;
-    /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+    /**
+     * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+     */
     public boolean hasOpaqueType() {
       return valueCase_ == 7;
     }
-    /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+    /**
+     * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+     */
     public OnnxMl.TypeProto.Opaque getOpaqueType() {
       if (valueCase_ == 7) {
         return (OnnxMl.TypeProto.Opaque) value_;
       }
       return OnnxMl.TypeProto.Opaque.getDefaultInstance();
     }
-    /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+    /**
+     * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+     */
     public OnnxMl.TypeProto.OpaqueOrBuilder getOpaqueTypeOrBuilder() {
       if (valueCase_ == 7) {
         return (OnnxMl.TypeProto.Opaque) value_;
@@ -30801,8 +31123,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -30834,7 +31158,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       if (valueCase_ == 1) {
@@ -30883,7 +31208,8 @@ public final class OnnxMl {
       boolean result = true;
       result = result && getDenotation().equals(other.getDenotation());
       result = result && getValueCase().equals(other.getValueCase());
-      if (!result) return false;
+      if (!result)
+        return false;
       switch (valueCase_) {
         case 1:
           result = result && getTensorType().equals(other.getTensorType());
@@ -31052,15 +31378,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.TypeProto)
-        OnnxMl.TypeProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.TypeProto)
+            OnnxMl.TypeProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_TypeProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_TypeProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.TypeProto.class, OnnxMl.TypeProto.Builder.class);
@@ -31077,7 +31403,8 @@ public final class OnnxMl {
       }
 
       private void maybeForceBuilderInitialization() {
-        if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+        if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+        }
       }
 
       @java.lang.Override
@@ -31199,41 +31526,36 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.TypeProto other) {
-        if (other == OnnxMl.TypeProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.TypeProto.getDefaultInstance())
+          return this;
         if (!other.getDenotation().isEmpty()) {
           denotation_ = other.denotation_;
           onChanged();
         }
         switch (other.getValueCase()) {
-          case TENSOR_TYPE:
-            {
-              mergeTensorType(other.getTensorType());
-              break;
-            }
-          case SEQUENCE_TYPE:
-            {
-              mergeSequenceType(other.getSequenceType());
-              break;
-            }
-          case MAP_TYPE:
-            {
-              mergeMapType(other.getMapType());
-              break;
-            }
-          case SPARSE_TENSOR_TYPE:
-            {
-              mergeSparseTensorType(other.getSparseTensorType());
-              break;
-            }
-          case OPAQUE_TYPE:
-            {
-              mergeOpaqueType(other.getOpaqueType());
-              break;
-            }
-          case VALUE_NOT_SET:
-            {
-              break;
-            }
+          case TENSOR_TYPE: {
+            mergeTensorType(other.getTensorType());
+            break;
+          }
+          case SEQUENCE_TYPE: {
+            mergeSequenceType(other.getSequenceType());
+            break;
+          }
+          case MAP_TYPE: {
+            mergeMapType(other.getMapType());
+            break;
+          }
+          case SPARSE_TENSOR_TYPE: {
+            mergeSparseTensorType(other.getSparseTensorType());
+            break;
+          }
+          case OPAQUE_TYPE: {
+            mergeOpaqueType(other.getOpaqueType());
+            break;
+          }
+          case VALUE_NOT_SET: {
+            break;
+          }
         }
         this.mergeUnknownFields(other.unknownFields);
         onChanged();
@@ -31279,9 +31601,9 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto.Tensor,
-              OnnxMl.TypeProto.Tensor.Builder,
-              OnnxMl.TypeProto.TensorOrBuilder>
+          OnnxMl.TypeProto.Tensor,
+          OnnxMl.TypeProto.Tensor.Builder,
+          OnnxMl.TypeProto.TensorOrBuilder>
           tensorTypeBuilder_;
       /**
        *
@@ -31453,10 +31775,10 @@ public final class OnnxMl {
        * <code>.onnx.TypeProto.Tensor tensor_type = 1;</code>
        */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto.Tensor,
-              OnnxMl.TypeProto.Tensor.Builder,
-              OnnxMl.TypeProto.TensorOrBuilder>
-          getTensorTypeFieldBuilder() {
+          OnnxMl.TypeProto.Tensor,
+          OnnxMl.TypeProto.Tensor.Builder,
+          OnnxMl.TypeProto.TensorOrBuilder>
+      getTensorTypeFieldBuilder() {
         if (tensorTypeBuilder_ == null) {
           if (!(valueCase_ == 1)) {
             value_ = OnnxMl.TypeProto.Tensor.getDefaultInstance();
@@ -31476,9 +31798,9 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto.Sequence,
-              OnnxMl.TypeProto.Sequence.Builder,
-              OnnxMl.TypeProto.SequenceOrBuilder>
+          OnnxMl.TypeProto.Sequence,
+          OnnxMl.TypeProto.Sequence.Builder,
+          OnnxMl.TypeProto.SequenceOrBuilder>
           sequenceTypeBuilder_;
       /**
        *
@@ -31650,10 +31972,10 @@ public final class OnnxMl {
        * <code>.onnx.TypeProto.Sequence sequence_type = 4;</code>
        */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto.Sequence,
-              OnnxMl.TypeProto.Sequence.Builder,
-              OnnxMl.TypeProto.SequenceOrBuilder>
-          getSequenceTypeFieldBuilder() {
+          OnnxMl.TypeProto.Sequence,
+          OnnxMl.TypeProto.Sequence.Builder,
+          OnnxMl.TypeProto.SequenceOrBuilder>
+      getSequenceTypeFieldBuilder() {
         if (sequenceTypeBuilder_ == null) {
           if (!(valueCase_ == 4)) {
             value_ = OnnxMl.TypeProto.Sequence.getDefaultInstance();
@@ -31673,7 +31995,7 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto.Map, OnnxMl.TypeProto.Map.Builder, OnnxMl.TypeProto.MapOrBuilder>
+          OnnxMl.TypeProto.Map, OnnxMl.TypeProto.Map.Builder, OnnxMl.TypeProto.MapOrBuilder>
           mapTypeBuilder_;
       /**
        *
@@ -31845,8 +32167,8 @@ public final class OnnxMl {
        * <code>.onnx.TypeProto.Map map_type = 5;</code>
        */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto.Map, OnnxMl.TypeProto.Map.Builder, OnnxMl.TypeProto.MapOrBuilder>
-          getMapTypeFieldBuilder() {
+          OnnxMl.TypeProto.Map, OnnxMl.TypeProto.Map.Builder, OnnxMl.TypeProto.MapOrBuilder>
+      getMapTypeFieldBuilder() {
         if (mapTypeBuilder_ == null) {
           if (!(valueCase_ == 5)) {
             value_ = OnnxMl.TypeProto.Map.getDefaultInstance();
@@ -31866,15 +32188,19 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto.SparseTensor,
-              OnnxMl.TypeProto.SparseTensor.Builder,
-              OnnxMl.TypeProto.SparseTensorOrBuilder>
+          OnnxMl.TypeProto.SparseTensor,
+          OnnxMl.TypeProto.SparseTensor.Builder,
+          OnnxMl.TypeProto.SparseTensorOrBuilder>
           sparseTensorTypeBuilder_;
-      /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+      /**
+       * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+       */
       public boolean hasSparseTensorType() {
         return valueCase_ == 8;
       }
-      /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+      /**
+       * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+       */
       public OnnxMl.TypeProto.SparseTensor getSparseTensorType() {
         if (sparseTensorTypeBuilder_ == null) {
           if (valueCase_ == 8) {
@@ -31888,7 +32214,9 @@ public final class OnnxMl {
           return OnnxMl.TypeProto.SparseTensor.getDefaultInstance();
         }
       }
-      /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+      /**
+       * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+       */
       public Builder setSparseTensorType(OnnxMl.TypeProto.SparseTensor value) {
         if (sparseTensorTypeBuilder_ == null) {
           if (value == null) {
@@ -31902,7 +32230,9 @@ public final class OnnxMl {
         valueCase_ = 8;
         return this;
       }
-      /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+      /**
+       * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+       */
       public Builder setSparseTensorType(OnnxMl.TypeProto.SparseTensor.Builder builderForValue) {
         if (sparseTensorTypeBuilder_ == null) {
           value_ = builderForValue.build();
@@ -31913,7 +32243,9 @@ public final class OnnxMl {
         valueCase_ = 8;
         return this;
       }
-      /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+      /**
+       * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+       */
       public Builder mergeSparseTensorType(OnnxMl.TypeProto.SparseTensor value) {
         if (sparseTensorTypeBuilder_ == null) {
           if (valueCase_ == 8 && value_ != OnnxMl.TypeProto.SparseTensor.getDefaultInstance()) {
@@ -31934,7 +32266,9 @@ public final class OnnxMl {
         valueCase_ = 8;
         return this;
       }
-      /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+      /**
+       * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+       */
       public Builder clearSparseTensorType() {
         if (sparseTensorTypeBuilder_ == null) {
           if (valueCase_ == 8) {
@@ -31951,11 +32285,15 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+      /**
+       * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+       */
       public OnnxMl.TypeProto.SparseTensor.Builder getSparseTensorTypeBuilder() {
         return getSparseTensorTypeFieldBuilder().getBuilder();
       }
-      /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+      /**
+       * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+       */
       public OnnxMl.TypeProto.SparseTensorOrBuilder getSparseTensorTypeOrBuilder() {
         if ((valueCase_ == 8) && (sparseTensorTypeBuilder_ != null)) {
           return sparseTensorTypeBuilder_.getMessageOrBuilder();
@@ -31966,12 +32304,14 @@ public final class OnnxMl {
           return OnnxMl.TypeProto.SparseTensor.getDefaultInstance();
         }
       }
-      /** <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code> */
+      /**
+       * <code>.onnx.TypeProto.SparseTensor sparse_tensor_type = 8;</code>
+       */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto.SparseTensor,
-              OnnxMl.TypeProto.SparseTensor.Builder,
-              OnnxMl.TypeProto.SparseTensorOrBuilder>
-          getSparseTensorTypeFieldBuilder() {
+          OnnxMl.TypeProto.SparseTensor,
+          OnnxMl.TypeProto.SparseTensor.Builder,
+          OnnxMl.TypeProto.SparseTensorOrBuilder>
+      getSparseTensorTypeFieldBuilder() {
         if (sparseTensorTypeBuilder_ == null) {
           if (!(valueCase_ == 8)) {
             value_ = OnnxMl.TypeProto.SparseTensor.getDefaultInstance();
@@ -31991,15 +32331,19 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto.Opaque,
-              OnnxMl.TypeProto.Opaque.Builder,
-              OnnxMl.TypeProto.OpaqueOrBuilder>
+          OnnxMl.TypeProto.Opaque,
+          OnnxMl.TypeProto.Opaque.Builder,
+          OnnxMl.TypeProto.OpaqueOrBuilder>
           opaqueTypeBuilder_;
-      /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+      /**
+       * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+       */
       public boolean hasOpaqueType() {
         return valueCase_ == 7;
       }
-      /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+      /**
+       * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+       */
       public OnnxMl.TypeProto.Opaque getOpaqueType() {
         if (opaqueTypeBuilder_ == null) {
           if (valueCase_ == 7) {
@@ -32013,7 +32357,9 @@ public final class OnnxMl {
           return OnnxMl.TypeProto.Opaque.getDefaultInstance();
         }
       }
-      /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+      /**
+       * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+       */
       public Builder setOpaqueType(OnnxMl.TypeProto.Opaque value) {
         if (opaqueTypeBuilder_ == null) {
           if (value == null) {
@@ -32027,7 +32373,9 @@ public final class OnnxMl {
         valueCase_ = 7;
         return this;
       }
-      /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+      /**
+       * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+       */
       public Builder setOpaqueType(OnnxMl.TypeProto.Opaque.Builder builderForValue) {
         if (opaqueTypeBuilder_ == null) {
           value_ = builderForValue.build();
@@ -32038,7 +32386,9 @@ public final class OnnxMl {
         valueCase_ = 7;
         return this;
       }
-      /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+      /**
+       * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+       */
       public Builder mergeOpaqueType(OnnxMl.TypeProto.Opaque value) {
         if (opaqueTypeBuilder_ == null) {
           if (valueCase_ == 7 && value_ != OnnxMl.TypeProto.Opaque.getDefaultInstance()) {
@@ -32059,7 +32409,9 @@ public final class OnnxMl {
         valueCase_ = 7;
         return this;
       }
-      /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+      /**
+       * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+       */
       public Builder clearOpaqueType() {
         if (opaqueTypeBuilder_ == null) {
           if (valueCase_ == 7) {
@@ -32076,11 +32428,15 @@ public final class OnnxMl {
         }
         return this;
       }
-      /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+      /**
+       * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+       */
       public OnnxMl.TypeProto.Opaque.Builder getOpaqueTypeBuilder() {
         return getOpaqueTypeFieldBuilder().getBuilder();
       }
-      /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+      /**
+       * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+       */
       public OnnxMl.TypeProto.OpaqueOrBuilder getOpaqueTypeOrBuilder() {
         if ((valueCase_ == 7) && (opaqueTypeBuilder_ != null)) {
           return opaqueTypeBuilder_.getMessageOrBuilder();
@@ -32091,12 +32447,14 @@ public final class OnnxMl {
           return OnnxMl.TypeProto.Opaque.getDefaultInstance();
         }
       }
-      /** <code>.onnx.TypeProto.Opaque opaque_type = 7;</code> */
+      /**
+       * <code>.onnx.TypeProto.Opaque opaque_type = 7;</code>
+       */
       private com.google.protobuf.SingleFieldBuilderV3<
-              OnnxMl.TypeProto.Opaque,
-              OnnxMl.TypeProto.Opaque.Builder,
-              OnnxMl.TypeProto.OpaqueOrBuilder>
-          getOpaqueTypeFieldBuilder() {
+          OnnxMl.TypeProto.Opaque,
+          OnnxMl.TypeProto.Opaque.Builder,
+          OnnxMl.TypeProto.OpaqueOrBuilder>
+      getOpaqueTypeFieldBuilder() {
         if (opaqueTypeBuilder_ == null) {
           if (!(valueCase_ == 7)) {
             value_ = OnnxMl.TypeProto.Opaque.getDefaultInstance();
@@ -32196,7 +32554,6 @@ public final class OnnxMl {
        * <code>string denotation = 6;</code>
        */
       public Builder clearDenotation() {
-
         denotation_ = getDefaultInstance().getDenotation();
         onChanged();
         return this;
@@ -32278,9 +32635,8 @@ public final class OnnxMl {
 
   public interface OperatorSetIdProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.OperatorSetIdProto)
-      com.google.protobuf.MessageOrBuilder {
-
+          // @@protoc_insertion_point(interface_extends:onnx.OperatorSetIdProto)
+          com.google.protobuf.MessageOrBuilder {
     /**
      *
      *
@@ -32332,8 +32688,8 @@ public final class OnnxMl {
    */
   public static final class OperatorSetIdProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.OperatorSetIdProto)
-      OperatorSetIdProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.OperatorSetIdProto)
+          OperatorSetIdProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use OperatorSetIdProto.newBuilder() to construct.
     private OperatorSetIdProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -32369,25 +32725,22 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+            case 10: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                domain_ = s;
-                break;
+              domain_ = s;
+              break;
+            }
+            case 16: {
+              version_ = input.readInt64();
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            case 16:
-              {
-                version_ = input.readInt64();
-                break;
-              }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -32406,7 +32759,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_OperatorSetIdProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.OperatorSetIdProto.class, OnnxMl.OperatorSetIdProto.Builder.class);
@@ -32482,8 +32835,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -32503,7 +32858,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       if (!getDomainBytes().isEmpty()) {
@@ -32658,15 +33014,15 @@ public final class OnnxMl {
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.OperatorSetIdProto)
-        OnnxMl.OperatorSetIdProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.OperatorSetIdProto)
+            OnnxMl.OperatorSetIdProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_OperatorSetIdProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_OperatorSetIdProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.OperatorSetIdProto.class, OnnxMl.OperatorSetIdProto.Builder.class);
@@ -32683,7 +33039,8 @@ public final class OnnxMl {
       }
 
       private void maybeForceBuilderInitialization() {
-        if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {}
+        if (com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders) {
+        }
       }
 
       @java.lang.Override
@@ -32770,7 +33127,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.OperatorSetIdProto other) {
-        if (other == OnnxMl.OperatorSetIdProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.OperatorSetIdProto.getDefaultInstance())
+          return this;
         if (!other.getDomain().isEmpty()) {
           domain_ = other.domain_;
           onChanged();
@@ -32888,7 +33246,6 @@ public final class OnnxMl {
        * <code>string domain = 1;</code>
        */
       public Builder clearDomain() {
-
         domain_ = getDefaultInstance().getDomain();
         onChanged();
         return this;
@@ -32941,7 +33298,6 @@ public final class OnnxMl {
        * <code>int64 version = 2;</code>
        */
       public Builder setVersion(long value) {
-
         version_ = value;
         onChanged();
         return this;
@@ -32957,7 +33313,6 @@ public final class OnnxMl {
        * <code>int64 version = 2;</code>
        */
       public Builder clearVersion() {
-
         version_ = 0L;
         onChanged();
         return this;
@@ -33017,9 +33372,8 @@ public final class OnnxMl {
 
   public interface FunctionProtoOrBuilder
       extends
-      // @@protoc_insertion_point(interface_extends:onnx.FunctionProto)
-      com.google.protobuf.MessageOrBuilder {
-
+          // @@protoc_insertion_point(interface_extends:onnx.FunctionProto)
+          com.google.protobuf.MessageOrBuilder {
     /**
      *
      *
@@ -33131,13 +33485,21 @@ public final class OnnxMl {
      */
     com.google.protobuf.ByteString getInputBytes(int index);
 
-    /** <code>repeated string output = 5;</code> */
+    /**
+     * <code>repeated string output = 5;</code>
+     */
     java.util.List<java.lang.String> getOutputList();
-    /** <code>repeated string output = 5;</code> */
+    /**
+     * <code>repeated string output = 5;</code>
+     */
     int getOutputCount();
-    /** <code>repeated string output = 5;</code> */
+    /**
+     * <code>repeated string output = 5;</code>
+     */
     java.lang.String getOutput(int index);
-    /** <code>repeated string output = 5;</code> */
+    /**
+     * <code>repeated string output = 5;</code>
+     */
     com.google.protobuf.ByteString getOutputBytes(int index);
 
     /**
@@ -33253,11 +33615,13 @@ public final class OnnxMl {
      */
     com.google.protobuf.ByteString getDocStringBytes();
   }
-  /** Protobuf type {@code onnx.FunctionProto} */
+  /**
+   * Protobuf type {@code onnx.FunctionProto}
+   */
   public static final class FunctionProto extends com.google.protobuf.GeneratedMessageV3
       implements
-      // @@protoc_insertion_point(message_implements:onnx.FunctionProto)
-      FunctionProtoOrBuilder {
+          // @@protoc_insertion_point(message_implements:onnx.FunctionProto)
+          FunctionProtoOrBuilder {
     private static final long serialVersionUID = 0L;
     // Use FunctionProto.newBuilder() to construct.
     private FunctionProto(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
@@ -33299,78 +33663,69 @@ public final class OnnxMl {
             case 0:
               done = true;
               break;
-            case 10:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+            case 10: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                name_ = s;
-                break;
-              }
-            case 16:
-              {
-                sinceVersion_ = input.readInt64();
-                break;
-              }
-            case 24:
-              {
-                int rawValue = input.readEnum();
+              name_ = s;
+              break;
+            }
+            case 16: {
+              sinceVersion_ = input.readInt64();
+              break;
+            }
+            case 24: {
+              int rawValue = input.readEnum();
 
-                status_ = rawValue;
-                break;
+              status_ = rawValue;
+              break;
+            }
+            case 34: {
+              java.lang.String s = input.readStringRequireUtf8();
+              if (!((mutable_bitField0_ & 0x00000008) == 0x00000008)) {
+                input_ = new com.google.protobuf.LazyStringArrayList();
+                mutable_bitField0_ |= 0x00000008;
               }
-            case 34:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
-                if (!((mutable_bitField0_ & 0x00000008) == 0x00000008)) {
-                  input_ = new com.google.protobuf.LazyStringArrayList();
-                  mutable_bitField0_ |= 0x00000008;
-                }
-                input_.add(s);
-                break;
+              input_.add(s);
+              break;
+            }
+            case 42: {
+              java.lang.String s = input.readStringRequireUtf8();
+              if (!((mutable_bitField0_ & 0x00000010) == 0x00000010)) {
+                output_ = new com.google.protobuf.LazyStringArrayList();
+                mutable_bitField0_ |= 0x00000010;
               }
-            case 42:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
-                if (!((mutable_bitField0_ & 0x00000010) == 0x00000010)) {
-                  output_ = new com.google.protobuf.LazyStringArrayList();
-                  mutable_bitField0_ |= 0x00000010;
-                }
-                output_.add(s);
-                break;
+              output_.add(s);
+              break;
+            }
+            case 50: {
+              java.lang.String s = input.readStringRequireUtf8();
+              if (!((mutable_bitField0_ & 0x00000020) == 0x00000020)) {
+                attribute_ = new com.google.protobuf.LazyStringArrayList();
+                mutable_bitField0_ |= 0x00000020;
               }
-            case 50:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
-                if (!((mutable_bitField0_ & 0x00000020) == 0x00000020)) {
-                  attribute_ = new com.google.protobuf.LazyStringArrayList();
-                  mutable_bitField0_ |= 0x00000020;
-                }
-                attribute_.add(s);
-                break;
+              attribute_.add(s);
+              break;
+            }
+            case 58: {
+              if (!((mutable_bitField0_ & 0x00000040) == 0x00000040)) {
+                node_ = new java.util.ArrayList<OnnxMl.NodeProto>();
+                mutable_bitField0_ |= 0x00000040;
               }
-            case 58:
-              {
-                if (!((mutable_bitField0_ & 0x00000040) == 0x00000040)) {
-                  node_ = new java.util.ArrayList<OnnxMl.NodeProto>();
-                  mutable_bitField0_ |= 0x00000040;
-                }
-                node_.add(input.readMessage(OnnxMl.NodeProto.parser(), extensionRegistry));
-                break;
-              }
-            case 66:
-              {
-                java.lang.String s = input.readStringRequireUtf8();
+              node_.add(input.readMessage(OnnxMl.NodeProto.parser(), extensionRegistry));
+              break;
+            }
+            case 66: {
+              java.lang.String s = input.readStringRequireUtf8();
 
-                docString_ = s;
-                break;
+              docString_ = s;
+              break;
+            }
+            default: {
+              if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
+                done = true;
               }
-            default:
-              {
-                if (!parseUnknownFieldProto3(input, unknownFields, extensionRegistry, tag)) {
-                  done = true;
-                }
-                break;
-              }
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -33401,7 +33756,7 @@ public final class OnnxMl {
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
+    internalGetFieldAccessorTable() {
       return OnnxMl.internal_static_onnx_FunctionProto_fieldAccessorTable
           .ensureFieldAccessorsInitialized(
               OnnxMl.FunctionProto.class, OnnxMl.FunctionProto.Builder.class);
@@ -33565,19 +33920,27 @@ public final class OnnxMl {
 
     public static final int OUTPUT_FIELD_NUMBER = 5;
     private com.google.protobuf.LazyStringList output_;
-    /** <code>repeated string output = 5;</code> */
+    /**
+     * <code>repeated string output = 5;</code>
+     */
     public com.google.protobuf.ProtocolStringList getOutputList() {
       return output_;
     }
-    /** <code>repeated string output = 5;</code> */
+    /**
+     * <code>repeated string output = 5;</code>
+     */
     public int getOutputCount() {
       return output_.size();
     }
-    /** <code>repeated string output = 5;</code> */
+    /**
+     * <code>repeated string output = 5;</code>
+     */
     public java.lang.String getOutput(int index) {
       return output_.get(index);
     }
-    /** <code>repeated string output = 5;</code> */
+    /**
+     * <code>repeated string output = 5;</code>
+     */
     public com.google.protobuf.ByteString getOutputBytes(int index) {
       return output_.getByteString(index);
     }
@@ -33744,8 +34107,10 @@ public final class OnnxMl {
     @java.lang.Override
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
-      if (isInitialized == 1) return true;
-      if (isInitialized == 0) return false;
+      if (isInitialized == 1)
+        return true;
+      if (isInitialized == 0)
+        return false;
 
       memoizedIsInitialized = 1;
       return true;
@@ -33783,7 +34148,8 @@ public final class OnnxMl {
     @java.lang.Override
     public int getSerializedSize() {
       int size = memoizedSize;
-      if (size != -1) return size;
+      if (size != -1)
+        return size;
 
       size = 0;
       if (!getNameBytes().isEmpty()) {
@@ -33984,19 +34350,21 @@ public final class OnnxMl {
       Builder builder = new Builder(parent);
       return builder;
     }
-    /** Protobuf type {@code onnx.FunctionProto} */
+    /**
+     * Protobuf type {@code onnx.FunctionProto}
+     */
     public static final class Builder
         extends com.google.protobuf.GeneratedMessageV3.Builder<Builder>
         implements
-        // @@protoc_insertion_point(builder_implements:onnx.FunctionProto)
-        OnnxMl.FunctionProtoOrBuilder {
+            // @@protoc_insertion_point(builder_implements:onnx.FunctionProto)
+            OnnxMl.FunctionProtoOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor getDescriptor() {
         return OnnxMl.internal_static_onnx_FunctionProto_descriptor;
       }
 
       @java.lang.Override
       protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-          internalGetFieldAccessorTable() {
+      internalGetFieldAccessorTable() {
         return OnnxMl.internal_static_onnx_FunctionProto_fieldAccessorTable
             .ensureFieldAccessorsInitialized(
                 OnnxMl.FunctionProto.class, OnnxMl.FunctionProto.Builder.class);
@@ -34147,7 +34515,8 @@ public final class OnnxMl {
       }
 
       public Builder mergeFrom(OnnxMl.FunctionProto other) {
-        if (other == OnnxMl.FunctionProto.getDefaultInstance()) return this;
+        if (other == OnnxMl.FunctionProto.getDefaultInstance())
+          return this;
         if (!other.getName().isEmpty()) {
           name_ = other.name_;
           onChanged();
@@ -34208,8 +34577,8 @@ public final class OnnxMl {
               bitField0_ = (bitField0_ & ~0x00000040);
               nodeBuilder_ =
                   com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders
-                      ? getNodeFieldBuilder()
-                      : null;
+                  ? getNodeFieldBuilder()
+                  : null;
             } else {
               nodeBuilder_.addAllMessages(other.node_);
             }
@@ -34319,7 +34688,6 @@ public final class OnnxMl {
        * <code>string name = 1;</code>
        */
       public Builder clearName() {
-
         name_ = getDefaultInstance().getName();
         onChanged();
         return this;
@@ -34373,7 +34741,6 @@ public final class OnnxMl {
        * <code>int64 since_version = 2;</code>
        */
       public Builder setSinceVersion(long value) {
-
         sinceVersion_ = value;
         onChanged();
         return this;
@@ -34391,7 +34758,6 @@ public final class OnnxMl {
        * <code>int64 since_version = 2;</code>
        */
       public Builder clearSinceVersion() {
-
         sinceVersion_ = 0L;
         onChanged();
         return this;
@@ -34501,7 +34867,6 @@ public final class OnnxMl {
        * <code>.onnx.OperatorStatus status = 3;</code>
        */
       public Builder clearStatus() {
-
         status_ = 0;
         onChanged();
         return this;
@@ -34659,23 +35024,33 @@ public final class OnnxMl {
           bitField0_ |= 0x00000010;
         }
       }
-      /** <code>repeated string output = 5;</code> */
+      /**
+       * <code>repeated string output = 5;</code>
+       */
       public com.google.protobuf.ProtocolStringList getOutputList() {
         return output_.getUnmodifiableView();
       }
-      /** <code>repeated string output = 5;</code> */
+      /**
+       * <code>repeated string output = 5;</code>
+       */
       public int getOutputCount() {
         return output_.size();
       }
-      /** <code>repeated string output = 5;</code> */
+      /**
+       * <code>repeated string output = 5;</code>
+       */
       public java.lang.String getOutput(int index) {
         return output_.get(index);
       }
-      /** <code>repeated string output = 5;</code> */
+      /**
+       * <code>repeated string output = 5;</code>
+       */
       public com.google.protobuf.ByteString getOutputBytes(int index) {
         return output_.getByteString(index);
       }
-      /** <code>repeated string output = 5;</code> */
+      /**
+       * <code>repeated string output = 5;</code>
+       */
       public Builder setOutput(int index, java.lang.String value) {
         if (value == null) {
           throw new NullPointerException();
@@ -34685,7 +35060,9 @@ public final class OnnxMl {
         onChanged();
         return this;
       }
-      /** <code>repeated string output = 5;</code> */
+      /**
+       * <code>repeated string output = 5;</code>
+       */
       public Builder addOutput(java.lang.String value) {
         if (value == null) {
           throw new NullPointerException();
@@ -34695,21 +35072,27 @@ public final class OnnxMl {
         onChanged();
         return this;
       }
-      /** <code>repeated string output = 5;</code> */
+      /**
+       * <code>repeated string output = 5;</code>
+       */
       public Builder addAllOutput(java.lang.Iterable<java.lang.String> values) {
         ensureOutputIsMutable();
         com.google.protobuf.AbstractMessageLite.Builder.addAll(values, output_);
         onChanged();
         return this;
       }
-      /** <code>repeated string output = 5;</code> */
+      /**
+       * <code>repeated string output = 5;</code>
+       */
       public Builder clearOutput() {
         output_ = com.google.protobuf.LazyStringArrayList.EMPTY;
         bitField0_ = (bitField0_ & ~0x00000010);
         onChanged();
         return this;
       }
-      /** <code>repeated string output = 5;</code> */
+      /**
+       * <code>repeated string output = 5;</code>
+       */
       public Builder addOutputBytes(com.google.protobuf.ByteString value) {
         if (value == null) {
           throw new NullPointerException();
@@ -34874,7 +35257,7 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.NodeProto, OnnxMl.NodeProto.Builder, OnnxMl.NodeProtoOrBuilder>
+          OnnxMl.NodeProto, OnnxMl.NodeProto.Builder, OnnxMl.NodeProtoOrBuilder>
           nodeBuilder_;
 
       /**
@@ -35187,8 +35570,8 @@ public final class OnnxMl {
       }
 
       private com.google.protobuf.RepeatedFieldBuilderV3<
-              OnnxMl.NodeProto, OnnxMl.NodeProto.Builder, OnnxMl.NodeProtoOrBuilder>
-          getNodeFieldBuilder() {
+          OnnxMl.NodeProto, OnnxMl.NodeProto.Builder, OnnxMl.NodeProtoOrBuilder>
+      getNodeFieldBuilder() {
         if (nodeBuilder_ == null) {
           nodeBuilder_ =
               new com.google.protobuf.RepeatedFieldBuilderV3<
@@ -35271,7 +35654,6 @@ public final class OnnxMl {
        * <code>string doc_string = 8;</code>
        */
       public Builder clearDocString() {
-
         docString_ = getDefaultInstance().getDocString();
         onChanged();
         return this;
@@ -35437,101 +35819,100 @@ public final class OnnxMl {
 
   static {
     java.lang.String[] descriptorData = {
-      "\n\016onnx-ml.proto3\022\004onnx\"\350\004\n\016AttributeProt"
-          + "o\022\014\n\004name\030\001 \001(\t\022\025\n\rref_attr_name\030\025 \001(\t\022\022"
-          + "\n\ndoc_string\030\r \001(\t\0220\n\004type\030\024 \001(\0162\".onnx."
-          + "AttributeProto.AttributeType\022\t\n\001f\030\002 \001(\002\022"
-          + "\t\n\001i\030\003 \001(\003\022\t\n\001s\030\004 \001(\014\022\034\n\001t\030\005 \001(\0132\021.onnx."
-          + "TensorProto\022\033\n\001g\030\006 \001(\0132\020.onnx.GraphProto"
-          + "\022.\n\rsparse_tensor\030\026 \001(\0132\027.onnx.SparseTen"
-          + "sorProto\022\016\n\006floats\030\007 \003(\002\022\014\n\004ints\030\010 \003(\003\022\017"
-          + "\n\007strings\030\t \003(\014\022\"\n\007tensors\030\n \003(\0132\021.onnx."
-          + "TensorProto\022 \n\006graphs\030\013 \003(\0132\020.onnx.Graph"
-          + "Proto\022/\n\016sparse_tensors\030\027 \003(\0132\027.onnx.Spa"
-          + "rseTensorProto\"\270\001\n\rAttributeType\022\r\n\tUNDE"
-          + "FINED\020\000\022\t\n\005FLOAT\020\001\022\007\n\003INT\020\002\022\n\n\006STRING\020\003\022"
-          + "\n\n\006TENSOR\020\004\022\t\n\005GRAPH\020\005\022\021\n\rSPARSE_TENSOR\020"
-          + "\013\022\n\n\006FLOATS\020\006\022\010\n\004INTS\020\007\022\013\n\007STRINGS\020\010\022\013\n\007"
-          + "TENSORS\020\t\022\n\n\006GRAPHS\020\n\022\022\n\016SPARSE_TENSORS\020"
-          + "\014\"Q\n\016ValueInfoProto\022\014\n\004name\030\001 \001(\t\022\035\n\004typ"
-          + "e\030\002 \001(\0132\017.onnx.TypeProto\022\022\n\ndoc_string\030\003"
-          + " \001(\t\"\226\001\n\tNodeProto\022\r\n\005input\030\001 \003(\t\022\016\n\006out"
-          + "put\030\002 \003(\t\022\014\n\004name\030\003 \001(\t\022\017\n\007op_type\030\004 \001(\t"
-          + "\022\016\n\006domain\030\007 \001(\t\022\'\n\tattribute\030\005 \003(\0132\024.on"
-          + "nx.AttributeProto\022\022\n\ndoc_string\030\006 \001(\t\"\273\002"
-          + "\n\nModelProto\022\022\n\nir_version\030\001 \001(\003\022.\n\014opse"
-          + "t_import\030\010 \003(\0132\030.onnx.OperatorSetIdProto"
-          + "\022\025\n\rproducer_name\030\002 \001(\t\022\030\n\020producer_vers"
-          + "ion\030\003 \001(\t\022\016\n\006domain\030\004 \001(\t\022\025\n\rmodel_versi"
-          + "on\030\005 \001(\003\022\022\n\ndoc_string\030\006 \001(\t\022\037\n\005graph\030\007 "
-          + "\001(\0132\020.onnx.GraphProto\022&\n\tfunctions\030d \003(\013"
-          + "2\023.onnx.FunctionProto\0224\n\016metadata_props\030"
-          + "\016 \003(\0132\034.onnx.StringStringEntryProto\"4\n\026S"
-          + "tringStringEntryProto\022\013\n\003key\030\001 \001(\t\022\r\n\005va"
-          + "lue\030\002 \001(\t\"k\n\020TensorAnnotation\022\023\n\013tensor_"
-          + "name\030\001 \001(\t\022B\n\034quant_parameter_tensor_nam"
-          + "es\030\002 \003(\0132\034.onnx.StringStringEntryProto\"\330"
-          + "\002\n\nGraphProto\022\035\n\004node\030\001 \003(\0132\017.onnx.NodeP"
-          + "roto\022\014\n\004name\030\002 \001(\t\022&\n\013initializer\030\005 \003(\0132"
-          + "\021.onnx.TensorProto\0223\n\022sparse_initializer"
-          + "\030\017 \003(\0132\027.onnx.SparseTensorProto\022\022\n\ndoc_s"
-          + "tring\030\n \001(\t\022#\n\005input\030\013 \003(\0132\024.onnx.ValueI"
-          + "nfoProto\022$\n\006output\030\014 \003(\0132\024.onnx.ValueInf"
-          + "oProto\022(\n\nvalue_info\030\r \003(\0132\024.onnx.ValueI"
-          + "nfoProto\0227\n\027quantization_annotation\030\016 \003("
-          + "\0132\026.onnx.TensorAnnotation\"\270\005\n\013TensorProt"
-          + "o\022\014\n\004dims\030\001 \003(\003\022\021\n\tdata_type\030\002 \001(\005\022*\n\007se"
-          + "gment\030\003 \001(\0132\031.onnx.TensorProto.Segment\022\026"
-          + "\n\nfloat_data\030\004 \003(\002B\002\020\001\022\026\n\nint32_data\030\005 \003"
-          + "(\005B\002\020\001\022\023\n\013string_data\030\006 \003(\014\022\026\n\nint64_dat"
-          + "a\030\007 \003(\003B\002\020\001\022\014\n\004name\030\010 \001(\t\022\022\n\ndoc_string\030"
-          + "\014 \001(\t\022\020\n\010raw_data\030\t \001(\014\0223\n\rexternal_data"
-          + "\030\r \003(\0132\034.onnx.StringStringEntryProto\0225\n\r"
-          + "data_location\030\016 \001(\0162\036.onnx.TensorProto.D"
-          + "ataLocation\022\027\n\013double_data\030\n \003(\001B\002\020\001\022\027\n\013"
-          + "uint64_data\030\013 \003(\004B\002\020\001\032%\n\007Segment\022\r\n\005begi"
-          + "n\030\001 \001(\003\022\013\n\003end\030\002 \001(\003\"\332\001\n\010DataType\022\r\n\tUND"
-          + "EFINED\020\000\022\t\n\005FLOAT\020\001\022\t\n\005UINT8\020\002\022\010\n\004INT8\020\003"
-          + "\022\n\n\006UINT16\020\004\022\t\n\005INT16\020\005\022\t\n\005INT32\020\006\022\t\n\005IN"
-          + "T64\020\007\022\n\n\006STRING\020\010\022\010\n\004BOOL\020\t\022\013\n\007FLOAT16\020\n"
-          + "\022\n\n\006DOUBLE\020\013\022\n\n\006UINT32\020\014\022\n\n\006UINT64\020\r\022\r\n\t"
-          + "COMPLEX64\020\016\022\016\n\nCOMPLEX128\020\017\022\014\n\010BFLOAT16\020"
-          + "\020\")\n\014DataLocation\022\013\n\007DEFAULT\020\000\022\014\n\010EXTERN"
-          + "AL\020\001\"h\n\021SparseTensorProto\022!\n\006values\030\001 \001("
-          + "\0132\021.onnx.TensorProto\022\"\n\007indices\030\002 \001(\0132\021."
-          + "onnx.TensorProto\022\014\n\004dims\030\003 \003(\003\"\225\001\n\020Tenso"
-          + "rShapeProto\022-\n\003dim\030\001 \003(\0132 .onnx.TensorSh"
-          + "apeProto.Dimension\032R\n\tDimension\022\023\n\tdim_v"
-          + "alue\030\001 \001(\003H\000\022\023\n\tdim_param\030\002 \001(\tH\000\022\022\n\nden"
-          + "otation\030\003 \001(\tB\007\n\005value\"\302\004\n\tTypeProto\022-\n\013"
-          + "tensor_type\030\001 \001(\0132\026.onnx.TypeProto.Tenso"
-          + "rH\000\0221\n\rsequence_type\030\004 \001(\0132\030.onnx.TypePr"
-          + "oto.SequenceH\000\022\'\n\010map_type\030\005 \001(\0132\023.onnx."
-          + "TypeProto.MapH\000\022:\n\022sparse_tensor_type\030\010 "
-          + "\001(\0132\034.onnx.TypeProto.SparseTensorH\000\022-\n\013o"
-          + "paque_type\030\007 \001(\0132\026.onnx.TypeProto.Opaque"
-          + "H\000\022\022\n\ndenotation\030\006 \001(\t\032B\n\006Tensor\022\021\n\telem"
-          + "_type\030\001 \001(\005\022%\n\005shape\030\002 \001(\0132\026.onnx.Tensor"
-          + "ShapeProto\032.\n\010Sequence\022\"\n\telem_type\030\001 \001("
-          + "\0132\017.onnx.TypeProto\032<\n\003Map\022\020\n\010key_type\030\001 "
-          + "\001(\005\022#\n\nvalue_type\030\002 \001(\0132\017.onnx.TypeProto"
-          + "\032H\n\014SparseTensor\022\021\n\telem_type\030\001 \001(\005\022%\n\005s"
-          + "hape\030\002 \001(\0132\026.onnx.TensorShapeProto\032&\n\006Op"
-          + "aque\022\016\n\006domain\030\001 \001(\t\022\014\n\004name\030\002 \001(\tB\007\n\005va"
-          + "lue\"5\n\022OperatorSetIdProto\022\016\n\006domain\030\001 \001("
-          + "\t\022\017\n\007version\030\002 \001(\003\"\277\001\n\rFunctionProto\022\014\n\004"
-          + "name\030\001 \001(\t\022\025\n\rsince_version\030\002 \001(\003\022$\n\006sta"
-          + "tus\030\003 \001(\0162\024.onnx.OperatorStatus\022\r\n\005input"
-          + "\030\004 \003(\t\022\016\n\006output\030\005 \003(\t\022\021\n\tattribute\030\006 \003("
-          + "\t\022\035\n\004node\030\007 \003(\0132\017.onnx.NodeProto\022\022\n\ndoc_"
-          + "string\030\010 \001(\t*\261\001\n\007Version\022\022\n\016_START_VERSI"
-          + "ON\020\000\022\031\n\025IR_VERSION_2017_10_10\020\001\022\031\n\025IR_VE"
-          + "RSION_2017_10_30\020\002\022\030\n\024IR_VERSION_2017_11"
-          + "_3\020\003\022\030\n\024IR_VERSION_2019_1_22\020\004\022\030\n\024IR_VER"
-          + "SION_2019_3_18\020\005\022\016\n\nIR_VERSION\020\006*.\n\016Oper"
-          + "atorStatus\022\020\n\014EXPERIMENTAL\020\000\022\n\n\006STABLE\020\001"
-          + "b\006proto3"
-    };
+        "\n\016onnx-ml.proto3\022\004onnx\"\350\004\n\016AttributeProt"
+        + "o\022\014\n\004name\030\001 \001(\t\022\025\n\rref_attr_name\030\025 \001(\t\022\022"
+        + "\n\ndoc_string\030\r \001(\t\0220\n\004type\030\024 \001(\0162\".onnx."
+        + "AttributeProto.AttributeType\022\t\n\001f\030\002 \001(\002\022"
+        + "\t\n\001i\030\003 \001(\003\022\t\n\001s\030\004 \001(\014\022\034\n\001t\030\005 \001(\0132\021.onnx."
+        + "TensorProto\022\033\n\001g\030\006 \001(\0132\020.onnx.GraphProto"
+        + "\022.\n\rsparse_tensor\030\026 \001(\0132\027.onnx.SparseTen"
+        + "sorProto\022\016\n\006floats\030\007 \003(\002\022\014\n\004ints\030\010 \003(\003\022\017"
+        + "\n\007strings\030\t \003(\014\022\"\n\007tensors\030\n \003(\0132\021.onnx."
+        + "TensorProto\022 \n\006graphs\030\013 \003(\0132\020.onnx.Graph"
+        + "Proto\022/\n\016sparse_tensors\030\027 \003(\0132\027.onnx.Spa"
+        + "rseTensorProto\"\270\001\n\rAttributeType\022\r\n\tUNDE"
+        + "FINED\020\000\022\t\n\005FLOAT\020\001\022\007\n\003INT\020\002\022\n\n\006STRING\020\003\022"
+        + "\n\n\006TENSOR\020\004\022\t\n\005GRAPH\020\005\022\021\n\rSPARSE_TENSOR\020"
+        + "\013\022\n\n\006FLOATS\020\006\022\010\n\004INTS\020\007\022\013\n\007STRINGS\020\010\022\013\n\007"
+        + "TENSORS\020\t\022\n\n\006GRAPHS\020\n\022\022\n\016SPARSE_TENSORS\020"
+        + "\014\"Q\n\016ValueInfoProto\022\014\n\004name\030\001 \001(\t\022\035\n\004typ"
+        + "e\030\002 \001(\0132\017.onnx.TypeProto\022\022\n\ndoc_string\030\003"
+        + " \001(\t\"\226\001\n\tNodeProto\022\r\n\005input\030\001 \003(\t\022\016\n\006out"
+        + "put\030\002 \003(\t\022\014\n\004name\030\003 \001(\t\022\017\n\007op_type\030\004 \001(\t"
+        + "\022\016\n\006domain\030\007 \001(\t\022\'\n\tattribute\030\005 \003(\0132\024.on"
+        + "nx.AttributeProto\022\022\n\ndoc_string\030\006 \001(\t\"\273\002"
+        + "\n\nModelProto\022\022\n\nir_version\030\001 \001(\003\022.\n\014opse"
+        + "t_import\030\010 \003(\0132\030.onnx.OperatorSetIdProto"
+        + "\022\025\n\rproducer_name\030\002 \001(\t\022\030\n\020producer_vers"
+        + "ion\030\003 \001(\t\022\016\n\006domain\030\004 \001(\t\022\025\n\rmodel_versi"
+        + "on\030\005 \001(\003\022\022\n\ndoc_string\030\006 \001(\t\022\037\n\005graph\030\007 "
+        + "\001(\0132\020.onnx.GraphProto\022&\n\tfunctions\030d \003(\013"
+        + "2\023.onnx.FunctionProto\0224\n\016metadata_props\030"
+        + "\016 \003(\0132\034.onnx.StringStringEntryProto\"4\n\026S"
+        + "tringStringEntryProto\022\013\n\003key\030\001 \001(\t\022\r\n\005va"
+        + "lue\030\002 \001(\t\"k\n\020TensorAnnotation\022\023\n\013tensor_"
+        + "name\030\001 \001(\t\022B\n\034quant_parameter_tensor_nam"
+        + "es\030\002 \003(\0132\034.onnx.StringStringEntryProto\"\330"
+        + "\002\n\nGraphProto\022\035\n\004node\030\001 \003(\0132\017.onnx.NodeP"
+        + "roto\022\014\n\004name\030\002 \001(\t\022&\n\013initializer\030\005 \003(\0132"
+        + "\021.onnx.TensorProto\0223\n\022sparse_initializer"
+        + "\030\017 \003(\0132\027.onnx.SparseTensorProto\022\022\n\ndoc_s"
+        + "tring\030\n \001(\t\022#\n\005input\030\013 \003(\0132\024.onnx.ValueI"
+        + "nfoProto\022$\n\006output\030\014 \003(\0132\024.onnx.ValueInf"
+        + "oProto\022(\n\nvalue_info\030\r \003(\0132\024.onnx.ValueI"
+        + "nfoProto\0227\n\027quantization_annotation\030\016 \003("
+        + "\0132\026.onnx.TensorAnnotation\"\270\005\n\013TensorProt"
+        + "o\022\014\n\004dims\030\001 \003(\003\022\021\n\tdata_type\030\002 \001(\005\022*\n\007se"
+        + "gment\030\003 \001(\0132\031.onnx.TensorProto.Segment\022\026"
+        + "\n\nfloat_data\030\004 \003(\002B\002\020\001\022\026\n\nint32_data\030\005 \003"
+        + "(\005B\002\020\001\022\023\n\013string_data\030\006 \003(\014\022\026\n\nint64_dat"
+        + "a\030\007 \003(\003B\002\020\001\022\014\n\004name\030\010 \001(\t\022\022\n\ndoc_string\030"
+        + "\014 \001(\t\022\020\n\010raw_data\030\t \001(\014\0223\n\rexternal_data"
+        + "\030\r \003(\0132\034.onnx.StringStringEntryProto\0225\n\r"
+        + "data_location\030\016 \001(\0162\036.onnx.TensorProto.D"
+        + "ataLocation\022\027\n\013double_data\030\n \003(\001B\002\020\001\022\027\n\013"
+        + "uint64_data\030\013 \003(\004B\002\020\001\032%\n\007Segment\022\r\n\005begi"
+        + "n\030\001 \001(\003\022\013\n\003end\030\002 \001(\003\"\332\001\n\010DataType\022\r\n\tUND"
+        + "EFINED\020\000\022\t\n\005FLOAT\020\001\022\t\n\005UINT8\020\002\022\010\n\004INT8\020\003"
+        + "\022\n\n\006UINT16\020\004\022\t\n\005INT16\020\005\022\t\n\005INT32\020\006\022\t\n\005IN"
+        + "T64\020\007\022\n\n\006STRING\020\010\022\010\n\004BOOL\020\t\022\013\n\007FLOAT16\020\n"
+        + "\022\n\n\006DOUBLE\020\013\022\n\n\006UINT32\020\014\022\n\n\006UINT64\020\r\022\r\n\t"
+        + "COMPLEX64\020\016\022\016\n\nCOMPLEX128\020\017\022\014\n\010BFLOAT16\020"
+        + "\020\")\n\014DataLocation\022\013\n\007DEFAULT\020\000\022\014\n\010EXTERN"
+        + "AL\020\001\"h\n\021SparseTensorProto\022!\n\006values\030\001 \001("
+        + "\0132\021.onnx.TensorProto\022\"\n\007indices\030\002 \001(\0132\021."
+        + "onnx.TensorProto\022\014\n\004dims\030\003 \003(\003\"\225\001\n\020Tenso"
+        + "rShapeProto\022-\n\003dim\030\001 \003(\0132 .onnx.TensorSh"
+        + "apeProto.Dimension\032R\n\tDimension\022\023\n\tdim_v"
+        + "alue\030\001 \001(\003H\000\022\023\n\tdim_param\030\002 \001(\tH\000\022\022\n\nden"
+        + "otation\030\003 \001(\tB\007\n\005value\"\302\004\n\tTypeProto\022-\n\013"
+        + "tensor_type\030\001 \001(\0132\026.onnx.TypeProto.Tenso"
+        + "rH\000\0221\n\rsequence_type\030\004 \001(\0132\030.onnx.TypePr"
+        + "oto.SequenceH\000\022\'\n\010map_type\030\005 \001(\0132\023.onnx."
+        + "TypeProto.MapH\000\022:\n\022sparse_tensor_type\030\010 "
+        + "\001(\0132\034.onnx.TypeProto.SparseTensorH\000\022-\n\013o"
+        + "paque_type\030\007 \001(\0132\026.onnx.TypeProto.Opaque"
+        + "H\000\022\022\n\ndenotation\030\006 \001(\t\032B\n\006Tensor\022\021\n\telem"
+        + "_type\030\001 \001(\005\022%\n\005shape\030\002 \001(\0132\026.onnx.Tensor"
+        + "ShapeProto\032.\n\010Sequence\022\"\n\telem_type\030\001 \001("
+        + "\0132\017.onnx.TypeProto\032<\n\003Map\022\020\n\010key_type\030\001 "
+        + "\001(\005\022#\n\nvalue_type\030\002 \001(\0132\017.onnx.TypeProto"
+        + "\032H\n\014SparseTensor\022\021\n\telem_type\030\001 \001(\005\022%\n\005s"
+        + "hape\030\002 \001(\0132\026.onnx.TensorShapeProto\032&\n\006Op"
+        + "aque\022\016\n\006domain\030\001 \001(\t\022\014\n\004name\030\002 \001(\tB\007\n\005va"
+        + "lue\"5\n\022OperatorSetIdProto\022\016\n\006domain\030\001 \001("
+        + "\t\022\017\n\007version\030\002 \001(\003\"\277\001\n\rFunctionProto\022\014\n\004"
+        + "name\030\001 \001(\t\022\025\n\rsince_version\030\002 \001(\003\022$\n\006sta"
+        + "tus\030\003 \001(\0162\024.onnx.OperatorStatus\022\r\n\005input"
+        + "\030\004 \003(\t\022\016\n\006output\030\005 \003(\t\022\021\n\tattribute\030\006 \003("
+        + "\t\022\035\n\004node\030\007 \003(\0132\017.onnx.NodeProto\022\022\n\ndoc_"
+        + "string\030\010 \001(\t*\261\001\n\007Version\022\022\n\016_START_VERSI"
+        + "ON\020\000\022\031\n\025IR_VERSION_2017_10_10\020\001\022\031\n\025IR_VE"
+        + "RSION_2017_10_30\020\002\022\030\n\024IR_VERSION_2017_11"
+        + "_3\020\003\022\030\n\024IR_VERSION_2019_1_22\020\004\022\030\n\024IR_VER"
+        + "SION_2019_3_18\020\005\022\016\n\nIR_VERSION\020\006*.\n\016Oper"
+        + "atorStatus\022\020\n\014EXPERIMENTAL\020\000\022\n\n\006STABLE\020\001"
+        + "b\006proto3"};
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
         new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
           public com.google.protobuf.ExtensionRegistry assignDescriptors(
@@ -35547,52 +35928,60 @@ public final class OnnxMl {
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_AttributeProto_descriptor,
             new java.lang.String[] {
-              "Name",
-              "RefAttrName",
-              "DocString",
-              "Type",
-              "F",
-              "I",
-              "S",
-              "T",
-              "G",
-              "SparseTensor",
-              "Floats",
-              "Ints",
-              "Strings",
-              "Tensors",
-              "Graphs",
-              "SparseTensors",
+                "Name",
+                "RefAttrName",
+                "DocString",
+                "Type",
+                "F",
+                "I",
+                "S",
+                "T",
+                "G",
+                "SparseTensor",
+                "Floats",
+                "Ints",
+                "Strings",
+                "Tensors",
+                "Graphs",
+                "SparseTensors",
             });
     internal_static_onnx_ValueInfoProto_descriptor = getDescriptor().getMessageTypes().get(1);
     internal_static_onnx_ValueInfoProto_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_ValueInfoProto_descriptor,
             new java.lang.String[] {
-              "Name", "Type", "DocString",
+                "Name",
+                "Type",
+                "DocString",
             });
     internal_static_onnx_NodeProto_descriptor = getDescriptor().getMessageTypes().get(2);
     internal_static_onnx_NodeProto_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_NodeProto_descriptor,
             new java.lang.String[] {
-              "Input", "Output", "Name", "OpType", "Domain", "Attribute", "DocString",
+                "Input",
+                "Output",
+                "Name",
+                "OpType",
+                "Domain",
+                "Attribute",
+                "DocString",
             });
     internal_static_onnx_ModelProto_descriptor = getDescriptor().getMessageTypes().get(3);
     internal_static_onnx_ModelProto_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_ModelProto_descriptor,
             new java.lang.String[] {
-              "IrVersion",
-              "OpsetImport",
-              "ProducerName",
-              "ProducerVersion",
-              "Domain",
-              "ModelVersion",
-              "DocString",
-              "Graph",
-              "Functions",
-              "MetadataProps",
+                "IrVersion",
+                "OpsetImport",
+                "ProducerName",
+                "ProducerVersion",
+                "Domain",
+                "ModelVersion",
+                "DocString",
+                "Graph",
+                "Functions",
+                "MetadataProps",
             });
     internal_static_onnx_StringStringEntryProto_descriptor =
         getDescriptor().getMessageTypes().get(4);
@@ -35600,49 +35989,51 @@ public final class OnnxMl {
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_StringStringEntryProto_descriptor,
             new java.lang.String[] {
-              "Key", "Value",
+                "Key",
+                "Value",
             });
     internal_static_onnx_TensorAnnotation_descriptor = getDescriptor().getMessageTypes().get(5);
     internal_static_onnx_TensorAnnotation_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TensorAnnotation_descriptor,
             new java.lang.String[] {
-              "TensorName", "QuantParameterTensorNames",
+                "TensorName",
+                "QuantParameterTensorNames",
             });
     internal_static_onnx_GraphProto_descriptor = getDescriptor().getMessageTypes().get(6);
     internal_static_onnx_GraphProto_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_GraphProto_descriptor,
             new java.lang.String[] {
-              "Node",
-              "Name",
-              "Initializer",
-              "SparseInitializer",
-              "DocString",
-              "Input",
-              "Output",
-              "ValueInfo",
-              "QuantizationAnnotation",
+                "Node",
+                "Name",
+                "Initializer",
+                "SparseInitializer",
+                "DocString",
+                "Input",
+                "Output",
+                "ValueInfo",
+                "QuantizationAnnotation",
             });
     internal_static_onnx_TensorProto_descriptor = getDescriptor().getMessageTypes().get(7);
     internal_static_onnx_TensorProto_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TensorProto_descriptor,
             new java.lang.String[] {
-              "Dims",
-              "DataType",
-              "Segment",
-              "FloatData",
-              "Int32Data",
-              "StringData",
-              "Int64Data",
-              "Name",
-              "DocString",
-              "RawData",
-              "ExternalData",
-              "DataLocation",
-              "DoubleData",
-              "Uint64Data",
+                "Dims",
+                "DataType",
+                "Segment",
+                "FloatData",
+                "Int32Data",
+                "StringData",
+                "Int64Data",
+                "Name",
+                "DocString",
+                "RawData",
+                "ExternalData",
+                "DataLocation",
+                "DoubleData",
+                "Uint64Data",
             });
     internal_static_onnx_TensorProto_Segment_descriptor =
         internal_static_onnx_TensorProto_descriptor.getNestedTypes().get(0);
@@ -35650,21 +36041,24 @@ public final class OnnxMl {
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TensorProto_Segment_descriptor,
             new java.lang.String[] {
-              "Begin", "End",
+                "Begin",
+                "End",
             });
     internal_static_onnx_SparseTensorProto_descriptor = getDescriptor().getMessageTypes().get(8);
     internal_static_onnx_SparseTensorProto_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_SparseTensorProto_descriptor,
             new java.lang.String[] {
-              "Values", "Indices", "Dims",
+                "Values",
+                "Indices",
+                "Dims",
             });
     internal_static_onnx_TensorShapeProto_descriptor = getDescriptor().getMessageTypes().get(9);
     internal_static_onnx_TensorShapeProto_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TensorShapeProto_descriptor,
             new java.lang.String[] {
-              "Dim",
+                "Dim",
             });
     internal_static_onnx_TensorShapeProto_Dimension_descriptor =
         internal_static_onnx_TensorShapeProto_descriptor.getNestedTypes().get(0);
@@ -35672,20 +36066,23 @@ public final class OnnxMl {
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TensorShapeProto_Dimension_descriptor,
             new java.lang.String[] {
-              "DimValue", "DimParam", "Denotation", "Value",
+                "DimValue",
+                "DimParam",
+                "Denotation",
+                "Value",
             });
     internal_static_onnx_TypeProto_descriptor = getDescriptor().getMessageTypes().get(10);
     internal_static_onnx_TypeProto_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TypeProto_descriptor,
             new java.lang.String[] {
-              "TensorType",
-              "SequenceType",
-              "MapType",
-              "SparseTensorType",
-              "OpaqueType",
-              "Denotation",
-              "Value",
+                "TensorType",
+                "SequenceType",
+                "MapType",
+                "SparseTensorType",
+                "OpaqueType",
+                "Denotation",
+                "Value",
             });
     internal_static_onnx_TypeProto_Tensor_descriptor =
         internal_static_onnx_TypeProto_descriptor.getNestedTypes().get(0);
@@ -35693,7 +36090,8 @@ public final class OnnxMl {
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TypeProto_Tensor_descriptor,
             new java.lang.String[] {
-              "ElemType", "Shape",
+                "ElemType",
+                "Shape",
             });
     internal_static_onnx_TypeProto_Sequence_descriptor =
         internal_static_onnx_TypeProto_descriptor.getNestedTypes().get(1);
@@ -35701,7 +36099,7 @@ public final class OnnxMl {
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TypeProto_Sequence_descriptor,
             new java.lang.String[] {
-              "ElemType",
+                "ElemType",
             });
     internal_static_onnx_TypeProto_Map_descriptor =
         internal_static_onnx_TypeProto_descriptor.getNestedTypes().get(2);
@@ -35709,7 +36107,8 @@ public final class OnnxMl {
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TypeProto_Map_descriptor,
             new java.lang.String[] {
-              "KeyType", "ValueType",
+                "KeyType",
+                "ValueType",
             });
     internal_static_onnx_TypeProto_SparseTensor_descriptor =
         internal_static_onnx_TypeProto_descriptor.getNestedTypes().get(3);
@@ -35717,7 +36116,8 @@ public final class OnnxMl {
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TypeProto_SparseTensor_descriptor,
             new java.lang.String[] {
-              "ElemType", "Shape",
+                "ElemType",
+                "Shape",
             });
     internal_static_onnx_TypeProto_Opaque_descriptor =
         internal_static_onnx_TypeProto_descriptor.getNestedTypes().get(4);
@@ -35725,21 +36125,30 @@ public final class OnnxMl {
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_TypeProto_Opaque_descriptor,
             new java.lang.String[] {
-              "Domain", "Name",
+                "Domain",
+                "Name",
             });
     internal_static_onnx_OperatorSetIdProto_descriptor = getDescriptor().getMessageTypes().get(11);
     internal_static_onnx_OperatorSetIdProto_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_OperatorSetIdProto_descriptor,
             new java.lang.String[] {
-              "Domain", "Version",
+                "Domain",
+                "Version",
             });
     internal_static_onnx_FunctionProto_descriptor = getDescriptor().getMessageTypes().get(12);
     internal_static_onnx_FunctionProto_fieldAccessorTable =
         new com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
             internal_static_onnx_FunctionProto_descriptor,
             new java.lang.String[] {
-              "Name", "SinceVersion", "Status", "Input", "Output", "Attribute", "Node", "DocString",
+                "Name",
+                "SinceVersion",
+                "Status",
+                "Input",
+                "Output",
+                "Attribute",
+                "Node",
+                "DocString",
             });
   }
 

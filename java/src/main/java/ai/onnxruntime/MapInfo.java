@@ -6,16 +6,23 @@ package ai.onnxruntime;
 
 import ai.onnxruntime.TensorInfo.OnnxTensorType;
 
-/** Describes an {@link OnnxMap} object or output node. */
+/**
+ * Describes an {@link OnnxMap} object or output node.
+ */
 public class MapInfo implements ValueInfo {
-
-  /** The number of entries in this map. */
+  /**
+   * The number of entries in this map.
+   */
   public final int size;
 
-  /** The Java type of the keys. */
+  /**
+   * The Java type of the keys.
+   */
   public final OnnxJavaType keyType;
 
-  /** The Java type of the values. */
+  /**
+   * The Java type of the values.
+   */
   public final OnnxJavaType valueType;
 
   /**

@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 public class TensorCreationTest {
-
   @Test
   public void testScalarCreation() throws OrtException {
     OrtEnvironment env = OrtEnvironment.getEnvironment();
@@ -46,17 +45,16 @@ public class TensorCreationTest {
 
     float[] floatValues =
         new float[] {
-          -1.0f,
-          0.0f,
-          -0.0f,
-          1.0f,
-          1234.5678f,
-          -1234.5678f,
-          (float) Math.PI,
-          (float) Math.E,
-          Float.MAX_VALUE,
-          Float.MIN_VALUE
-        };
+            -1.0f,
+            0.0f,
+            -0.0f,
+            1.0f,
+            1234.5678f,
+            -1234.5678f,
+            (float) Math.PI,
+            (float) Math.E,
+            Float.MAX_VALUE,
+            Float.MIN_VALUE};
     for (float f : floatValues) {
       try (OnnxTensor t = OnnxTensor.createTensor(env, f)) {
         Assertions.assertEquals(f, t.getValue());
@@ -65,17 +63,16 @@ public class TensorCreationTest {
 
     double[] doubleValues =
         new double[] {
-          -1.0,
-          0.0,
-          -0.0,
-          1.0,
-          1234.5678,
-          -1234.5678,
-          Math.PI,
-          Math.E,
-          Double.MAX_VALUE,
-          Double.MIN_VALUE
-        };
+            -1.0,
+            0.0,
+            -0.0,
+            1.0,
+            1234.5678,
+            -1234.5678,
+            Math.PI,
+            Math.E,
+            Double.MAX_VALUE,
+            Double.MIN_VALUE};
     for (double d : doubleValues) {
       try (OnnxTensor t = OnnxTensor.createTensor(env, d)) {
         Assertions.assertEquals(d, t.getValue());
@@ -103,9 +100,8 @@ public class TensorCreationTest {
 
     String[][][] deepStringValues =
         new String[][][] {
-          {{"this", "is", "a"}, {"multi", "dimensional", "string"}},
-          {{"with", "lots", "more"}, {"dimensions", "than", "before"}}
-        };
+            {{"this", "is", "a"}, {"multi", "dimensional", "string"}},
+            {{"with", "lots", "more"}, {"dimensions", "than", "before"}}};
     try (OnnxTensor t = OnnxTensor.createTensor(env, deepStringValues)) {
       Assertions.assertArrayEquals(new long[] {2, 2, 3}, t.getInfo().shape);
       String[][][] output = (String[][][]) t.getValue();

@@ -21,13 +21,12 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 public class SparseTensorTest {
-
   @Test
   public void testCSRC() throws OrtException {
     String modelPath =
         TestHelpers.getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
-        OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
+         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {
         Map<String, OnnxTensorLike> inputMap = new HashMap<>();
 
@@ -208,7 +207,7 @@ public class SparseTensorTest {
     String modelPath =
         TestHelpers.getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
-        OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
+         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {
         Map<String, OnnxTensorLike> inputMap = new HashMap<>();
 
@@ -394,7 +393,7 @@ public class SparseTensorTest {
   public void testCOOOutput() throws OrtException {
     String modelPath = TestHelpers.getResourcePath("/sparse_initializer_as_output.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
-        OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
+         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {
         Map<String, NodeInfo> outputs = session.getOutputInfo();
         assertEquals(1, outputs.size());

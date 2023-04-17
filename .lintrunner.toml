@@ -183,6 +183,7 @@ include_patterns = [
     '**/*.m',
     '**/*.mm',
     '**/*.cs',
+    '**/*.java',
 ]
 exclude_patterns = [
     'onnxruntime/core/mlas/**', # Contains assembly code

@@ -6,9 +6,10 @@ package ai.onnxruntime;
 
 import java.io.IOException;
 
-/** An ONNX Runtime memory allocator. */
+/**
+ * An ONNX Runtime memory allocator.
+ */
 class OrtAllocator implements AutoCloseable {
-
   static {
     try {
       OnnxRuntime.init();

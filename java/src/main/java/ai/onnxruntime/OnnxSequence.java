@@ -24,7 +24,6 @@ import java.util.List;
  * </ul>
  */
 public class OnnxSequence implements OnnxValue {
-
   static {
     try {
       OnnxRuntime.init();
@@ -109,7 +108,9 @@ public class OnnxSequence implements OnnxValue {
     return "OnnxSequence(info=" + info.toString() + ")";
   }
 
-  /** Closes this sequence, releasing the native memory backing it and it's elements. */
+  /**
+   * Closes this sequence, releasing the native memory backing it and it's elements.
+   */
   @Override
   public void close() {
     close(OnnxRuntime.ortApiHandle, nativeHandle);

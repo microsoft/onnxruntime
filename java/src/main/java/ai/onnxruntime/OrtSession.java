@@ -34,7 +34,6 @@ import java.util.logging.Logger;
  * methods are called.
  */
 public class OrtSession implements AutoCloseable {
-
   static {
     try {
       OnnxRuntime.init();
@@ -267,9 +266,9 @@ public class OrtSession implements AutoCloseable {
       if (requestedOutputs.isEmpty() || (requestedOutputs.size() > numOutputs)) {
         throw new OrtException(
             "Unexpected number of requestedOutputs, expected [1,"
-                + numOutputs
-                + ") found "
-                + requestedOutputs.size());
+            + numOutputs
+            + ") found "
+            + requestedOutputs.size());
       }
       String[] inputNamesArray = new String[inputs.size()];
       long[] inputHandles = new long[inputs.size()];
@@ -468,7 +467,6 @@ public class OrtSession implements AutoCloseable {
    * otherwise it could release resources that are in use.
    */
   public static class SessionOptions implements AutoCloseable {
-
     /**
      * The optimisation level to use. Needs to be kept in sync with the GraphOptimizationLevel enum
      * in the C API.
@@ -525,14 +523,18 @@ public class OrtSession implements AutoCloseable {
 
     private boolean closed = false;
 
-    /** Create an empty session options. */
+    /**
+     * Create an empty session options.
+     */
     public SessionOptions() {
       nativeHandle = createOptions(OnnxRuntime.ortApiHandle);
       customLibraryHandles = new ArrayList<>();
       configEntries = new LinkedHashMap<String, String>();
     }
 
-    /** Closes the session options, releasing any memory acquired. */
+    /**
+     * Closes the session options, releasing any memory acquired.
+     */
     @Override
     public void close() {
       if (!closed) {
@@ -550,7 +552,9 @@ public class OrtSession implements AutoCloseable {
       }
     }
 
-    /** Checks if the SessionOptions is closed, if so throws {@link IllegalStateException}. */
+    /**
+     * Checks if the SessionOptions is closed, if so throws {@link IllegalStateException}.
+     */
     private void checkClosed() {
       if (closed) {
         throw new IllegalStateException("Trying to use a closed SessionOptions");
@@ -1161,9 +1165,10 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
   }
 
-  /** Used to control logging and termination of a call to {@link OrtSession#run}. */
+  /**
+   * Used to control logging and termination of a call to {@link OrtSession#run}.
+   */
   public static class RunOptions implements AutoCloseable {
-
     private final long nativeHandle;
 
     private boolean closed = false;
@@ -1279,7 +1284,9 @@ public class OrtSession implements AutoCloseable {
       addRunConfigEntry(OnnxRuntime.ortApiHandle, nativeHandle, key, value);
     }
 
-    /** Checks if the RunOptions is closed, if so throws {@link IllegalStateException}. */
+    /**
+     * Checks if the RunOptions is closed, if so throws {@link IllegalStateException}.
+     */
     private void checkClosed() {
       if (closed) {
         throw new IllegalStateException("Trying to use a closed RunOptions");
@@ -1330,7 +1337,6 @@ public class OrtSession implements AutoCloseable {
    * IllegalStateException} upon access.
    */
   public static class Result implements AutoCloseable, Iterable<Map.Entry<String, OnnxValue>> {
-
     private static final Logger logger = Logger.getLogger(Result.class.getName());
 
     private final Map<String, OnnxValue> map;
@@ -1349,9 +1355,9 @@ public class OrtSession implements AutoCloseable {
       if (names.length != values.length) {
         throw new IllegalArgumentException(
             "Expected same number of names and values, found names.length = "
-                + names.length
-                + ", values.length = "
-                + values.length);
+            + names.length
+            + ", values.length = "
+            + values.length);
       }
 
       map = new LinkedHashMap<>(OrtUtil.capacityFromSize(names.length));

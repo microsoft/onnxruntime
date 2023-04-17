@@ -6,10 +6,13 @@ package ai.onnxruntime;
 
 import ai.onnxruntime.TensorInfo.OnnxTensorType;
 
-/** Describes an {@link OnnxSequence}, including it's element type if known. */
+/**
+ * Describes an {@link OnnxSequence}, including it's element type if known.
+ */
 public class SequenceInfo implements ValueInfo {
-
-  /** Is this a sequence of maps. */
+  /**
+   * Is this a sequence of maps.
+   */
   public final boolean sequenceOfMaps;
 
   /**
@@ -17,10 +20,14 @@ public class SequenceInfo implements ValueInfo {
    */
   public final OnnxJavaType sequenceType;
 
-  /** The type of the map if it contains a map, null otherwise. */
+  /**
+   * The type of the map if it contains a map, null otherwise.
+   */
   public final MapInfo mapInfo;
 
-  /** The number of elements in this sequence. */
+  /**
+   * The number of elements in this sequence.
+   */
   public final int length;
 
   /**

@@ -16,7 +16,6 @@ import java.util.Map;
  * String, Long, Float, Double.
  */
 public class OnnxMap implements OnnxValue {
-
   static {
     try {
       OnnxRuntime.init();
@@ -25,7 +24,9 @@ public class OnnxMap implements OnnxValue {
     }
   }
 
-  /** An enum representing the Java type of the values stored in an {@link OnnxMap}. */
+  /**
+   * An enum representing the Java type of the values stored in an {@link OnnxMap}.
+   */
   public enum OnnxMapValueType {
     INVALID(0),
     STRING(1),
@@ -171,34 +172,30 @@ public class OnnxMap implements OnnxValue {
    */
   private Object[] getMapValues() throws OrtException {
     switch (valueType) {
-      case STRING:
-        {
-          return getStringValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
+      case STRING: {
+        return getStringValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
+      }
+      case LONG: {
+        return Arrays.stream(
+                         getLongValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
+            .boxed()
+            .toArray();
+      }
+      case FLOAT: {
+        float[] floats = getFloatValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
+        Float[] boxed = new Float[floats.length];
+        for (int i = 0; i < floats.length; i++) {
+          // cast float to Float
+          boxed[i] = floats[i];
         }
-      case LONG:
-        {
-          return Arrays.stream(
-                  getLongValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
-              .boxed()
-              .toArray();
-        }
-      case FLOAT:
-        {
-          float[] floats = getFloatValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
-          Float[] boxed = new Float[floats.length];
-          for (int i = 0; i < floats.length; i++) {
-            // cast float to Float
-            boxed[i] = floats[i];
-          }
-          return boxed;
-        }
-      case DOUBLE:
-        {
-          return Arrays.stream(
-                  getDoubleValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
-              .boxed()
-              .toArray();
-        }
+        return boxed;
+      }
+      case DOUBLE: {
+        return Arrays.stream(
+                         getDoubleValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
+            .boxed()
+            .toArray();
+      }
       default:
         throw new RuntimeException("Invalid or unknown valueType: " + valueType);
     }
@@ -214,7 +211,9 @@ public class OnnxMap implements OnnxValue {
     return "ONNXMap(size=" + size() + ",info=" + info.toString() + ")";
   }
 
-  /** Closes this map, releasing the native memory backing it and it's elements. */
+  /**
+   * Closes this map, releasing the native memory backing it and it's elements.
+   */
   @Override
   public void close() {
     close(OnnxRuntime.ortApiHandle, nativeHandle);

@@ -6,9 +6,10 @@ package ai.onnxruntime.providers;
 
 import java.util.EnumSet;
 
-/** An interface for bitset enums that should be aggregated into a single integer. */
+/**
+ * An interface for bitset enums that should be aggregated into a single integer.
+ */
 public interface OrtFlags {
-
   /**
    * Gets the underlying flag value.
    *

@@ -18,7 +18,6 @@ import java.util.Optional;
  * <p>This class is a Java side copy of the native metadata, it does not access the native runtime.
  */
 public final class OnnxModelMetadata {
-
   private final String producerName;
   private final String graphName;
   private final String graphDescription;
@@ -111,14 +110,16 @@ public final class OnnxModelMetadata {
     this.version = other.version;
     this.customMetadata =
         other.customMetadata.isEmpty()
-            ? Collections.emptyMap()
-            : new HashMap<>(getCustomMetadata());
+        ? Collections.emptyMap()
+        : new HashMap<>(getCustomMetadata());
   }
 
   @Override
   public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
+    if (this == o)
+      return true;
+    if (o == null || getClass() != o.getClass())
+      return false;
     OnnxModelMetadata that = (OnnxModelMetadata) o;
     return version == that.version
         && producerName.equals(that.producerName)

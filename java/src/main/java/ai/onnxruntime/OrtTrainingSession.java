@@ -23,7 +23,6 @@ import java.util.Set;
  * methods are called.
  */
 public final class OrtTrainingSession implements AutoCloseable {
-
   static {
     try {
       OnnxRuntime.init();
@@ -221,7 +220,9 @@ public final class OrtTrainingSession implements AutoCloseable {
     return evalOutputNames;
   }
 
-  /** Checks if the OrtTrainingSession is closed, if so throws {@link IllegalStateException}. */
+  /**
+   * Checks if the OrtTrainingSession is closed, if so throws {@link IllegalStateException}.
+   */
   private void checkClosed() {
     if (closed) {
       throw new IllegalStateException("Trying to use a closed OrtTrainingSession");
@@ -428,16 +429,16 @@ public final class OrtTrainingSession implements AutoCloseable {
         || (inputs.size() > trainInputNames.size())) {
       throw new OrtException(
           "Unexpected number of inputs, expected [1,"
-              + trainInputNames.size()
-              + ") found "
-              + inputs.size());
+          + trainInputNames.size()
+          + ") found "
+          + inputs.size());
     }
     if (requestedOutputs.isEmpty() || (requestedOutputs.size() > trainOutputNames.size())) {
       throw new OrtException(
           "Unexpected number of requestedOutputs, expected [1,"
-              + trainOutputNames.size()
-              + ") found "
-              + requestedOutputs.size());
+          + trainOutputNames.size()
+          + ") found "
+          + requestedOutputs.size());
     }
     String[] inputNamesArray = new String[inputs.size()];
     long[] inputHandles = new long[inputs.size()];
@@ -571,16 +572,16 @@ public final class OrtTrainingSession implements AutoCloseable {
         || (inputs.size() > evalInputNames.size())) {
       throw new OrtException(
           "Unexpected number of inputs, expected [1,"
-              + evalInputNames.size()
-              + ") found "
-              + inputs.size());
+          + evalInputNames.size()
+          + ") found "
+          + inputs.size());
     }
     if (requestedOutputs.isEmpty() || (requestedOutputs.size() > evalOutputNames.size())) {
       throw new OrtException(
           "Unexpected number of requestedOutputs, expected [1,"
-              + evalOutputNames.size()
-              + ") found "
-              + requestedOutputs.size());
+          + evalOutputNames.size()
+          + ") found "
+          + requestedOutputs.size());
     }
     String[] inputNamesArray = new String[inputs.size()];
     long[] inputHandles = new long[inputs.size()];
@@ -893,7 +894,9 @@ public final class OrtTrainingSession implements AutoCloseable {
       String[] outputNames)
       throws OrtException;
 
-  /** Wrapper class for the checkpoint state. */
+  /**
+   * Wrapper class for the checkpoint state.
+   */
   static final class OrtCheckpointState implements AutoCloseable {
     final long nativeHandle;
 

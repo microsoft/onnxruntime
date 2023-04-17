@@ -21,7 +21,6 @@ import java.util.logging.Logger;
  * construction.
  */
 public final class OrtEnvironment implements AutoCloseable {
-
   private static final Logger logger = Logger.getLogger(OrtEnvironment.class.getName());
 
   public static final String DEFAULT_NAME = "ort-java";
@@ -447,7 +446,9 @@ public final class OrtEnvironment implements AutoCloseable {
   private static native void setTelemetry(long apiHandle, long nativeHandle, boolean sendTelemetry)
       throws OrtException;
 
-  /** Close is a no-op on OrtEnvironment since ORT 1.11. */
+  /**
+   * Close is a no-op on OrtEnvironment since ORT 1.11.
+   */
   @Override
   public void close() {}
 
@@ -468,19 +469,25 @@ public final class OrtEnvironment implements AutoCloseable {
 
     private boolean closed = false;
 
-    /** Create an empty threading options. */
+    /**
+     * Create an empty threading options.
+     */
     public ThreadingOptions() {
       nativeHandle = createThreadingOptions(OnnxRuntime.ortApiHandle);
     }
 
-    /** Checks if the ThreadingOptions is closed, if so throws {@link IllegalStateException}. */
+    /**
+     * Checks if the ThreadingOptions is closed, if so throws {@link IllegalStateException}.
+     */
     private void checkClosed() {
       if (closed) {
         throw new IllegalStateException("Trying to use a closed ThreadingOptions");
       }
     }
 
-    /** Closes the threading options. */
+    /**
+     * Closes the threading options.
+     */
     @Override
     public void close() {
       if (!closed) {
@@ -569,7 +576,6 @@ public final class OrtEnvironment implements AutoCloseable {
   }
 
   private static final class OrtEnvCloser implements Runnable {
-
     private final long apiHandle;
     private final long nativeHandle;
 
