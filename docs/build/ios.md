@@ -16,7 +16,7 @@ Follow the instructions below to build ONNX Runtime for iOS.
 * TOC placeholder
 {:toc}
 
-## General Info
+## Supported platforms
 
 * iOS Platforms
 
@@ -42,6 +42,7 @@ Follow the instructions below to build ONNX Runtime for iOS.
 * Xcode, https://developer.apple.com/xcode/
 * CMake, https://cmake.org/download/
 * Python 3, https://www.python.org/downloads/mac-osx/
+* Nuget https://formulae.brew.sh/formula/nuget (used to download the protobuf compiler, which is needed to build ONNX Runtime)
 
 ## Build Instructions
 
