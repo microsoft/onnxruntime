@@ -186,7 +186,10 @@ jobs:
 
   - task: Cache@2
     inputs:
-      key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} |"$(Build.SourceVersion)" '
+      ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
+        key: ' "$(TODAY)" |  $(System.StageName) | ${{ parameters.BuildConfig }} | merge '
+      ${{else}}:
+        key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} |"$(Build.SourceVersion)" '
       path: $(ORT_CACHE_DIR)
       restoreKeys: |
         "$(TODAY)" | onnxruntime | "$(System.StageName) | ${{ parameters.BuildConfig }}"
