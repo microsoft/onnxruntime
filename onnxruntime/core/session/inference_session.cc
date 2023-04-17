@@ -514,7 +514,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   std::vector<OrtCustomOpDomain*> custom_op_domains;
   p_exec_provider->GetCustomOpDomainList(custom_op_domains);
 
-  if (custom_op_domains.size() > 0) {
+  if (!custom_op_domains.empty()) {
     if (AddCustomOpDomains(custom_op_domains) != Status::OK()) {
       LOGS(*session_logger_, WARNING) << "Can't register custom op domains with ORT for " << provider_type;
     }

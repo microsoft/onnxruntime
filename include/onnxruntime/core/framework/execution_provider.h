@@ -149,7 +149,15 @@ class IExecutionProvider {
 
   /**
      Get provider specific custom op domain list.
-     Provider has the resposibility to release OrtCustomOpDomain instances it creates.
+     Provider has the responsibility to release OrtCustomOpDomain instances it creates.
+
+     NOTE: In the case of ONNX model having EP specific custom nodes and don't want to ask user to register those nodes,
+     EP might need to a way to register those custom nodes. This API is added for the purpose where EP can leverage
+     ORT custom op to register custom nodes with one or more custom op domains.
+
+     For example, TensorRT EP uses this API to support TRT plugins where each custom op is mapped to TRT plugin and no
+     kernel implementation is needed for custom op since the real implementation is inside TRT. This custom op acts as
+     a role to help pass ONNX model validation.
    */
   virtual void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& /*provider custom op domain list*/) const {};
 
