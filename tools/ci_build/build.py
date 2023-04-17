@@ -2000,7 +2000,9 @@ def build_nuget_package(
     target_name = "/t:CreatePackage"
     execution_provider = '/p:ExecutionProvider="None"'
     package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime"'
+    enable_training_tests = '/p:TrainingEnabledNativeBuild="false"'
     if enable_training_apis:
+        enable_training_tests = '/p:TrainingEnabledNativeBuild="true"'
         if use_cuda:
             package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Training.Gpu"'
         else:
@@ -2047,7 +2049,16 @@ def build_nuget_package(
         configuration = '/p:Configuration="' + config + '"'
 
         if not use_winml:
-            cmd_args = ["dotnet", "msbuild", sln, configuration, package_name, is_linux_build, ort_build_dir]
+            cmd_args = [
+                "dotnet",
+                "msbuild",
+                sln,
+                configuration,
+                package_name,
+                is_linux_build,
+                ort_build_dir,
+                enable_training_tests,
+            ]
             run_subprocess(cmd_args, cwd=csharp_build_dir)
         else:
             winml_interop_dir = os.path.join(source_dir, "csharp", "src", "Microsoft.AI.MachineLearning.Interop")
@@ -2109,7 +2120,7 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     if use_cuda:
         macros += "USE_CUDA;"
     if enable_training_apis:
-        macros += "__TRAINING_ENABLED_NATIVE_BUILD__;"
+        macros += "__TRAINING_ENABLED_NATIVE_BUILD__;__ENABLE_TRAINING_APIS__"
 
     define_constants = ""
     if macros != "":

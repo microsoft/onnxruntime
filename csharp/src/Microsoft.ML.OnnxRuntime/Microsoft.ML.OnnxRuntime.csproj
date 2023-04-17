@@ -130,8 +130,7 @@
   </PropertyGroup>
 
   <!-- Enable training APIs for the build. The native package must be
-       a training build with build flags 'enable_training' and
-       'enable_training_apis' set.
+       a training build with build flag 'enable_training_apis'.
   -->
   <PropertyGroup Condition="'$(EnableTrainingApis)'=='true'">
     <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_APIS__</OrtConstants>
