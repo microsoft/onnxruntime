@@ -22,7 +22,6 @@
 #include <memory>
 // TODO: find a better way to share this
 #include "core/providers/cuda/cuda_stream_handle.h"
-#include <iostream>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -144,8 +143,6 @@ inline void saveTimingCacheFile(const std::string outFileName, const nvinfer1::I
   oFile.write((char*)blob->data(), blob->size());
   oFile.close();
 }
-
-
 }  // namespace
 
 namespace google {
@@ -311,190 +308,18 @@ auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInf
 #endif
 
 /*
- * Create or update TensorRT optimization profiles from input tensor value.
+ * Apply TensorRT optimization profile shapes from provider options.
  *
  * This function handles single/multiple profiles. 
  * (Note: An optimization profile describes a range of dimensions for each network input)
  *
  */
-Status CreateProfilesFromInputTensorValue(std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
-                                          Ort::KernelContext ctx,
-                                          nvinfer1::ITensor* input,
-                                          std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>& shape_ranges,
-                                          const std::unordered_map<std::string, size_t>& input_indexes,
-                                          std::unordered_map<std::string, std::vector<int32_t>>& tensor_shape_values,
-                                          cudaStream_t stream,
-                                          bool* engine_update)
+bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
+                                           nvinfer1::ITensor* input,
+                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes,
+                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes,
+                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes)
 {
-  for (size_t i = 0; i < trt_profiles.size(); i++) {
-    const std::string& input_name = input->getName();
-    nvinfer1::Dims dims = input->getDimensions();
-    int nb_dims = dims.nbDims;
-
-    // Check and update shape ranges for dynamic shape inputs.
-    // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and TRT EP needs to
-    // determine the min/max/opt profile values based on input tensor value.
-    if (shape_ranges.find(input_name) != shape_ranges.end()) {
-      size_t input_index = 0;
-      const auto& iter = input_indexes.find(input_name);
-      if (iter != input_indexes.end()) {
-        input_index = iter->second;
-      }
-
-      auto input_tensor = ctx.GetInput(input_index);
-      auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-      const auto tensor_shapes = tensor_info.GetShape();
-      auto& shape_range = shape_ranges[input_name];
-
-      auto trt_profile = trt_profiles[i];
-
-      // If there are multiple profiles, for second and rest of profiles, simply copy the min/max/opt profile values from the first profile. 
-      if (i > 0) {
-        if (input->isShapeTensor()) {
-          // shape tensor
-          int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
-          std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
-          for (int j = 0; j < shape_size; j++) {
-            shapes_min[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN));
-            shapes_max[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX));
-            shapes_opt[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT));
-          }
-          trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-          trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-          trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
-        } else {
-          // execution tensor
-          nvinfer1::Dims dims_min, dims_opt, dims_max;
-          dims_min = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN);
-          dims_max = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX);
-          dims_opt = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT);
-          trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-          trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
-          trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-        }
-        continue;
-      }
-
-      // Create shape profile
-      if (input->isShapeTensor()) {
-        // Get shape values for shape tensor input
-        const auto tensor_type = tensor_info.GetElementType();
-        int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
-        tensor_shape_values[input_name].resize(shape_size);
-        switch (tensor_type) {
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-            auto input = std::make_unique<int32_t[]>(shape_size);
-            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int32_t>(), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
-            CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-            for (int j = 0; j < shape_size; ++j) {
-              tensor_shape_values[input_name][j] = input[j];
-            }
-            break;
-          }
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-            auto input = std::make_unique<int64_t[]>(shape_size);
-            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int64_t>(), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost, stream));
-            CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-            for (int j = 0; j < shape_size; ++j) {
-              tensor_shape_values[input_name][j] = static_cast<int32_t>(input[j]);
-            }
-            break;
-          }
-          default: {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.");
-          }
-        }
-
-        // Update shape ranges
-        std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
-        int shape_range_size = static_cast<int>(shape_range.size());
-        if (shape_size == shape_range_size) {
-          // If shape size matches, check/update shape range
-          for (int j = 0; j < shape_size; ++j) {
-            shapes_min[j] = static_cast<int32_t>(shape_range[j].first);
-            shapes_opt[j] = static_cast<int32_t>(shape_range[j].second);
-            shapes_max[j] = static_cast<int32_t>(shape_range[j].second);
-
-            const auto& tensor_shape_value = tensor_shape_values[input_name][j];
-            // Update shape range lower bound
-            if (tensor_shape_value < shape_range[j].first) {
-              shape_range[j].first = tensor_shape_value;
-              shapes_min[j] = tensor_shape_value;
-              *engine_update = true;
-            }
-            // Update shape range upper bound
-            if (tensor_shape_value > shape_range[j].second) {
-              shape_range[j].second = tensor_shape_value;
-              shapes_max[j] = tensor_shape_value;
-              shapes_opt[j] = tensor_shape_value;
-              *engine_update = true;
-            }
-          }
-        } else {
-          // If shape size doesn't match, initialize shape_range with the new shape value
-          shape_range.clear();
-          for (int j = 0; j < shape_size; ++j) {
-            const auto& tensor_shape_value = tensor_shape_values[input_name][j];
-            shape_range[j] = std::make_pair(tensor_shape_value, tensor_shape_value);
-            shapes_min[j] = tensor_shape_value;
-            shapes_opt[j] = tensor_shape_value;
-            shapes_max[j] = tensor_shape_value;
-          }
-          *engine_update = true;
-        }
-
-        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
-      } else {  // Execution tensor
-        nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
-        for (int j = 0, end = nb_dims; j < end; ++j) {
-          const auto& tensor_shape = tensor_shapes[j];
-          if (shape_range.find(j) != shape_range.end()) {
-            dims_min.d[j] = static_cast<int32_t>(shape_range[j].first);
-            dims_opt.d[j] = static_cast<int32_t>(shape_range[j].second);
-            dims_max.d[j] = static_cast<int32_t>(shape_range[j].second);
-
-            // Update minimum dimension
-            if (tensor_shape < shape_range[j].first) {
-              shape_range[j].first = tensor_shape;
-              dims_min.d[j] = static_cast<int32_t>(tensor_shape);
-              *engine_update = true;
-            }
-            // Update maximum dimension
-            if (tensor_shape > shape_range[j].second) {
-              shape_range[j].second = tensor_shape;
-              dims_max.d[j] = static_cast<int32_t>(tensor_shape);
-              dims_opt.d[j] = static_cast<int32_t>(tensor_shape);
-              *engine_update = true;
-            }
-          }
-        }
-
-        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
-        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-      }
-    }
-  }
-    
-  return Status::OK();
-}
-
-/*
- * Create TensorRT optimization profiles from provider options.
- *
- * This function handles single/multiple profiles. 
- * (Note: An optimization profile describes a range of dimensions for each network input)
- *
- */
-bool CreateProfilesFromProviderOptions(std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
-                                       nvinfer1::ITensor* input,
-                                       std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes,
-                                       std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes,
-                                       std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes) {
-
   if (trt_profiles.size() == 0) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Number of optimization profiles should be greater than 0, but it's 0.";
     return false;
@@ -505,7 +330,7 @@ bool CreateProfilesFromProviderOptions(std::vector<nvinfer1::IOptimizationProfil
     return false;
   }
 
-  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Begin to create optimization profiles ...";
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Begin to apply profile shapes ...";
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Input tensor name is '" << input_name << "', number of profiles found is " << trt_profiles.size();
 
   for (size_t i = 0; i < trt_profiles.size(); i++) {
@@ -534,6 +359,172 @@ bool CreateProfilesFromProviderOptions(std::vector<nvinfer1::IOptimizationProfil
     trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
   }
   return true;
+}
+
+/*
+ * Apply TensorRT optimization profile shapes from input tensor value.
+ *
+ * This function handles single/multiple profiles. 
+ * (Note: An optimization profile describes a range of dimensions for each network input)
+ *
+ */
+Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
+                                              Ort::KernelContext ctx,
+                                              nvinfer1::ITensor* input,
+                                              std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>& shape_ranges,
+                                              const std::unordered_map<std::string, size_t>& input_indexes,
+                                              std::unordered_map<std::string, std::vector<int32_t>>& tensor_shape_values,
+                                              cudaStream_t stream,
+                                              bool* engine_update)
+{
+  for (size_t i = 0; i < trt_profiles.size(); i++) {
+    const std::string& input_name = input->getName();
+    nvinfer1::Dims dims = input->getDimensions();
+    int nb_dims = dims.nbDims;
+
+    size_t input_index = 0;
+    const auto& iter = input_indexes.find(input_name);
+    if (iter != input_indexes.end()) {
+      input_index = iter->second;
+    }
+
+    auto input_tensor = ctx.GetInput(input_index);
+    auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+    const auto tensor_shapes = tensor_info.GetShape();
+    auto& shape_range = shape_ranges[input_name];
+
+    auto trt_profile = trt_profiles[i];
+
+    // If there are multiple profiles, for second and rest of profiles, simply copy the min/max/opt profile values from the first profile. 
+    if (i > 0) {
+      if (input->isShapeTensor()) {
+        // shape tensor
+        int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
+        std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+        for (int j = 0; j < shape_size; j++) {
+          shapes_min[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN));
+          shapes_max[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX));
+          shapes_opt[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT));
+        }
+        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+      } else {
+        // execution tensor
+        nvinfer1::Dims dims_min, dims_opt, dims_max;
+        dims_min = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN);
+        dims_max = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX);
+        dims_opt = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT);
+        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+      }
+      continue;
+    }
+
+    // Create shape profile
+    if (input->isShapeTensor()) {
+      // Get shape values for shape tensor input
+      const auto tensor_type = tensor_info.GetElementType();
+      int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
+      tensor_shape_values[input_name].resize(shape_size);
+      switch (tensor_type) {
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+          auto input = std::make_unique<int32_t[]>(shape_size);
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int32_t>(), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
+          CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+          for (int j = 0; j < shape_size; ++j) {
+            tensor_shape_values[input_name][j] = input[j];
+          }
+          break;
+        }
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+          auto input = std::make_unique<int64_t[]>(shape_size);
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int64_t>(), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost, stream));
+          CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+          for (int j = 0; j < shape_size; ++j) {
+            tensor_shape_values[input_name][j] = static_cast<int32_t>(input[j]);
+          }
+          break;
+        }
+        default: {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.");
+        }
+      }
+
+      // Update shape ranges
+      std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+      int shape_range_size = static_cast<int>(shape_range.size());
+      if (shape_size == shape_range_size) {
+        // If shape size matches, check/update shape range
+        for (int j = 0; j < shape_size; ++j) {
+          shapes_min[j] = static_cast<int32_t>(shape_range[j].first);
+          shapes_opt[j] = static_cast<int32_t>(shape_range[j].second);
+          shapes_max[j] = static_cast<int32_t>(shape_range[j].second);
+
+          const auto& tensor_shape_value = tensor_shape_values[input_name][j];
+          // Update shape range lower bound
+          if (tensor_shape_value < shape_range[j].first) {
+            shape_range[j].first = tensor_shape_value;
+            shapes_min[j] = tensor_shape_value;
+            *engine_update = true;
+          }
+          // Update shape range upper bound
+          if (tensor_shape_value > shape_range[j].second) {
+            shape_range[j].second = tensor_shape_value;
+            shapes_max[j] = tensor_shape_value;
+            shapes_opt[j] = tensor_shape_value;
+            *engine_update = true;
+          }
+        }
+      } else {
+        // If shape size doesn't match, initialize shape_range with the new shape value
+        shape_range.clear();
+        for (int j = 0; j < shape_size; ++j) {
+          const auto& tensor_shape_value = tensor_shape_values[input_name][j];
+          shape_range[j] = std::make_pair(tensor_shape_value, tensor_shape_value);
+          shapes_min[j] = tensor_shape_value;
+          shapes_opt[j] = tensor_shape_value;
+          shapes_max[j] = tensor_shape_value;
+        }
+        *engine_update = true;
+      }
+
+      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+    } else {  // Execution tensor
+      nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
+      for (int j = 0, end = nb_dims; j < end; ++j) {
+        const auto& tensor_shape = tensor_shapes[j];
+        if (shape_range.find(j) != shape_range.end()) {
+          dims_min.d[j] = static_cast<int32_t>(shape_range[j].first);
+          dims_opt.d[j] = static_cast<int32_t>(shape_range[j].second);
+          dims_max.d[j] = static_cast<int32_t>(shape_range[j].second);
+
+          // Update minimum dimension
+          if (tensor_shape < shape_range[j].first) {
+            shape_range[j].first = tensor_shape;
+            dims_min.d[j] = static_cast<int32_t>(tensor_shape);
+            *engine_update = true;
+          }
+          // Update maximum dimension
+          if (tensor_shape > shape_range[j].second) {
+            shape_range[j].second = tensor_shape;
+            dims_max.d[j] = static_cast<int32_t>(tensor_shape);
+            dims_opt.d[j] = static_cast<int32_t>(tensor_shape);
+            *engine_update = true;
+          }
+        }
+      }
+
+      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+    }
+  }
+  return Status::OK();
 }
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
@@ -778,6 +769,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     status = ValidateProfileShapes(profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
     if (!status) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Profile shapes validation failed. Make sure the provider options 'trt_profile_min_shapes', 'trt_profile_max_shapes' and 'trt_profile_opt_shapes' have same input name and number of profile.";
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] TRT EP will implicitly create optimization profiles based on input tensor for you.";
       profile_min_shapes_.clear();
       profile_max_shapes_.clear();
       profile_opt_shapes_.clear();
@@ -1611,8 +1603,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
      *   1) If user explicitly specifies optimization profiles via provider options, TRT EP will create those profiles during EP compile time. 
      *      It won't make adjustment for profile values during EP compute time.
      *
-     *   2) If no explicit optimization profiles provided by user, TRT EP will firstly set range of every shape dimension to [INT_MAX, INT_MIN],
-     *      later in EP compute time, the range will be adjusted to [min_input_value, max_input_value] for every shape dimension based on input tensor values.  
+     *   2) If no explicit optimization profiles provided by user, TRT EP will firstly set range of every shape dimension to [INT_MAX, INT_MIN].
+     *      Later in EP compute time, the range will be adjusted to [min_input_value, max_input_value] based on input tensor values for every shape dimension.  
      *
      *
      * Once the profiles are created:
@@ -1624,14 +1616,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
      */
     bool has_dynamic_shape = false; // True if input tensor has dynamic shape and no explicit profile is specified, otherwise false.
     bool has_explicit_profile = false;
-    bool create_explicit_profile = false;
-    int explicit_num_profiles = 0;
+    bool apply_explicit_profile = false;
+    int num_profiles = 0;
     std::vector<nvinfer1::IOptimizationProfile*> trt_profiles;
 
     if ((!profile_min_shapes_.empty()) && (!profile_max_shapes_.empty()) && (!profile_opt_shapes_.empty())) {
       has_explicit_profile = true; 
-      explicit_num_profiles = GetNumProfiles(profile_min_shapes_);
-      for (int i = 0; i < explicit_num_profiles; i++) {
+      num_profiles = GetNumProfiles(profile_min_shapes_);
+      for (int i = 0; i < num_profiles; i++) {
         trt_profiles.push_back(trt_builder->createOptimizationProfile());
       }
     }
@@ -1643,13 +1635,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       nvinfer1::Dims dims = input->getDimensions();
       int nb_dims = dims.nbDims;
 
-      // Create explicit optimization profiles provided by user
+      // Apply explicit optimization profiles provided by user
       if(has_explicit_profile) {
-        create_explicit_profile = CreateProfilesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
+        apply_explicit_profile = ApplyProfileShapesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
       } 
 
-      // If no explicit optimization profile is being created, TRT EP will set min/max/opt optimization profile values based on input tensor values
-      if(!create_explicit_profile) {
+      // If no explicit optimization profile is being applied, TRT EP will set min/max/opt optimization profile values based on input tensor values
+      if(!apply_explicit_profile) {
         if (input->isShapeTensor()) {
           // Shape tensor
           input_shape_ranges[input_name][0] = std::make_pair(INT_MAX, INT_MIN);
@@ -1663,15 +1655,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             }
           }
         }
-        create_explicit_profile = false;
+        apply_explicit_profile = false;
       }
     }
 
-    // Apply explicit optimization profiles if all dynamic shape shapes have profiles provided by user 
+    // Set explicit optimization profiles if all dynamic shape inputs have associated profiles provided by user 
     if (has_explicit_profile && !has_dynamic_shape) {
       for (auto trt_profile : trt_profiles) {
         trt_config->addOptimizationProfile(trt_profile);
       }
+    } 
+    // If no explicit optimization profile is applied and the input has dynamic shape, TRT EP simply creates one profile as default. 
+    // It will later set proper min/max/opt profile values duing EP compute time.
+    else if (!has_explicit_profile && has_dynamic_shape) {
+      trt_profiles.push_back(trt_builder->createOptimizationProfile());
     }
 
     // Check platform availability for low precision
@@ -1913,7 +1910,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       *p = {context->allocate_func, context->release_func, context->allocator_handle, &parsers_[context->node_name],
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            has_explicit_profile, explicit_num_profiles, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_,
+            has_explicit_profile, num_profiles, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_,
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), profiles_[context->node_name], allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
@@ -2039,18 +2036,31 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
       }
 
-      // Iterate all input tensors
+      // Check and update shape ranges for dynamic shape inputs.
       for (int i = 0, end = num_inputs; i < end; ++i) {
+        auto input = trt_state->network->get()->getInput(i);
+        const std::string& input_name = input->getName();
+        input_names.insert(input_name);
+
+        // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
+        // TRT EP will help determine the min/max/opt profile values based on input tensor value.
+        if (shape_ranges.find(input_name) != shape_ranges.end()) {
+          auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, tensor_shape_values, stream, &engine_update);
+          if (status != Status::OK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
+          }
+        }
       }
 
       // Regenerate engine
-      // Only one profile is generated, so no need to explicitly set optimization profile
       if (engine_update) {
         trt_state->context->reset();
         trt_state->engine->reset();
         auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
-        //trt_config->addOptimizationProfile(*trt_profile);
+        for (auto trt_profile : trt_profiles) {
+          trt_config->addOptimizationProfile(trt_profile);
+        }
 
         // Set INT8 Per Tensor Dynamic range
         if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {

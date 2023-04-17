@@ -100,7 +100,7 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   bool has_explicit_profile = false;
-  int explicit_num_profiles = 0;
+  int num_profiles = 0;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes;

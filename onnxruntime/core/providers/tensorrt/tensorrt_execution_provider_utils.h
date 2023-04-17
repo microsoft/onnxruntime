@@ -351,7 +351,7 @@ bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std:
     return true;
   }
 
-  std::cout << pair_string << std::endl;
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << pair_string;
 
   std::stringstream input_string_stream(pair_string);
   char first_delim = ':';
@@ -360,9 +360,6 @@ bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std:
   std::string shape;
   std::getline(input_string_stream, input_name, first_delim);
   std::getline(input_string_stream, shape, first_delim);
-
-  std::cout << input_name << std::endl;
-  std::cout << shape << std::endl;
 
   std::vector<int64_t> shapes;
   std::stringstream shape_string_stream(shape);
@@ -382,7 +379,7 @@ bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std:
   return true;
 }
 
-/* Parse explicit profile min/max/opt shapes from TensorRT EP provider options
+/* Parse explicit profile min/max/opt shapes from TensorRT EP provider options.
  *
  * For example:
  * The provider option is --trt_profile_min_shapes="input_id:32x1,attention_mask:32x1,input_id:32x41,attention_mask:32x41",
@@ -398,7 +395,7 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
 
   std::stringstream input_string_stream(profile_shapes_string);
   char delim = ',';
-  std::string input_name_with_shape; // input_name:shape
+  std::string input_name_with_shape; // input_name:shape, ex: input_id:32x1
   while (std::getline(input_string_stream, input_name_with_shape, delim)) {
     std::pair<std::string, std::vector<int64_t>> pair;
     if (!MakeInputNameShapePair(input_name_with_shape, pair)) {
@@ -412,11 +409,13 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
     }
     profile_shapes[input_name].push_back(pair.second);
 
-    std::cout << input_name << std::endl;
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << input_name;
+    std::string shape_string = "";
     for (auto v: pair.second) {
-      std::cout << v << ", ";
+      shape_string += std::to_string(v);
+      shape_string += ", ";
     }
-    std::cout << std::endl;
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << shape_string;
   }
 
   return true;
