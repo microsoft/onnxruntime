@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "test.h"
-struct CustomOpsTestsApi {
-  SetupTest CustomOpsScenarioTestsClassSetup;
-  VoidTest CustomOperatorFusion;
-  VoidTest CustomKernelWithBuiltInSchema;
-  VoidTest CustomKernelWithCustomSchema;
+struct CustomOpsTestsApi
+{
+    SetupTest CustomOpsScenarioTestsClassSetup;
+    VoidTest CustomOperatorFusion;
+    VoidTest CustomKernelWithBuiltInSchema;
+    VoidTest CustomKernelWithCustomSchema;
 };
 const CustomOpsTestsApi& getapi();
 

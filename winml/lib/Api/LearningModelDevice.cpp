@@ -147,7 +147,7 @@ bool LearningModelDevice::AllowSpinning() {
   }
 }
 
-}  // namespace WINMLP
+}  // namespace WINMLP 
 
 namespace WINML::factory_implementation {
 

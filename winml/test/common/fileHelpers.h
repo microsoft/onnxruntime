@@ -8,10 +8,11 @@
 
 #include "winrt/Windows.Graphics.Imaging.h"
 
-namespace FileHelpers {
-std::wstring GetModulePath();
-std::wstring GetWinMLPath();
+namespace FileHelpers
+{
+    std::wstring GetModulePath();
+    std::wstring GetWinMLPath();
 
-wgi::SoftwareBitmap GetSoftwareBitmapFromFile(const std::wstring& filePath);
-winml::ImageFeatureValue LoadImageFeatureValue(const std::wstring& imagePath);
-}  // namespace FileHelpers
+    wgi::SoftwareBitmap GetSoftwareBitmapFromFile(const std::wstring& filePath);
+    winml::ImageFeatureValue LoadImageFeatureValue(const std::wstring& imagePath);
+}

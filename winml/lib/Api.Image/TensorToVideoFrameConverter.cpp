@@ -53,7 +53,7 @@ class GPUTensorToDX12TextureTelemetryEvent {
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 
- private:
+private:
   int runtime_session_id_;
 };
 
@@ -85,7 +85,7 @@ class ConvertGPUTensorToSoftwareBitmapTelemetryEvent {
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 
- private:
+private:
   int runtime_session_id_;
 };
 
@@ -117,7 +117,7 @@ class ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent {
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 
- private:
+private:
   int runtime_session_id_;
 };
 
@@ -136,7 +136,7 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
   wgi::SoftwareBitmap softwareBitmap = destVideoFrame.SoftwareBitmap();
 
   if (softwareBitmap) {
-    ConvertGPUTensorToSoftwareBitmap(batchIdx, pInputTensor, *pDeviceCache, tensorDesc, softwareBitmap);
+   ConvertGPUTensorToSoftwareBitmap(batchIdx, pInputTensor, *pDeviceCache, tensorDesc, softwareBitmap);
   } else if (spDestDirect3DSurface) {
     bool isUAVSupportedFormat = _winmli::FormatSupportedForUAV(
         pDeviceCache->GetD3D12Device(),
@@ -214,10 +214,10 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
 ComPtr<ID3D12Resource> TensorToVideoFrameConverter::CreateShareableD3D12Texture(
     const D3D11_TEXTURE2D_DESC& d3d11Desc,
     ID3D12Device* d3d12Device) {
-  D3D12_HEAP_PROPERTIES heapProps{};
+  D3D12_HEAP_PROPERTIES heapProps {};
   heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
 
-  D3D12_RESOURCE_DESC resDesc{};
+  D3D12_RESOURCE_DESC resDesc {};
   resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
   resDesc.Width = d3d11Desc.Width;
   resDesc.Height = d3d11Desc.Height;
@@ -230,12 +230,12 @@ ComPtr<ID3D12Resource> TensorToVideoFrameConverter::CreateShareableD3D12Texture(
 
   ComPtr<ID3D12Resource> d3d12Resource;
   WINML_THROW_IF_FAILED(d3d12Device->CreateCommittedResource(
-      &heapProps,
-      D3D12_HEAP_FLAG_SHARED,
-      &resDesc,
-      D3D12_RESOURCE_STATE_COPY_DEST,
-      nullptr,
-      IID_PPV_ARGS(&d3d12Resource)));
+    &heapProps,
+    D3D12_HEAP_FLAG_SHARED,
+    &resDesc,
+    D3D12_RESOURCE_STATE_COPY_DEST,
+    nullptr,
+    IID_PPV_ARGS(&d3d12Resource)));
 
   return d3d12Resource;
 }
@@ -259,7 +259,7 @@ void TensorToVideoFrameConverter::ConvertDX12TensorToUnsupportedVideoFrameFormat
       supportedFormatIter != _winmli::supportedWinMLFormats.end(),
       "Detensorization for this format is unsupported on the current device.");
 
-  D3D11_TEXTURE2D_DESC supportedDesc{};
+  D3D11_TEXTURE2D_DESC supportedDesc {};
   supportedDesc.Width = unsupportedVideoFrame.Direct3DSurface().Description().Width;
   supportedDesc.Height = unsupportedVideoFrame.Direct3DSurface().Description().Height;
   supportedDesc.MipLevels = 1;
@@ -297,27 +297,28 @@ void TensorToVideoFrameConverter::ConvertDX12TensorToUnsupportedVideoFrameFormat
   converted_video_frame_.CopyToAsync(unsupportedVideoFrame).get();
 }
 
-ComPtr<ID3D11Texture2D> TensorToVideoFrameConverter::ShareD3D12Texture(ID3D12Resource* pResource, ID3D11Device* pDevice) {
-  assert(pResource != nullptr);
-  assert(pDevice != nullptr);
+ComPtr<ID3D11Texture2D> TensorToVideoFrameConverter::ShareD3D12Texture(ID3D12Resource* pResource, ID3D11Device* pDevice)
+{
+    assert(pResource != nullptr);
+    assert(pDevice != nullptr);
 
-  ComPtr<ID3D12Device> d3d12Device;
-  WINML_THROW_IF_FAILED(pResource->GetDevice(IID_PPV_ARGS(&d3d12Device)));
+    ComPtr<ID3D12Device> d3d12Device;
+    WINML_THROW_IF_FAILED(pResource->GetDevice(IID_PPV_ARGS(&d3d12Device)));
 
-  HANDLE hSharedTexture;
-  WINML_THROW_IF_FAILED(d3d12Device->CreateSharedHandle(pResource, nullptr, GENERIC_ALL, nullptr, &hSharedTexture));
+    HANDLE hSharedTexture;
+    WINML_THROW_IF_FAILED(d3d12Device->CreateSharedHandle(pResource, nullptr, GENERIC_ALL, nullptr, &hSharedTexture));
 
-  ComPtr<ID3D11Device1> device1;
-  WINML_THROW_IF_FAILED(pDevice->QueryInterface(IID_PPV_ARGS(&device1)));
+    ComPtr<ID3D11Device1> device1;
+    WINML_THROW_IF_FAILED(pDevice->QueryInterface(IID_PPV_ARGS(&device1)));
 
-  wil::unique_handle safeHandle(hSharedTexture);
+    wil::unique_handle safeHandle(hSharedTexture);
 
-  ComPtr<ID3D11Texture2D> d3d11Texture;
-  WINML_THROW_IF_FAILED(device1->OpenSharedResource1(safeHandle.get(), IID_PPV_ARGS(&d3d11Texture)));
+    ComPtr<ID3D11Texture2D> d3d11Texture;
+    WINML_THROW_IF_FAILED(device1->OpenSharedResource1(safeHandle.get(), IID_PPV_ARGS(&d3d11Texture)));
 
-  shared_handle_ = safeHandle.get();
+    shared_handle_ = safeHandle.get();
 
-  return d3d11Texture;
+    return d3d11Texture;
 }
 
 void TensorToVideoFrameConverter::SoftwareTensorToVideoFrame(
@@ -508,8 +509,9 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     command_list_->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
     // This code currently re-uses the same decriptors each execution, which is unsafe if previous executions are in flight.
-    if (fence_completion_value_ > 0) {
-      device_cache.WaitForFenceValue(fence_completion_value_);
+    if (fence_completion_value_ > 0)
+    {
+        device_cache.WaitForFenceValue(fence_completion_value_);
     }
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize);
@@ -682,6 +684,7 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
     _In_ void* pCPUTensor,
     _In_ const ImageTensorDescription& tensorDesc,
     _Inout_ wgi::SoftwareBitmap& softwareBitmap) {
+
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer;
   std::optional<ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent> telemetryLogger;
@@ -732,23 +735,23 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
 
   if (tensorDesc.dataType == kImageTensorDataTypeFloat32) {
     WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<float>(
-        tensorDesc.channelType,
-        targetChannelType,
-        tensorDesc.pixelRange,
-        static_cast<float*>(pCPUTensor),
-        bufferWidth,
-        height,
-        width,
-        pData));
+      tensorDesc.channelType,
+      targetChannelType, 
+      tensorDesc.pixelRange, 
+      static_cast<float*>(pCPUTensor),
+      bufferWidth, 
+      height,
+      width,
+      pData));
   } else if (tensorDesc.dataType == kImageTensorDataTypeFloat16) {
     WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<DirectX::PackedVector::HALF>(
-        tensorDesc.channelType,
-        targetChannelType,
-        tensorDesc.pixelRange,
-        static_cast<DirectX::PackedVector::HALF*>(pCPUTensor),
-        bufferWidth,
-        height,
-        width,
-        pData));
+      tensorDesc.channelType,
+      targetChannelType,
+      tensorDesc.pixelRange,
+      static_cast<DirectX::PackedVector::HALF*>(pCPUTensor),
+      bufferWidth,
+      height,
+      width,
+      pData));
   }
 }

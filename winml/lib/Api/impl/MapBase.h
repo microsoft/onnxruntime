@@ -116,7 +116,7 @@ struct MapBase : winrt::implements<
 
   STDMETHOD(AbiRepresentation)
   (
-      wf::IInspectable& abiRepresentation) {
+    wf::IInspectable& abiRepresentation) {
     data_.as(abiRepresentation);
     return S_OK;
   }

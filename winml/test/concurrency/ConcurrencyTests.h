@@ -4,7 +4,8 @@
 #pragma once
 #include "test.h"
 
-struct ConcurrencyTestsApi {
+struct ConcurrencyTestsApi
+{
   SetupClass ConcurrencyTestsClassSetup;
   VoidTest LoadBindEvalSqueezenetRealDataWithValidationConcurrently;
   VoidTest MultiThreadLoadModel;

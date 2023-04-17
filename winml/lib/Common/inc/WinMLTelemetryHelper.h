@@ -66,6 +66,7 @@ class WinMLTelemetryHelper {
   WinMLTelemetryHelper();
   virtual ~WinMLTelemetryHelper();
 
+
   //
   // Register telemetry provider and check success.  Will only succeed if
   // client has opted in to sending MS telemetry.

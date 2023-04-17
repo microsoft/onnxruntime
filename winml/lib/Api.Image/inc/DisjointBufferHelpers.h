@@ -17,4 +17,4 @@ void StoreSpanIntoDisjointBuffers(
     std::function<gsl::span<byte>(size_t)> get_buffer,
     gsl::span<byte>& buffer_span);
 
-}  // namespace _winml
+} // namespace _winml

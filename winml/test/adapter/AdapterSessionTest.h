@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #include "test.h"
-struct AdapterSessionTestAPI {
+struct AdapterSessionTestAPI
+{
   SetupClass AdapterSessionTestSetup;
   TeardownClass AdapterSessionTestTeardown;
   VoidTest AppendExecutionProvider_CPU;

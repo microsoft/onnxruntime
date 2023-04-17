@@ -97,7 +97,7 @@ ComPtr<ID3D11Texture2D> ImageConverter::CreateTextureFromUnsupportedColorFormat(
 
   auto spNewVideoFrame = wm::VideoFrame::CreateAsDirect3D11SurfaceBacked(newFormat, outputBounds.Width, outputBounds.Height, device);
   videoFrame.as<wm::IVideoFrame2>().CopyToAsync(spNewVideoFrame, inputBounds, outputBounds).get();
-
+  
   using namespace Windows::Graphics::DirectX::Direct3D11;
 
   auto spDxgiInterfaceAccess = spNewVideoFrame.Direct3DSurface().as<IDirect3DDxgiInterfaceAccess>();
@@ -108,7 +108,7 @@ ComPtr<ID3D11Texture2D> ImageConverter::CreateTextureFromUnsupportedColorFormat(
 }
 
 void ImageConverter::CopyTextureIntoTexture(_In_ ID3D11Texture2D* pTextureFrom,
-                                            _In_ const wgi::BitmapBounds& inputBounds, _Inout_ ID3D11Texture2D* pTextureTo) {
+    _In_ const wgi::BitmapBounds& inputBounds, _Inout_ ID3D11Texture2D* pTextureTo) {
   assert(pTextureFrom != nullptr);
   assert(pTextureTo != nullptr);
 

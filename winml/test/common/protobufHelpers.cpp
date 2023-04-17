@@ -84,7 +84,7 @@ template <>
 std::vector<uint8_t> GetTypeSpecificDataFromTensorProto(
     onnx::TensorProto tensorProto) {
 #pragma warning(push)
-#pragma warning(disable : 4244)  // conversion with possible loss of data
+#pragma warning(disable:4244)  // conversion with possible loss of data
   return std::vector<uint8_t>(std::begin(tensorProto.int32_data()), std::end(tensorProto.int32_data()));
 #pragma warning(pop)
 }
@@ -116,7 +116,8 @@ std::vector<DataType> GetTensorDataFromTensorProto(
 static std::vector<winrt::hstring> GetTensorStringDataFromTensorProto(
     onnx::TensorProto tensorProto,
     uint64_t elementCount) {
-  if (tensorProto.string_data_size() != elementCount) {
+  if(tensorProto.string_data_size() != elementCount)
+  {
     throw winrt::hresult_invalid_argument(L"Number of elements in TensorProto does not match expected element count.");
   }
   auto& values = tensorProto.string_data();
@@ -169,7 +170,7 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
   onnx::TensorProto tensorProto;
   if (LoadOnnxTensorFromProtobufFile(tensorProto, filePath)) {
     if (tensorProto.has_data_type()) {
-      if (onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16 != tensorProto.data_type()) {
+      if(onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16 != tensorProto.data_type()) {
         throw winrt::hresult_invalid_argument(L"TensorProto datatype isn't of type Float16.");
       }
     } else {
@@ -185,7 +186,8 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
     uint32_t sizeInBytes;
     spTensorValueNative->GetBuffer(reinterpret_cast<BYTE**>(&data), &sizeInBytes);
 
-    if (!tensorProto.has_raw_data()) {
+    if (!tensorProto.has_raw_data())
+    {
       throw winrt::hresult_invalid_argument(L"Float16 tensor proto buffers are expected to contain raw data.");
     }
 

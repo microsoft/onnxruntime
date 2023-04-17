@@ -47,7 +47,7 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOp
 // OrtSession methods
 ORT_API_STATUS(CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session);
 
-// Do not release provider... as there is no release method available
+//Do not release provider... as there is no release method available
 ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, _In_ size_t index, _Out_ OrtExecutionProvider** provider);
 ORT_API_STATUS(SessionInitialize, _In_ OrtSession* session);
 ORT_API_STATUS(SessionLoadAndPurloinModel, _In_ OrtSession* session, _In_ OrtModel* model);
@@ -89,29 +89,29 @@ ORT_API_STATUS(ModelAddInput, _In_ OrtModel* model, _In_ const char* const input
 ORT_API_STATUS(ModelAddConstantInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value);
 ORT_API_STATUS(ModelAddOutput, _In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info);
 ORT_API_STATUS(ModelAddOperator,
-               _In_ OrtModel* model,
-               _In_ const char* const op_type,
-               _In_ const char* const op_name,
-               _In_ int64_t opset,
-               _In_ const char* const op_domain,
-               _In_ const char* const* input_names, _In_ size_t num_inputs,
-               _In_ const char* const* output_names, _In_ size_t num_outputs,
-               _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes);
+    _In_ OrtModel* model,
+    _In_ const char* const op_type,
+    _In_ const char* const op_name,
+    _In_ int64_t opset,
+    _In_ const char* const op_domain,
+    _In_ const char* const* input_names, _In_ size_t num_inputs,
+    _In_ const char* const* output_names, _In_ size_t num_outputs,
+    _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes);
 
 ORT_API_STATUS(ModelGetOpsetVersion, _In_ OrtModel* model, _In_ const char* const domain, _Out_ int32_t* version);
 
 ORT_API_STATUS(OperatorGetNumInputs,
-               _In_ const char* const op_type,
-               _In_ int64_t opset,
-               _In_ const char* const op_domain,
-               _Out_ size_t* num_inputs);
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _Out_ size_t* num_inputs);
 
 ORT_API_STATUS(OperatorGetInputName,
-               _In_ const char* const op_type,
-               _In_ int64_t opset,
-               _In_ const char* const op_domain,
-               _In_ size_t index,
-               _Out_ const char** const name);
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _In_ size_t index,
+      _Out_ const char** const name);
 
 ORT_API_STATUS(OperatorGetNumOutputs,
                _In_ const char* const op_type,
@@ -141,7 +141,7 @@ ORT_API_STATUS(CreateThreadPool,
                _Outptr_ OrtThreadPool** out);
 
 // maps and sequences???
-// ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second
+//ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second
 
 }  // namespace Adapter
 }  // namespace MachineLearning

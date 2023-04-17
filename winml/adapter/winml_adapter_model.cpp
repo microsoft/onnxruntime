@@ -217,7 +217,7 @@ void OrtModel::RefreshModelInfo() {
   auto new_info = std::make_unique<ModelInfo>(model_proto_.get());
   model_info_->author_ = std::move(new_info->author_);
   model_info_->description_ = std::move(new_info->description_);
-  model_info_->domain_ = std::move(new_info->domain_);
+  model_info_->domain_= std::move(new_info->domain_);
   model_info_->input_features_ = std::move(new_info->input_features_);
   model_info_->model_metadata_ = std::move(new_info->model_metadata_);
   model_info_->name_ = std::move(new_info->name_);
@@ -543,7 +543,7 @@ static void CreateTypeProto_Tensor(ONNX_NAMESPACE::TypeProto_Tensor* mutable_ten
 }
 
 ORT_API_STATUS_IMPL(winmla::ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info) {
-  API_IMPL_BEGIN
+ API_IMPL_BEGIN
   auto model_proto = model->UseModelProto();
   ONNX_NAMESPACE::GraphProto& graph = *model_proto->mutable_graph();
   ONNX_NAMESPACE::ValueInfoProto& input = *graph.add_input();
@@ -591,11 +591,11 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOutput, _In_ OrtModel* model, _In_ const cha
 
   if (info->type == ONNXType::ONNX_TYPE_TENSOR) {
     CreateTypeProto_Tensor(
-        output.mutable_type()->mutable_tensor_type(),
-        output_name,
-        &info->data->shape[0],
-        info->data->shape.NumDimensions(),
-        ONNXTensorElementDataTypeToTensorProto_DataType(info->data->type));
+      output.mutable_type()->mutable_tensor_type(),
+      output_name,
+      &info->data->shape[0],
+      info->data->shape.NumDimensions(),
+      ONNXTensorElementDataTypeToTensorProto_DataType(info->data->type));
   }
   return nullptr;
   API_IMPL_END
@@ -667,7 +667,7 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
       case onnx::AttributeProto_AttributeType_INTS: {
         auto raw_data = tensor->DataRaw();
         for (int j = 0; j < tensor->Shape().Size(); j++) {
-          attr->add_ints(*(reinterpret_cast<const int64_t*>(raw_data) + j));
+          attr->add_ints(*(reinterpret_cast<const int64_t*>(raw_data)+j));
         }
         break;
       }
@@ -704,7 +704,8 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
     auto name = output_names[i];
     if (name != nullptr) {
       node.add_output(name);
-    } else {
+    }
+    else {
       node.add_output("unused");
     }
   }
@@ -713,9 +714,9 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
 }
 
 ORT_API_STATUS_IMPL(winmla::ModelGetOpsetVersion,
-                    _In_ OrtModel* model,
-                    _In_ const char* const domain,
-                    _Out_ int32_t* version) {
+    _In_ OrtModel* model,
+    _In_ const char* const domain,
+    _Out_ int32_t* version) {
   API_IMPL_BEGIN
   auto model_proto = model->UseModelProto();
 
@@ -744,7 +745,7 @@ ORT_API(void, winmla::ReleaseModel, OrtModel* ptr) {
 ORT_API_STATUS_IMPL(winmla::CreateTensorTypeInfo, _In_ const int64_t* dim_values, size_t dim_count, ONNXTensorElementDataType type, _Out_ OrtTypeInfo** ort_type_info) {
   API_IMPL_BEGIN
   auto tensor_shape = onnxruntime::TensorShape(dim_values, dim_count);
-  auto type_and_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(type, std::move(tensor_shape), nullptr);
+  auto type_and_shape =  OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(type, std::move(tensor_shape), nullptr);
   *ort_type_info = OrtTypeInfo::MakePtr(ONNX_TYPE_TENSOR, std::move(type_and_shape)).release();
   return nullptr;
   API_IMPL_END
@@ -797,9 +798,9 @@ ORT_API_STATUS_IMPL(winmla::OperatorGetOutputName, _In_ const char* const op_typ
 #include "core/platform/env.h"
 
 ORT_API_STATUS_IMPL(winmla::CreateThreadPool,
-                    _In_ ThreadPoolType type,
-                    _In_ OrtThreadPoolOptions* options,
-                    _Outptr_ OrtThreadPool** out) {
+  _In_ ThreadPoolType type,
+  _In_ OrtThreadPoolOptions* options,
+  _Outptr_ OrtThreadPool** out) {
   API_IMPL_BEGIN
   OrtThreadPoolParams params = {};
   params.thread_pool_size = options->thread_pool_size;
@@ -821,13 +822,13 @@ ORT_API(void, winmla::ReleaseThreadPool, OrtThreadPool* ptr) {
 }
 
 ORT_API_STATUS_IMPL(winmla::JoinModels,
-                    _In_ OrtModel* first_model,
-                    _In_ OrtModel* second_model,
-                    _In_ const char* const* output_names,
-                    _In_ const char* const* input_names,
-                    size_t num_linkages,
-                    bool promote_unlinked_outputs,
-                    _In_ const char* const join_node_prefix) {
+  _In_ OrtModel* first_model,
+  _In_ OrtModel* second_model,
+  _In_ const char* const* output_names,
+  _In_ const char* const* input_names,
+  size_t num_linkages,
+  bool promote_unlinked_outputs,
+  _In_ const char* const join_node_prefix) {
   API_IMPL_BEGIN
 
   std::string second_model_prefix = join_node_prefix;
@@ -843,12 +844,12 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
     first_model_proto->mutable_graph()->mutable_output()->Clear();
 
     // Add back output
-    for (int i = first_outputs.size() - 1; i >= 0; i--) {
+    for (int i = first_outputs.size() - 1; i >= 0 ; i--) {
       auto& output = first_outputs.at(i);
       auto output_name = output.name();
 
       auto found_it = std::find_if(output_names, output_names + num_linkages,
-                                   [output_name](auto& name) { return std::strcmp(name, output_name.c_str()) == 0; });
+                        [output_name](auto& name) { return std::strcmp(name, output_name.c_str()) == 0; });
       if (found_it == (output_names + num_linkages)) {
         // if output.name() is not found in the linkages, it is unlinked, and it should be promoted
         auto& promoted_output = *first_model_proto->mutable_graph()->add_output();
@@ -918,8 +919,9 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
     // does the domain exist in the first model?
     auto found_it = std::find_if(first_model_proto->mutable_opset_import()->begin(), first_model_proto->mutable_opset_import()->end(),
                                  [&domain](auto& mutable_opset_import) {
-                                   auto first_model_domain = mutable_opset_import.has_domain() ? mutable_opset_import.domain() : std::string("");
-                                   return 0 == strcmp(first_model_domain.c_str(), domain.c_str());
+
+                                    auto first_model_domain = mutable_opset_import.has_domain() ? mutable_opset_import.domain() : std::string("");
+                                    return 0 == strcmp(first_model_domain.c_str(), domain.c_str());
                                  });
     if (found_it != first_model_proto->mutable_opset_import()->end()) {
       found_it->set_version(std::max(found_it->version(), version));

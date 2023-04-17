@@ -214,12 +214,12 @@ static _winml::ImageTensorDescription CreateImageTensorDescriptor(winml::TensorK
     THROW_HR(E_NOTIMPL);
   }
 
-  if (pixelRange != winml::LearningModelPixelRange::ZeroTo255 &&
+  if (pixelRange != winml::LearningModelPixelRange::ZeroTo255 && 
       pixelRange != winml::LearningModelPixelRange::ZeroToOne &&
       pixelRange != winml::LearningModelPixelRange::MinusOneToOne) {
     THROW_HR(E_NOTIMPL);
   }
-
+  
   tensorDescription.pixelRange = pixelRange;
   tensorDescription.sizes[2] = height;
   tensorDescription.sizes[3] = width;
@@ -243,7 +243,7 @@ static void CPUTensorize(
 
   auto pooledConverter = _winml::PoolObjectWrapper::Create(spDevice->TensorizerStore()->Fetch(descriptor));
 
-  // apply tensorization
+  //apply tensorization
   pooledConverter->Get()->Tensorizer->VideoFrameToSoftwareTensor(
       videoFrame,
       bounds,
@@ -413,12 +413,12 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
   } else if (!pixelRange.has_value() && spImageDescriptor) {
     pixelRange = spImageDescriptor->PixelRange();
   } else if (!pixelRange.has_value() && spTensorDescriptor) {
-    pixelRange = winml::LearningModelPixelRange::ZeroTo255;  // default;
+    pixelRange = winml::LearningModelPixelRange::ZeroTo255;  //default;
   } else {
     THROW_HR(WINML_ERR_INVALID_BINDING);
   }
-
-  // NCHW layout
+  
+  //NCHW layout
   auto imageTensorDescriptor = CreateImageTensorDescriptor(tensorKind, pixelFormat.value(), pixelRange.value(), m_batchSize, descriptorWidth, descriptorHeight);
 
   return ImageResourceMetadata{bounds, imageTensorDescriptor};
@@ -443,7 +443,8 @@ HRESULT ImageFeatureValue::GetValue(_winml::BindingContext& context, _winml::IVa
   RETURN_IF_FAILED(engine->CreateTensorValue(
       resourceMetadata.TensorDescriptor.sizes,
       sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
-      resourceMetadata.TensorDescriptor.dataType == _winml::ImageTensorDataType::kImageTensorDataTypeFloat32 ? winml::TensorKind::Float : winml::TensorKind::Float16,
+      resourceMetadata.TensorDescriptor.dataType == _winml::ImageTensorDataType::kImageTensorDataTypeFloat32 ?
+        winml::TensorKind::Float : winml::TensorKind::Float16,
       value.put()));
 
   // Get the tensor raw data

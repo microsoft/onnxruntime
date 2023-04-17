@@ -81,8 +81,9 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearn
   CheckClosed();
 
   // LearningModelBinding needs to leverage the lock
-  CWinMLLock*
-  GetDMLEPLock() {
+  CWinMLLock *
+  GetDMLEPLock()
+  {
     return &dml_ep_lock_;
   }
 

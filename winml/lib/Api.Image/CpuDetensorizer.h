@@ -126,10 +126,10 @@ class CpuDetensorizer {
 
   template <>
   static float ReadTensor<DirectX::PackedVector::HALF>(
-      const DirectX::PackedVector::HALF* pCPUTensor,
-      const NominalRangeConverter& nominalRangeConverter) {
+    const DirectX::PackedVector::HALF* pCPUTensor,
+    const NominalRangeConverter& nominalRangeConverter) {
     return nominalRangeConverter.Denormalize(
-        DirectX::PackedVector::XMConvertHalfToFloat(*pCPUTensor));
+      DirectX::PackedVector::XMConvertHalfToFloat(*pCPUTensor));
   }
 
   template <typename T>
@@ -172,7 +172,8 @@ class CpuDetensorizer {
       uint32_t tensorWidth,
       BYTE* pData,
       uint32_t bytesPerPixel,
-      const NominalRangeConverter& nominalRangeConverter) {
+      const NominalRangeConverter& nominalRangeConverter
+    ) {
     BYTE* pPixel = pData;
     uint32_t tensorWidthRemaining = tensorWidth;
 

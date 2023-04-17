@@ -13,9 +13,9 @@
 using namespace _winml;
 
 ConverterResources::ConverterResources(Pool& pool, ConverterResourceDescription& descriptor) : Descriptor(descriptor),
-                                                                                               Tensorizer(std::make_unique<VideoFrameToTensorConverter>()),
-                                                                                               Detensorizer(std::make_unique<TensorToVideoFrameConverter>()),
-                                                                                               m_pool(pool) {
+                                                                                          Tensorizer(std::make_unique<VideoFrameToTensorConverter>()),
+                                                                                          Detensorizer(std::make_unique<TensorToVideoFrameConverter>()),
+                                                                                          m_pool(pool) {
 }
 
 void ConverterResources::ReturnToCache() {

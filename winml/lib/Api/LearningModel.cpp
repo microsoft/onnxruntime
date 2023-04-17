@@ -58,6 +58,7 @@ class STLVectorBackedBuffer : public winrt::implements<
   }
 };
 
+
 LearningModel::LearningModel(
     const hstring& path,
     const winml::ILearningModelOperatorProvider op_provider) try : operator_provider_(op_provider) {
@@ -65,23 +66,21 @@ LearningModel::LearningModel(
 
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
 
-  wil::unique_handle file_handle {
+  wil::unique_handle file_handle{
 #if WINVER >= _WIN32_WINNT_WIN8
-    CreateFile2(path.c_str(),
-                GENERIC_READ,
-                FILE_SHARE_READ,
-                OPEN_EXISTING,
-                NULL)
-  };
+      CreateFile2(path.c_str(),
+                  GENERIC_READ,
+                  FILE_SHARE_READ,
+                  OPEN_EXISTING,
+                  NULL)};
 #else
-    CreateFileW(path.c_str(),
-                GENERIC_READ,
-                FILE_SHARE_READ,
-                NULL,
-                OPEN_EXISTING,
-                FILE_ATTRIBUTE_READONLY,
-                NULL)
-  };
+      CreateFileW(path.c_str(),
+                  GENERIC_READ,
+                  FILE_SHARE_READ,
+                  NULL,
+                  OPEN_EXISTING,
+                  FILE_ATTRIBUTE_READONLY,
+                  NULL)};
 #endif
 
   WINML_THROW_HR_IF_TRUE_MSG(__HRESULT_FROM_WIN32(GetLastError()),
@@ -99,11 +98,11 @@ LearningModel::LearningModel(
                              file_mapping == nullptr,
                              "Model load failed!");
 
-  auto buffer = MapViewOfFile(file_mapping.get(),  // handle to mapping object
-                              FILE_MAP_READ,       // read/write
-                              0,                   // high-order 32 bits of file offset
-                              0,                   // low-order 32 bits of file offset
-                              0);                  // number of bytes to map. 0 means read whole file.
+  auto buffer = MapViewOfFile(file_mapping.get(), // handle to mapping object
+                              FILE_MAP_READ,      // read/write
+                              0,                  // high-order 32 bits of file offset
+                              0,                  // low-order 32 bits of file offset
+                              0);                 // number of bytes to map. 0 means read whole file.
 
   WINML_THROW_HR_IF_TRUE_MSG(__HRESULT_FROM_WIN32(GetLastError()),
                              buffer == nullptr,
@@ -121,7 +120,8 @@ WINML_CATCH_ALL
 LearningModel::LearningModel(
     _winml::IEngineFactory* engine_factory,
     _winml::IModel* model,
-    const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
+    const winml::ILearningModelOperatorProvider operator_provider) try :
+      operator_provider_(operator_provider) {
   engine_factory_.copy_from(engine_factory);
   model_.copy_from(model);
   WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
@@ -138,8 +138,7 @@ static HRESULT CreateModelFromStream(
   auto result = content.ReadAsync(
                            buffer,
                            buffer.Capacity(),
-                           wss::InputStreamOptions::None)
-                    .get();
+                           wss::InputStreamOptions::None).get();
 
   auto bytes = buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>();
   WINML_THROW_HR_IF_NULL_MSG(E_UNEXPECTED, bytes, "Model stream is invalid.");

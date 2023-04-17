@@ -3,7 +3,8 @@
 
 #include "test.h"
 
-struct RawApiTestsApi {
+struct RawApiTestsApi
+{
   SetupClass RawApiTestsApiTestsClassSetup;
   VoidTest CreateModelFromFilePath;
   VoidTest CreateCpuDevice;

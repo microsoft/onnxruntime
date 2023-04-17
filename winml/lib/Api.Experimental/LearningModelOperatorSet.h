@@ -4,13 +4,14 @@
 
 namespace WINML_EXPERIMENTALP {
 
-struct LearningModelOperatorSet : LearningModelOperatorSetT<LearningModelOperatorSet> {
-  LearningModelOperatorSet(winml_experimental::LearningModelBuilder builder);
+    struct LearningModelOperatorSet : LearningModelOperatorSetT<LearningModelOperatorSet>
+    {
+        LearningModelOperatorSet(winml_experimental::LearningModelBuilder builder);
 
-  winml_experimental::LearningModelBuilder Add(winml_experimental::LearningModelOperator const& op);
+        winml_experimental::LearningModelBuilder Add(winml_experimental::LearningModelOperator const& op);
 
- private:
-  winml_experimental::LearningModelBuilder builder_;
-  wfc::IVector<winml_experimental::LearningModelOperator> operators_;
-};
-}  // namespace WINML_EXPERIMENTALP
+       private:
+        winml_experimental::LearningModelBuilder builder_;
+        wfc::IVector<winml_experimental::LearningModelOperator> operators_;
+    };
+}

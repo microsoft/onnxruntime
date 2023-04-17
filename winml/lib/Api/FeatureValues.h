@@ -59,7 +59,7 @@
     type(std::vector<int64_t> const& shape, ID3D12Resource* pResource) : Base(shape, pResource){}; \
   };                                                                                               \
   }                                                                                                \
-  namespace WINML::factory_implementation {                                                        \
+  namespace WINML::factory_implementation {                          \
   struct type : type##T<type, winmlp::type, ITensorStaticsNative> {                                \
     STDMETHOD(CreateFromD3D12Resource)                                                             \
     (ID3D12Resource * value, __int64* shape, int shapeSize, IUnknown** result) {                   \
@@ -86,14 +86,14 @@ CREATE_TENSOR(TensorInt64Bit, int64_t, int64_t)
 CREATE_TENSOR(TensorFloat16Bit, _winml::Half, float)
 
 #pragma warning(push)
-#pragma warning(disable : 4702)  // Unreachable code (one of TensorBase's constructor unconditionally throws for
-                                 // std::string because it's not supported with D3D12 resources)
+#pragma warning(disable : 4702) // Unreachable code (one of TensorBase's constructor unconditionally throws for
+                                // std::string because it's not supported with D3D12 resources)
 CREATE_TENSOR(TensorString, std::string, winrt::hstring)
 #pragma warning(pop)
 
 // CREATE_MAP is used by map types to implement common functionality
 #define CREATE_MAP(type, key_type, value_type)                                                       \
-  namespace WINMLP {                                                                                 \
+  namespace WINMLP {                                    \
   struct type : public _winml::MapBase<type, key_type, value_type> {                                 \
     type(wfc::IMap<key_type, value_type> const& data) : MapBase<type, key_type, value_type>(data){}; \
   };                                                                                                 \
@@ -110,7 +110,7 @@ CREATE_MAP(MapStringToString, hstring, hstring)
 
 // CREATE_SEQUENCE is used by sequence types to implement common functionality
 #define CREATE_SEQUENCE(type, element_type, raw_type)                                                    \
-  namespace WINMLP {                                                                                     \
+  namespace WINMLP {                                        \
   struct type : public _winml::SequenceBase<type, element_type, raw_type> {                              \
     type(wfc::IIterable<element_type> const& data) : SequenceBase<type, element_type, raw_type>(data){}; \
   };                                                                                                     \
@@ -135,6 +135,7 @@ CREATE_SEQUENCE(SequenceTensorInt64Bit, winml::TensorInt64Bit, int64_t)
 CREATE_SEQUENCE(SequenceTensorFloat16Bit, winml::TensorFloat16Bit, _winml::Half)
 CREATE_SEQUENCE(SequenceTensorString, winml::TensorString, std::string)
 
+
 namespace _winml {
 
 template <typename TValueType, typename TDataType>
@@ -142,6 +143,7 @@ inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable(
     _winml::BindingType bindingType,
     const wf::IInspectable& inspectable,
     const winml::ITensorFeatureDescriptor& descriptor) {
+  
   if (descriptor.TensorKind() == _winml::TensorKindFrom<TDataType>::Type) {
     if (auto vector = inspectable.try_as<wfc::IVector<TDataType>>()) {
       return TValueType::CreateFromIterable(descriptor.Shape(), vector);
@@ -162,6 +164,7 @@ inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable<winmlp
     _winml::BindingType bindingType,
     const wf::IInspectable& inspectable,
     const winml::ITensorFeatureDescriptor& descriptor) {
+
   if (descriptor.TensorKind() == winml::TensorKind::Int8) {
     if (auto vector = inspectable.try_as<wfc::IVector<uint8_t>>()) {
       return winmlp::TensorInt8Bit::CreateFromIterable(descriptor.Shape(), vector);
@@ -182,6 +185,7 @@ inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable<winmlp
     _winml::BindingType bindingType,
     const wf::IInspectable& inspectable,
     const winml::ITensorFeatureDescriptor& descriptor) {
+
   if (descriptor.TensorKind() == winml::TensorKind::Float16) {
     if (auto vector = inspectable.try_as<wfc::IVector<float>>()) {
       return winmlp::TensorFloat16Bit::CreateFromIterable(descriptor.Shape(), vector);
@@ -201,6 +205,7 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
     _winml::BindingType bindingType,
     const wf::IInspectable& inspectable,
     const winml::ILearningModelFeatureDescriptor& descriptor) {
+
   // Tensor and ImageFeatureValue types are passed in directly as feature values
   if (auto featureValue = inspectable.try_as<winml::ILearningModelFeatureValue>()) {
     return featureValue;
@@ -275,7 +280,7 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
       return winmlp::MapInt64BitToString::Create(map);
     }
   }
-
+    
   if (descriptor.Kind() == winml::LearningModelFeatureKind::Sequence) {
     // SequenceFeatureValues Types are implicitly inferred from the iinspectable object
     if (auto sequence = inspectable.try_as<wfc::IVector<wfc::IMap<winrt::hstring, float>>>()) {
@@ -286,7 +291,7 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
     }
     if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorFloat>>()) {
       return winmlp::SequenceTensorFloat::Create(sequence);
-    }
+    }    
     if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorBoolean>>()) {
       return winmlp::SequenceTensorBoolean::Create(sequence);
     }
@@ -334,7 +339,7 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
       }
       if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorFloat>>()) {
         return winmlp::SequenceTensorFloat::Create(sequence);
-      }
+      }    
       if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorBoolean>>()) {
         return winmlp::SequenceTensorBoolean::Create(sequence);
       }
@@ -372,7 +377,8 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
         return winmlp::SequenceTensorString::Create(sequence);
       }
     }
-  } else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
+  }
+  else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
     auto tensorDescriptor = descriptor.as<winml::ITensorFeatureDescriptor>();
 
     // Vector of IBuffer Input should be copied into the appropriate Tensor
@@ -418,6 +424,7 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
       }
     }
 
+
     using TensorCreator = winml::ILearningModelFeatureValue (*)(BindingType, const wf::IInspectable& inspectable, const winml::ITensorFeatureDescriptor& descriptor);
     constexpr std::array<TensorCreator, 13> creators =
         {
@@ -435,7 +442,8 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
             CreateTensorValueFromInspectable<winmlp::TensorUInt64Bit, uint64_t>,
             CreateTensorValueFromInspectable<winmlp::TensorInt64Bit, int64_t>,
             CreateTensorValueFromInspectable<winmlp::TensorFloat16Bit, float>,
-            CreateTensorValueFromInspectable<winmlp::TensorString, winrt::hstring>};
+            CreateTensorValueFromInspectable<winmlp::TensorString, winrt::hstring>
+        };
 
     for (const auto& tensorCreator : creators) {
       if (auto createdTensor = tensorCreator(bindingType, inspectable, tensorDescriptor)) {
@@ -443,7 +451,7 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
       }
     }
   }
-
+  
   return nullptr;
 }
 

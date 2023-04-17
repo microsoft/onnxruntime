@@ -70,7 +70,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
 
   void CompareEvaluationResults(LearningModelEvaluationResult& results,
                                 std::unordered_map<std::string,
-                                                   Ort::Value>& expectedOutputFeeds,
+                                Ort::Value>& expectedOutputFeeds,
                                 const IVectorView<ILearningModelFeatureDescriptor>& outputFeatureDescriptors) {
     for (const auto& [name, value] : expectedOutputFeeds) {
       // Extract the output buffer from the evaluation output
@@ -163,8 +163,8 @@ std::string GetTestDataPath() {
   const std::string testDataPathFolderName = "\\testData\\";
   if (MAX_PATH - environmentVariableFetchSuceeded >= testDataPathFolderName.length()) {
     testDataPath.replace(environmentVariableFetchSuceeded,
-                         testDataPathFolderName.length(),
-                         testDataPathFolderName);
+        testDataPathFolderName.length(),
+        testDataPathFolderName);
   } else {
     throw std::exception("WINML_TEST_DATA_PATH environment variable path needs to be shorter to accomodate the maximum path size of %d\n", MAX_PATH);
   }
@@ -186,7 +186,7 @@ static std::vector<ITestCase*> GetAllTestCases() {
     }
   }
 
-#if !defined(__amd64__) && !defined(_M_AMD64)
+  #if !defined(__amd64__) && !defined(_M_AMD64)
   // Should match "x86_disabled_tests" in onnxruntime/test/providers/cpu/model_tests.cc
   // However there are more tests skipped. TODO: bugs must be filed for difference in models.
   static const ORTCHAR_T* x86DisabledTests[] = {
@@ -225,11 +225,13 @@ static std::vector<ITestCase*> GetAllTestCases() {
       ORT_TSTR("tf_resnet_v2_152"),
       ORT_TSTR("vgg19"),
       ORT_TSTR("yolov3"),
-      ORT_TSTR("zfnet512")};
+      ORT_TSTR("zfnet512")
+  };
   allDisabledTests.insert(std::begin(x86DisabledTests), std::end(x86DisabledTests));
 #endif
-  // Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
-  allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
+// Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
+allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
+
 
   WINML_EXPECT_NO_THROW(LoadTests(dataDirs, whitelistedTestCases, TestTolerances(1e-3, 1e-3, {}, {}),
                                   allDisabledTests,
@@ -369,12 +371,11 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   // To introduce models from model zoo, the model path is structured like this "<source>/<opset>/<model_name>/?.onnx"
   std::string source = tokenizedModelPath[tokenizedModelPath.size() - 4];
   // `models` means the root of models, to be ompatible with the old structure, that is, the source name is empty.
-  if (source != "models") {
+  if (source != "models"){
     name += "_" + source;
   }
 
-  std::replace_if(
-      name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_');
+  std::replace_if(name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_');
 
   // Determine if test should be skipped, using the generic name (no CPU or GPU suffix yet).
   bool isDisabled = ModifyNameIfDisabledTest(/*inout*/ name, deviceKind);
@@ -386,7 +387,8 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   }
 
   // Check once more with the full name, lest any GPU-specific/CPU-specific cases exist.
-  if (!isDisabled) {
+  if (!isDisabled)
+  {
     ModifyNameIfDisabledTest(/*inout*/ name, deviceKind);
   }
 

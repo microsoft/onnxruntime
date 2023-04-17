@@ -450,7 +450,7 @@ static void Scenario8SetDeviceSampleCustomCommandQueue() {
   LearningModelSession dmlSessionCustom(model, dmlDeviceCustom);
 }
 
-// pass a Tensor in as an input GPU
+//pass a Tensor in as an input GPU
 static void Scenario9LoadBindEvalInputTensorGPU() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"fns-candy.onnx";
@@ -605,7 +605,7 @@ struct SwapChainEntry {
 };
 void SubmitEval(LearningModel model, SwapChainEntry* sessionBindings, int swapchaindex) {
   if (sessionBindings[swapchaindex].activetask != nullptr) {
-    // make sure the previously submitted work for this swapchain index is complete before reusing resources
+    //make sure the previously submitted work for this swapchain index is complete before reusing resources
     sessionBindings[swapchaindex].activetask.get();
   }
   // bind the input and the output buffers by name
@@ -620,7 +620,7 @@ void SubmitEval(LearningModel model, SwapChainEntry* sessionBindings, int swapch
   // return without waiting for the submit to finish, setup the completion handler
 }
 
-// Scenario14:Load single model, run it multiple times on a single gpu device using a fast swapchain pattern
+//Scenario14:Load single model, run it multiple times on a single gpu device using a fast swapchain pattern
 static void Scenario14RunModelSwapchain() {
   const int swapchainentrycount = 3;
   SwapChainEntry sessionBindings[swapchainentrycount];
@@ -636,17 +636,17 @@ static void Scenario14RunModelSwapchain() {
     sessionBindings[i].binding = LearningModelBinding(sessionBindings[i].session);
   }
 
-  // submit 10 evaluations to 3 swapchain entries
+  //submit 10 evaluations to 3 swapchain entries
   int swapchaindex = 0;
   for (int i = 0; i < 10; i++) {
     swapchaindex = swapchaindex % swapchainentrycount;
     SubmitEval(model, sessionBindings, (swapchaindex)++);
   }
 
-  // wait for all work to be completed
+  //wait for all work to be completed
   for (int i = 0; i < swapchainentrycount; i++) {
     if (sessionBindings[i].activetask != nullptr) {
-      // make sure the previously submitted work for this swapchain index is compolete before resuing resources
+      //make sure the previously submitted work for this swapchain index is compolete before resuing resources
       sessionBindings[i].activetask.get();
     }
   }
@@ -702,7 +702,7 @@ static void Scenario17DevDiagnostics() {
  * Custom Operator Tests are labeled as GPU tests because the DML code is interlaced with the custom op code
  * even though CPU custom ops shouldn't be dependent on GPU functionality.
  * These should be reclassed to ScenarioCppWinrt once the DML code is decoupled from the custom op code.
- **/
+**/
 // create a session that loads a model with a branch new operator, register the custom operator, and load/bind/eval
 static void Scenario20aLoadBindEvalCustomOperatorCPU() {
   std::wstring filePath = FileHelpers::GetModulePath() + L"noisy_relu.onnx";
@@ -750,7 +750,7 @@ static void Scenario21RunModel2ChainZ() {
   // now bind that output to the next models input
   binding2.Bind(input.Name(), outputValue);
 
-  // eval the second model
+  //eval the second model
   auto session2AsyncOp = session2.EvaluateAsync(binding2, L"");
 
   // now get the output don't wait, queue up the next model
@@ -787,7 +787,7 @@ bool VerifyHelper(ImageFeatureValue actual, ImageFeatureValue expected) {
   UINT errors = 0;
   for (uint32_t i = 0; i < size; i++, pActualByte++, pExpectedByte++) {
     // Only the check the first three channels, which are (B, G, R)
-    if ((i + 1) % 4 == 0) continue;
+    if((i + 1) % 4 == 0) continue;
     auto diff = std::abs(*pActualByte - *pExpectedByte);
     if (diff > epsilon) {
       errors++;
@@ -1037,7 +1037,7 @@ static void Scenario22ImageBindingAsGPUTensor() {
   ImageFeatureValue bm_imagevalue = ImageFeatureValue::CreateFromVideoFrame(bm_videoFrame);
   WINML_EXPECT_TRUE(VerifyHelper(bm_imagevalue, outputTensor));
 
-  // check the output video frame object
+  //check the output video frame object
   StorageFolder currentfolder = StorageFolder::GetFolderFromPathAsync(modulePath).get();
   StorageFile outimagefile = currentfolder.CreateFileAsync(outputDataImageFileName, CreationCollisionOption::ReplaceExisting).get();
   IRandomAccessStream writestream = outimagefile.OpenAsync(FileAccessMode::ReadWrite).get();
@@ -1053,10 +1053,11 @@ static void Scenario23NominalPixelRange() {
 
   // The following models have single op "add", with different metadata
   std::vector<std::wstring> modelPaths = {
-      // Normalized_0_1 and image output
-      modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
-      // Normalized_1_1 and image output
-      modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"};
+    // Normalized_0_1 and image output
+    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
+    // Normalized_1_1 and image output
+    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
+  };
 
   for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
     // load model and create session
@@ -1069,12 +1070,12 @@ static void Scenario23NominalPixelRange() {
     auto imageValue = ImageFeatureValue::CreateFromVideoFrame(videoFrame);
 
     // Create Zero tensor
-    auto inputShape = std::vector<int64_t>{1, 3, 1080, 1920};
+    auto inputShape = std::vector<int64_t>{ 1, 3, 1080, 1920 };
     auto inputData = std::vector<float>(3 * 1080 * 1920, 0);
     auto zeroValue =
-        TensorFloat::CreateFromIterable(
-            inputShape,
-            winrt::single_threaded_vector<float>(std::move(inputData)).GetView());
+      TensorFloat::CreateFromIterable(
+        inputShape,
+        winrt::single_threaded_vector<float>(std::move(inputData)).GetView());
     // bind inputs
     binding.Bind(L"input_39", imageValue);
     binding.Bind(L"input_40", zeroValue);
@@ -1524,7 +1525,7 @@ static void BindMultipleCPUBuffersAsInputs(LearningModelDeviceKind kind) {
   buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(red));
   buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(green));
   buffers.Append(wss::Buffer::CreateCopyFromMemoryBuffer(blue));
-
+  
   // Bind input
   binding.Bind(model.InputFeatures().First().Current().Name(), buffers);
 
@@ -1626,7 +1627,7 @@ static void BindMultipleCPUBuffersAsOutputs(LearningModelDeviceKind kind) {
   red_buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>()->Buffer(reinterpret_cast<byte**>(&red_bytes));
   green_buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>()->Buffer(reinterpret_cast<byte**>(&green_bytes));
   blue_buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>()->Buffer(reinterpret_cast<byte**>(&blue_bytes));
-
+  
   // Verify the output by comparing with the benchmark image
   SoftwareBitmap benchmark_bitmap = FileHelpers::GetSoftwareBitmapFromFile(bmImagePath);
   benchmark_bitmap = SoftwareBitmap::Convert(benchmark_bitmap, BitmapPixelFormat::Bgra8);
@@ -1637,12 +1638,12 @@ static void BindMultipleCPUBuffersAsOutputs(LearningModelDeviceKind kind) {
   wf::IMemoryBufferReference benchmark_reference = benchmark_bitmap_buffer.CreateReference();
   auto benchmark_byte_access = benchmark_reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
   benchmark_byte_access->GetBuffer(&benchmark_data, &benchmark_size);
-
+  
   // hard code, might need to be modified later.
   const float cMaxErrorRate = 0.06f;
   byte epsilon = 20;
   UINT errors = 0;
-  for (UINT32 i = 0; i < height * width; i++) {
+  for (UINT32 i = 0; i < height * width; i ++) {
     if (std::abs(red_bytes[i] - benchmark_data[i * 4]) > epsilon) {
       errors++;
     }
@@ -1657,6 +1658,7 @@ static void BindMultipleCPUBuffersAsOutputs(LearningModelDeviceKind kind) {
   std::cout << "total errors is " << errors << "/" << total_size << ", errors rate is " << (float)errors / total_size << "\n";
 
   WINML_EXPECT_TRUE((float)errors / total_size < cMaxErrorRate);
+
 
   // check the output video frame object by saving output image to disk
   std::wstring outputDataImageFileName = L"out_cpu_tensor_fish_720.jpg";

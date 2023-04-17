@@ -117,3 +117,4 @@ class PoolObjectWrapper {
 };
 
 }  // namespace _winml
+

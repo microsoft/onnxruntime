@@ -15,26 +15,26 @@ namespace _winml {
 
 inline size_t compute_size_of_shape(const std::vector<int64_t>& shape) {
   auto size_of_shape =
-      static_cast<size_t>(
-          std::accumulate(
-              std::begin(shape),
-              std::end(shape),
-              static_cast<int64_t>(1),
-              std::multiplies<int64_t>()));
+    static_cast<size_t>(
+      std::accumulate(
+        std::begin(shape),
+        std::end(shape),
+        static_cast<int64_t>(1),
+        std::multiplies<int64_t>()));
   return size_of_shape;
 }
 
 template <typename T>
 inline auto create_data(
-    const std::vector<int64_t>& shape,
-    const wfc::IIterable<wss::IBuffer>& buffers) {
+  const std::vector<int64_t>& shape,
+  const wfc::IIterable<wss::IBuffer>& buffers) {
   return _winml::numeric_data::create(compute_size_of_shape(shape), sizeof(T), buffers);
 }
 
 template <>
 inline auto create_data<std::string>(
-    const std::vector<int64_t>& shape,
-    const wfc::IIterable<wss::IBuffer>& /*buffers*/) {
+  const std::vector<int64_t>& shape,
+  const wfc::IIterable<wss::IBuffer>& /*buffers*/) {
   return _winml::string_data::create(compute_size_of_shape(shape));
 }
 
@@ -48,13 +48,15 @@ class Tensor {
   Tensor() = delete;
 
  public:
-  Tensor(const std::vector<int64_t>& shape) : data_(create_data<T>(shape, nullptr)),
-                                              shape_(shape) {}
+  Tensor(const std::vector<int64_t>& shape) :
+    data_(create_data<T>(shape, nullptr)),
+    shape_(shape) {}
 
   Tensor(
-      const std::vector<int64_t>& shape,
-      const wfc::IIterable<wss::IBuffer>& buffers) : data_(create_data<T>(shape, buffers)),
-                                                     shape_(shape) {}
+    const std::vector<int64_t>& shape,
+    const wfc::IIterable<wss::IBuffer>& buffers) :
+      data_(create_data<T>(shape, buffers)),
+      shape_(shape) {}
 
   auto size_in_bytes() const {
     return data_->size_in_bytes();

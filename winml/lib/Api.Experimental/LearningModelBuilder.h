@@ -30,7 +30,7 @@ struct LearningModelBuilder : LearningModelBuilderT<LearningModelBuilder> {
       array_view<int64_t const> shape);
 
   _winml::IModel* UseModel();
-
+  
   winml::LearningModelSession InertSession() {
     return inert_session_;
   }
@@ -44,9 +44,9 @@ struct LearningModelBuilder : LearningModelBuilderT<LearningModelBuilder> {
   winml_experimental::LearningModelOutputs outputs_;
   winml_experimental::LearningModelOperatorSet operators_;
 };
-}  // namespace WINML_EXPERIMENTALP
+}  // WINML_EXPERIMENTALP
 
 namespace WINML_EXPERIMENTAL::factory_implementation {
 struct LearningModelBuilder : LearningModelBuilderT<LearningModelBuilder, implementation::LearningModelBuilder> {
 };
-}  // namespace WINML_EXPERIMENTAL::factory_implementation
+}  // namespace winrt::winml_experimental::factory_implementation

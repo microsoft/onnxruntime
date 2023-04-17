@@ -30,9 +30,11 @@ namespace WINMLP {
 LearningModelSession::LearningModelSession(_winml::IEngine* engine) : operator_registry_(nullptr, nullptr),
                                                                       model_(nullptr),
                                                                       device_(LearningModelDeviceKind::Cpu),
-                                                                      session_options_(nullptr) {
-  engine_.copy_from(engine);
+                                                                      session_options_(nullptr)
+{ 
+    engine_.copy_from(engine);
 }
+
 
 LearningModelSession::LearningModelSession(
     winml::LearningModel const& model) try : LearningModelSession(model,
@@ -135,7 +137,7 @@ void LearningModelSession::Initialize() {
     allow_spinning = session_options_impl->GetIntraOpThreadSpinning();
     num_intra_op_threads = session_options_impl->GetIntraOpNumThreads();
   }
-
+  
   bool create_local_thread_pool = allow_spinning != device_impl->AllowSpinning() ||
                                   num_intra_op_threads != device_impl->NumberOfIntraOpThreads();
   if (create_local_thread_pool) {
@@ -144,7 +146,8 @@ void LearningModelSession::Initialize() {
   } else {
     winrt::com_ptr<_winml::IThreading> thread_pool = nullptr;
     WINML_THROW_IF_FAILED(device_impl->GetThreadPool(thread_pool.put()));
-    if (thread_pool == nullptr) {
+    if (thread_pool == nullptr)
+    {
       WINML_THROW_IF_FAILED(engine_factory_->CreateThreadPool(allow_spinning, num_intra_op_threads, thread_pool.put()));
       WINML_THROW_IF_FAILED(device_impl->CacheThreadPool(thread_pool.get()));
     }
@@ -266,11 +269,11 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
       [&](auto& input) { return input.get(); });
 
   WINML_THROW_IF_FAILED(engine_->Run(input_names_raw.data(),
-                                     inputs_raw.data(),
-                                     input_names_raw.size(),
-                                     output_names_raw.data(),
-                                     outputs_raw.data(),
-                                     output_names_raw.size()));
+               inputs_raw.data(),
+               input_names_raw.size(),
+               output_names_raw.data(),
+               outputs_raw.data(),
+               output_names_raw.size()));
 
   if (!device->IsCpuDevice()) {
     // Flush the D3D12 work from the DML execution provider and queue a fence before we release the lock.
@@ -445,7 +448,8 @@ void LearningModelSession::CheckClosed() {
   }
 }
 
-STDMETHODIMP LearningModelSession::GetIntraOpNumThreads(uint32_t* numThreads) {
+STDMETHODIMP LearningModelSession::GetIntraOpNumThreads(uint32_t* numThreads)
+{
   return engine_->GetNumberOfIntraOpThreads(numThreads);
 }
 

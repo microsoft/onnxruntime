@@ -7,7 +7,8 @@
 
 namespace _winml {
 
-string_data::string_data(size_t size) : buffer_(size) {}
+string_data::string_data(size_t size) :
+    buffer_(size) {}
 
 std::shared_ptr<_winml::idata> string_data::create(size_t size) {
   return std::make_shared<string_data>(size);

@@ -64,4 +64,4 @@ struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, _winml::ILotusV
 namespace WINML::factory_implementation {
 struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, implementation::ImageFeatureValue> {
 };
-}  // namespace WINML::factory_implementation
+}  // namespace WINMLP

@@ -103,6 +103,7 @@ class CpuTensorizer {
   }
 
  private:
+
   template <typename T>
   static T ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter);
 

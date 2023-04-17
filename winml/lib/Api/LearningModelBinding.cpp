@@ -11,7 +11,8 @@
 #include "LearningModel.h"
 
 namespace WINMLP {
-LearningModelBinding::~LearningModelBinding() {
+LearningModelBinding::~LearningModelBinding()
+{
   Clear();
 }
 
@@ -137,7 +138,7 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> Lea
   // Hold onto the input output providers so that our memory doesnt get destroyed!
   auto providerInfo = ProviderInfo{inspectable, spLotusValueProvider, context};
   CacheProvider(name, providerInfo);
-
+  
   return std::make_tuple(name, value, bindingType);
 }
 
@@ -152,6 +153,7 @@ void LearningModelBinding::Bind(
     hstring const& name,
     wf::IInspectable const& value,
     wfc::IPropertySet const& properties) try {
+
   // if this is being called on the GPU, grab the DML lock
   // the DML EP is not thread safe.
   auto session = m_session.as<winmlp::LearningModelSession>();
@@ -478,7 +480,7 @@ STDMETHODIMP LearningModelBinding::Bind(
     auto session = m_session.as<winmlp::LearningModelSession>();
     auto device = m_session.Device().as<winmlp::LearningModelDevice>();
     CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
-
+    
     _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
     _winml::BindingType binding_type;
     std::string binding_name;

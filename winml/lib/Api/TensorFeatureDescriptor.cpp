@@ -97,8 +97,8 @@ TensorFeatureDescriptor::GetDescription(
 }
 
 HRESULT TensorFeatureDescriptor::GetDescriptorInfo(
-    _winml::IEngineFactory* engine_factory,
-    _winml::IDescriptorInfo** info) {
+    _winml::IEngineFactory* engine_factory, 
+    _winml::IDescriptorInfo** info){
   engine_factory->CreateTensorDescriptorInfo(tensor_kind_, shape_.data(), shape_.size(), info);
   return S_OK;
 };

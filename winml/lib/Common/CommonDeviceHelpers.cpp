@@ -130,7 +130,7 @@ HRESULT IsFloat16Blocked(ID3D12Device& device, bool* isBlocked) {
   *isBlocked = CheckAdapterFP16Blocked(isMcdmAdapter, vendorId, majorVersion, minorVersion);
   return S_OK;
 }
-}  // namespace
+}
 
 namespace CommonDeviceHelpers {
 constexpr uint32_t c_intelVendorId = 0x8086;
@@ -152,7 +152,7 @@ bool IsFloat16Supported(const winml::LearningModelDevice& device) {
 
 bool IsFloat16Supported(ID3D12Device* device) {
 #ifndef USE_DML
-  throw winrt::hresult_error(E_NOTIMPL, L"IsFloat16Supported is not implemented for WinML only build.");
+    throw winrt::hresult_error(E_NOTIMPL, L"IsFloat16Supported is not implemented for WinML only build."); 
 #else
   bool isBlocked;
   if (FAILED(IsFloat16Blocked(*device, &isBlocked)) || isBlocked) {

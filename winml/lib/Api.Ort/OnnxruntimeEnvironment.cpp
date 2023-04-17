@@ -36,7 +36,7 @@ static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
   // Store + Redist (note that this is never built into the inbox dll)
   auto out_module = LoadPackagedLibrary(L"onnxruntime.dll", 0);
 #else
-  auto onnxruntime_dll = CurrentModulePath() + L"\\onnxruntime.dll";
+  auto onnxruntime_dll = CurrentModulePath() + L"\\onnxruntime.dll"; 
   auto out_module = LoadLibraryExW(onnxruntime_dll.c_str(), nullptr, 0);
 #endif
 
@@ -79,12 +79,12 @@ const WinmlAdapterApi* _winml::GetVersionedWinmlAdapterApi() {
 }
 
 static void __stdcall WinmlOrtLoggingCallback(void* param, OrtLoggingLevel severity, const char* category,
-                                              const char* logger_id, const char* code_location, const char* message) noexcept {
+                                    const char* logger_id, const char* code_location, const char* message) noexcept {
   UNREFERENCED_PARAMETER(param);
   UNREFERENCED_PARAMETER(logger_id);
   // ORT Fatal and Error Messages are logged as Telemetry, rest are non-telemetry.
   switch (severity) {
-    case OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL:  // Telemetry
+    case OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL:  //Telemetry
       TraceLoggingWrite(
           winml_trace_logging_provider,
           "WinMLLogSink",
@@ -98,7 +98,7 @@ static void __stdcall WinmlOrtLoggingCallback(void* param, OrtLoggingLevel sever
           TraceLoggingString(code_location),
           TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
       break;
-    case OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR:  // Telemetry
+    case OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR:  //Telemetry
       TraceLoggingWrite(
           winml_trace_logging_provider,
           "WinMLLogSink",
@@ -137,7 +137,7 @@ static void __stdcall WinmlOrtLoggingCallback(void* param, OrtLoggingLevel sever
           TraceLoggingString(code_location));
       break;
     case OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE:
-      __fallthrough;  // Default is Verbose too.
+      __fallthrough;  //Default is Verbose too.
     default:
       TraceLoggingWrite(
           winml_trace_logging_provider,
@@ -197,7 +197,7 @@ void OnnxruntimeEnvironment::RegisterSuspendHandler() {
     auto suspend_event_handler = winrt::Windows::Foundation::EventHandler<winrt::Windows::ApplicationModel::SuspendingEventArgs>(&OnSuspending);
     suspend_token_ = winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_event_handler);
   } catch (...) {
-  }  // Catch in case CoreApplication cannot be found for non-UWP executions
+  }  //Catch in case CoreApplication cannot be found for non-UWP executions
 }
 
 OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_(nullptr, nullptr) {

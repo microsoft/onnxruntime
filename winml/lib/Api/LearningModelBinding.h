@@ -21,14 +21,13 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   using KeyValuePair = wfc::IKeyValuePair<hstring, wf::IInspectable>;
 
   ~LearningModelBinding();
-
+  
   LearningModelBinding() = delete;
   LearningModelBinding(winml::LearningModelSession const& session);
 
   void Bind(hstring const& name, wf::IInspectable const& value);
   void Bind(hstring const& name, wf::IInspectable const& value, wfc::IPropertySet const& properties);
-  STDMETHOD(Bind)
-  (const wchar_t* name, UINT32 cchName, IUnknown* value);
+  STDMETHOD(Bind)(const wchar_t* name, UINT32 cchName, IUnknown* value);
 
   void Clear();
   wfc::IIterator<KeyValuePair> First();
@@ -50,10 +49,10 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
 
   const std::vector<std::string>& GetInputNames() const;
   const std::vector<std::string>& GetOutputNames() const;
-
+  
   const std::vector<winrt::com_ptr<_winml::IValue>>& GetInputs() const;
   std::vector<winrt::com_ptr<_winml::IValue>>& GetOutputs();
-
+    
   HRESULT BindOutput(const std::string& name, winrt::com_ptr<_winml::IValue> value);
   void BindUnboundOutputs();
 

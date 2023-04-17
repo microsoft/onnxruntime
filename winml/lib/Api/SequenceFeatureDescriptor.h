@@ -48,7 +48,6 @@ struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
   (
       _winml::IEngineFactory* engine_factory,
       _winml::IDescriptorInfo** info) override;
-
  private:
   winrt::hstring name_;
   winrt::hstring description_;

@@ -42,20 +42,17 @@ struct SequenceBase : public winrt::implements<
           std::is_same<TRaw, int64_t>::value ||
           std::is_same<TRaw, _winml::Half>::value ||
           std::is_same<TRaw, std::string>::value,
-      "Only sequences of of map<string, float>, map<int64, float> and tensor<T> are supported.");
+          "Only sequences of of map<string, float>, map<int64, float> and tensor<T> are supported.");
 
-  template <typename T>
-  struct SequenceAbiTypeInfo {
+  template <typename T> struct SequenceAbiTypeInfo {
     static constexpr winml::TensorKind Key = winml::TensorKind::Undefined;
     static constexpr winml::TensorKind Value = winml::TensorKind::Undefined;
   };
-  template <>
-  struct SequenceAbiTypeInfo<AbiMapStringToFloat> {
+  template <> struct SequenceAbiTypeInfo<AbiMapStringToFloat> {
     static constexpr winml::TensorKind Key = winml::TensorKind::String;
     static constexpr winml::TensorKind Value = winml::TensorKind::Float;
   };
-  template <>
-  struct SequenceAbiTypeInfo<AbiMapInt64BitToFloat> {
+  template <> struct SequenceAbiTypeInfo<AbiMapInt64BitToFloat> {
     static constexpr winml::TensorKind Key = winml::TensorKind::Int64;
     static constexpr winml::TensorKind Value = winml::TensorKind::Float;
   };
@@ -63,6 +60,7 @@ struct SequenceBase : public winrt::implements<
   template <typename TElement>
   void
   GetElementDescriptor(winml::ILearningModelFeatureDescriptor* result) {
+    
     *result = _winml::TensorFeatureDescriptorFrom<TRaw>::CreateAnonymous(std::vector<int64_t>{});
   }
 
@@ -120,9 +118,8 @@ struct SequenceBase : public winrt::implements<
     return winml::LearningModelFeatureKind::Sequence;
   }
 
-  STDMETHOD(get_ElementDescriptor)
-  (
-      winml::ILearningModelFeatureDescriptor* result) {
+  STDMETHOD(get_ElementDescriptor)(
+    winml::ILearningModelFeatureDescriptor* result) {
     FAIL_FAST_IF_NULL(result);
 
     GetElementDescriptor<T>(result);
@@ -130,10 +127,9 @@ struct SequenceBase : public winrt::implements<
     return S_OK;
   }
 
-  STDMETHOD(GetValue)
-  (
-      _winml::BindingContext& context,
-      IValue** out) {
+  STDMETHOD(GetValue)(
+    _winml::BindingContext& context,
+    IValue** out) {
     auto session = context.session.as<winmlp::LearningModelSession>();
     auto engine = session->GetEngine();
 
@@ -146,7 +142,8 @@ struct SequenceBase : public winrt::implements<
         RETURN_IF_FAILED(engine->CreateSequenceOfMapsValue(
             reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)),
             SequenceAbiTypeInfo<T>::Key, SequenceAbiTypeInfo<T>::Value, out));
-      } else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
+      }
+      else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
         // In opset 11, operators that require seq<tensor<t>> were added.
 
         // IVector<Tensor*> -> std::vector<IValue>
@@ -195,42 +192,28 @@ struct SequenceBase : public winrt::implements<
     return S_OK;
   }
 
-  template <typename TElement = T>
-  auto CreatePlaceholderTensor() { return TElement(nullptr); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorBoolean>() { return winmlp::TensorBoolean::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorFloat>() { return winmlp::TensorFloat::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorDouble>() { return winmlp::TensorDouble::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorInt8Bit>() { return winmlp::TensorInt8Bit::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorUInt8Bit>() { return winmlp::TensorUInt8Bit::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorUInt16Bit>() { return winmlp::TensorUInt16Bit::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorInt16Bit>() { return winmlp::TensorInt16Bit::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorUInt32Bit>() { return winmlp::TensorUInt32Bit::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorInt32Bit>() { return winmlp::TensorInt32Bit::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorUInt64Bit>() { return winmlp::TensorUInt64Bit::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorInt64Bit>() { return winmlp::TensorInt64Bit::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorFloat16Bit>() { return winmlp::TensorFloat16Bit::Create(); }
-  template <>
-  auto CreatePlaceholderTensor<winml::TensorString>() { return winmlp::TensorString::Create(); }
-
+  template <typename TElement = T> auto CreatePlaceholderTensor() { return TElement(nullptr); }
+  template <> auto CreatePlaceholderTensor<winml::TensorBoolean>() { return winmlp::TensorBoolean::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorFloat>() { return winmlp::TensorFloat::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorDouble>() { return winmlp::TensorDouble::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorInt8Bit>() { return winmlp::TensorInt8Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorUInt8Bit>() { return winmlp::TensorUInt8Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorUInt16Bit>() { return winmlp::TensorUInt16Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorInt16Bit>() { return winmlp::TensorInt16Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorUInt32Bit>() { return winmlp::TensorUInt32Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorInt32Bit>() { return winmlp::TensorInt32Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorUInt64Bit>() { return winmlp::TensorUInt64Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorInt64Bit>() { return winmlp::TensorInt64Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorFloat16Bit>() { return winmlp::TensorFloat16Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorString>() { return winmlp::TensorString::Create(); }
+  
   void AppendValue(
       _winml::BindingContext& context, wfc::IVector<T> data, winrt::com_ptr<_winml::IValue> value) {
     auto tensor = CreatePlaceholderTensor();
     auto value_provider = tensor.as<_winml::ILotusValueProviderPrivate>();
     WINML_THROW_IF_FAILED(value_provider->UpdateSourceResourceData(context, value.get()));
     data.Append(tensor);
-  }
+  }  
 
   STDMETHOD(UpdateSourceResourceData)
   (BindingContext& context, IValue* out) {

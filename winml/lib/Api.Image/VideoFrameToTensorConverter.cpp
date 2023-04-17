@@ -52,7 +52,7 @@ class DX12TextureToGPUTensorTelemetryEvent {
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 
- private:
+private:
   int runtime_session_id_;
 };
 
@@ -84,7 +84,7 @@ class SoftwareBitmapToGPUTensorTelemetryEvent {
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 
- private:
+private:
   int runtime_session_id_;
 };
 
@@ -116,7 +116,7 @@ class ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent {
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 
- private:
+private:
   int runtime_session_id_;
 };
 
@@ -166,7 +166,8 @@ void VideoFrameToTensorConverter::VideoFrameToSoftwareTensor(
   }
 }
 
-ComPtr<ID3D12Resource> VideoFrameToTensorConverter::ShareD3D11Texture(ID3D11Texture2D* pTexture, ID3D12Device* pDevice) {
+ComPtr<ID3D12Resource> VideoFrameToTensorConverter::ShareD3D11Texture(ID3D11Texture2D* pTexture, ID3D12Device* pDevice)
+{
   assert(pTexture != nullptr);
   assert(pDevice != nullptr);
 
@@ -214,8 +215,8 @@ void VideoFrameToTensorConverter::VideoFrameToDX12Tensor(
     if (!_winmli::DirectXPixelFormatSupported(spDirect3DSurface.Description().Format) || static_cast<UINT>(inputBounds.Width) != tensorDesc.sizes[3] || static_cast<UINT>(inputBounds.Height) != tensorDesc.sizes[2]) {
       // Force the VideoFrame to not do a conversion if the format is supported since we do it during the tensorization anyway
       wgdx::DirectXPixelFormat newFormat = _winmli::DirectXPixelFormatSupported(spDirect3DSurface.Description().Format)
-                                               ? spDirect3DSurface.Description().Format
-                                               : _winmli::GetDirectXPixelFormatFromChannelType(tensorDesc.channelType);
+                                         ? spDirect3DSurface.Description().Format
+                                         : _winmli::GetDirectXPixelFormatFromChannelType(tensorDesc.channelType);
 
       // Change the input bounds since the video frame pipeline already cropped the texture
       scaledBounds = {0, 0, static_cast<uint32_t>(tensorDesc.sizes[3]), static_cast<uint32_t>(tensorDesc.sizes[2])};
@@ -428,8 +429,9 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
     command_list_->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
     // This code currently re-uses the same decriptors each execution, which is unsafe if previous executions are in flight.
-    if (fence_completion_value_ > 0) {
-      device_cache.WaitForFenceValue(fence_completion_value_);
+    if (fence_completion_value_ > 0)
+    {
+        device_cache.WaitForFenceValue(fence_completion_value_);
     }
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize);
@@ -482,8 +484,8 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
 
     // Force the VideoFrame to not do a conversion if the format is supported since we do it during the tensorization anyway
     wgi::BitmapPixelFormat newPixelFormat = _winmli::SoftwareBitmapFormatSupported(videoFrame.SoftwareBitmap())
-                                                ? videoFrame.SoftwareBitmap().BitmapPixelFormat()
-                                                : _winmli::GetBitmapPixelFormatFromChannelType(tensorDesc.channelType);
+                                           ? videoFrame.SoftwareBitmap().BitmapPixelFormat()
+                                           : _winmli::GetBitmapPixelFormatFromChannelType(tensorDesc.channelType);
 
     convertedSoftwareBitmap = wgi::SoftwareBitmap(newPixelFormat, static_cast<int32_t>(tensorDesc.sizes[3]), static_cast<int32_t>(tensorDesc.sizes[2]));
     wm::VideoFrame convertedVideoFrame = wm::VideoFrame::CreateWithSoftwareBitmap(convertedSoftwareBitmap);
@@ -531,7 +533,7 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   command_list_->ResourceBarrier(1, &barrier);
 
   command_list_->CopyBufferRegion(pOutputResource, bufferSize * batchIdx, upload_heap_.Get(), 0, bufferSize);
-
+  
   WINML_THROW_IF_FAILED(command_list_->Close());
   ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};
   device_cache.GetCommandQueue()->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
@@ -568,9 +570,9 @@ void VideoFrameToTensorConverter::ConvertBuffersToBatchedGPUTensor(
       gpu_buffer_span);
 
   upload_heap_->Unmap(0, &CD3DX12_RANGE(0, buffer_size_in_bytes));
-
+  
   ResetCommandList(device_cache);
-
+  
   auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(output_resource, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
   command_list_->ResourceBarrier(1, &barrier1);
   command_list_->CopyBufferRegion(output_resource, 0, upload_heap_.Get(), 0, buffer_size_in_bytes);

@@ -29,7 +29,8 @@ LearningModelBuilder::LearningModelBuilder(int64_t opset) : inert_session_(nullp
 LearningModelBuilder::LearningModelBuilder(LearningModelBuilder& builder) : inert_session_(nullptr),
                                                                             inputs_(builder.inputs_),
                                                                             outputs_(builder.outputs_),
-                                                                            operators_(builder.operators_) {
+                                                                            operators_(builder.operators_)
+{
 }
 
 winml_experimental::LearningModelInputs LearningModelBuilder::Inputs() {
