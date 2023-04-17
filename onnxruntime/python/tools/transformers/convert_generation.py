@@ -164,6 +164,17 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     output_group.add_argument(
+        "-b",
+        "--op_block_list",
+        required=False,
+        nargs="*",
+        default=["auto"],
+        help="Disable certain onnx operators when exporting model to onnx format. When using default"
+        'value for gpt2 type of model fp16 precision, it will be set to ["Add", "LayerNormalization",'
+        ' "SkipLayerNormalization", "FastGelu"]. Other situation, it will be set to []',
+    )
+
+    output_group.add_argument(
         "-e",
         "--use_external_data_format",
         required=False,
@@ -182,7 +193,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--disable_pad_vocab_size",
         required=False,
         action="store_true",
-        help="Do not pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size. The logits MatMul may hence be of poor performance for fp16 precision.",
+        help="Do not pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is"
+        " the vocab size. The logits MatMul may hence be of poor performance for fp16 precision.",
     )
     output_group.set_defaults(disable_pad_vocab_size=False)
 
@@ -191,7 +203,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--disable_separate_gpt2_decoder_for_init_run",
         required=False,
         action="store_true",
-        help="Do not create separate decoder subgraphs for initial and remaining runs. This does not allow for optimizations based on sequence lengths in each subgraph",
+        help="Do not create separate decoder subgraphs for initial and remaining runs. This does not allow "
+        "for optimizations based on sequence lengths in each subgraph",
     )
     output_group.set_defaults(disable_separate_gpt2_decoder_for_init_run=False)
 
@@ -200,7 +213,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--disable_shared_initializers",
         required=False,
         action="store_true",
-        help="do not share initializers in encoder and decoder for T5 or in the init decoder and decoder for GPT2. It will increase memory usage of t5/mt5/gpt2 models.",
+        help="do not share initializers in encoder and decoder for T5 or in the init decoder and decoder for "
+        "GPT2. It will increase memory usage of t5/mt5/gpt2 models.",
     )
     output_group.set_defaults(disable_shared_initializers=False)
 
@@ -412,6 +426,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     test_group.set_defaults(disable_parity=False)
 
     test_group.add_argument(
+        "--disable_perf_test",
+        required=False,
+        action="store_true",
+        help="do not run perf test",
+    )
+    test_group.set_defaults(disable_perf_test=False)
+
+    test_group.add_argument(
         "--torch_performance",
         required=False,
         action="store_true",
@@ -462,17 +484,22 @@ def gpt2_to_onnx(args: argparse.Namespace):
         "10",
         "--overwrite",  # Overwrite onnx file if existed
     ]
+    if args.cache_dir:
+        arguments.extend(["--cache_dir", args.cache_dir])
     if args.use_gpu:
         arguments.append("--use_gpu")
     if args.use_external_data_format:
         arguments.append("--use_external_data_format")
+
+    if len(args.op_block_list):
+        arguments.extend(["--op_block_list"])
+        arguments.extend(args.op_block_list)
 
     if args.precision == Precision.FLOAT16:
         assert args.use_gpu, "fp16 or mixed precision model cannot run in CPU. Please add --use_gpu"
         # TODO(tianleiwu): Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
         #       Currently logits and past state shall be same data type.
-        arguments.extend(["--op_block_list", "Add", "LayerNormalization", "SkipLayerNormalization", "FastGelu"])
 
     if args.verbose:
         logger.info(f"arguments for convert_to_onnx:{arguments}")
@@ -1623,6 +1650,13 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     past_present_share_buffer: bool = args.past_present_share_buffer
 
     logger.info(f"**** past_present_share_buffer={past_present_share_buffer}")
+    if len(args.op_block_list) == 1 and args.op_block_list[0] == "auto":
+        if is_gpt2 and args.precision == Precision.FLOAT16:
+            args.op_block_list = ["Add", "LayerNormalization", "SkipLayerNormalization", "FastGelu"]
+            logger.info(f"**** Setting op_block_list to {args.op_block_list}")
+            logger.info("**** use --op_block_list if you want to override the block operator list.")
+        else:
+            args.op_block_list = []
 
     if is_greedysearch or is_sampling:
         if not is_gpt2:
@@ -1654,7 +1688,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
         else:
             if not args.decoder_onnx:
-                onnx_filename = "gpt2_past_{}.onnx".format("fp16" if args.precision == Precision.FLOAT16 else "fp32")
+                onnx_filename = "{}_past_{}.onnx".format(
+                    args.model_name_or_path, "fp16" if args.precision == Precision.FLOAT16 else "fp32"
+                )
                 args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
 
             logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
@@ -2258,8 +2294,6 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     print("-" * 50)
     print("Testing beam search with onnxruntime...")
 
-    ort_session = create_ort_session(args.output, args.use_gpu)
-
     if is_greedy:
         inputs = {
             "input_ids": input_ids.cpu().numpy().astype(np.int32),
@@ -2294,18 +2328,28 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
         inputs["prefix_vocab_mask"] = prefix_vocab_mask
 
-    logger.debug("ORT inputs", inputs)  # noqa: PLE1205
-    result = ort_session.run(None, inputs)
-
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
         logger.debug("test_data_dir", test_data_dir)  # noqa: PLE1205
         from bert_test_data import output_test_data
 
+        logger.info(f"Saving test_data to {test_data_dir}/test_data_set_* ...")
+
         all_inputs = [inputs]
         for i, inputs in enumerate(all_inputs):
             dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
             output_test_data(dir, inputs)
+
+    logger.debug("ORT inputs", inputs)  # noqa: PLE1205
+
+    if args.disable_perf_test:
+        return
+
+    logger.debug("Creating ort session......")
+    ort_session = create_ort_session(args.output, args.use_gpu)
+
+    logger.debug("Run ort session......")
+    result = ort_session.run(None, inputs)
 
     # Test performance
     latency = []
@@ -2471,8 +2515,6 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     print("-" * 50)
     print("Testing beam search with onnxruntime...")
 
-    ort_session = create_ort_session(args.output, args.use_gpu)
-
     vocab_mask = np.ones((vocab_size), dtype=np.int32)
     if args.vocab_mask:
         for bad_word_id in bad_words_ids:
@@ -2505,6 +2547,8 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
             output_test_data(dir, inputs)
 
     logger.debug("ORT inputs", inputs)  # noqa: PLE1205
+
+    ort_session = create_ort_session(args.output, args.use_gpu)
 
     # Test performance
     latency = []
