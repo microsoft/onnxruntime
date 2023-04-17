@@ -738,14 +738,22 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
   }
 
-  //Parse explicit profile min/max/opt shapes if there is any
+  /*
+   * Parse explicit min/max/opt profile shapes from provider options. 
+   *
+   * The format of min/max/opt profile shapes is defined as below:
+   * "input1:dim1xdim2...,input2:dim1xdim2...,...,input1:dim3xdim4...,input2:dim3xdim4...,..."
+   * 
+   * (Note: if multiple shapes with same input name are specified, TRT EP will consider them as multiple profiles.
+   *  Please refer to ParserProfileShapes() for more details)
+   *
+   */
   bool status = true;
-
   if (status) {
     status = ParseProfileShapes(profile_min_shapes, profile_min_shapes_);
     if (!status) {
       profile_min_shapes_.clear();
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_min_shapes' is wrong, please follow the format of 'input1:dim1xdimd2,input2:dim1xdim2 ...'";
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_min_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
     }
   }
 
@@ -753,7 +761,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     status = ParseProfileShapes(profile_max_shapes, profile_max_shapes_);
     if (!status) {
       profile_max_shapes_.clear();
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_max_shapes' is wrong, please follow the format of 'input1:dim1xdimd2,input2:dim1xdim2 ...'";
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_max_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
     }
   }
 
@@ -761,7 +769,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     status = ParseProfileShapes(profile_opt_shapes, profile_opt_shapes_);
     if (!status) {
       profile_opt_shapes_.clear();
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_opt_shapes' is wrong, please follow the format of 'input1:dim1xdimd2,input2:dim1xdim2 ...'";
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_opt_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
     }
   }
 

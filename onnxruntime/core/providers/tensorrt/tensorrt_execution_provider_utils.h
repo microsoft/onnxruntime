@@ -395,7 +395,7 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
 
   std::stringstream input_string_stream(profile_shapes_string);
   char delim = ',';
-  std::string input_name_with_shape; // input_name:shape, ex: input_id:32x1
+  std::string input_name_with_shape; // input_name:shape, ex: "input_id:32x1"
   while (std::getline(input_string_stream, input_name_with_shape, delim)) {
     std::pair<std::string, std::vector<int64_t>> pair;
     if (!MakeInputNameShapePair(input_name_with_shape, pair)) {
