@@ -152,7 +152,7 @@ Status OrtModuleGraphBuilder::OptimizeForwardGraph(std::unordered_set<std::strin
   Graph& forward_graph = forward_model_->MainGraph();
   ORT_RETURN_IF_ERROR(forward_graph.Resolve());
 
-  GraphTransformerManager graph_transformation_mgr{2};
+  GraphTransformerManager graph_transformation_mgr{3};
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 

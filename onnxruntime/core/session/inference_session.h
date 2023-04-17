@@ -458,9 +458,12 @@ class InferenceSession {
    * Set the TuningResults back to each execution provider. Mainly for offline tuning.
    * @param trs is the list of TuningResults to be loaded.
    * @param error_on_invalid otherwise, validation faliure is not an error, only a warning log will be produced.
+   * @param auto_enable if true, automatically enable tunable op usage (but not tuning) if the TuningResults is
+                        correctly loaded
    * @return OK if success.
    */
-  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false);
+  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false,
+                          bool auto_enable = false);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -658,10 +661,7 @@ class InferenceSession {
 
   onnxruntime::GraphTransformerManager graph_transformer_mgr_;
 
-  InsertCastTransformer insert_cast_transformer_;
-
-  // assuming that OpSchema* elements are not null. our version of gsl::not_null doesn't specialize std::hash.
-  InlinedHashSet<const ONNX_NAMESPACE::OpSchema*> saved_runtime_optimization_produced_node_op_schemas_;
+  InlinedHashSet<gsl::not_null<const ONNX_NAMESPACE::OpSchema*>> saved_runtime_optimization_produced_node_op_schemas_;
 #endif
   // Any GraphTransformer/RewriteRule name in this set will not be enabled.
   InlinedHashSet<std::string> optimizers_to_disable_;

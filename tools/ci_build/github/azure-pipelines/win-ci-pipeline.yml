@@ -23,7 +23,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2019'
 
 - stage: x64_release
   dependsOn: []
@@ -45,7 +45,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2019'
 
 - stage: x64_release_dnnl
   dependsOn: []
@@ -65,8 +65,10 @@ stages:
         ORT_EP_NAME: DNNL
         GenerateDocumentation: false
         WITH_CACHE: true
+        # Intel EPs require Intel CPUs
         MachinePool: 'Win-CPU-2019'
 
+# Tests doesn't work on AMD CPUs
 - stage: x64_release_xnnpack
   dependsOn: []
   jobs:
@@ -79,13 +81,13 @@ stages:
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release
-        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        RunOnnxRuntimeTests: false
         RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: XNNPACK
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2019'
 
 - stage: x64_release_winml
   dependsOn: []
@@ -107,7 +109,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2019'
 
 - stage: x86_release
   dependsOn: []
@@ -127,7 +129,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2019'
 
 - stage: training_x64_debug
   dependsOn: []
@@ -167,7 +169,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win2019-CPU-training'
+        MachinePool: 'onnxruntime-Win2019-CPU-training-AMD'
 
 - stage: ort_training_apis_x64_release
   dependsOn: []
@@ -188,25 +190,4 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win2019-CPU-training'
-
-- stage: x64_release_azure
-  dependsOn: []
-  jobs:
-    - template: templates/win-ci-vs-2019.yml
-      parameters:
-        BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_azure.bat
-        buildArch: x64
-        additionalBuildFlags: --use_azure
-        msbuildPlatform: x64
-        isX86: false
-        job_name_suffix: x64_release_azure
-        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
-        EnablePython: false
-        isTraining: false
-        ORT_EP_NAME: CPU
-        GenerateDocumentation: false
-        WITH_CACHE: true
-        MachinePool: 'Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win2019-CPU-training-AMD'

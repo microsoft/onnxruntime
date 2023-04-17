@@ -48,14 +48,14 @@ def parse_arguments():
     parser.add_argument(
         "--package_path",
         required=True,
-        help="Path containing the package to be validated." + "Must only contain only one package within this.",
+        help="Path containing the package to be validated. Must only contain only one package within this.",
     )
     parser.add_argument(
         "--platforms_supported", required=True, help="Comma separated list (no space). Ex: linux-x64,win-x86,osx-x64"
     )
     parser.add_argument(
         "--verify_nuget_signing",
-        help="Flag indicating if Nuget package signing is to be verified. " "Only accepts 'true' or 'false'",
+        help="Flag indicating if Nuget package signing is to be verified. Only accepts 'true' or 'false'",
     )
 
     return parser.parse_args()
@@ -261,8 +261,8 @@ def validate_nuget(args):
 
     exit_code = 0
 
-    nupkg_copy_name = "NugetCopy" + ".nupkg"
-    zip_copy_name = "NugetCopy" + ".zip"
+    nupkg_copy_name = "NugetCopy.nupkg"
+    zip_copy_name = "NugetCopy.zip"
     zip_file = None
 
     # Remove any residual files

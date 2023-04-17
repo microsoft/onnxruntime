@@ -918,7 +918,7 @@ class OnnxModel:
                     continue
                 failed = False
                 for input_name in node.input:
-                    if input_name != "" and input_name not in deps_set:
+                    if input_name and input_name not in deps_set:
                         failed = True
                         last_node_name = node.name
                 if not failed:
@@ -1124,3 +1124,6 @@ class OnnxModel:
         for value_info in self.model.graph.value_info:
             if value_info.name not in excluded:
                 value_info.name = prefix + value_info.name
+
+    def clean_shape_infer(self):
+        self.model.graph.ClearField("value_info")

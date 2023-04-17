@@ -25,7 +25,6 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
-
 struct OrtModelTestInfo {
   std::basic_string<ORTCHAR_T> model_filename;
   std::string logid;
@@ -461,7 +460,7 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithSavedRuntimeOptimizations) {
                          std::vector<uint8_t> input_data = random.Uniform<uint8_t>(input_dims, 0, 255);
                          OrtValue ml_value;
                          CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
-                                              input_dims, input_data, &ml_value);
+                                                input_dims, input_data, &ml_value);
 
                          inputs.emplace(MakeString("X_", i), std::move(ml_value));
                          output_names.push_back(MakeString("Y_", i));

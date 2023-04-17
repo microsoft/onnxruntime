@@ -70,14 +70,14 @@ def parse_args():
         "--config",
         choices=["Debug", "MinSizeRel", "Release", "RelWithDebInfo"],
         default=default_config,
-        help="The build configuration. " f"The default is {default_config}.",
+        help=f"The build configuration. The default is {default_config}.",
     )
 
     default_docker_image_tag = "onnxruntime-android-custom-build:latest"
     parser.add_argument(
         "--docker_image_tag",
         default=default_docker_image_tag,
-        help="The tag for the Docker image. " f"The default is {default_docker_image_tag}.",
+        help=f"The tag for the Docker image. The default is {default_docker_image_tag}.",
     )
 
     parser.add_argument(
