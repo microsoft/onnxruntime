@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 namespace test {
-#ifndef DISABLE_CONTRIB_OPS
+#if defined(ORT_RUN_EXTERNAL_ONNX_TESTS) && !defined(DISABLE_CONTRIB_OPS)
 class ResNet50FusionTests : public ::testing::Test {
  protected:
   ResNet50FusionTests() : logger(DefaultLoggingManager().CreateLogger("ResNet50FusionTest")) {
