@@ -1552,12 +1552,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D position ids with shape (batch_size, sequence_length) or (1, sequence_length)</dd>
 </dl>
 
-#### Outputs (2 - 3)
+#### Outputs (1 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>mask_index</tt> : T1</dt>
+<dt><tt>mask_index</tt> (optional) : T1</dt>
 <dd>1D mask_index tensor with shape (batch_size)</dd>
 <dt><tt>embedding_sum</tt> (optional) : T</dt>
 <dd>sum of word_embedding and position_embedding without layer normalization</dd>
