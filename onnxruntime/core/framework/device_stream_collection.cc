@@ -7,9 +7,21 @@
 
 namespace onnxruntime {
 
+struct DummyNotification : public synchronize::Notification {
+DummyNotification(Stream& s) : Notification(s) {}
+void Activate() override {}
+};
+
+struct DummyStream : Stream {
+DummyStream(StreamHandle h, const OrtDevice& d) : Stream(h, d) {}
+std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
+  return std::make_unique<DummyNotification>(*this);
+}
+};
+
 class DeviceStreamCollectionImpl {
  public:
-  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams) {
+  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams), root_stream_device_(OrtDevice()) {
     device_streams_.resize(num_streams, nullptr);
     owned_streams_.reserve(num_streams);
     auto& providers = sess_state.GetExecutionProviders();
@@ -18,9 +30,27 @@ class DeviceStreamCollectionImpl {
       eps_.push_back(ep);
     }
     is_main_graph_ = sess_state.GetGraphViewer().ParentNode() == nullptr;
+    root_stream_ = std::make_unique<DummyStream>(nullptr, root_stream_device_);
   }
 
   ~DeviceStreamCollectionImpl() {
+  }
+
+  void ReleaseSingleStreamBuffers(Stream* stream) {
+    if (!stream) return;
+    for (auto& ep : eps_) {
+      auto& allocators = ep->GetAllocators();
+      for (auto& alloc : allocators) {
+        if (alloc->Info().device == stream->GetDevice() &&
+            alloc->Info().alloc_type == OrtArenaAllocator) {
+          auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
+          auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
+          if (stream_aware_alloc) {
+            stream_aware_alloc->ReleaseStreamBuffers(stream);
+          }
+        }
+      }
+    }
   }
 
   Status CleanUp(bool sync_streams) {
@@ -37,22 +67,9 @@ class DeviceStreamCollectionImpl {
 
     // only clean the streams that is owned by current context
     for (auto& stream : owned_streams_) {
-      if (stream) {
-        for (auto& ep : eps_) {
-          auto& allocators = ep->GetAllocators();
-          for (auto& alloc : allocators) {
-            if (alloc->Info().device == stream->GetDevice() &&
-                alloc->Info().alloc_type == OrtArenaAllocator) {
-              auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
-              auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
-              if (stream_aware_alloc) {
-                stream_aware_alloc->ReleaseStreamBuffers(stream.get());
-              }
-            }
-          }
-        }
-      }
+      ReleaseSingleStreamBuffers(stream.get());
     }
+    ReleaseSingleStreamBuffers(root_stream_.get());
     return Status::OK();
   }
 
@@ -67,16 +84,16 @@ class DeviceStreamCollectionImpl {
     device_streams_[idx] = stream;
   }
 
-  gsl::span<Stream*> GetStreams() {
-    return device_streams_;
-  }
-
   Stream* GetStream(size_t stream_idx) const {
     ORT_ENFORCE(stream_idx < num_streams_);
     return device_streams_[stream_idx];
   }
 
   size_t NumStreams() { return num_streams_; }
+
+  Stream* GetRootStream() {
+    return root_stream_.get();
+  }
 
  private:
   size_t num_streams_;
@@ -86,6 +103,11 @@ class DeviceStreamCollectionImpl {
   // with a different lifetime of session state, we need to hold the reference of EPs.
   InlinedVector<std::shared_ptr<IExecutionProvider>> eps_;
   bool is_main_graph_ = false;
+  // This is used in ExecutionFrame when memory pattern is enabled, to allocate the peak size memory
+  // labelled this stream in the current thread, instead of the default stream which will be used in all the threads (thus caused thread safe issue)
+  std::unique_ptr<Stream> root_stream_;
+  OrtDevice root_stream_device_;
+  void ReleaseSingleStreamBuffers();
 };
 
 DeviceStreamCollection::DeviceStreamCollection(size_t num_streams,
@@ -101,10 +123,6 @@ void DeviceStreamCollection::SetDeviceStream(size_t idx, Stream* stream) {
   impl_->SetDeviceStream(idx, stream);
 }
 
-gsl::span<Stream*> DeviceStreamCollection::GetStreams() const {
-  return impl_->GetStreams();
-}
-
 size_t DeviceStreamCollection::NumStreams() const {
   return impl_->NumStreams();
 }
@@ -115,6 +133,10 @@ Status DeviceStreamCollection::CleanUp(bool sync_streams) {
 
 Stream* DeviceStreamCollection::GetStream(size_t stream_idx) const {
   return impl_->GetStream(stream_idx);
+}
+
+Stream* DeviceStreamCollection::GetRootStream() const {
+  return impl_->GetRootStream();
 }
 
 }  // namespace onnxruntime

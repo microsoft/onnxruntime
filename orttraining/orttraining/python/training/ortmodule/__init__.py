@@ -111,7 +111,7 @@ torch.cuda.manual_seed = override_torch_cuda_manual_seed
 
 
 def _use_deterministic_algorithms(enabled):
-    global ORTMODULE_IS_DETERMINISTIC
+    global ORTMODULE_IS_DETERMINISTIC  # noqa: PLW0603
     ORTMODULE_IS_DETERMINISTIC = enabled
 
 
