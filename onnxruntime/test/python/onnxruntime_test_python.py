@@ -588,7 +588,7 @@ class TestInferenceSession(unittest.TestCase):
                 "gpu_mem_limit": 2 * 1024 * 1024 * 1024,
                 "arena_extend_strategy": "kSameAsRequested",
             }
-            model_path = "../models/zoo/opset7/ResNet18v2/resnet18-v2-7.onnx"
+            model_path = "../models/zoo/opset7/ResNet18-v2/resnet18-v2-7.onnx"
             if not os.path.exists(model_path):
                 print("cannot find resnet18-v2-7.onnx")
                 return
