@@ -24,7 +24,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// own native collection OrtValue and dispose of it along with any DisposableNamedOnnxValues
     /// </summary>
     internal class NativeOrtValueCollectionOwner<T> : IOrtValueOwner, IDisposable
-        where T:IDisposable
+        where T : IDisposable
     {
         private OrtValue _ortValue;
         private DisposableList<T> _disposables;
@@ -161,28 +161,21 @@ namespace Microsoft.ML.OnnxRuntime
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorDataLength(ortValue.Handle, out UIntPtr strLen));
                     var dataBuffer = new byte[strLen.ToUInt64()];
 
-                    using (var dataBufferHandle = new Memory<byte>(dataBuffer).Pin())
-                    using (var offsetMemoryHandle = new Memory<UIntPtr>(offsets).Pin())
-                    {
-                        unsafe
-                        {
-                            _dataBufferPointer = (IntPtr)dataBufferHandle.Pointer;
-                            NativeApiStatus.VerifySuccess(
-                                NativeMethods.OrtGetStringTensorContent(
-                                ortValue.Handle, _dataBufferPointer, strLen,
-                                (IntPtr)offsetMemoryHandle.Pointer,
-                                (UIntPtr)Count));
-                        }
-                        _dataBufferAsString = new string[Count];
+                    NativeApiStatus.VerifySuccess(
+                        NativeMethods.OrtGetStringTensorContent(
+                        ortValue.Handle, dataBuffer, strLen,
+                        offsets,
+                        (UIntPtr)Count));
 
-                        for (var i = 0; i < offsets.Length; i++)
-                        {
-                            var length = (i == offsets.Length - 1)
-                                ? strLen.ToUInt64() - offsets[i].ToUInt64()
-                                : offsets[i + 1].ToUInt64() - offsets[i].ToUInt64();
-                            // Onnx specifies strings always in UTF-8, no trailing null, no leading BOM
-                            _dataBufferAsString[i] = Encoding.UTF8.GetString(dataBuffer, (int)offsets[i], (int)length);
-                        }
+                    _dataBufferAsString = new string[Count];
+
+                    for (var i = 0; i < offsets.Length; i++)
+                    {
+                        var length = (i == offsets.Length - 1)
+                            ? strLen.ToUInt64() - offsets[i].ToUInt64()
+                            : offsets[i + 1].ToUInt64() - offsets[i].ToUInt64();
+                        // Onnx specifies strings always in UTF-8, no trailing null, no leading BOM
+                        _dataBufferAsString[i] = Encoding.UTF8.GetString(dataBuffer, (int)offsets[i], (int)length);
                     }
                 }
                 // Transfer ownership

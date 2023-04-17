@@ -1660,9 +1660,9 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorContent(
                                                         IntPtr /*(OrtValue*)*/ value,
-                                                        IntPtr /*(void*)*/  dst_buffer,
+                                                        byte[] /*(void*)*/  dst_buffer,
                                                         UIntPtr dst_buffer_len,
-                                                        IntPtr offsets,
+                                                        UIntPtr[] offsets,
                                                         UIntPtr offsets_len);
 
         public static DOrtGetStringTensorContent OrtGetStringTensorContent;

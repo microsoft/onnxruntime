@@ -77,32 +77,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Run helper
-        /// </summary>
-        /// <param name="names">names to convert to zero terminated utf8 and pin</param>
-        /// <param name="extractor">delegate for string extraction from inputs</param>
-        /// <param name="cleanupList">list to add pinned memory to for later disposal</param>
-        /// <returns></returns>
-        internal static IntPtr[] ConvertNamesToUtf8<T>(IReadOnlyCollection<T> names, NameExtractor<T> extractor,
-            DisposableList<IDisposable> cleanupList)
-        {
-            cleanupList.Capacity += names.Count;
-            var result = new IntPtr[names.Count];
-            for (int i = 0; i < names.Count; ++i)
-            {
-                var name = extractor(names.ElementAt(i));
-                var utf8Name = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name);
-                var pinnedHandle = new Memory<byte>(utf8Name).Pin();
-                cleanupList.Add(pinnedHandle);
-                unsafe
-                {
-                    result[i] = (IntPtr)pinnedHandle.Pointer;
-                }
-            }
-            return result;
-        }
-
-        /// <summary>
         /// Converts C# UTF-16 string to UTF-8 zero terminated
         /// byte[] instance
         /// </summary>
@@ -115,9 +89,6 @@ namespace Microsoft.ML.OnnxRuntime
             else
                 return StringToZeroTerminatedUtf8(str);
         }
-
-        // Delegate for string extraction from an arbitrary input/output object
-        internal delegate string NameExtractor<in TInput>(TInput input);
     }
 
     internal static class TensorElementTypeConverter
@@ -139,5 +110,129 @@ namespace Microsoft.ML.OnnxRuntime
             }
             return result;
         }
+    }
+
+    /// <summary>
+    /// This class converts a string to a UTF8 encoded byte array and then copies it to an unmanaged buffer.
+    /// This is done, so we can pass it to the native code and avoid pinning.
+    /// </summary>
+    public unsafe struct MarshaledString : IDisposable
+    {
+        internal MarshaledString(string input)
+        {
+            int length;
+            IntPtr value;
+
+            if (input is null)
+            {
+                length = 0;
+                value = IntPtr.Zero;
+            }
+            else
+            {
+                var valueBytes = (input.Length != 0) ? Encoding.UTF8.GetBytes(input) :
+                    ArrayUtilities.GetEmpty<byte>();
+                length = valueBytes.Length;
+                value = Marshal.AllocHGlobal(length + 1);
+
+                Span<byte> destination = new Span<byte>(value.ToPointer(), length + 1);
+                valueBytes.AsSpan(0, length).CopyTo(destination);
+                destination[length] = 0;
+            }
+
+            Length = length;
+            Value = value;
+        }
+
+        /// <summary>
+        // Native allocation (UTF8-8 string length with terminating zero)
+        /// </summary>
+        internal int Length { get; private set; }
+
+        /// <summary>
+        /// Actual native buffer
+        /// </summary>
+        internal IntPtr Value { get; private set; }
+
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
+        public void Dispose()
+        {
+            // No managed resources to dispose
+            if (Value != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(Value);
+                Value = IntPtr.Zero;
+                Length = 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Keeps a list of MarshaledString instances and provides a way to dispose them all at once.
+    /// It is a ref struct, so it can not be IDisposable.
+    /// </summary>
+    public unsafe ref struct MarshaledStringArray
+    {
+        private MarshaledString[] _values;
+
+        internal MarshaledStringArray(Tensor<string> inputs)
+        {
+            if (inputs.Length == 0)
+            {
+                _values = null;
+            }
+            else
+            {
+                _values = new MarshaledString[inputs.Length];
+                for (int i = 0; i < inputs.Length; i++)
+                {
+                    _values[i] = new MarshaledString(inputs.GetValue(i));
+                }
+            }
+        }
+
+        internal MarshaledStringArray(IEnumerable<string> inputs)
+        {
+            if (inputs is null)
+            {
+                _values = null;
+            }
+            else
+            {
+                _values = new MarshaledString[inputs.Count()];
+                int i = 0;
+                foreach (var input in inputs)
+                {
+                    _values[i++] = new MarshaledString(input);
+                }
+            }
+        }
+
+        internal ReadOnlySpan<MarshaledString> Values => _values;
+
+        internal void Fill(IntPtr[] pDestination)
+        {
+            if (_values != null)
+            {
+                for (var i = 0; i < _values.Length; i++)
+                {
+                    pDestination[i] = Values[i].Value;
+                }
+            }
+        }
+        public void Dispose()
+        {
+            if (_values != null)
+            {
+                for (var i = 0; i < _values.Length; i++)
+                {
+                    _values[i].Dispose();
+                }
+                _values = null;
+            }
+        }
+
     }
 }

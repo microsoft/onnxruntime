@@ -162,9 +162,9 @@ namespace Microsoft.ML.OnnxRuntime
             options.AppendExecutionProvider_ROCM(deviceId);
             return options;
         }
-#endregion
+        #endregion
 
-#region ExecutionProviderAppends
+        #region ExecutionProviderAppends
         /// <summary>
         /// Appends CPU EP to a list of available execution providers for the session.
         /// </summary>
@@ -362,23 +362,36 @@ namespace Microsoft.ML.OnnxRuntime
                     "Only SNPE and XNNPACK execution providers can be enabled by this method.");
             }
 
-            using (var cleanupList = new DisposableList<IDisposable>())
+            var utf8ProviderName = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(providerName);
+
+            if (providerOptions == null)
             {
-                var utf8ProviderName = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(providerName);
+                providerOptions = new Dictionary<string, string>();
+            }
 
-                if (providerOptions == null)
-                {
-                    providerOptions = new Dictionary<string, string>();
-                }
+            var keyStrings = providerOptions.Keys.ToArray();
+            var valStrings = providerOptions.Values.ToArray();
 
-                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
-                    providerOptions.Keys.ToArray(), n => n, cleanupList);
+            MarshaledStringArray keys = default;
+            MarshaledStringArray values = default;
+            try
+            {
+                keys = new MarshaledStringArray(keyStrings);
+                values = new MarshaledStringArray(valStrings);
 
-                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
-                    providerOptions.Values.ToArray(), n => n, cleanupList);
+                var nativeKeys = new IntPtr[keyStrings.Length];
+                keys.Fill(nativeKeys);
+
+                var nativeVals = new IntPtr[valStrings.Length];
+                values.Fill(nativeVals);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider(
-                    handle, utf8ProviderName, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
+                    handle, utf8ProviderName, nativeKeys, nativeVals, (UIntPtr)providerOptions.Count));
+            }
+            finally
+            {
+                keys.Dispose();
+                values.Dispose();
             }
         }
         #endregion //ExecutionProviderAppends
@@ -442,7 +455,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var utf8Key = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey);
             var utf8Value = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue);
-             NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, utf8Key, utf8Value));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, utf8Key, utf8Value));
         }
 
         /// <summary>
@@ -468,7 +481,7 @@ namespace Microsoft.ML.OnnxRuntime
             var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimName);
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, utf8, dimValue));
         }
-#endregion
+        #endregion
 
         internal IntPtr Handle
         {
@@ -478,7 +491,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-#region Public Properties
+        #region Public Properties
         /// <summary>
         /// Overrides SafeHandle.IsInvalid
         /// </summary>
@@ -725,9 +738,9 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
-#endregion
+        #endregion
 
-#region Private Methods
+        #region Private Methods
 
 #if !__MOBILE__
         // Declared, but called only if OS = Windows.
@@ -788,9 +801,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
             return true;
         }
-#endregion
+        #endregion
 
-#region SafeHandle
+        #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
         /// the native instance of SessionOptions
@@ -802,6 +815,6 @@ namespace Microsoft.ML.OnnxRuntime
             handle = IntPtr.Zero;
             return true;
         }
-#endregion
+        #endregion
     }
 }

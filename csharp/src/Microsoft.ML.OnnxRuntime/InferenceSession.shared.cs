@@ -249,9 +249,9 @@ namespace Microsoft.ML.OnnxRuntime
         {
             using (var cleanupList = new DisposableList<IDisposable>())
             {
-                var inputNamesArray = ConvertNamesToUtf8(inputs, v => v.Name, LookupInputMetadata);
+                var inputNamesArray = LookupUtf8Names(inputs, v => v.Name, LookupInputMetadata);
                 var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueForInput, cleanupList);
-                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, LookupOutputMetadata);
+                var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
 
                 var ortValues = RunImpl(options, inputNamesArray, inputValuesArray, outputNamesArray, cleanupList);
                 return CreateDisposableResult(ortValues, outputNames);
@@ -307,9 +307,9 @@ namespace Microsoft.ML.OnnxRuntime
 
             using (var cleanupList = new DisposableList<IDisposable>())
             {
-                var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, LookupInputMetadata);
+                var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
                 IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
-                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, LookupOutputMetadata);
+                var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
 
 
                 var ortValues = RunImpl(options, inputNamesArray, inputValuesArray, outputNamesArray, cleanupList);
@@ -364,11 +364,11 @@ namespace Microsoft.ML.OnnxRuntime
             using (var cleanupList = new DisposableList<IDisposable>())
             {
                 // prepare inputs
-                var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, LookupInputMetadata);
+                var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
                 IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
 
                 // prepare outputs
-                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, LookupOutputMetadata);
+                var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
                 IntPtr[] outputValuesArray = GetOrtValuesHandles(outputValues, false);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
@@ -414,10 +414,10 @@ namespace Microsoft.ML.OnnxRuntime
         {
             using (var cleanupList = new DisposableList<IDisposable>())
             {
-                var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, LookupInputMetadata);
+                var inputNamesArray = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
                 var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueForInput, cleanupList);
 
-                var outputNamesArray = ConvertNamesToUtf8(outputs, o => o.Name, LookupOutputMetadata);
+                var outputNamesArray = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
                 var outputValuesArray = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueForOutput, cleanupList);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
@@ -472,11 +472,11 @@ namespace Microsoft.ML.OnnxRuntime
             using (var cleanupList = new DisposableList<IDisposable>())
             {
                 // prepare inputs
-                var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, LookupInputMetadata);
+                var inputNamesArray = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
                 var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueForInput, cleanupList);
 
                 // prepare outputs
-                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, LookupOutputMetadata);
+                var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
                 var outputValuesArray = GetOrtValuesHandles(outputValues, false);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
@@ -533,11 +533,11 @@ namespace Microsoft.ML.OnnxRuntime
             using (var cleanupList = new DisposableList<IDisposable>())
             {
                 // prepare inputs
-                var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, LookupInputMetadata);
+                var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
                 var inputValuesArray = GetOrtValuesHandles(inputValues, true);
 
                 // prepare outputs
-                var outputNamesArray = ConvertNamesToUtf8(outputs, o => o.Name, LookupOutputMetadata);
+                var outputNamesArray = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
                 var outputValuesArray = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueForOutput, cleanupList);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
@@ -723,7 +723,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="metaDict">inputs/outputs metadata</param>
         /// <param name="cleanupList">list to add pinned memory to for later disposal</param>
         /// <returns></returns>
-        private IntPtr[] ConvertNamesToUtf8<T>(IReadOnlyCollection<T> values, NameExtractor<T> nameExtractor,
+        private IntPtr[] LookupUtf8Names<T>(IReadOnlyCollection<T> values, NameExtractor<T> nameExtractor,
             MetadataLookup metaLookup)
         {
             var result = new IntPtr[values.Count];

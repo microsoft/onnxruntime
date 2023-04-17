@@ -64,17 +64,34 @@ namespace Microsoft.ML.OnnxRuntime
         public void UpdateOptions(Dictionary<string, string> providerOptions)
         {
 
-            using (var cleanupList = new DisposableList<IDisposable>())
+            var keyStrings = providerOptions.Keys.ToArray();
+            var valStrings = providerOptions.Values.ToArray();
+
+            MarshaledStringArray keys = default;
+            MarshaledStringArray values = default;
+            try
             {
-                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Keys.ToArray(), n => n, cleanupList);
-                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Values.ToArray(), n => n, cleanupList);
+                keys = new MarshaledStringArray(keyStrings);
+                values = new MarshaledStringArray(valStrings);
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateTensorRTProviderOptions(handle, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
+                var nativeKeys = new IntPtr[keyStrings.Length];
+                keys.Fill(nativeKeys);
 
-                if (providerOptions.ContainsKey(_deviceIdStr))
-                {
-                    _deviceId = Int32.Parse(providerOptions[_deviceIdStr]);
-                }
+                var nativeVals = new IntPtr[valStrings.Length];
+                values.Fill(nativeVals);
+
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateTensorRTProviderOptions(handle, nativeKeys, nativeVals,
+                    (UIntPtr)providerOptions.Count));
+            }
+            finally
+            {
+                keys.Dispose();
+                values.Dispose();
+            }
+
+            if (providerOptions.ContainsKey(_deviceIdStr))
+            {
+                _deviceId = Int32.Parse(providerOptions[_deviceIdStr]);
             }
         }
 
@@ -175,13 +192,29 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="providerOptions">key/value pairs used to configure a CUDA Execution Provider</param>
         public void UpdateOptions(Dictionary<string, string> providerOptions)
         {
+            var keyStrings = providerOptions.Keys.ToArray();
+            var valStrings = providerOptions.Values.ToArray();
 
-            using (var cleanupList = new DisposableList<IDisposable>())
+            MarshaledStringArray keys = default;
+            MarshaledStringArray values = default;
+            try
             {
-                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Keys.ToArray(), n => n, cleanupList);
-                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Values.ToArray(), n => n, cleanupList);
+                keys = new MarshaledStringArray(keyStrings);
+                values = new MarshaledStringArray(valStrings);
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateCUDAProviderOptions(handle, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
+                var nativeKeys = new IntPtr[keyStrings.Length];
+                keys.Fill(nativeKeys);
+
+                var nativeVals = new IntPtr[valStrings.Length];
+                values.Fill(nativeVals);
+
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateCUDAProviderOptions(handle, nativeKeys, nativeVals,
+                    (UIntPtr)providerOptions.Count));
+            }
+            finally
+            {
+                keys.Dispose();
+                values.Dispose();
             }
         }
 

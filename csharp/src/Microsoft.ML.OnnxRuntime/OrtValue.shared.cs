@@ -338,33 +338,26 @@ namespace Microsoft.ML.OnnxRuntime
                                 out IntPtr valueHandle
                                 ));
 
+            // We must take possession of valueHande, so we can dispose of it if we fail
             var ortValue = new OrtValue(valueHandle);
+            MarshaledStringArray marshaledStrings = default;
             try
             {
-
+                marshaledStrings = new MarshaledStringArray(tensor);
                 // fill the native tensor, using GetValue(index) from the Tensor<string>
                 var len = tensor.Length;
                 var nativeStrings = new IntPtr[len];
-                using (var pinnedHandles = new DisposableList<IDisposable>((int)len))
-                {
-                    for (int i = 0; i < len; i++)
-                    {
-                        var utf8str = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(tensor.GetValue(i));
-                        var pinnedUtf8 = new Memory<byte>(utf8str).Pin();
-                        pinnedHandles.Add(pinnedUtf8);
-                        unsafe
-                        {
-                            nativeStrings[i] = (IntPtr)pinnedUtf8.Pointer;
-                        }
-                    }
-
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(ortValue.Handle, nativeStrings, (UIntPtr)len));
-                }
+                marshaledStrings.Fill(nativeStrings);
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(ortValue.Handle, nativeStrings, (UIntPtr)len));
             }
-            catch (OnnxRuntimeException)
+            catch (Exception)
             {
                 ortValue.Dispose();
                 throw;
+            }
+            finally
+            {
+                marshaledStrings.Dispose();
             }
             return ortValue;
         }
