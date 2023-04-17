@@ -129,6 +129,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     int trt_builder_optimization_level  = 2;
     int trt_auxiliary_streams = -1;
     std::string trt_tactic_sources = "";
+    std::string trt_profile_min_shapes = "";
+    std::string trt_profile_max_shapes = "";
+    std::string trt_profile_opt_shapes = "";
 
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -334,8 +337,26 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a non-emtpy string.\n");
         }
+      } else if (key == "trt_profile_min_shapes") {
+        if (!value.empty()) {
+          trt_profile_min_shapes = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_min_shapes' should be a non-emtpy string.\n");
+        }
+      } else if (key == "trt_profile_max_shapes") {
+        if (!value.empty()) {
+          trt_profile_max_shapes = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_max_shapes' should be a non-emtpy string.\n");
+        }
+      } else if (key == "trt_profile_opt_shapes") {
+        if (!value.empty()) {
+          trt_profile_opt_shapes = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a non-emtpy string.\n");
+        }
       } else {
-        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable', 'trt_layer_norm_fp32_fallback'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable', 'trt_layer_norm_fp32_fallback', 'trt_profile_min_shapes', 'trt_profile_max_shapes', 'trt_profile_opt_shapes'] \n");
       }
     }
     OrtTensorRTProviderOptionsV2 tensorrt_options;
