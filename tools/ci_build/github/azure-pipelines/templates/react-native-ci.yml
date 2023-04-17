@@ -264,16 +264,6 @@ stages:
       displayName: Pod install for onnxruntime react native ios e2e tests
 
     - script: |
-        yarn add "jest@^29" --dev
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-      displayName: yarn add jest for detox integration in js/react_native/e2e
-  
-    - script: |
-        yarn add detox --dev
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-      displayName: install detox js/react_native/e2e
-
-    - script: |
         yarn add --dev jest-junit
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: install jest junit reporter js/react_native/e2e
@@ -336,12 +326,6 @@ stages:
       inputs:
         targetPath:  '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
       displayName: Publish React Native Detox E2E test artifacts
-    
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        buildType: 'current'
-        targetPath:  '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-      displayName: Download detox test results artifacts
 
     - script: |
         python3 tools/python/run_android_emulator.py \
