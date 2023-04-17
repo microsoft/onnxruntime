@@ -415,11 +415,11 @@ TEST(GatedRelativePositionBiasTest, FP32_LongSeq_BSNHD_2x5x2x4x4) {
 }
 
 TEST(GatedRelativePositionBiasTest, FP16_BSNHD_2x8x2x4x8) {
-  const int batch_size = 2;
-  const int num_heads = 2;
-  const int seq_len = 8;
-  const int head_size = 4;
-  const int D = 8;
+  constexpr int batch_size = 2;
+  constexpr int num_heads = 2;
+  constexpr int seq_len = 8;
+  constexpr int head_size = 4;
+  constexpr int D = 8;
   const std::vector<int64_t> query_layer_dim = {2, 8, 8};
   const std::vector<float> query_layer = {
       0.4962566f, 0.7682218f, 0.08847743f, 0.13203049f, 0.30742282f, 0.6340787f, 0.4900934f, 0.89644474f,
