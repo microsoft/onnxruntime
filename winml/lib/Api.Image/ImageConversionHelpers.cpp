@@ -135,20 +135,20 @@ bool _winmli::NeedsVideoFrameConversion(
   if (FAILED((hr = GetVideoFrameInfo(inputVideoFrame, format, width, height, luid)))) {
     bNeedConversion = true;
   } else if (((int)inputBounds.Width != outputWidth) ||
-            (inputBounds.X != 0) ||
-            ((int)inputBounds.Height != outputHeight) ||
-            (inputBounds.Y != 0) ||
-            (inputVideoFrame == nullptr))  // Check crop
+             (inputBounds.X != 0) ||
+             ((int)inputBounds.Height != outputHeight) ||
+             (inputBounds.Y != 0) ||
+             (inputVideoFrame == nullptr))  // Check crop
   {
     bNeedConversion = true;
   } else if (luid.HighPart != outputLuid.HighPart ||
-            luid.LowPart != outputLuid.LowPart) {
+             luid.LowPart != outputLuid.LowPart) {
     bNeedConversion = true;
   } else if (static_cast<uint32_t>(width) != outputWidth ||
-            static_cast<uint32_t>(height) != outputHeight) {
+             static_cast<uint32_t>(height) != outputHeight) {
     bNeedConversion = true;
   } else if (outputLuid.HighPart != 0 ||
-            outputLuid.LowPart != 0) {
+             outputLuid.LowPart != 0) {
     if (format != (DWORD)wgdx::DirectXPixelFormat::B8G8R8X8UIntNormalized) {
       bNeedConversion = true;
     }

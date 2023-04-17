@@ -23,18 +23,18 @@ namespace winmla = Windows::AI::MachineLearning::Adapter;
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 static std::wstring CurrentModulePath() {
-    WCHAR path[MAX_PATH];
-    FAIL_FAST_IF(0 == GetModuleFileNameW((HINSTANCE)&__ImageBase, path, _countof(path)));
+  WCHAR path[MAX_PATH];
+  FAIL_FAST_IF(0 == GetModuleFileNameW((HINSTANCE)&__ImageBase, path, _countof(path)));
 
-    WCHAR absolute_path[MAX_PATH];
-    WCHAR* name;
-    FAIL_FAST_IF(0 == GetFullPathNameW(path, _countof(path), absolute_path, &name));
+  WCHAR absolute_path[MAX_PATH];
+  WCHAR* name;
+  FAIL_FAST_IF(0 == GetFullPathNameW(path, _countof(path), absolute_path, &name));
 
-    auto idx = std::distance(absolute_path, name);
-    auto out_path = std::wstring(absolute_path);
-    out_path.resize(idx);
+  auto idx = std::distance(absolute_path, name);
+  auto out_path = std::wstring(absolute_path);
+  out_path.resize(idx);
 
-    return out_path;
+  return out_path;
 }
 
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
@@ -70,7 +70,7 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 namespace onnxruntime {
 void DmlConfigureProviderFactoryDefaultRoundingMode(onnxruntime::IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode);
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled);
-}
+}  // namespace onnxruntime
 
 #endif  // USE_DML
 
@@ -89,7 +89,7 @@ ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_
   // lifetime and can be large, so shouldn't be rounded.
   // So we create the provider with rounding disabled, and expect the caller to enable it after.
   onnxruntime::DmlConfigureProviderFactoryDefaultRoundingMode(factory, AllocatorRoundingMode::Disabled);
-  
+
   onnxruntime::DmlConfigureProviderFactoryMetacommandsEnabled(factory, metacommands_enabled);
 #endif  // USE_DML
   return nullptr;

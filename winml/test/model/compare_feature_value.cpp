@@ -7,7 +7,7 @@
 using namespace winrt::Windows::Foundation::Collections;
 using namespace winml;
 
-namespace CompareFeatureValuesHelper{
+namespace CompareFeatureValuesHelper {
 
 template <typename T>
 bool IsResultCloselyMatch(const T& outvalue, const T& expected_value, const double diff, const double tol) {
@@ -67,4 +67,4 @@ bool CompareSequenceOfMapsStringToFloat(
   return true;
 }
 
-}
+}  // namespace CompareFeatureValuesHelper

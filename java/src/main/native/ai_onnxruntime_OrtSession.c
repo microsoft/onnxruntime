@@ -9,11 +9,10 @@
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession.h"
 
-const char * const ORTJNI_StringClassName = "java/lang/String";
-const char * const ORTJNI_OnnxValueClassName = "ai/onnxruntime/OnnxValue";
-const char * const ORTJNI_NodeInfoClassName = "ai/onnxruntime/NodeInfo";
-const char * const ORTJNI_MetadataClassName = "ai/onnxruntime/OnnxModelMetadata";
-
+const char* const ORTJNI_StringClassName = "java/lang/String";
+const char* const ORTJNI_OnnxValueClassName = "ai/onnxruntime/OnnxValue";
+const char* const ORTJNI_NodeInfoClassName = "ai/onnxruntime/NodeInfo";
+const char* const ORTJNI_MetadataClassName = "ai/onnxruntime/OnnxModelMetadata";
 
 /*
  * Class:     ai_onnxruntime_OrtSession
@@ -109,8 +108,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputNames(JNIE
     return NULL;
   }
 
-  int32_t numInputsInt = (int32_t) numInputs;
-  if (numInputs != (size_t) numInputsInt) {
+  int32_t numInputsInt = (int32_t)numInputs;
+  if (numInputs != (size_t)numInputsInt) {
     throwOrtException(jniEnv, 1, "Too many inputs, expected less than 2^31");
   }
 
@@ -170,8 +169,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputNames(JNI
     return NULL;
   }
 
-  int32_t numOutputsInt = (int32_t) numOutputs;
-  if (numOutputs != (size_t) numOutputsInt) {
+  int32_t numOutputsInt = (int32_t)numOutputs;
+  if (numOutputs != (size_t)numOutputsInt) {
     throwOrtException(jniEnv, 1, "Too many outputs, expected less than 2^31");
   }
 
@@ -324,7 +323,6 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEnv
                                                                   jobjectArray inputNamesArr, jlongArray tensorArr,
                                                                   jlong numInputs, jobjectArray outputNamesArr,
                                                                   jlong numOutputs, jlong runOptionsHandle) {
-
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
@@ -387,9 +385,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEnv
   // ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess, _In_ OrtRunOptions* run_options,
   // _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
   // _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->Run(session, runOptions, (const char* const*)inputNames,
-                                              (const OrtValue* const*)inputValuePtrs, numInputs,
-                                              (const char* const*)outputNames, numOutputs, outputValues));
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->Run(session, runOptions, (const char* const*)inputNames, (const OrtValue* const*)inputValuePtrs, numInputs, (const char* const*)outputNames, numOutputs, outputValues));
   if (code != ORT_OK) {
     goto cleanup_output_values;
   }
@@ -465,8 +461,7 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_endProfiling(JNIEnv* jn
   OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
 
   char* profileStr = NULL;
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->SessionEndProfiling((OrtSession*)handle, allocator,
-                                                                           &profileStr));
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->SessionEndProfiling((OrtSession*)handle, allocator, &profileStr));
   if (code != ORT_OK) {
     return NULL;
   }
@@ -481,7 +476,8 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_endProfiling(JNIEnv* jn
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_closeSession(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-  (void)jniEnv; (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
+  (void)jniEnv;
+  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   api->ReleaseSession((OrtSession*)handle);
 }
@@ -503,15 +499,15 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata(JNIEn
   jstring descriptionStr = NULL;
 
   // macro for processing char* into a Java UTF-8 string with error handling inside this function
-#define STR_PROCESS(STR_NAME) \
-  if (code == ORT_OK) { \
-    STR_NAME = (*jniEnv)->NewStringUTF(jniEnv, charBuffer); \
+#define STR_PROCESS(STR_NAME)                                                      \
+  if (code == ORT_OK) {                                                            \
+    STR_NAME = (*jniEnv)->NewStringUTF(jniEnv, charBuffer);                        \
     code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, charBuffer)); \
-    if (code != ORT_OK) { \
-      goto release_metadata; \
-    } \
-  } else { \
-    goto release_metadata; \
+    if (code != ORT_OK) {                                                          \
+      goto release_metadata;                                                       \
+    }                                                                              \
+  } else {                                                                         \
+    goto release_metadata;                                                         \
   }
 
   // Setup

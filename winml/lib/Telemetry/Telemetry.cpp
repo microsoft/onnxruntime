@@ -10,4 +10,3 @@ TRACELOGGING_DEFINE_PROVIDER(
     WINML_PROVIDER_DESC,
     WINML_PROVIDER_GUID,
     TraceLoggingOptionMicrosoftTelemetry());
-

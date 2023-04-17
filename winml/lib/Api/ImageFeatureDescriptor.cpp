@@ -125,7 +125,7 @@ HRESULT
 ImageFeatureDescriptor::GetDescriptorInfo(
     _winml::IEngineFactory* engine_factory,
     _winml::IDescriptorInfo** info) {
-    // TODO: Need to add denotations here
+  // TODO: Need to add denotations here
   engine_factory->CreateTensorDescriptorInfo(tensor_kind_, shape_.data(), shape_.size(), info);
   return S_OK;
 }

@@ -40,11 +40,10 @@ static void LearningModelSessionAPITestsClassSetup() {
 #endif
 }
 
-static void CreateSessionDeviceDefault()
-{
-    LearningModel learningModel = nullptr;
-    LearningModelDevice learningModelDevice = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
+static void CreateSessionDeviceDefault() {
+  LearningModel learningModel = nullptr;
+  LearningModelDevice learningModelDevice = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
 
   WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::Default));
   WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
@@ -65,8 +64,7 @@ static void CreateSessionDeviceCpu() {
   WINML_EXPECT_EQUAL(id.HighPart, 0);
 }
 
-static void CreateSessionWithModelLoadedFromStream()
-{
+static void CreateSessionWithModelLoadedFromStream() {
   LearningModel learningModel = nullptr;
   LearningModelDevice learningModelDevice = nullptr;
   std::wstring path = FileHelpers::GetModulePath() + L"model.onnx";
@@ -255,11 +253,10 @@ static void CreateSessionWithCastToFloat16InModel() {
   CreateSession(learningModel);
 }
 
-static void CreateSessionWithFloat16InitializersInModel()
-{
-    // load a model
-    LearningModel learningModel = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fp16-initializer.onnx", learningModel));
+static void CreateSessionWithFloat16InitializersInModel() {
+  // load a model
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fp16-initializer.onnx", learningModel));
 
   CreateSession(learningModel);
 }
@@ -309,8 +306,7 @@ static void EvaluateSessionAndCloseModel() {
   WINML_EXPECT_NO_THROW(::EvaluateSessionAndCloseModelHelper(LearningModelDeviceKind::Cpu, false));
 }
 
-static void NamedDimensionOverride()
-{
+static void NamedDimensionOverride() {
   LearningModel model = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fns-candy.onnx", model));
 
@@ -343,8 +339,8 @@ static void NamedDimensionOverride()
   ILearningModelFeatureDescriptor descriptor = model.InputFeatures().GetAt(0);
   TensorFeatureDescriptor tensorDescriptor = nullptr;
   descriptor.as(tensorDescriptor);
-  std::vector<int64_t> shape{n,c,h,w};
-  int64_t size = n*c*h*w;
+  std::vector<int64_t> shape{n, c, h, w};
+  int64_t size = n * c * h * w;
   std::vector<float> buffer;
   buffer.resize(static_cast<size_t>(size));
   auto featureValue = TensorFloat::CreateFromIterable(shape, winrt::single_threaded_vector<float>(std::move(buffer)));
@@ -354,11 +350,10 @@ static void NamedDimensionOverride()
   WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 }
 
-static void CloseSession()
-{
-    LearningModel learningModel = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
-    LearningModelSession session = nullptr;
+static void CloseSession() {
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
+  LearningModelSession session = nullptr;
 
   /*
     HANDLE currentProcessHandle = NULL;
@@ -429,17 +424,17 @@ static void CloseSession()
 
 #if !defined(BUILD_INBOX)
 static void WindowFunction(
-  const wchar_t* window_operator_name,
-  TensorKind kind,
-  const std::vector<float>& expected) {
+    const wchar_t* window_operator_name,
+    TensorKind kind,
+    const std::vector<float>& expected) {
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> output_shape = {32};
   auto double_data_type = TensorInt64Bit::CreateFromArray({}, {11});
 
   auto window_operator =
-    Operator(window_operator_name)
-      .SetInput(L"size", L"Input")
-      .SetOutput(L"output", L"Output");
+      Operator(window_operator_name)
+          .SetInput(L"size", L"Input")
+          .SetOutput(L"output", L"Output");
 
   if (kind == TensorKind::Double) {
     window_operator.SetAttribute(L"output_datatype", double_data_type);
@@ -447,10 +442,13 @@ static void WindowFunction(
 
   auto model =
       LearningModelBuilder::Create(17)
-              .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", TensorKind::Int64, scalar_shape))
-              .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", kind, output_shape))
-              .Operators().Add(window_operator)
-              .CreateModel();
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", TensorKind::Int64, scalar_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", kind, output_shape))
+          .Operators()
+          .Add(window_operator)
+          .CreateModel();
 
   LearningModelSession session(model);
   LearningModelBinding binding(session);
@@ -477,7 +475,6 @@ static void WindowFunction(
     }
   }
   printf("\n");
-
 }
 #endif
 
@@ -493,7 +490,6 @@ static void SaveSoftwareBitmap(const wchar_t* filename, winrt::Windows::Graphics
 
 #if !defined(BUILD_INBOX)
 static void DiscreteFourierTransform_2D(LearningModelDeviceKind kind) {
-
   using namespace winrt::Windows::Storage;
   using namespace winrt::Windows::Storage::Streams;
   using namespace winrt::Windows::Graphics::Imaging;
@@ -535,62 +531,76 @@ static void DiscreteFourierTransform_2D(LearningModelDeviceKind kind) {
 
   auto builder =
       LearningModelBuilder::Create(17)
-        .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, input_shape))
-        .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
-        .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Inverse", TensorKind::Float, output_shape))
-        .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Error", TensorKind::Float, output_shape))
-      .Operators().Add(Operator(L"Reshape")
-            .SetInput(L"data", L"Input.Signal")
-            .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(height), INT64(width), INT64(1) }))
-            .SetOutput(L"reshaped", L"reshaped_output"))
-      .Operators().Add(Operator(L"DFT")
-          .SetInput(L"input", L"reshaped_output")
-          .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
-          .SetOutput(L"output", L"DFT.Output.1"))
-       .Operators().Add(Operator(L"DFT")
-          .SetInput(L"input", L"DFT.Output.1")
-          .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(2)}))
-          .SetOutput(L"output", L"DFT.Output.2"))
-       .Operators().Add(Operator(L"DFT")
-          .SetInput(L"input", L"DFT.Output.2")
-          .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(2)}))
-          .SetAttribute(L"inverse", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
-          .SetOutput(L"output", L"IDFT.Output.1"))
-       .Operators().Add(Operator(L"DFT")
-          .SetInput(L"input", L"IDFT.Output.1")
-          .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
-          .SetAttribute(L"inverse", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
-          .SetOutput(L"output", L"IDFT.Output.2"))
-        .Operators().Add(Operator(L"ReduceSumSquare")
-          .SetInput(L"data", L"DFT.Output.2")
-          .SetAttribute(L"axes", TensorInt64Bit::CreateFromArray({1}, {3}))
-          .SetAttribute(L"keepdims", TensorInt64Bit::CreateFromArray({}, {0}))
-          .SetOutput(L"reduced", L"magnitude_squared"))
-        .Operators().Add(Operator(L"Sqrt")
-          .SetInput(L"X", L"magnitude_squared")
-          .SetOutput(L"Y", L"sqrt_magnitude"))
-        .Operators().Add(Operator(L"ReduceSumSquare")
-          .SetInput(L"data", L"IDFT.Output.2")
-          .SetAttribute(L"axes", TensorInt64Bit::CreateFromArray({1}, {3}))
-          .SetAttribute(L"keepdims", TensorInt64Bit::CreateFromArray({}, {0}))
-          .SetOutput(L"reduced", L"magnitude_squared2"))
-        .Operators().Add(Operator(L"Sqrt")
-          .SetInput(L"X", L"magnitude_squared2")
-          .SetOutput(L"Y", L"sqrt_magnitude2"))
-        .Operators()
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, input_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Inverse", TensorKind::Float, output_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Error", TensorKind::Float, output_shape))
+          .Operators()
           .Add(Operator(L"Reshape")
-          .SetInput(L"data", L"sqrt_magnitude")
-          .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(1), INT64(height), INT64(width) }))
-          .SetOutput(L"reshaped", L"Output.Spectra"))
-        .Operators()
+                   .SetInput(L"data", L"Input.Signal")
+                   .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(height), INT64(width), INT64(1)}))
+                   .SetOutput(L"reshaped", L"reshaped_output"))
+          .Operators()
+          .Add(Operator(L"DFT")
+                   .SetInput(L"input", L"reshaped_output")
+                   .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
+                   .SetOutput(L"output", L"DFT.Output.1"))
+          .Operators()
+          .Add(Operator(L"DFT")
+                   .SetInput(L"input", L"DFT.Output.1")
+                   .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(2)}))
+                   .SetOutput(L"output", L"DFT.Output.2"))
+          .Operators()
+          .Add(Operator(L"DFT")
+                   .SetInput(L"input", L"DFT.Output.2")
+                   .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(2)}))
+                   .SetAttribute(L"inverse", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
+                   .SetOutput(L"output", L"IDFT.Output.1"))
+          .Operators()
+          .Add(Operator(L"DFT")
+                   .SetInput(L"input", L"IDFT.Output.1")
+                   .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
+                   .SetAttribute(L"inverse", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
+                   .SetOutput(L"output", L"IDFT.Output.2"))
+          .Operators()
+          .Add(Operator(L"ReduceSumSquare")
+                   .SetInput(L"data", L"DFT.Output.2")
+                   .SetAttribute(L"axes", TensorInt64Bit::CreateFromArray({1}, {3}))
+                   .SetAttribute(L"keepdims", TensorInt64Bit::CreateFromArray({}, {0}))
+                   .SetOutput(L"reduced", L"magnitude_squared"))
+          .Operators()
+          .Add(Operator(L"Sqrt")
+                   .SetInput(L"X", L"magnitude_squared")
+                   .SetOutput(L"Y", L"sqrt_magnitude"))
+          .Operators()
+          .Add(Operator(L"ReduceSumSquare")
+                   .SetInput(L"data", L"IDFT.Output.2")
+                   .SetAttribute(L"axes", TensorInt64Bit::CreateFromArray({1}, {3}))
+                   .SetAttribute(L"keepdims", TensorInt64Bit::CreateFromArray({}, {0}))
+                   .SetOutput(L"reduced", L"magnitude_squared2"))
+          .Operators()
+          .Add(Operator(L"Sqrt")
+                   .SetInput(L"X", L"magnitude_squared2")
+                   .SetOutput(L"Y", L"sqrt_magnitude2"))
+          .Operators()
           .Add(Operator(L"Reshape")
-          .SetInput(L"data", L"sqrt_magnitude2")
-          .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(1), INT64(height), INT64(width) }))
-          .SetOutput(L"reshaped", L"Output.Inverse"))
-        .Operators().Add(Operator(L"Sub")
-          .SetInput(L"A", L"Input.Signal")
-          .SetInput(L"B", L"Output.Inverse")
-          .SetOutput(L"C", L"Output.Error"));
+                   .SetInput(L"data", L"sqrt_magnitude")
+                   .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(1), INT64(height), INT64(width)}))
+                   .SetOutput(L"reshaped", L"Output.Spectra"))
+          .Operators()
+          .Add(Operator(L"Reshape")
+                   .SetInput(L"data", L"sqrt_magnitude2")
+                   .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(1), INT64(height), INT64(width)}))
+                   .SetOutput(L"reshaped", L"Output.Inverse"))
+          .Operators()
+          .Add(Operator(L"Sub")
+                   .SetInput(L"A", L"Input.Signal")
+                   .SetInput(L"B", L"Output.Inverse")
+                   .SetOutput(L"C", L"Output.Error"));
 
   auto model = builder.CreateModel();
   auto device = LearningModelDevice(kind);
@@ -667,17 +677,21 @@ static void DiscreteFourierTransform(
   printf("\n  Is Onesided: %s", is_onesided ? "true" : "false");
 
   auto model =
-    LearningModelBuilder::Create(17)
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, input_shape))
-      .Inputs().AddConstant(L"Input.DFTLength", TensorInt64Bit::CreateFromArray({}, {INT64(dft_length)}))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
-      .Operators().Add(Operator(L"DFT")
-        .SetInput(L"input", L"Input.Signal")
-        .SetInput(L"dft_length", L"Input.DFTLength")
-        .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
-        .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {is_onesided}))
-        .SetOutput(L"output", L"Output.Spectra"))
-      .CreateModel();
+      LearningModelBuilder::Create(17)
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, input_shape))
+          .Inputs()
+          .AddConstant(L"Input.DFTLength", TensorInt64Bit::CreateFromArray({}, {INT64(dft_length)}))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
+          .Operators()
+          .Add(Operator(L"DFT")
+                   .SetInput(L"input", L"Input.Signal")
+                   .SetInput(L"dft_length", L"Input.DFTLength")
+                   .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
+                   .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {is_onesided}))
+                   .SetOutput(L"output", L"Output.Spectra"))
+          .CreateModel();
   auto device = LearningModelDevice(kind);
   LearningModelSession session(model, device);
   LearningModelBinding binding(session);
@@ -747,44 +761,45 @@ static auto MakeThreeTones(size_t signal_size, size_t sample_rate) {
   auto c2 = MakeC2<T>(signal_size, sample_rate);
   auto c4 = MakeC4<T>(signal_size, sample_rate);
   for (size_t i = 0; i < signal_size; i++) {
-    middle_c[i] = (i < signal_size / 3) ?
-                    middle_c[i] :
-                    (i < 2*signal_size/3) ?
-                        (middle_c[i] + c2[i]) :
-                        (middle_c[i] + c2[i] + c4[i]);
+    middle_c[i] = (i < signal_size / 3) ? middle_c[i] : (i < 2 * signal_size / 3) ? (middle_c[i] + c2[i])
+                                                                                  : (middle_c[i] + c2[i] + c4[i]);
   }
   return middle_c;
 }
 
 #if !defined(BUILD_INBOX)
 static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
-    size_t hop_size, size_t sample_rate, bool is_onesided = false) {
+                 size_t hop_size, size_t sample_rate, bool is_onesided = false) {
   auto n_dfts = static_cast<size_t>(1 + floor((signal_size - dft_size) / hop_size));
   auto input_shape = std::vector<int64_t>{1, INT64(signal_size)};
   auto output_shape =
-    std::vector<int64_t>{
-      INT64(batch_size),
-      INT64(n_dfts),
-      is_onesided ? ((INT64(dft_size) >> 1) + 1) : INT64(dft_size),
-      2
-    };
+      std::vector<int64_t>{
+          INT64(batch_size),
+          INT64(n_dfts),
+          is_onesided ? ((INT64(dft_size) >> 1) + 1) : INT64(dft_size),
+          2};
   auto dft_length = TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)});
 
   auto model =
       LearningModelBuilder::Create(17)
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, input_shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.STFT", TensorKind::Float, output_shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.HannWindow", TensorKind::Float, {INT64(dft_size)}))
-          .Operators().Add(Operator(L"HannWindow")
-              .SetConstant(L"size", dft_length)
-              .SetOutput(L"output", L"Output.HannWindow"))
-          .Operators().Add(Operator(L"STFT")
-              .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {INT64(is_onesided)}))
-              .SetInput(L"signal", L"Input.TimeSignal")
-              .SetInput(L"window", L"Output.HannWindow")
-              .SetConstant(L"frame_length", dft_length)
-              .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {INT64(hop_size)}))
-              .SetOutput(L"output", L"Output.STFT"))
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, input_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.STFT", TensorKind::Float, output_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.HannWindow", TensorKind::Float, {INT64(dft_size)}))
+          .Operators()
+          .Add(Operator(L"HannWindow")
+                   .SetConstant(L"size", dft_length)
+                   .SetOutput(L"output", L"Output.HannWindow"))
+          .Operators()
+          .Add(Operator(L"STFT")
+                   .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {INT64(is_onesided)}))
+                   .SetInput(L"signal", L"Input.TimeSignal")
+                   .SetInput(L"window", L"Output.HannWindow")
+                   .SetConstant(L"frame_length", dft_length)
+                   .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {INT64(hop_size)}))
+                   .SetOutput(L"output", L"Output.STFT"))
           .CreateModel();
 
   LearningModelSession session(model);
@@ -792,11 +807,11 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
 
   // Create signal binding
   auto signal = MakeMiddleC<float>(signal_size, sample_rate);
-  //printf("\n");
-  //printf("Input.TimeSignal:\n");
-  //for (size_t i = 0; i < dft_size; i++) {
-  //  printf("%f, ", signal[i]);
-  //}
+  // printf("\n");
+  // printf("Input.TimeSignal:\n");
+  // for (size_t i = 0; i < dft_size; i++) {
+  //   printf("%f, ", signal[i]);
+  // }
 
   // Bind
   binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromArray(input_shape, signal));
@@ -836,15 +851,17 @@ static void ModelBuilding_MelWeightMatrix() {
 #if !defined(BUILD_INBOX)
   std::vector<int64_t> output_shape = {INT64(9), INT64(8)};
   auto builder =
-    LearningModelBuilder::Create(17)
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelWeightMatrix", TensorKind::Float, output_shape))
-      .Operators().Add(Operator(L"MelWeightMatrix")
-        .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
-        .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(16)}))
-        .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(8192)}))
-        .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
-        .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {8192 / 2.f}))
-        .SetOutput(L"output", L"Output.MelWeightMatrix"));
+      LearningModelBuilder::Create(17)
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelWeightMatrix", TensorKind::Float, output_shape))
+          .Operators()
+          .Add(Operator(L"MelWeightMatrix")
+                   .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
+                   .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(16)}))
+                   .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(8192)}))
+                   .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
+                   .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {8192 / 2.f}))
+                   .SetOutput(L"output", L"Output.MelWeightMatrix"));
   auto model = builder.CreateModel();
 
   LearningModelSession session(model);
@@ -878,47 +895,57 @@ static void MelSpectrogramOnThreeToneSignal(
   std::vector<int64_t> mel_spectrogram_shape = {INT64(batch_size), 1, INT64(n_dfts), INT64(n_mel_bins)};
 
   auto builder =
-    LearningModelBuilder::Create(17)
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, signal_shape))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", TensorKind::Float, mel_spectrogram_shape))
-      .Operators().Add(Operator(L"HannWindow")
-        .SetConstant(L"size", TensorInt64Bit::CreateFromArray({}, {INT64(window_size)}))
-        .SetOutput(L"output", L"hann_window"))
-      .Operators().Add(Operator(L"STFT")
-        .SetName(L"STFT_NAMED_NODE")
-        .SetInput(L"signal", L"Input.TimeSignal")
-        .SetInput(L"window", L"hann_window")
-        .SetConstant(L"frame_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
-        .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {INT64(hop_size)}))
-        .SetOutput(L"output", L"stft_output"))
-      .Operators().Add(Operator(L"ReduceSumSquare")
-        .SetInput(L"data", L"stft_output")
-        .SetAttribute(L"axes", TensorInt64Bit::CreateFromArray({1}, {3}))
-        .SetAttribute(L"keepdims", TensorInt64Bit::CreateFromArray({}, {0}))
-        .SetOutput(L"reduced", L"magnitude_squared"))
-      .Operators().Add(Operator(L"Div")
-        .SetInput(L"A", L"magnitude_squared")
-        .SetConstant(L"B", TensorFloat::CreateFromArray({}, {static_cast<float>(dft_size)}))
-        .SetOutput(L"C", L"power_frames"))
-      .Operators().Add(Operator(L"MelWeightMatrix")
-        .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(n_mel_bins)}))
-        .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
-        .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(sampling_rate)}))
-        .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
-        .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {sampling_rate / 2.f}))
-        .SetOutput(L"output", L"mel_weight_matrix"))
-      .Operators().Add(Operator(L"Reshape")
-        .SetInput(L"data", L"power_frames")
-        .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({2}, {INT64(batch_size * n_dfts), INT64(onesided_dft_size)}))
-        .SetOutput(L"reshaped", L"reshaped_output"))
-      .Operators().Add(Operator(L"MatMul")
-        .SetInput(L"A", L"reshaped_output")
-        .SetInput(L"B", L"mel_weight_matrix")
-        .SetOutput(L"Y", L"mel_spectrogram"))
-      .Operators().Add(Operator(L"Reshape")
-        .SetInput(L"data", L"mel_spectrogram")
-        .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, mel_spectrogram_shape))
-        .SetOutput(L"reshaped", L"Output.MelSpectrogram"));
+      LearningModelBuilder::Create(17)
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, signal_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", TensorKind::Float, mel_spectrogram_shape))
+          .Operators()
+          .Add(Operator(L"HannWindow")
+                   .SetConstant(L"size", TensorInt64Bit::CreateFromArray({}, {INT64(window_size)}))
+                   .SetOutput(L"output", L"hann_window"))
+          .Operators()
+          .Add(Operator(L"STFT")
+                   .SetName(L"STFT_NAMED_NODE")
+                   .SetInput(L"signal", L"Input.TimeSignal")
+                   .SetInput(L"window", L"hann_window")
+                   .SetConstant(L"frame_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
+                   .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {INT64(hop_size)}))
+                   .SetOutput(L"output", L"stft_output"))
+          .Operators()
+          .Add(Operator(L"ReduceSumSquare")
+                   .SetInput(L"data", L"stft_output")
+                   .SetAttribute(L"axes", TensorInt64Bit::CreateFromArray({1}, {3}))
+                   .SetAttribute(L"keepdims", TensorInt64Bit::CreateFromArray({}, {0}))
+                   .SetOutput(L"reduced", L"magnitude_squared"))
+          .Operators()
+          .Add(Operator(L"Div")
+                   .SetInput(L"A", L"magnitude_squared")
+                   .SetConstant(L"B", TensorFloat::CreateFromArray({}, {static_cast<float>(dft_size)}))
+                   .SetOutput(L"C", L"power_frames"))
+          .Operators()
+          .Add(Operator(L"MelWeightMatrix")
+                   .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(n_mel_bins)}))
+                   .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
+                   .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(sampling_rate)}))
+                   .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
+                   .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {sampling_rate / 2.f}))
+                   .SetOutput(L"output", L"mel_weight_matrix"))
+          .Operators()
+          .Add(Operator(L"Reshape")
+                   .SetInput(L"data", L"power_frames")
+                   .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({2}, {INT64(batch_size * n_dfts), INT64(onesided_dft_size)}))
+                   .SetOutput(L"reshaped", L"reshaped_output"))
+          .Operators()
+          .Add(Operator(L"MatMul")
+                   .SetInput(L"A", L"reshaped_output")
+                   .SetInput(L"B", L"mel_weight_matrix")
+                   .SetOutput(L"Y", L"mel_spectrogram"))
+          .Operators()
+          .Add(Operator(L"Reshape")
+                   .SetInput(L"data", L"mel_spectrogram")
+                   .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, mel_spectrogram_shape))
+                   .SetOutput(L"reshaped", L"Output.MelSpectrogram"));
   auto model = builder.CreateModel();
 
   LearningModelSession session(model);
@@ -930,10 +957,10 @@ static void MelSpectrogramOnThreeToneSignal(
 
   // Bind output
   auto output_image =
-    winrt::Windows::Media::VideoFrame(
-      winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
-      INT32(n_mel_bins),
-      INT32(n_dfts));
+      winrt::Windows::Media::VideoFrame(
+          winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
+          INT32(n_mel_bins),
+          INT32(n_dfts));
   binding.Bind(L"Output.MelSpectrogram", output_image);
 
   // Evaluate
@@ -970,33 +997,44 @@ static void ModelBuilding_StandardDeviationNormalization() {
   std::vector<int64_t> output_shape = {1, channels, height, width};
   auto sub_model =
       LearningModelBuilder::Create(13)
-        .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
-        .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", TensorKind::Float, {channels}))
-        .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape))
-        .Operators().Add(Operator(L"Sub")
-                           .SetInput(L"A", L"Input")
-                           .SetInput(L"B", L"Means")
-                           .SetOutput(L"C", L"Output"))
-        .CreateModel();
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", TensorKind::Float, {channels}))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape))
+          .Operators()
+          .Add(Operator(L"Sub")
+                   .SetInput(L"A", L"Input")
+                   .SetInput(L"B", L"Means")
+                   .SetOutput(L"C", L"Output"))
+          .CreateModel();
   auto div_model =
-    LearningModelBuilder::Create(13)
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"StdDevs", TensorKind::Float, {channels}))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape))
-      .Operators().Add(Operator(L"Div")
-               .SetInput(L"A", L"Input")
-               .SetInput(L"B", L"StdDevs")
-               .SetOutput(L"C", L"Output"))
-      .CreateModel();
+      LearningModelBuilder::Create(13)
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"StdDevs", TensorKind::Float, {channels}))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape))
+          .Operators()
+          .Add(Operator(L"Div")
+                   .SetInput(L"A", L"Input")
+                   .SetInput(L"B", L"StdDevs")
+                   .SetOutput(L"C", L"Output"))
+          .CreateModel();
   auto transpose_model =
-    LearningModelBuilder::Create(13)
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, output_shape))
-      .Operators().Add(Operator(L"Transpose")
-               .SetInput(L"data", L"Input")
-               .SetAttribute(L"perm", TensorInt64Bit::CreateFromArray({4}, {0, 3, 1, 2}))
-               .SetOutput(L"transposed", L"Output"))
-      .CreateModel();
+      LearningModelBuilder::Create(13)
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, output_shape))
+          .Operators()
+          .Add(Operator(L"Transpose")
+                   .SetInput(L"data", L"Input")
+                   .SetAttribute(L"perm", TensorInt64Bit::CreateFromArray({4}, {0, 3, 1, 2}))
+                   .SetOutput(L"transposed", L"Output"))
+          .CreateModel();
 
   auto sub_experimental = winml_experimental::LearningModelExperimental(sub_model);
   winml_experimental::LearningModelJoinOptions div_join_options;
@@ -1033,17 +1071,22 @@ static void ModelBuilding_Gemm() {
 #ifndef BUILD_INBOX
   std::vector<int64_t> shape = {3, 3};
   auto model =
-    LearningModelBuilder::Create(13)
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", TensorKind::Float, shape))
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputB", TensorKind::Float, shape))
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputC", TensorKind::Float, shape))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"OutputY", TensorKind::Float, shape))
-      .Operators().Add(Operator(L"Gemm")
-        .SetInput(L"A", L"InputA")
-        .SetInput(L"B", L"InputB")
-        .SetInput(L"C", L"InputC")
-        .SetOutput(L"Y", L"OutputY"))
-      .CreateModel();
+      LearningModelBuilder::Create(13)
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", TensorKind::Float, shape))
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputB", TensorKind::Float, shape))
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputC", TensorKind::Float, shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"OutputY", TensorKind::Float, shape))
+          .Operators()
+          .Add(Operator(L"Gemm")
+                   .SetInput(L"A", L"InputA")
+                   .SetInput(L"B", L"InputB")
+                   .SetInput(L"C", L"InputC")
+                   .SetOutput(L"Y", L"OutputY"))
+          .CreateModel();
 #endif
 }
 
@@ -1054,13 +1097,17 @@ static void ModelBuilding_DynamicMatmul() {
 
   auto model =
       LearningModelBuilder::Create(13)
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", TensorKind::Float, a_shape))
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputB", TensorKind::Float, b_shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", TensorKind::Float, {a_shape[0], b_shape[1]}))
-          .Operators().Add(Operator(L"MatMul")
-                        .SetInput(L"A", L"InputA")
-                        .SetInput(L"B", L"InputB")
-                        .SetOutput(L"Y", L"Output"))
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", TensorKind::Float, a_shape))
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputB", TensorKind::Float, b_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", TensorKind::Float, {a_shape[0], b_shape[1]}))
+          .Operators()
+          .Add(Operator(L"MatMul")
+                   .SetInput(L"A", L"InputA")
+                   .SetInput(L"B", L"InputB")
+                   .SetOutput(L"Y", L"Output"))
           .CreateModel();
 
   LearningModelSession session(model);
@@ -1091,14 +1138,17 @@ static void ModelBuilding_ConstantMatmul() {
   std::vector<int64_t> b_shape = {129, 1024};
 
   auto model =
-    LearningModelBuilder::Create(13)
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", TensorKind::Float, a_shape))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", TensorKind::Float, {a_shape[0], b_shape[1]}))
-      .Operators().Add(Operator(L"MatMul")
-        .SetInput(L"A", L"InputA")
-        .SetConstant(L"B", TensorFloat::CreateFromArray(b_shape, std::vector<float>(SIZET(b_shape[0] * b_shape[1]), 1)))
-        .SetOutput(L"Y", L"Output"))
-      .CreateModel();
+      LearningModelBuilder::Create(13)
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", TensorKind::Float, a_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", TensorKind::Float, {a_shape[0], b_shape[1]}))
+          .Operators()
+          .Add(Operator(L"MatMul")
+                   .SetInput(L"A", L"InputA")
+                   .SetConstant(L"B", TensorFloat::CreateFromArray(b_shape, std::vector<float>(SIZET(b_shape[0] * b_shape[1]), 1)))
+                   .SetOutput(L"Y", L"Output"))
+          .CreateModel();
 
   LearningModelSession session(model);
   LearningModelBinding binding(session);
@@ -1120,145 +1170,638 @@ static void ModelBuilding_ConstantMatmul() {
 static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind kind) {
   bool isCPU = (kind == LearningModelDeviceKind::Default || kind == LearningModelDeviceKind::Cpu);
   std::vector<float> real_input =
-  {
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-    };
+      {
+          1.00f,
+          2.00,
+          3.00f,
+          4.00f,
+          5.00f,
+          6.00f,
+          7.00f,
+          8.00f,
+          1.00f,
+          2.00,
+          3.00f,
+          4.00f,
+          5.00f,
+          6.00f,
+          7.00f,
+          8.00f,
+          1.00f,
+          2.00,
+          3.00f,
+          4.00f,
+          5.00f,
+          6.00f,
+          7.00f,
+          8.00f,
+          1.00f,
+          2.00,
+          3.00f,
+          4.00f,
+          5.00f,
+          6.00f,
+          7.00f,
+          8.00f,
+          1.00f,
+          2.00,
+          3.00f,
+          4.00f,
+          5.00f,
+          6.00f,
+          7.00f,
+          8.00f,
+      };
 
   std::vector<std::complex<float>> real_expected_axis_0_two_sided = {
-    {5.000f, 0.000f}, {10.000f, 0.000f}, {15.000f, 0.000f}, {20.000f, 0.000f}, {25.000f, 0.000f}, {30.000f, 0.000f}, {35.000f, 0.000f}, {40.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f},
+      {5.000f, 0.000f},
+      {10.000f, 0.000f},
+      {15.000f, 0.000f},
+      {20.000f, 0.000f},
+      {25.000f, 0.000f},
+      {30.000f, 0.000f},
+      {35.000f, 0.000f},
+      {40.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
   };
-  if (isCPU)
-  {
+  if (isCPU) {
     // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
     DiscreteFourierTransform(kind, real_input, {1, 5, 8, 1}, real_expected_axis_0_two_sided, 1, 5, false /*onesided*/);
   }
 
   std::vector<std::complex<float>> real_expected_axis_1_two_sided = {
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {-4.000f, -1.657f},
+      {-4.000f, -4.000f},
+      {-4.000f, -9.657f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {-4.000f, -1.657f},
+      {-4.000f, -4.000f},
+      {-4.000f, -9.657f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {-4.000f, -1.657f},
+      {-4.000f, -4.000f},
+      {-4.000f, -9.657f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {-4.000f, -1.657f},
+      {-4.000f, -4.000f},
+      {-4.000f, -9.657f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {-4.000f, -1.657f},
+      {-4.000f, -4.000f},
+      {-4.000f, -9.657f},
   };
   DiscreteFourierTransform(kind, real_input, {1, 5, 8, 1}, real_expected_axis_1_two_sided, 2, 8, false /*onesided*/);
 
   std::vector<std::complex<float>> input =
-  {
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
+      {
+          {1.00f, 0.00f},
+          {2.00, 0.00f},
+          {3.00f, 0.00f},
+          {4.00f, 0.00f},
+          {5.00f, 0.00f},
+          {6.00f, 0.00f},
+          {7.00f, 0.00f},
+          {8.00f, 0.00f},
+          {1.00f, 0.00f},
+          {2.00, 0.00f},
+          {3.00f, 0.00f},
+          {4.00f, 0.00f},
+          {5.00f, 0.00f},
+          {6.00f, 0.00f},
+          {7.00f, 0.00f},
+          {8.00f, 0.00f},
+          {1.00f, 0.00f},
+          {2.00, 0.00f},
+          {3.00f, 0.00f},
+          {4.00f, 0.00f},
+          {5.00f, 0.00f},
+          {6.00f, 0.00f},
+          {7.00f, 0.00f},
+          {8.00f, 0.00f},
+          {1.00f, 0.00f},
+          {2.00, 0.00f},
+          {3.00f, 0.00f},
+          {4.00f, 0.00f},
+          {5.00f, 0.00f},
+          {6.00f, 0.00f},
+          {7.00f, 0.00f},
+          {8.00f, 0.00f},
+          {1.00f, 0.00f},
+          {2.00, 0.00f},
+          {3.00f, 0.00f},
+          {4.00f, 0.00f},
+          {5.00f, 0.00f},
+          {6.00f, 0.00f},
+          {7.00f, 0.00f},
+          {8.00f, 0.00f},
 
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
-    };
+          {2.00f, 1.00f},
+          {4.00, 2.00f},
+          {6.00f, 3.00f},
+          {8.00f, 4.00f},
+          {10.00f, 5.00f},
+          {12.00f, 6.00f},
+          {14.00f, 7.00f},
+          {16.00f, 8.00f},
+          {2.00f, 1.00f},
+          {4.00, 2.00f},
+          {6.00f, 3.00f},
+          {8.00f, 4.00f},
+          {10.00f, 5.00f},
+          {12.00f, 6.00f},
+          {14.00f, 7.00f},
+          {16.00f, 8.00f},
+          {2.00f, 1.00f},
+          {4.00, 2.00f},
+          {6.00f, 3.00f},
+          {8.00f, 4.00f},
+          {10.00f, 5.00f},
+          {12.00f, 6.00f},
+          {14.00f, 7.00f},
+          {16.00f, 8.00f},
+          {2.00f, 1.00f},
+          {4.00, 2.00f},
+          {6.00f, 3.00f},
+          {8.00f, 4.00f},
+          {10.00f, 5.00f},
+          {12.00f, 6.00f},
+          {14.00f, 7.00f},
+          {16.00f, 8.00f},
+          {2.00f, 1.00f},
+          {4.00, 2.00f},
+          {6.00f, 3.00f},
+          {8.00f, 4.00f},
+          {10.00f, 5.00f},
+          {12.00f, 6.00f},
+          {14.00f, 7.00f},
+          {16.00f, 8.00f},
+      };
 
   std::vector<std::complex<float>> expected_axis_0_two_sided = {
-    {5.000f, 0.000f}, {10.000f, 0.000f}, {15.000f, 0.000f}, {20.000f, 0.000f}, {25.000f, 0.000f}, {30.000f, 0.000f}, {35.000f, 0.000f}, {40.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f},
+      {5.000f, 0.000f}, {10.000f, 0.000f}, {15.000f, 0.000f}, {20.000f, 0.000f}, {25.000f, 0.000f}, {30.000f, 0.000f}, {35.000f, 0.000f}, {40.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f},
 
-    {10.000f, 5.000f}, {20.000f, 10.000f}, {30.000f, 15.000f}, {40.000f, 20.000f}, {50.000f, 25.000f}, {60.000f, 30.000f}, {70.000f, 35.000f}, {80.000f, 40.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}
-  };
-  if (isCPU)
-  {
+      {10.000f, 5.000f},
+      {20.000f, 10.000f},
+      {30.000f, 15.000f},
+      {40.000f, 20.000f},
+      {50.000f, 25.000f},
+      {60.000f, 30.000f},
+      {70.000f, 35.000f},
+      {80.000f, 40.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {-0.000f, 0.000f}};
+  if (isCPU) {
     // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
     DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided, 1, 5, false /*onesided*/);
   }
 
   std::vector<std::complex<float>> expected_axis_0_two_sided_small_dft_length = {
-    {4.000f, 0.000f}, {8.000f, 0.000f}, {12.000f, 0.000f}, {16.000f, 0.000f}, {20.000f, 0.000f}, {24.000f, 0.000f}, {28.000f, 0.000f}, {32.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
+      {4.000f, 0.000f},
+      {8.000f, 0.000f},
+      {12.000f, 0.000f},
+      {16.000f, 0.000f},
+      {20.000f, 0.000f},
+      {24.000f, 0.000f},
+      {28.000f, 0.000f},
+      {32.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
 
-    {8.000f, 4.000f}, {16.000f, 8.000f}, {24.000f, 12.000f}, {32.000f, 16.000f}, {40.000f, 20.000f}, {48.000f, 24.000f}, {56.000f, 28.000f}, {64.000f, 32.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
+      {8.000f, 4.000f},
+      {16.000f, 8.000f},
+      {24.000f, 12.000f},
+      {32.000f, 16.000f},
+      {40.000f, 20.000f},
+      {48.000f, 24.000f},
+      {56.000f, 28.000f},
+      {64.000f, 32.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
   };
   DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided_small_dft_length, 1, 4, false /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_0_two_sided_bigger_dft_length = {
-    {5.000000f, 0.000000f},   {10.000000f, 0.000000f},  {15.000000f, 0.000000f},  {20.000000f, 0.000000f},  {25.000000f, 0.000000f},  {30.000000f, 0.000000f},  {35.000000f, 0.000000f},  {40.000000f, 0.000000f},
-    {-0.500000f, -0.866025f}, {-1.000000f, -1.732051f}, {-1.500000f, -2.598076f}, {-2.000000f, -3.464101f}, {-2.500000f, -4.330126f}, {-3.000000f, -5.196152f}, {-3.500000f, -6.062176f}, {-4.000000f, -6.928203f},
-    {0.500000f, -0.866025f},  {1.000000f, -1.732051f},  {1.500000f, -2.598076f},  {1.999999f, -3.464102f},  {2.499999f, -4.330127f},  {2.999999f, -5.196152f},  {3.499999f, -6.062178f},  {3.999999f, -6.928203f},
-    {1.000000f, -0.000000f},  {2.000000f, -0.000001f},  {3.000000f, -0.000001f},  {4.000000f, -0.000002f},  {5.000000f, -0.000002f},  {6.000000f, -0.000002f},  {7.000000f, -0.000003f},  {8.000000f, -0.000003f},
-    {0.500000f, 0.866025f},   {1.000001f, 1.732051f},   {1.500001f, 2.598076f},   {2.000001f, 3.464102f},   {2.500002f, 4.330127f},   {3.000002f, 5.196153f},   {3.500002f, 6.062179f},   {4.000003f, 6.928204f},
-    {-0.500000f, 0.866026f},  {-1.000000f, 1.732052f},  {-1.500000f, 2.598077f},  {-2.000000f, 3.464104f},  {-2.500000f, 4.330130f},  {-2.999999f, 5.196155f},  {-3.500000f, 6.062181f},  {-4.000000f, 6.928207f},
+      {5.000000f, 0.000000f},
+      {10.000000f, 0.000000f},
+      {15.000000f, 0.000000f},
+      {20.000000f, 0.000000f},
+      {25.000000f, 0.000000f},
+      {30.000000f, 0.000000f},
+      {35.000000f, 0.000000f},
+      {40.000000f, 0.000000f},
+      {-0.500000f, -0.866025f},
+      {-1.000000f, -1.732051f},
+      {-1.500000f, -2.598076f},
+      {-2.000000f, -3.464101f},
+      {-2.500000f, -4.330126f},
+      {-3.000000f, -5.196152f},
+      {-3.500000f, -6.062176f},
+      {-4.000000f, -6.928203f},
+      {0.500000f, -0.866025f},
+      {1.000000f, -1.732051f},
+      {1.500000f, -2.598076f},
+      {1.999999f, -3.464102f},
+      {2.499999f, -4.330127f},
+      {2.999999f, -5.196152f},
+      {3.499999f, -6.062178f},
+      {3.999999f, -6.928203f},
+      {1.000000f, -0.000000f},
+      {2.000000f, -0.000001f},
+      {3.000000f, -0.000001f},
+      {4.000000f, -0.000002f},
+      {5.000000f, -0.000002f},
+      {6.000000f, -0.000002f},
+      {7.000000f, -0.000003f},
+      {8.000000f, -0.000003f},
+      {0.500000f, 0.866025f},
+      {1.000001f, 1.732051f},
+      {1.500001f, 2.598076f},
+      {2.000001f, 3.464102f},
+      {2.500002f, 4.330127f},
+      {3.000002f, 5.196153f},
+      {3.500002f, 6.062179f},
+      {4.000003f, 6.928204f},
+      {-0.500000f, 0.866026f},
+      {-1.000000f, 1.732052f},
+      {-1.500000f, 2.598077f},
+      {-2.000000f, 3.464104f},
+      {-2.500000f, 4.330130f},
+      {-2.999999f, 5.196155f},
+      {-3.500000f, 6.062181f},
+      {-4.000000f, 6.928207f},
 
-    {10.000000f, 5.000000f},  {20.000000f, 10.000000f}, {30.000000f, 15.000000f}, {40.000000f, 20.000000f}, {50.000000f, 25.000000f},  {60.000000f, 30.000000f},  {70.000000f, 35.000000f},  {80.000000f, 40.000000f},
-    {-0.133975f, -2.232050f}, {-0.267949f, -4.464101f}, {-0.401925f, -6.696153f}, {-0.535898f, -8.928202f}, {-0.669872f, -11.160252f}, {-0.803849f, -13.392305f}, {-0.937822f, -15.624352f}, {-1.071796f, -17.856403f},
-    {1.866025f, -1.232051f},  {3.732050f, -2.464102f},  {5.598075f, -3.696153f},  {7.464101f, -4.928204f},  {9.330126f, -6.160254f},   {11.196151f, -7.392306f},  {13.062176f, -8.624355f},  {14.928202f, -9.856407f},
-    {2.000000f, 0.999999f},   {4.000001f, 1.999998f},   {6.000001f, 2.999998f},   {8.000002f, 3.999997f},   {10.000003f, 4.999996f},   {12.000002f, 5.999995f},   {14.000003f, 6.999995f},   {16.000004f, 7.999993f},
-    {0.133975f, 2.232051f},   {0.267951f, 4.464102f},   {0.401926f, 6.696153f},   {0.535901f, 8.928205f},   {0.669876f, 11.160257f},   {0.803851f, 13.392306f},   {0.937826f, 15.624360f},   {1.071802f, 17.856409f},
-    {-1.866026f, 1.232052f},  {-3.732052f, 2.464104f},  {-5.598077f, 3.696155f},  {-7.464104f, 4.928207f},  {-9.330130f, 6.160261f},   {-11.196154f, 7.392309f},  {-13.062180f, 8.624363f},  {-14.928207f, 9.856415f},
+      {10.000000f, 5.000000f},
+      {20.000000f, 10.000000f},
+      {30.000000f, 15.000000f},
+      {40.000000f, 20.000000f},
+      {50.000000f, 25.000000f},
+      {60.000000f, 30.000000f},
+      {70.000000f, 35.000000f},
+      {80.000000f, 40.000000f},
+      {-0.133975f, -2.232050f},
+      {-0.267949f, -4.464101f},
+      {-0.401925f, -6.696153f},
+      {-0.535898f, -8.928202f},
+      {-0.669872f, -11.160252f},
+      {-0.803849f, -13.392305f},
+      {-0.937822f, -15.624352f},
+      {-1.071796f, -17.856403f},
+      {1.866025f, -1.232051f},
+      {3.732050f, -2.464102f},
+      {5.598075f, -3.696153f},
+      {7.464101f, -4.928204f},
+      {9.330126f, -6.160254f},
+      {11.196151f, -7.392306f},
+      {13.062176f, -8.624355f},
+      {14.928202f, -9.856407f},
+      {2.000000f, 0.999999f},
+      {4.000001f, 1.999998f},
+      {6.000001f, 2.999998f},
+      {8.000002f, 3.999997f},
+      {10.000003f, 4.999996f},
+      {12.000002f, 5.999995f},
+      {14.000003f, 6.999995f},
+      {16.000004f, 7.999993f},
+      {0.133975f, 2.232051f},
+      {0.267951f, 4.464102f},
+      {0.401926f, 6.696153f},
+      {0.535901f, 8.928205f},
+      {0.669876f, 11.160257f},
+      {0.803851f, 13.392306f},
+      {0.937826f, 15.624360f},
+      {1.071802f, 17.856409f},
+      {-1.866026f, 1.232052f},
+      {-3.732052f, 2.464104f},
+      {-5.598077f, 3.696155f},
+      {-7.464104f, 4.928207f},
+      {-9.330130f, 6.160261f},
+      {-11.196154f, 7.392309f},
+      {-13.062180f, 8.624363f},
+      {-14.928207f, 9.856415f},
   };
-  if (isCPU)
-  {
+  if (isCPU) {
     // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
     DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided_bigger_dft_length, 1, 6, false /*onesided*/);
   }
 
   std::vector<std::complex<float>> expected_axis_0_one_sided = {
-    {5.000f, 0.000f}, {10.000f, 0.000f}, {15.000f, 0.000f}, {20.000f, 0.000f}, {25.000f, 0.000f}, {30.000f, 0.000f}, {35.000f, 0.000f}, {40.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
+      {5.000f, 0.000f},
+      {10.000f, 0.000f},
+      {15.000f, 0.000f},
+      {20.000f, 0.000f},
+      {25.000f, 0.000f},
+      {30.000f, 0.000f},
+      {35.000f, 0.000f},
+      {40.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
 
-    {10.000f, 5.000f}, {20.000f, 10.000f}, {30.000f, 15.000f}, {40.000f, 20.000f}, {50.000f, 25.000f}, {60.000f, 30.000f}, {70.000f, 35.000f}, {80.000f, 40.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
-    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f},
+      {10.000f, 5.000f},
+      {20.000f, 10.000f},
+      {30.000f, 15.000f},
+      {40.000f, 20.000f},
+      {50.000f, 25.000f},
+      {60.000f, 30.000f},
+      {70.000f, 35.000f},
+      {80.000f, 40.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {0.000f, 0.000f},
+      {-0.000f, 0.000f},
+      {0.000f, 0.000f},
   };
-  if (isCPU)
-  {
+  if (isCPU) {
     // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
     DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_one_sided, 1, 5, true /*onesided*/);
   }
 
   std::vector<std::complex<float>> expected_axis_1_two_sided = {
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {-4.000f, -1.657f},
+      {-4.000f, -4.000f},
+      {-4.000f, -9.657f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {-4.000f, -1.657f},
+      {-4.000f, -4.000f},
+      {-4.000f, -9.657f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {-4.000f, -1.657f},
+      {-4.000f, -4.000f},
+      {-4.000f, -9.657f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {-4.000f, -1.657f},
+      {-4.000f, -4.000f},
+      {-4.000f, -9.657f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {-4.000f, -1.657f},
+      {-4.000f, -4.000f},
+      {-4.000f, -9.657f},
 
-    {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f}, {-6.343f, -7.314f}, {-4.000f, -12.000f}, {1.657f, -23.314f},
-    {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f}, {-6.343f, -7.314f}, {-4.000f, -12.000f}, {1.657f, -23.314f},
-    {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f}, {-6.343f, -7.314f}, {-4.000f, -12.000f}, {1.657f, -23.314f},
-    {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f}, {-6.343f, -7.314f}, {-4.000f, -12.000f}, {1.657f, -23.314f},
-    {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f}, {-6.343f, -7.314f}, {-4.000f, -12.000f}, {1.657f, -23.314f},
+      {72.000f, 36.000f},
+      {-17.657f, 15.314f},
+      {-12.000f, 4.000f},
+      {-9.657f, -0.686f},
+      {-8.000f, -4.000f},
+      {-6.343f, -7.314f},
+      {-4.000f, -12.000f},
+      {1.657f, -23.314f},
+      {72.000f, 36.000f},
+      {-17.657f, 15.314f},
+      {-12.000f, 4.000f},
+      {-9.657f, -0.686f},
+      {-8.000f, -4.000f},
+      {-6.343f, -7.314f},
+      {-4.000f, -12.000f},
+      {1.657f, -23.314f},
+      {72.000f, 36.000f},
+      {-17.657f, 15.314f},
+      {-12.000f, 4.000f},
+      {-9.657f, -0.686f},
+      {-8.000f, -4.000f},
+      {-6.343f, -7.314f},
+      {-4.000f, -12.000f},
+      {1.657f, -23.314f},
+      {72.000f, 36.000f},
+      {-17.657f, 15.314f},
+      {-12.000f, 4.000f},
+      {-9.657f, -0.686f},
+      {-8.000f, -4.000f},
+      {-6.343f, -7.314f},
+      {-4.000f, -12.000f},
+      {1.657f, -23.314f},
+      {72.000f, 36.000f},
+      {-17.657f, 15.314f},
+      {-12.000f, 4.000f},
+      {-9.657f, -0.686f},
+      {-8.000f, -4.000f},
+      {-6.343f, -7.314f},
+      {-4.000f, -12.000f},
+      {1.657f, -23.314f},
   };
   DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_1_two_sided, 2, 8, false /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_1_one_sided = {
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f},
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f},
-    {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f},
-    {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f},
-    {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f},
-    {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f},
-    {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {36.000f, 0.000f},
+      {-4.000f, 9.657f},
+      {-4.000f, 4.000f},
+      {-4.000f, 1.657f},
+      {-4.000f, 0.000f},
+      {72.000f, 36.000f},
+      {-17.657f, 15.314f},
+      {-12.000f, 4.000f},
+      {-9.657f, -0.686f},
+      {-8.000f, -4.000f},
+      {72.000f, 36.000f},
+      {-17.657f, 15.314f},
+      {-12.000f, 4.000f},
+      {-9.657f, -0.686f},
+      {-8.000f, -4.000f},
+      {72.000f, 36.000f},
+      {-17.657f, 15.314f},
+      {-12.000f, 4.000f},
+      {-9.657f, -0.686f},
+      {-8.000f, -4.000f},
+      {72.000f, 36.000f},
+      {-17.657f, 15.314f},
+      {-12.000f, 4.000f},
+      {-9.657f, -0.686f},
+      {-8.000f, -4.000f},
+      {72.000f, 36.000f},
+      {-17.657f, 15.314f},
+      {-12.000f, 4.000f},
+      {-9.657f, -0.686f},
+      {-8.000f, -4.000f},
   };
   DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_1_one_sided, 2, 8, true /*onesided*/);
 
@@ -1285,18 +1828,23 @@ static void DiscreteFourierTransformInverse(size_t axis, LearningModelDeviceKind
 
   auto model =
       LearningModelBuilder::Create(17)
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Inverse", TensorKind::Float, output_shape))
-          .Operators().Add(Operator(L"DFT")
-                             .SetInput(L"input", L"Input.TimeSignal")
-                             .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
-                             .SetOutput(L"output", L"Output.Spectra"))
-          .Operators().Add(Operator(L"DFT")
-                             .SetInput(L"input", L"Output.Spectra")
-                             .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
-                             .SetAttribute(L"inverse", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
-                             .SetOutput(L"output", L"Output.Inverse"))
+          .Inputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
+          .Outputs()
+          .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Inverse", TensorKind::Float, output_shape))
+          .Operators()
+          .Add(Operator(L"DFT")
+                   .SetInput(L"input", L"Input.TimeSignal")
+                   .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
+                   .SetOutput(L"output", L"Output.Spectra"))
+          .Operators()
+          .Add(Operator(L"DFT")
+                   .SetInput(L"input", L"Output.Spectra")
+                   .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
+                   .SetAttribute(L"inverse", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
+                   .SetOutput(L"output", L"Output.Inverse"))
           .CreateModel();
 
   auto device = LearningModelDevice(kind);
@@ -1305,18 +1853,88 @@ static void DiscreteFourierTransformInverse(size_t axis, LearningModelDeviceKind
 
   auto input_vector =
       std::vector<float>{
-           1, 2, 3, 4, 5, 6, 7, 8,
-           1, 2, 3, 4, 5, 6, 7, 8,
-           1, 2, 3, 4, 5, 6, 7, 8,
-           1, 2, 3, 4, 5, 6, 7, 8,
-           1, 2, 3, 4, 5, 6, 7, 8,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
 
-           2, 4, 6, 8, 10, 12, 14, 16,
-           2, 4, 6, 8, 10, 12, 14, 16,
-           2, 4, 6, 8, 10, 12, 14, 16,
-           2, 4, 6, 8, 10, 12, 14, 16,
-           2, 4, 6, 8, 10, 12, 14, 16,
-          };
+          2,
+          4,
+          6,
+          8,
+          10,
+          12,
+          14,
+          16,
+          2,
+          4,
+          6,
+          8,
+          10,
+          12,
+          14,
+          16,
+          2,
+          4,
+          6,
+          8,
+          10,
+          12,
+          14,
+          16,
+          2,
+          4,
+          6,
+          8,
+          10,
+          12,
+          14,
+          16,
+          2,
+          4,
+          6,
+          8,
+          10,
+          12,
+          14,
+          16,
+      };
   // Populate binding
   binding.Bind(
       L"Input.TimeSignal",
@@ -1355,15 +1973,14 @@ static void ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX()
 
 static void ModelBuilding_HannWindow() {
 #if !defined(BUILD_INBOX)
-  auto expected = std::vector<float> {
-    0.000000f, 0.009607f, 0.038060f, 0.084265f, 0.146447f,
-    0.222215f, 0.308658f, 0.402455f, 0.500000f, 0.597545f,
-    0.691342f, 0.777785f, 0.853553f, 0.915735f, 0.961940f,
-    0.990393f, 1.000000f, 0.990393f, 0.961940f, 0.915735f,
-    0.853553f, 0.777785f, 0.691342f, 0.597545f, 0.500000f,
-    0.402455f, 0.308658f, 0.222215f, 0.146447f, 0.084265f,
-    0.038060f, 0.009607f
-  };
+  auto expected = std::vector<float>{
+      0.000000f, 0.009607f, 0.038060f, 0.084265f, 0.146447f,
+      0.222215f, 0.308658f, 0.402455f, 0.500000f, 0.597545f,
+      0.691342f, 0.777785f, 0.853553f, 0.915735f, 0.961940f,
+      0.990393f, 1.000000f, 0.990393f, 0.961940f, 0.915735f,
+      0.853553f, 0.777785f, 0.691342f, 0.597545f, 0.500000f,
+      0.402455f, 0.308658f, 0.222215f, 0.146447f, 0.084265f,
+      0.038060f, 0.009607f};
   WindowFunction(L"HannWindow", TensorKind::Float, expected);
   WindowFunction(L"HannWindow", TensorKind::Double, expected);
 #endif
@@ -1371,15 +1988,14 @@ static void ModelBuilding_HannWindow() {
 
 static void ModelBuilding_HammingWindow() {
 #if !defined(BUILD_INBOX)
-  auto expected = std::vector<float> {
-    0.086957f, 0.095728f, 0.121707f, 0.163894f, 0.220669f,
-    0.289848f, 0.368775f, 0.454415f, 0.543478f, 0.632541f,
-    0.718182f, 0.797108f, 0.866288f, 0.923062f, 0.965249f,
-    0.991228f, 1.000000f, 0.991228f, 0.965249f, 0.923062f,
-    0.866288f, 0.797108f, 0.718182f, 0.632541f, 0.543478f,
-    0.454415f, 0.368775f, 0.289848f, 0.220669f, 0.163894f,
-    0.121707f, 0.095728f
-  };
+  auto expected = std::vector<float>{
+      0.086957f, 0.095728f, 0.121707f, 0.163894f, 0.220669f,
+      0.289848f, 0.368775f, 0.454415f, 0.543478f, 0.632541f,
+      0.718182f, 0.797108f, 0.866288f, 0.923062f, 0.965249f,
+      0.991228f, 1.000000f, 0.991228f, 0.965249f, 0.923062f,
+      0.866288f, 0.797108f, 0.718182f, 0.632541f, 0.543478f,
+      0.454415f, 0.368775f, 0.289848f, 0.220669f, 0.163894f,
+      0.121707f, 0.095728f};
   WindowFunction(L"HammingWindow", TensorKind::Float, expected);
   WindowFunction(L"HammingWindow", TensorKind::Double, expected);
 #endif
@@ -1387,15 +2003,14 @@ static void ModelBuilding_HammingWindow() {
 
 static void ModelBuilding_BlackmanWindow() {
 #if !defined(BUILD_INBOX)
-  auto expected = std::vector<float> {
-    0.000000f, 0.003518f, 0.014629f, 0.034880f, 0.066447f,
-    0.111600f, 0.172090f, 0.248544f, 0.340000f, 0.443635f,
-    0.554773f, 0.667170f, 0.773553f, 0.866349f, 0.938508f,
-    0.984303f, 1.000000f, 0.984303f, 0.938508f, 0.866349f,
-    0.773553f, 0.667170f, 0.554773f, 0.443635f, 0.340000f,
-    0.248544f, 0.172090f, 0.111600f, 0.066447f, 0.034880f,
-    0.014629f, 0.003518f
-  };
+  auto expected = std::vector<float>{
+      0.000000f, 0.003518f, 0.014629f, 0.034880f, 0.066447f,
+      0.111600f, 0.172090f, 0.248544f, 0.340000f, 0.443635f,
+      0.554773f, 0.667170f, 0.773553f, 0.866349f, 0.938508f,
+      0.984303f, 1.000000f, 0.984303f, 0.938508f, 0.866349f,
+      0.773553f, 0.667170f, 0.554773f, 0.443635f, 0.340000f,
+      0.248544f, 0.172090f, 0.111600f, 0.066447f, 0.034880f,
+      0.014629f, 0.003518f};
   WindowFunction(L"BlackmanWindow", TensorKind::Float, expected);
   WindowFunction(L"BlackmanWindow", TensorKind::Double, expected);
 #endif
@@ -1432,152 +2047,150 @@ static void ModelBuilding_MelSpectrogramOnThreeToneSignal() {
 }
 
 static void SetIntraOpNumThreads() {
-    auto shape = std::vector<int64_t>{1, 1000};
-    auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
-    auto device = LearningModelDevice(LearningModelDeviceKind::Cpu);
-    auto options = LearningModelSessionOptions();
-    auto nativeOptions = options.as<ILearningModelSessionOptionsNative>();
+  auto shape = std::vector<int64_t>{1, 1000};
+  auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
+  auto device = LearningModelDevice(LearningModelDeviceKind::Cpu);
+  auto options = LearningModelSessionOptions();
+  auto nativeOptions = options.as<ILearningModelSessionOptionsNative>();
 
-    // Set the number of intra op threads to half of logical cores.
-    uint32_t desiredThreads = std::thread::hardware_concurrency() / 2;
-    WINML_EXPECT_NO_THROW(nativeOptions->SetIntraOpNumThreadsOverride(desiredThreads));
-    // Create session and grab the number of intra op threads to see if is set properly
-    LearningModelSession session = nullptr;
-    WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
-    auto nativeSession = session.as<ILearningModelSessionNative>();
-    uint32_t numIntraOpThreads;
-    WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
-    WINML_EXPECT_EQUAL(desiredThreads, numIntraOpThreads);
+  // Set the number of intra op threads to half of logical cores.
+  uint32_t desiredThreads = std::thread::hardware_concurrency() / 2;
+  WINML_EXPECT_NO_THROW(nativeOptions->SetIntraOpNumThreadsOverride(desiredThreads));
+  // Create session and grab the number of intra op threads to see if is set properly
+  LearningModelSession session = nullptr;
+  WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
+  auto nativeSession = session.as<ILearningModelSessionNative>();
+  uint32_t numIntraOpThreads;
+  WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
+  WINML_EXPECT_EQUAL(desiredThreads, numIntraOpThreads);
 
-    // Check to see that bind and evaluate continue to work when setting the intra op thread count
-    std::vector<float> input(1000);
-    std::iota(std::begin(input), std::end(input), 0.0f);
-    auto tensor_input = TensorFloat::CreateFromArray(shape, input);
-    auto binding = LearningModelBinding(session);
-    binding.Bind(L"input", tensor_input);
-    WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
+  // Check to see that bind and evaluate continue to work when setting the intra op thread count
+  std::vector<float> input(1000);
+  std::iota(std::begin(input), std::end(input), 0.0f);
+  auto tensor_input = TensorFloat::CreateFromArray(shape, input);
+  auto binding = LearningModelBinding(session);
+  binding.Bind(L"input", tensor_input);
+  WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
-    // Check to verify that the default number of threads in LearningModelSession is equal to the number of logical cores.
-    session = LearningModelSession(model, device);
-    nativeSession = session.as<ILearningModelSessionNative>();
-    WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
-    WINML_EXPECT_EQUAL(std::thread::hardware_concurrency(), numIntraOpThreads);
- }
+  // Check to verify that the default number of threads in LearningModelSession is equal to the number of logical cores.
+  session = LearningModelSession(model, device);
+  nativeSession = session.as<ILearningModelSessionNative>();
+  WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
+  WINML_EXPECT_EQUAL(std::thread::hardware_concurrency(), numIntraOpThreads);
+}
 
 static void SetIntraOpThreadSpinning() {
-    auto device = LearningModelDevice(LearningModelDeviceKind::Cpu);
-    auto shape = std::vector<int64_t>{1, 1000};
-    auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
+  auto device = LearningModelDevice(LearningModelDeviceKind::Cpu);
+  auto shape = std::vector<int64_t>{1, 1000};
+  auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
 
-    std::vector<float> input(1000);
-    std::iota(std::begin(input), std::end(input), 0.0f);
-    auto tensor_input = TensorFloat::CreateFromArray(shape, input);
+  std::vector<float> input(1000);
+  std::iota(std::begin(input), std::end(input), 0.0f);
+  auto tensor_input = TensorFloat::CreateFromArray(shape, input);
 
-    auto spinDisabled = LearningModelSessionOptions();
-    auto spinDisabledNative = spinDisabled.as<ILearningModelSessionOptionsNative1>();
-    spinDisabledNative->SetIntraOpThreadSpinning(false);
+  auto spinDisabled = LearningModelSessionOptions();
+  auto spinDisabledNative = spinDisabled.as<ILearningModelSessionOptionsNative1>();
+  spinDisabledNative->SetIntraOpThreadSpinning(false);
 
-    // ensure disabled thread spin is internally disabled and can evaluate without error
-    LearningModelSession sessionSpinDisabled = nullptr;
-    WINML_EXPECT_NO_THROW(sessionSpinDisabled = LearningModelSession(model, device, spinDisabled));
-    auto nativeSessionSpinDisabled = sessionSpinDisabled.as<ILearningModelSessionNative1>();
-    boolean allowSpinning = true;
-    nativeSessionSpinDisabled->GetIntraOpThreadSpinning(&allowSpinning);
-    WINML_EXPECT_FALSE(allowSpinning);
+  // ensure disabled thread spin is internally disabled and can evaluate without error
+  LearningModelSession sessionSpinDisabled = nullptr;
+  WINML_EXPECT_NO_THROW(sessionSpinDisabled = LearningModelSession(model, device, spinDisabled));
+  auto nativeSessionSpinDisabled = sessionSpinDisabled.as<ILearningModelSessionNative1>();
+  boolean allowSpinning = true;
+  nativeSessionSpinDisabled->GetIntraOpThreadSpinning(&allowSpinning);
+  WINML_EXPECT_FALSE(allowSpinning);
 
-    auto binding = LearningModelBinding(sessionSpinDisabled);
-    binding.Bind(L"input", tensor_input);
-    WINML_EXPECT_NO_THROW(sessionSpinDisabled.Evaluate(binding, L""));
+  auto binding = LearningModelBinding(sessionSpinDisabled);
+  binding.Bind(L"input", tensor_input);
+  WINML_EXPECT_NO_THROW(sessionSpinDisabled.Evaluate(binding, L""));
 
-    // ensure enabled thread spin is internally enabled and can evaluate without error
-    auto spinEnabled = LearningModelSessionOptions();
-    auto spinEnabledNative = spinEnabled.as<ILearningModelSessionOptionsNative1>();
-    spinEnabledNative->SetIntraOpThreadSpinning(true);
+  // ensure enabled thread spin is internally enabled and can evaluate without error
+  auto spinEnabled = LearningModelSessionOptions();
+  auto spinEnabledNative = spinEnabled.as<ILearningModelSessionOptionsNative1>();
+  spinEnabledNative->SetIntraOpThreadSpinning(true);
 
-    LearningModelSession sessionSpinEnabled = nullptr;
-    WINML_EXPECT_NO_THROW(sessionSpinEnabled = LearningModelSession(model, device, spinEnabled));
-    auto nativeSessionSpinEnabled = sessionSpinEnabled.as<ILearningModelSessionNative1>();
-    nativeSessionSpinEnabled->GetIntraOpThreadSpinning(&allowSpinning);
-    WINML_EXPECT_TRUE(allowSpinning);
+  LearningModelSession sessionSpinEnabled = nullptr;
+  WINML_EXPECT_NO_THROW(sessionSpinEnabled = LearningModelSession(model, device, spinEnabled));
+  auto nativeSessionSpinEnabled = sessionSpinEnabled.as<ILearningModelSessionNative1>();
+  nativeSessionSpinEnabled->GetIntraOpThreadSpinning(&allowSpinning);
+  WINML_EXPECT_TRUE(allowSpinning);
 
-    binding = LearningModelBinding(sessionSpinEnabled);
-    binding.Bind(L"input", tensor_input);
-    WINML_EXPECT_NO_THROW(sessionSpinEnabled.Evaluate(binding, L""));
+  binding = LearningModelBinding(sessionSpinEnabled);
+  binding.Bind(L"input", tensor_input);
+  WINML_EXPECT_NO_THROW(sessionSpinEnabled.Evaluate(binding, L""));
 
-    // ensure options by default allow spinning
-    auto spinDefault = LearningModelSessionOptions();
-    LearningModelSession sessionSpinDefault = nullptr;
-    WINML_EXPECT_NO_THROW(sessionSpinDefault = LearningModelSession(model, device, spinDefault));
-    auto nativeSessionSpinDefault = sessionSpinDefault.as<ILearningModelSessionNative1>();
-    allowSpinning = false;
-    nativeSessionSpinDefault->GetIntraOpThreadSpinning(&allowSpinning);
-    WINML_EXPECT_TRUE(allowSpinning);
- }
+  // ensure options by default allow spinning
+  auto spinDefault = LearningModelSessionOptions();
+  LearningModelSession sessionSpinDefault = nullptr;
+  WINML_EXPECT_NO_THROW(sessionSpinDefault = LearningModelSession(model, device, spinDefault));
+  auto nativeSessionSpinDefault = sessionSpinDefault.as<ILearningModelSessionNative1>();
+  allowSpinning = false;
+  nativeSessionSpinDefault->GetIntraOpThreadSpinning(&allowSpinning);
+  WINML_EXPECT_TRUE(allowSpinning);
+}
 
- static void SetName() {
- #ifndef BUILD_INBOX
-   // load the model with name 'squeezenet_old'
-   LearningModel model = nullptr;
-   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", model));
-   auto model_name = model.Name();
-   auto squeezenet_old = to_hstring("squeezenet_old");
-   WINML_EXPECT_EQUAL(model_name, squeezenet_old);
+static void SetName() {
+#ifndef BUILD_INBOX
+  // load the model with name 'squeezenet_old'
+  LearningModel model = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", model));
+  auto model_name = model.Name();
+  auto squeezenet_old = to_hstring("squeezenet_old");
+  WINML_EXPECT_EQUAL(model_name, squeezenet_old);
 
-   // ensure the model name can be changed to 'new name'
-   auto experimental_model = winml_experimental::LearningModelExperimental(model);
-   auto new_name = to_hstring("new name");
-   experimental_model.SetName(new_name);
-   model_name = model.Name();
-   WINML_EXPECT_EQUAL(model_name, new_name);
+  // ensure the model name can be changed to 'new name'
+  auto experimental_model = winml_experimental::LearningModelExperimental(model);
+  auto new_name = to_hstring("new name");
+  experimental_model.SetName(new_name);
+  model_name = model.Name();
+  WINML_EXPECT_EQUAL(model_name, new_name);
 
-   // ensure the model protobuf was actually modified
-   std::wstring path = FileHelpers::GetModulePath() + L"model_name_changed.onnx";
-   experimental_model.Save(path);
-   LearningModel model_name_changed = nullptr;
-   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model_name_changed.onnx", model_name_changed));
-   model_name = model_name_changed.Name();
-   WINML_EXPECT_EQUAL(model_name, new_name);
- #endif
- }
-
+  // ensure the model protobuf was actually modified
+  std::wstring path = FileHelpers::GetModulePath() + L"model_name_changed.onnx";
+  experimental_model.Save(path);
+  LearningModel model_name_changed = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model_name_changed.onnx", model_name_changed));
+  model_name = model_name_changed.Name();
+  WINML_EXPECT_EQUAL(model_name, new_name);
+#endif
+}
 
 const LearningModelSessionAPITestsApi& getapi() {
   static LearningModelSessionAPITestsApi api =
-  {
-    LearningModelSessionAPITestsClassSetup,
-    CreateSessionDeviceDefault,
-    CreateSessionDeviceCpu,
-    CreateSessionWithModelLoadedFromStream,
-    CreateSessionDeviceDirectX,
-    CreateSessionDeviceDirectXHighPerformance,
-    CreateSessionDeviceDirectXMinimumPower,
-    AdapterIdAndDevice,
-    EvaluateFeatures,
-    EvaluateFeaturesAsync,
-    EvaluationProperties,
-    CreateSessionWithCastToFloat16InModel,
-    CreateSessionWithFloat16InitializersInModel,
-    EvaluateSessionAndCloseModel,
-    NamedDimensionOverride,
-    CloseSession,
-    SetIntraOpNumThreads,
-    SetIntraOpThreadSpinning,
-    ModelBuilding_Gemm,
-    ModelBuilding_StandardDeviationNormalization,
-    ModelBuilding_DynamicMatmul,
-    ModelBuilding_ConstantMatmul,
-    ModelBuilding_DiscreteFourierTransform,
-    ModelBuilding_DiscreteFourierTransformInverseIdentity,
-    ModelBuilding_DiscreteFourierTransformDeviceDirectX,
-    ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX,
-    ModelBuilding_HannWindow,
-    ModelBuilding_HammingWindow,
-    ModelBuilding_BlackmanWindow,
-    ModelBuilding_STFT,
-    ModelBuilding_MelSpectrogramOnThreeToneSignal,
-    ModelBuilding_MelWeightMatrix,
-    SetName
-  };
+      {
+          LearningModelSessionAPITestsClassSetup,
+          CreateSessionDeviceDefault,
+          CreateSessionDeviceCpu,
+          CreateSessionWithModelLoadedFromStream,
+          CreateSessionDeviceDirectX,
+          CreateSessionDeviceDirectXHighPerformance,
+          CreateSessionDeviceDirectXMinimumPower,
+          AdapterIdAndDevice,
+          EvaluateFeatures,
+          EvaluateFeaturesAsync,
+          EvaluationProperties,
+          CreateSessionWithCastToFloat16InModel,
+          CreateSessionWithFloat16InitializersInModel,
+          EvaluateSessionAndCloseModel,
+          NamedDimensionOverride,
+          CloseSession,
+          SetIntraOpNumThreads,
+          SetIntraOpThreadSpinning,
+          ModelBuilding_Gemm,
+          ModelBuilding_StandardDeviationNormalization,
+          ModelBuilding_DynamicMatmul,
+          ModelBuilding_ConstantMatmul,
+          ModelBuilding_DiscreteFourierTransform,
+          ModelBuilding_DiscreteFourierTransformInverseIdentity,
+          ModelBuilding_DiscreteFourierTransformDeviceDirectX,
+          ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX,
+          ModelBuilding_HannWindow,
+          ModelBuilding_HammingWindow,
+          ModelBuilding_BlackmanWindow,
+          ModelBuilding_STFT,
+          ModelBuilding_MelSpectrogramOnThreeToneSignal,
+          ModelBuilding_MelWeightMatrix,
+          SetName};
 
   if (SkipGpuTests()) {
     api.CreateSessionDeviceDirectX = SkipTest;
@@ -1598,7 +2211,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     api.AdapterIdAndDevice = SkipTest;
   }
   if (SkipTestsImpactedByOpenMP()) {
-      api.SetIntraOpNumThreads = SkipTest;
+    api.SetIntraOpNumThreads = SkipTest;
   }
- return api;
+  return api;
 }

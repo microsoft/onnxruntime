@@ -40,7 +40,7 @@ void AdapterDmlEpTestTeardown() {
 }
 
 UniqueOrtSessionOptions CreateUniqueOrtSessionOptions() {
-  OrtSessionOptions *options;
+  OrtSessionOptions* options;
   THROW_IF_NOT_OK_MSG(ort_api->CreateSessionOptions(&options), ort_api);
   return UniqueOrtSessionOptions(options, ort_api->ReleaseSessionOptions);
 }
@@ -54,7 +54,7 @@ UniqueOrtSession CreateUniqueOrtSession(const UniqueOrtSessionOptions& session_o
 UniqueOrtSession CreateUniqueOrtSession(const std::wstring& model_path, const UniqueOrtSessionOptions& session_options) {
   THROW_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), 1), ort_api);
   THROW_IF_NOT_OK_MSG(ort_api->SetSessionGraphOptimizationLevel(session_options.get(), ORT_ENABLE_BASIC), ort_api);
-  OrtSession *session;
+  OrtSession* session;
   THROW_IF_NOT_OK_MSG(ort_api->CreateSession(ort_env, model_path.c_str(), session_options.get(), &session), ort_api);
   return UniqueOrtSession(session, ort_api->ReleaseSession);
 }
@@ -115,8 +115,7 @@ winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
       D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
       D3D12_MEMORY_POOL_UNKNOWN,
       0,
-      0
-  };
+      0};
   constexpr D3D12_RESOURCE_DESC resource_desc = {
       D3D12_RESOURCE_DIMENSION_BUFFER,
       0,
@@ -127,8 +126,7 @@ winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
       DXGI_FORMAT_UNKNOWN,
       {1, 0},
       D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-      D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
-  };
+      D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
   winrt::com_ptr<ID3D12Resource> d3d12_resource;
   WINML_EXPECT_HRESULT_SUCCEEDED(device.CreateCommittedResource(
       &heap_properties,
@@ -139,7 +137,6 @@ winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
       IID_PPV_ARGS(d3d12_resource.put())));
   return d3d12_resource;
 }
-
 
 void DmlCreateAndFreeGPUAllocationFromD3DResource() {
   GPUTEST;
@@ -242,14 +239,14 @@ void DmlCopyTensor() {
   std::array<int64_t, 3> shape = {720, 720, 3};
   OrtValue* gpu_value;
   THROW_IF_NOT_OK_MSG(ort_api->CreateTensorWithDataAsOrtValue(
-      ort_memory_info,
-      dml_allocator_resource,
-      static_cast<size_t>(resource->GetDesc().Width),
-      shape.data(),
-      shape.size(),
-      ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
-      &gpu_value),
-    ort_api);
+                          ort_memory_info,
+                          dml_allocator_resource,
+                          static_cast<size_t>(resource->GetDesc().Width),
+                          shape.data(),
+                          shape.size(),
+                          ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                          &gpu_value),
+                      ort_api);
   dst_cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCopyTensor(dml_provider, gpu_value, dst_cpu_tensor.get()), ort_api);
 
@@ -292,24 +289,23 @@ void SessionGetInputRequiredDeviceId() {
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetInputRequiredDeviceId(cpu_session.get(), "inputImage", &device_id), ort_api);
   WINML_EXPECT_EQUAL(0, device_id);
 }
-}
+}  // namespace
 
 const AdapterDmlEpTestApi& getapi() {
   static constexpr AdapterDmlEpTestApi api =
-  {
-    AdapterDmlEpTestSetup,
-    AdapterDmlEpTestTeardown,
-    DmlExecutionProviderSetDefaultRoundingMode,
-    DmlExecutionProviderFlushContext,
-    DmlExecutionProviderReleaseCompletedReferences,
-    DmlCreateAndFreeGPUAllocationFromD3DResource,
-    DmlGetD3D12ResourceFromAllocation,
-    GetTensorMemoryInfo,
-    ExecutionProviderSync,
-    DmlCopyTensor,
-    CreateCustomRegistry,
-    ValueGetDeviceId,
-    SessionGetInputRequiredDeviceId
-  };
+      {
+          AdapterDmlEpTestSetup,
+          AdapterDmlEpTestTeardown,
+          DmlExecutionProviderSetDefaultRoundingMode,
+          DmlExecutionProviderFlushContext,
+          DmlExecutionProviderReleaseCompletedReferences,
+          DmlCreateAndFreeGPUAllocationFromD3DResource,
+          DmlGetD3D12ResourceFromAllocation,
+          GetTensorMemoryInfo,
+          ExecutionProviderSync,
+          DmlCopyTensor,
+          CreateCustomRegistry,
+          ValueGetDeviceId,
+          SessionGetInputRequiredDeviceId};
   return api;
 }

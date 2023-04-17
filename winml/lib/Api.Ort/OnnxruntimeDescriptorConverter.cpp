@@ -384,9 +384,9 @@ GetTensorType(
 
   return is_valid_image_tensor
              ? TensorType::Tensor_Image
-             : has_unsupported_image_metadata
-                   ? TensorType::Tensor_Data_UnsupportedImageMetadata
-                   : TensorType::Tensor_Data;
+         : has_unsupported_image_metadata
+             ? TensorType::Tensor_Data_UnsupportedImageMetadata
+             : TensorType::Tensor_Data;
 }
 
 static winml::ILearningModelFeatureDescriptor
@@ -617,7 +617,7 @@ wfc::IVector<winml::ILearningModelFeatureDescriptor>
 OnnxruntimeDescriptorConverter::ConvertToLearningModelDescriptors(const OnnxruntimeValueInfoWrapper* descriptors, size_t num_descriptors) {
   auto features = winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>();
 
-  for (size_t i = 0; i < num_descriptors;  i++) {
+  for (size_t i = 0; i < num_descriptors; i++) {
     const auto& descriptor = descriptors[i];
     auto learning_model_descriptor = _winml::CreateFeatureDescriptor(engine_factory_.Get(), &descriptor, metadata_);
     features.Append(learning_model_descriptor);

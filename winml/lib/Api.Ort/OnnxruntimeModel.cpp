@@ -286,11 +286,11 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
                           ort_api);
   size_t input_count;
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetNumInputs(op_type, onnx_opset_version, op_domain, &input_count),
-                           ort_api);
+                          ort_api);
 
   size_t output_count;
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetNumOutputs(op_type, onnx_opset_version, op_domain, &output_count),
-                           ort_api);
+                          ort_api);
 
   std::vector<const char*> input_names(input_count);
   for (size_t i = 0; i < input_count; i++) {
@@ -299,8 +299,7 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
                             ort_api);
 
     const char* actual_name;
-    if (S_OK == GetValue(name, op_input_names, actual_input_names, num_inputs, &actual_name))
-    {
+    if (S_OK == GetValue(name, op_input_names, actual_input_names, num_inputs, &actual_name)) {
       input_names[i] = actual_name;
     }
   }
@@ -309,10 +308,10 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   for (size_t i = 0; i < output_count; i++) {
     const char* name;
     RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetOutputName(op_type, onnx_opset_version, op_domain, i, &name),
-                             ort_api);
+                            ort_api);
     const char* actual_name = nullptr;
     if (S_OK == GetValue(name, op_output_names, actual_output_names, num_outputs, &actual_name)) {
-        output_names[i] = actual_name;
+      output_names[i] = actual_name;
     }
   }
 
@@ -322,7 +321,7 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   }
 
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddOperator(
-    ort_model_.get(), op_type, op_name, onnx_opset_version, op_domain, input_names.data(), input_count, output_names.data(), output_count, op_attribute_names, attributes.data(), num_attributes),
+                              ort_model_.get(), op_type, op_name, onnx_opset_version, op_domain, input_names.data(), input_count, output_names.data(), output_count, op_attribute_names, attributes.data(), num_attributes),
                           engine_factory_->UseOrtApi());
   return S_OK;
 }
@@ -364,7 +363,6 @@ STDMETHODIMP OnnruntimeModel::AddModelOutput(_In_ const char* const name, _In_ I
   return S_OK;
 }
 
-
 STDMETHODIMP OnnruntimeModel::JoinModel(_In_ IModel* other_model,
                                         _In_ const char* const* output_names,
                                         _In_ const char* const* input_names,
@@ -375,12 +373,12 @@ STDMETHODIMP OnnruntimeModel::JoinModel(_In_ IModel* other_model,
   auto ort_api = engine_factory_->UseOrtApi();
 
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->JoinModels(ort_model_.get(),
-                                                       static_cast<OnnruntimeModel*>(other_model)->ort_model_.get(),
-                                                       output_names,
-                                                       input_names,
-                                                       num_linkages,
-                                                       promote_unlinked_outputs,
-                                                       join_node_prefix),
+                                                        static_cast<OnnruntimeModel*>(other_model)->ort_model_.get(),
+                                                        output_names,
+                                                        input_names,
+                                                        num_linkages,
+                                                        promote_unlinked_outputs,
+                                                        join_node_prefix),
                           ort_api);
   // reset the info so that it is recreated with the new information lazily
   info_ = nullptr;

@@ -15,7 +15,6 @@ SequenceFeatureDescriptor::SequenceFeatureDescriptor(
                                                          is_required_(is_required),
                                                          element_descriptor_(descriptor) {}
 
-
 winml::ILearningModelFeatureDescriptor
 SequenceFeatureDescriptor::ElementDescriptor() try {
   return element_descriptor_;
@@ -70,6 +69,5 @@ SequenceFeatureDescriptor::GetDescriptorInfo(
   engine_factory->CreateSequenceDescriptorInfo(info);
   return S_OK;
 };
-
 
 }  // namespace WINMLP

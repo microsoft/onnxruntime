@@ -16,7 +16,7 @@ WinMLTelemetryHelper::WinMLTelemetryHelper()
 WinMLTelemetryHelper::~WinMLTelemetryHelper() {
 }
 
-void WinMLTelemetryHelper::LogApiUsage(const char* name){
+void WinMLTelemetryHelper::LogApiUsage(const char* name) {
   if (!telemetry_enabled_)
     return;
   WinMLTraceLoggingWrite(
@@ -24,13 +24,12 @@ void WinMLTelemetryHelper::LogApiUsage(const char* name){
       "ApiUsage",
       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-      //Telemetry info
+      // Telemetry info
       TraceLoggingUInt8(WINML_TLM_EXPERIMENTAL_API_VERSION, "experimentalSchemaVersion"),
       // named dimension override info
       TraceLoggingString(name, "name"),
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }
-
 
 void WinMLTelemetryHelper::LogWinMLShutDown() {
   std::string message = BINARY_NAME;
@@ -94,7 +93,7 @@ void WinMLTelemetryHelper::LogRegisterOperatorKernel(
       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
       // Telemetry info
       TraceLoggingUInt8(WINML_TLM_RUNTIME_ERROR_VERSION, "schemaVersion"),
-      //op kernel info
+      // op kernel info
       TraceLoggingString(name, "name"),
       TraceLoggingString(domain, "domain"),
       TraceLoggingInt32(execution_type, "executionType"),
@@ -119,9 +118,9 @@ void WinMLTelemetryHelper::RegisterOperatorSetSchema(
       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
       // Telemetry info
       TraceLoggingUInt8(WINML_TLM_RUNTIME_ERROR_VERSION, "schemaVersion"),
-      //op kernel info
+      // op kernel info
       TraceLoggingString(name, "name"),
-      TraceLoggingInt32(input_count, "inputCount"),  //stats
+      TraceLoggingInt32(input_count, "inputCount"),  // stats
       TraceLoggingInt32(output_count, "outputCount"),
       TraceLoggingInt32(type_constraint_count, "typeConstraintCount"),
       TraceLoggingInt32(attribute_count, "attributeCount"),
@@ -139,7 +138,7 @@ void WinMLTelemetryHelper::SetIntraOpNumThreadsOverride(
       "SetIntraOpNumThreadsOverride",
       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-      //Telemetry info
+      // Telemetry info
       TraceLoggingUInt8(WINML_TLM_NATIVE_API_INTRAOP_THREADS_VERSION, "schemaVersion"),
       // num threads info
       TraceLoggingInt32(num_threads_override, "numThreadsOverride"),
@@ -149,18 +148,18 @@ void WinMLTelemetryHelper::SetIntraOpNumThreadsOverride(
 
 void WinMLTelemetryHelper::SetIntraOpThreadSpinning(
     bool allow_spinning) {
-    if (!telemetry_enabled_) 
-      return;
-    WinMLTraceLoggingWrite(
-        provider_,
-        "SetIntraOpThreadSpinning",
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-        //Telemetry info
-        TraceLoggingUInt8(WINML_TLM_NATIVE_API_INTRAOP_THREAD_SPINNING_VERSION, "schemaVersion"),
-        // thread spinning info
-        TraceLoggingBoolean(allow_spinning, "threadSpinningAllowed"),
-        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+  if (!telemetry_enabled_)
+    return;
+  WinMLTraceLoggingWrite(
+      provider_,
+      "SetIntraOpThreadSpinning",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      // Telemetry info
+      TraceLoggingUInt8(WINML_TLM_NATIVE_API_INTRAOP_THREAD_SPINNING_VERSION, "schemaVersion"),
+      // thread spinning info
+      TraceLoggingBoolean(allow_spinning, "threadSpinningAllowed"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }
 
 void WinMLTelemetryHelper::SetNamedDimensionOverride(
@@ -172,7 +171,7 @@ void WinMLTelemetryHelper::SetNamedDimensionOverride(
       "SetNamedDimensionOverride",
       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-      //Telemetry info
+      // Telemetry info
       TraceLoggingUInt8(WINML_TLM_NAMED_DIMENSION_OVERRIDE_VERSION, "schemaVersion"),
       // named dimension override info
       TraceLoggingWideString(name.c_str(), "dimensionName"),
@@ -189,9 +188,9 @@ void WinMLTelemetryHelper::SetLearningModelDeviceKind(
       "SetLearningModelDevice",
       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-      //Telemetry info
+      // Telemetry info
       TraceLoggingUInt8(WINML_TLM_DEVICE_KIND_VERSION, "schemaVersion"),
-      // learning model device info 
+      // learning model device info
       TraceLoggingInt32(device_kind, "deviceKind"),
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }

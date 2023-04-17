@@ -26,14 +26,13 @@ HRESULT IsWarpAdapter(IDXGIAdapter1* pAdapter, bool* isWarpAdapter) {
 }
 
 HRESULT _winml::GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, _COM_Outptr_ IDXGIAdapter1** ppAdapter) {
-
   winrt::com_ptr<IDXGIAdapter1> spAdapter;
   UINT i = 0;
   // Avoids using EnumAdapterByGpuPreference for standard GPU path to enable downlevel to RS3
   if (preference == DXGI_GPU_PREFERENCE::DXGI_GPU_PREFERENCE_UNSPECIFIED) {
     winrt::com_ptr<IDXGIFactory1> spFactory;
     RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
-   
+
     while (spFactory->EnumAdapters1(i, spAdapter.put()) != DXGI_ERROR_NOT_FOUND) {
       bool isWarpAdapter = false;
       RETURN_IF_FAILED(IsWarpAdapter(spAdapter.get(), &isWarpAdapter));
@@ -44,8 +43,7 @@ HRESULT _winml::GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE prefere
       spAdapter = nullptr;
       ++i;
     }
-  }
-  else {
+  } else {
     winrt::com_ptr<IDXGIFactory6> spFactory;
     RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
 

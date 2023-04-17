@@ -28,12 +28,11 @@ using namespace wgi;
 using namespace ws;
 using namespace wss;
 
-static void CustomOpsScenarioTestsClassSetup()
-{
+static void CustomOpsScenarioTestsClassSetup() {
   winrt::init_apartment();
-  #ifdef BUILD_INBOX
-    winrt_activation_handler = WINRT_RoGetActivationFactory;
-  #endif
+#ifdef BUILD_INBOX
+  winrt_activation_handler = WINRT_RoGetActivationFactory;
+#endif
 }
 
 // Tests that the execution provider correctly fuses operators together when custom ops are involved.
@@ -80,7 +79,7 @@ static void CustomOperatorFusion() {
 
       std::wostringstream dll;
       dll << BINARY_NAME;
-      auto winml_dll_name =  dll.str();
+      auto winml_dll_name = dll.str();
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
       auto m_library = LoadLibraryExW(winml_dll_name.c_str(), nullptr, 0);
@@ -167,10 +166,9 @@ struct LocalCustomOperatorProvider : winrt::implements<
                                          winml::ILearningModelOperatorProvider,
                                          ILearningModelOperatorProviderNative> {
   LocalCustomOperatorProvider() {
-    
     std::wostringstream dll;
     dll << BINARY_NAME;
-    auto winml_dll_name =  dll.str();
+    auto winml_dll_name = dll.str();
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     auto m_library = LoadLibraryExW(winml_dll_name.c_str(), nullptr, 0);
@@ -675,13 +673,12 @@ static void CustomKernelWithCustomSchema() {
 }
 
 const CustomOpsTestsApi& getapi() {
-  static CustomOpsTestsApi api = 
+  static CustomOpsTestsApi api =
       {
           CustomOpsScenarioTestsClassSetup,
           CustomOperatorFusion,
           CustomKernelWithBuiltInSchema,
-          CustomKernelWithCustomSchema
-      };
+          CustomKernelWithCustomSchema};
 
   if (SkipGpuTests()) {
     api.CustomOperatorFusion = SkipTest;

@@ -11,7 +11,7 @@
 #include "ai_onnxruntime_OrtTrainingSession.h"
 
 #ifdef _WIN32
-wchar_t* copyAndPad(JNIEnv * jniEnv, jstring javaStr) {
+wchar_t* copyAndPad(JNIEnv* jniEnv, jstring javaStr) {
   // The output of GetStringChars is not null-terminated, so we copy it and add a terminator
   const jchar* charArr = (*jniEnv)->GetStringChars(jniEnv, javaStr, NULL);
   size_t strLength = (*jniEnv)->GetStringLength(jniEnv, javaStr);
@@ -31,22 +31,21 @@ wchar_t* copyAndPad(JNIEnv * jniEnv, jstring javaStr) {
  * Method:    createTrainingSession
  * Signature: (JJJJJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_createTrainingSession
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong trainApiHandle,
-     jlong envHandle, jlong optionsHandle, jlong checkpointHandle,
-     jstring trainPath, jstring evalPath, jstring  optimizerPath) {
-  (void) clazz; // Required JNI parameters not needed by functions which don't need to access their host class.
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_createTrainingSession(JNIEnv* jniEnv, jclass clazz, jlong apiHandle, jlong trainApiHandle,
+                                                                                     jlong envHandle, jlong optionsHandle, jlong checkpointHandle,
+                                                                                     jstring trainPath, jstring evalPath, jstring optimizerPath) {
+  (void)clazz;  // Required JNI parameters not needed by functions which don't need to access their host class.
 
   // evalPath and optimizerPath could be NULL, as that is used to signal that those models
   // should not be loaded, which induces some juggling to avoid calling JNI methods with a NULL
   // pointer. trainPath cannot be null, as in that case a Java exception is thrown before this
   // method is called.
 
-  const OrtApi* api = (const OrtApi*) apiHandle;
-  const OrtTrainingApi* trainApi = (const OrtTrainingApi*) trainApiHandle;
-  const OrtEnv* env = (const OrtEnv*) envHandle;
-  const OrtSessionOptions* options = (const OrtSessionOptions*) optionsHandle;
-  OrtCheckpointState* checkpoint = (OrtCheckpointState*) checkpointHandle;
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
+  const OrtEnv* env = (const OrtEnv*)envHandle;
+  const OrtSessionOptions* options = (const OrtSessionOptions*)optionsHandle;
+  OrtCheckpointState* checkpoint = (OrtCheckpointState*)checkpointHandle;
 
   OrtTrainingSession* session = NULL;
 
@@ -98,7 +97,7 @@ cleanupTrain:
   }
 #endif
 
-  return (jlong) session;
+  return (jlong)session;
 }
 
 /*
@@ -106,9 +105,9 @@ cleanupTrain:
  * Method:    closeSession
  * Signature: (JJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_closeSession
-    (JNIEnv * jniEnv, jobject jobj, jlong trainHandle, jlong nativeHandle) {
-  (void)jniEnv; (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_closeSession(JNIEnv* jniEnv, jobject jobj, jlong trainHandle, jlong nativeHandle) {
+  (void)jniEnv;
+  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainHandle;
   trainApi->ReleaseTrainingSession((OrtTrainingSession*)nativeHandle);
 }
@@ -118,13 +117,12 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_closeSession
  * Method:    saveCheckpoint
  * Signature: (JJJLjava/lang/String;Z)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_saveCheckpoint
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainingApiHandle, jlong nativeHandle, jstring outputPath, jboolean overwrite) {
-  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*) apiHandle;
-  const OrtTrainingApi* trainApi = (const OrtTrainingApi*) trainingApiHandle;
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_saveCheckpoint(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainingApiHandle, jlong nativeHandle, jstring outputPath, jboolean overwrite) {
+  (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainingApiHandle;
 
-  const OrtTrainingSession* trainSession = (const OrtTrainingSession*) nativeHandle;
+  const OrtTrainingSession* trainSession = (const OrtTrainingSession*)nativeHandle;
 
 #ifdef _WIN32
   // The output of GetStringChars is not null-terminated, so we copy it and add a terminator
@@ -154,8 +152,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_saveCheckpoint
  * Method:    getTrainInputNames
  * Signature: (JJJJ)[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainInputNames
-    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong sessionHandle, jlong allocatorHandle) {
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainInputNames(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong sessionHandle, jlong allocatorHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -172,8 +169,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainIn
     return NULL;
   }
 
-  int32_t numInputsInt = (int32_t) numInputs;
-  if (numInputs != (size_t) numInputsInt) {
+  int32_t numInputsInt = (int32_t)numInputs;
+  if (numInputs != (size_t)numInputsInt) {
     throwOrtException(jniEnv, 1, "Too many inputs, expected less than 2^31");
   }
 
@@ -204,8 +201,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainIn
  * Method:    getTrainOutputNames
  * Signature: (JJJJ)[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainOutputNames
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong sessionHandle, jlong allocatorHandle) {
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainOutputNames(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong sessionHandle, jlong allocatorHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -222,8 +218,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainOu
     return NULL;
   }
 
-  int32_t numOutputsInt = (int32_t) numOutputs;
-  if (numOutputs != (size_t) numOutputsInt) {
+  int32_t numOutputsInt = (int32_t)numOutputs;
+  if (numOutputs != (size_t)numOutputsInt) {
     throwOrtException(jniEnv, 1, "Too many outputs, expected less than 2^31");
   }
 
@@ -254,8 +250,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getTrainOu
  * Method:    getEvalInputNames
  * Signature: (JJJJ)[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalInputNames
-    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong sessionHandle, jlong allocatorHandle) {
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalInputNames(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong sessionHandle, jlong allocatorHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -272,8 +267,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalInp
     return NULL;
   }
 
-  int32_t numInputsInt = (int32_t) numInputs;
-  if (numInputs != (size_t) numInputsInt) {
+  int32_t numInputsInt = (int32_t)numInputs;
+  if (numInputs != (size_t)numInputsInt) {
     throwOrtException(jniEnv, 1, "Too many inputs, expected less than 2^31");
   }
 
@@ -304,8 +299,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalInp
  * Method:    getEvalOutputNames
  * Signature: (JJJJ)[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalOutputNames
-    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong sessionHandle, jlong allocatorHandle) {
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalOutputNames(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong sessionHandle, jlong allocatorHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -322,8 +316,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalOut
     return NULL;
   }
 
-  int32_t numOutputsInt = (int32_t) numOutputs;
-  if (numOutputs != (size_t) numOutputsInt) {
+  int32_t numOutputsInt = (int32_t)numOutputs;
+  if (numOutputs != (size_t)numOutputsInt) {
     throwOrtException(jniEnv, 1, "Too many outputs, expected less than 2^31");
   }
 
@@ -354,8 +348,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_getEvalOut
  * Method:    lazyResetGrad
  * Signature: (JJJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_lazyResetGrad
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_lazyResetGrad(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -368,10 +361,9 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_lazyResetGrad
  * Method:    trainStep
  * Signature: (JJJJ[Ljava/lang/String;[JJ[Ljava/lang/String;JJ)[Lai/onnxruntime/OnnxValue;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_trainStep
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle,
-     jlong nativeHandle, jlong allocatorHandle, jobjectArray inputNamesArr, jlongArray inputHandles, jlong numInputs,
-     jobjectArray outputNamesArr, jlong numOutputs, jlong runOptionsHandle) {
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_trainStep(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle,
+                                                                                jlong nativeHandle, jlong allocatorHandle, jobjectArray inputNamesArr, jlongArray inputHandles, jlong numInputs,
+                                                                                jobjectArray outputNamesArr, jlong numOutputs, jlong runOptionsHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -432,12 +424,10 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_trainStep
   }
 
   // Actually score the inputs.
-  //ORT_API2_STATUS(TrainStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
+  // ORT_API2_STATUS(TrainStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
   //                size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
   //                size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, trainApi->TrainStep(trainSession, runOptions,
-                                                                      numInputs, (const OrtValue* const*)inputValuePtrs,
-                                                                      numOutputs, outputValues));
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, trainApi->TrainStep(trainSession, runOptions, numInputs, (const OrtValue* const*)inputValuePtrs, numOutputs, outputValues));
   if (code != ORT_OK) {
     goto cleanup_output_values;
   }
@@ -457,9 +447,9 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_trainStep
     }
   }
 
-  // Note these gotos are in a specific order so they mirror the allocation pattern above.
-  // They must be changed if the allocation code is rearranged.
-  cleanup_output_values:
+// Note these gotos are in a specific order so they mirror the allocation pattern above.
+// They must be changed if the allocation code is rearranged.
+cleanup_output_values:
   free(outputValues);
 
   // Release the Java output strings
@@ -472,16 +462,16 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_trainStep
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, javaInputStrings[i], inputNames[i]);
   }
 
-  // Release the buffers
-  cleanup_input_values:
+// Release the buffers
+cleanup_input_values:
   free((void*)inputValuePtrs);
-  cleanup_java_output_strings:
+cleanup_java_output_strings:
   free(javaOutputStrings);
-  cleanup_java_input_strings:
+cleanup_java_input_strings:
   free(javaInputStrings);
-  cleanup_output_names:
+cleanup_output_names:
   free((void*)outputNames);
-  cleanup_input_names:
+cleanup_input_names:
   free((void*)inputNames);
 
   return outputArray;
@@ -492,10 +482,9 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_trainStep
  * Method:    evalStep
  * Signature: (JJJJ[Ljava/lang/String;[JJ[Ljava/lang/String;JJ)[Lai/onnxruntime/OnnxValue;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_evalStep
-    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle,
-     jlong nativeHandle, jlong allocatorHandle, jobjectArray inputNamesArr, jlongArray inputHandles, jlong numInputs,
-     jobjectArray outputNamesArr, jlong numOutputs, jlong runOptionsHandle) {
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_evalStep(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle,
+                                                                               jlong nativeHandle, jlong allocatorHandle, jobjectArray inputNamesArr, jlongArray inputHandles, jlong numInputs,
+                                                                               jobjectArray outputNamesArr, jlong numOutputs, jlong runOptionsHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -556,12 +545,10 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_evalStep
   }
 
   // Actually score the inputs.
-  //ORT_API2_STATUS(EvalStep, _In_ const OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
+  // ORT_API2_STATUS(EvalStep, _In_ const OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
   //                size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
   //                size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, trainApi->EvalStep(trainSession, runOptions,
-                                                                      numInputs, (const OrtValue* const*)inputValuePtrs,
-                                                                      numOutputs, outputValues));
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, trainApi->EvalStep(trainSession, runOptions, numInputs, (const OrtValue* const*)inputValuePtrs, numOutputs, outputValues));
   if (code != ORT_OK) {
     goto cleanup_output_values;
   }
@@ -581,9 +568,9 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_evalStep
     }
   }
 
-  // Note these gotos are in a specific order so they mirror the allocation pattern above.
-  // They must be changed if the allocation code is rearranged.
-  cleanup_output_values:
+// Note these gotos are in a specific order so they mirror the allocation pattern above.
+// They must be changed if the allocation code is rearranged.
+cleanup_output_values:
   free(outputValues);
 
   // Release the Java output strings
@@ -596,16 +583,16 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_evalStep
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, javaInputStrings[i], inputNames[i]);
   }
 
-  // Release the buffers
-  cleanup_input_values:
+// Release the buffers
+cleanup_input_values:
   free((void*)inputValuePtrs);
-  cleanup_java_output_strings:
+cleanup_java_output_strings:
   free(javaOutputStrings);
-  cleanup_java_input_strings:
+cleanup_java_input_strings:
   free(javaInputStrings);
-  cleanup_output_names:
+cleanup_output_names:
   free((void*)outputNames);
-  cleanup_input_names:
+cleanup_input_names:
   free((void*)inputNames);
 
   return outputArray;
@@ -616,8 +603,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_evalStep
  * Method:    setSeed
  * Signature: (JJJF)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_setSeed
-    (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong trainApiHandle, jlong seed) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_setSeed(JNIEnv* jniEnv, jclass clazz, jlong apiHandle, jlong trainApiHandle, jlong seed) {
   (void)clazz;  // Required JNI parameter not needed by functions which don't need to access their host class.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -629,8 +615,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_setSeed
  * Method:    setLearningRate
  * Signature: (JJJF)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_setLearningRate
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jfloat learningRate) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_setLearningRate(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jfloat learningRate) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -643,8 +628,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_setLearningRate
  * Method:    getLearningRate
  * Signature: (JJJ)F
  */
-JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_OrtTrainingSession_getLearningRate
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle) {
+JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_OrtTrainingSession_getLearningRate(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -659,13 +643,12 @@ JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_OrtTrainingSession_getLearningRate
  * Method:    optimizerStep
  * Signature: (JJJJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_optimizerStep
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jlong runOptionsHandle) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_optimizerStep(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jlong runOptionsHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
   OrtTrainingSession* trainSession = (OrtTrainingSession*)nativeHandle;
-  const OrtRunOptions* options = (const OrtRunOptions*) runOptionsHandle;
+  const OrtRunOptions* options = (const OrtRunOptions*)runOptionsHandle;
   checkOrtStatus(jniEnv, api, trainApi->OptimizerStep(trainSession, options));
 }
 
@@ -674,8 +657,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_optimizerStep
  * Method:    registerLinearLRScheduler
  * Signature: (JJJJJF)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_registerLinearLRScheduler
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jlong warmupSteps, jlong totalSteps, jfloat initialLearningRate) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_registerLinearLRScheduler(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jlong warmupSteps, jlong totalSteps, jfloat initialLearningRate) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -688,8 +670,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_registerLinearLRSc
  * Method:    schedulerStep
  * Signature: (JJJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_schedulerStep
-    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_schedulerStep(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -708,8 +689,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_schedulerStep
 // Freeing 'outputNames' erroneously triggers this warning, it is fixed in VC 2022 and can be removed when that is the baseline compiler.
 #pragma warning(disable : 4090)
 #endif  // _MSC_VER
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_exportModelForInference
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jstring outputPath, jlong numOutputs, jobjectArray outputNamesArr) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_exportModelForInference(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jstring outputPath, jlong numOutputs, jobjectArray outputNamesArr) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
@@ -746,7 +726,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_exportModelForInfe
   const char* outputStr = (*jniEnv)->GetStringUTFChars(jniEnv, outputPath, NULL);
   checkOrtStatus(jniEnv, api, trainApi->ExportModelForInferencing(trainSession, outputStr, numOutputs, outputNames));
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, outputPath, outputStr);
-  goto cleanup_array; // Only used in the WIN32 branch, but gcc complains we don't use this label otherwise
+  goto cleanup_array;  // Only used in the WIN32 branch, but gcc complains we don't use this label otherwise
 #endif
 
 cleanup_array:

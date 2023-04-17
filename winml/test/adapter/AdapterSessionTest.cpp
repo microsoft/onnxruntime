@@ -48,7 +48,7 @@ void AdapterSessionTestTeardown() {
 }
 
 UniqueOrtSessionOptions CreateUniqueOrtSessionOptions() {
-  OrtSessionOptions *options;
+  OrtSessionOptions* options;
   THROW_IF_NOT_OK_MSG(ort_api->CreateSessionOptions(&options), ort_api);
   return UniqueOrtSessionOptions(options, ort_api->ReleaseSessionOptions);
 }
@@ -200,14 +200,14 @@ void Profiling() {
   };
 
   THROW_IF_NOT_OK_MSG(winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(
-      ort_env,
-      logging_callback,
-      profile_callback,
-      nullptr,
-      OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE,
-      "Default",
-      &ort_env),
-    ort_api);
+                          ort_env,
+                          logging_callback,
+                          profile_callback,
+                          nullptr,
+                          OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE,
+                          "Default",
+                          &ort_env),
+                      ort_api);
 
   const auto session_options = CreateUniqueOrtSessionOptions();
   auto session = CreateUniqueOrtSession(session_options);
@@ -229,7 +229,7 @@ void CopyInputAcrossDevices() {
     for (auto dim : dimensions)
       size *= static_cast<size_t>(dim);
     return size;
-  } ();
+  }();
 
   OrtMemoryInfo* memory_info;
   THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info), ort_api);
@@ -265,7 +265,7 @@ void CopyInputAcrossDevices_DML() {
     for (auto dim : dimensions)
       size *= static_cast<size_t>(dim);
     return size;
-  } ();
+  }();
 
   OrtMemoryInfo* memory_info;
   THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info), ort_api);
@@ -284,7 +284,7 @@ void CopyInputAcrossDevices_DML() {
   ort_api->ReleaseMemoryInfo(memory_info);
 }
 
-void GetNumberOfIntraOpThreads(){
+void GetNumberOfIntraOpThreads() {
   const auto session_options = CreateUniqueOrtSessionOptions();
   uint32_t desired_num_threads = std::thread::hardware_concurrency() / 2;
   ort_api->SetIntraOpNumThreads(session_options.get(), desired_num_threads);
@@ -293,29 +293,28 @@ void GetNumberOfIntraOpThreads(){
   winml_adapter_api->SessionGetNumberOfIntraOpThreads(session.get(), &num_threads);
   WINML_EXPECT_EQUAL(num_threads, desired_num_threads);
 }
-}
+}  // namespace
 
 const AdapterSessionTestAPI& getapi() {
   static AdapterSessionTestAPI api =
-  {
-    AdapterSessionTestSetup,
-    AdapterSessionTestTeardown,
-    AppendExecutionProvider_CPU,
-    AppendExecutionProvider_DML,
-    CreateWithoutModel,
-    GetExecutionProvider,
-    GetExecutionProvider_DML,
-    Initialize,
-    RegisterGraphTransformers,
-    RegisterGraphTransformers_DML,
-    RegisterCustomRegistry,
-    RegisterCustomRegistry_DML,
-    LoadAndPurloinModel,
-    Profiling,
-    CopyInputAcrossDevices,
-    CopyInputAcrossDevices_DML,
-    GetNumberOfIntraOpThreads
-  };
+      {
+          AdapterSessionTestSetup,
+          AdapterSessionTestTeardown,
+          AppendExecutionProvider_CPU,
+          AppendExecutionProvider_DML,
+          CreateWithoutModel,
+          GetExecutionProvider,
+          GetExecutionProvider_DML,
+          Initialize,
+          RegisterGraphTransformers,
+          RegisterGraphTransformers_DML,
+          RegisterCustomRegistry,
+          RegisterCustomRegistry_DML,
+          LoadAndPurloinModel,
+          Profiling,
+          CopyInputAcrossDevices,
+          CopyInputAcrossDevices_DML,
+          GetNumberOfIntraOpThreads};
 
   if (SkipGpuTests()) {
     api.AppendExecutionProvider_DML = SkipTest;

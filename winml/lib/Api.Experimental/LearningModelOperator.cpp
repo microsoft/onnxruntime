@@ -5,13 +5,10 @@ namespace WINML_EXPERIMENTALP {
 
 static uint32_t c_operator_index = 0;
 
-LearningModelOperator::LearningModelOperator(hstring const& type) :
-    LearningModelOperator(type, L"")
-{}
+LearningModelOperator::LearningModelOperator(hstring const& type) : LearningModelOperator(type, L"") {}
 
-LearningModelOperator::LearningModelOperator(hstring const& type, hstring const& domain) :
-    domain_(domain),
-    type_(type) {
+LearningModelOperator::LearningModelOperator(hstring const& type, hstring const& domain) : domain_(domain),
+                                                                                           type_(type) {
   constant_input_mapping_ = winrt::single_threaded_map<winrt::hstring, wf::IInspectable>();
   input_mapping_ = winrt::single_threaded_map<winrt::hstring, winrt::hstring>();
   output_mapping_ = winrt::single_threaded_map<winrt::hstring, winrt::hstring>();
@@ -33,7 +30,6 @@ winml_experimental::LearningModelOperator LearningModelOperator::SetName(hstring
 
 winml_experimental::LearningModelOperator LearningModelOperator::SetInput(
     hstring const& operator_input_name, hstring const& input_name) {
-
   // TODO Validate against allowed operator input NAMES. The types are not deduced.
   input_mapping_.Insert(operator_input_name, input_name);
   return *this;
@@ -73,7 +69,7 @@ hstring LearningModelOperator::Domain() {
   return domain_;
 }
 
-wfc::IMap<winrt::hstring, winrt::hstring> LearningModelOperator::InputMapping(){
+wfc::IMap<winrt::hstring, winrt::hstring> LearningModelOperator::InputMapping() {
   return input_mapping_;
 }
 

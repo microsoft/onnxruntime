@@ -34,22 +34,22 @@ static void CreateModelFileNotFound() {
   LearningModel learningModel = nullptr;
 
   WINML_EXPECT_THROW_SPECIFIC(
-    APITest::LoadModel(L"missing_model.onnx", learningModel),
-    winrt::hresult_error,
-    [](const winrt::hresult_error& e) -> bool {
-          return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
-    });
+      APITest::LoadModel(L"missing_model.onnx", learningModel),
+      winrt::hresult_error,
+      [](const winrt::hresult_error& e) -> bool {
+        return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+      });
 }
 
 static void CreateCorruptModel() {
   LearningModel learningModel = nullptr;
 
   WINML_EXPECT_THROW_SPECIFIC(
-    APITest::LoadModel(L"corrupt-model.onnx", learningModel),
-    winrt::hresult_error,
-    [](const winrt::hresult_error& e) -> bool {
-          return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
-    });
+      APITest::LoadModel(L"corrupt-model.onnx", learningModel),
+      winrt::hresult_error,
+      [](const winrt::hresult_error& e) -> bool {
+        return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
+      });
 }
 
 static void CreateModelFromIStorage() {
@@ -301,7 +301,7 @@ static void CloseModelNoNewSessions() {
       session = LearningModelSession(learningModel),
       winrt::hresult_error,
       [](const winrt::hresult_error& e) -> bool {
-            return e.code() == E_INVALIDARG;
+        return e.code() == E_INVALIDARG;
       });
 }
 
@@ -315,28 +315,27 @@ static void CheckMetadataCaseInsensitive() {
 
 const LearningModelApiTestsApi& getapi() {
   static LearningModelApiTestsApi api =
-  {
-    LearningModelAPITestsClassSetup,
-    CreateModelFromFilePath,
-    CreateModelFromUnicodeFilePath,
-    CreateModelFileNotFound,
-    CreateModelFromIStorage,
-    CreateModelFromIStorageOutsideCwd,
-    CreateModelFromIStream,
-    ModelGetAuthor,
-    ModelGetName,
-    ModelGetDomain,
-    ModelGetDescription,
-    ModelGetVersion,
-    EnumerateInputs,
-    EnumerateOutputs,
-    CloseModelCheckMetadata,
-    CheckLearningModelPixelRange,
-    CloseModelCheckEval,
-    CloseModelNoNewSessions,
-    CheckMetadataCaseInsensitive,
-    CreateCorruptModel
-  };
+      {
+          LearningModelAPITestsClassSetup,
+          CreateModelFromFilePath,
+          CreateModelFromUnicodeFilePath,
+          CreateModelFileNotFound,
+          CreateModelFromIStorage,
+          CreateModelFromIStorageOutsideCwd,
+          CreateModelFromIStream,
+          ModelGetAuthor,
+          ModelGetName,
+          ModelGetDomain,
+          ModelGetDescription,
+          ModelGetVersion,
+          EnumerateInputs,
+          EnumerateOutputs,
+          CloseModelCheckMetadata,
+          CheckLearningModelPixelRange,
+          CloseModelCheckEval,
+          CloseModelNoNewSessions,
+          CheckMetadataCaseInsensitive,
+          CreateCorruptModel};
 
   if (RuntimeParameterExists(L"noVideoFrameTests")) {
     api.CloseModelCheckEval = SkipTest;

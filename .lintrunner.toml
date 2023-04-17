@@ -175,8 +175,11 @@ is_formatter = true
 code = 'CLANGFORMAT'
 include_patterns = [
     '**/*.h',
+    '**/*.c',
     '**/*.hh',
     '**/*.cc',
+    '**/*.hpp',
+    '**/*.cpp',
     '**/*.m',
     '**/*.mm',
     '**/*.cs',

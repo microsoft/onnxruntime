@@ -13,7 +13,7 @@ static void AdapterTestSetup() {
 #endif
   ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   winml_adapter_api = OrtGetWinMLAdapter(ORT_API_VERSION);
-  
+
   // for model tests
   std::wstring module_path = FileHelpers::GetModulePath();
   std::string squeezenet_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"squeezenet_modifiedforruntimestests.onnx");
@@ -168,7 +168,7 @@ static void ModelGetInputTypeInfo() {
   ort_api->GetDimensionsCount(tensor_info, &dim_count);
   WINML_EXPECT_EQUAL(dim_count, 4u);
 
-  int64_t dim_values[4]; 
+  int64_t dim_values[4];
   ort_api->GetDimensions(tensor_info, dim_values, 4);
   WINML_EXPECT_EQUAL(dim_values[0], 1);
   WINML_EXPECT_EQUAL(dim_values[1], 3);
@@ -263,8 +263,8 @@ static void EnvConfigureCustomLoggerAndProfiler() {
   OrtEnv* ort_env = nullptr;
   ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
   winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env,
-                                                    &TestLoggingCallback, &TestProfileEventCallback, nullptr,
-                                                    OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+                                                         &TestLoggingCallback, &TestProfileEventCallback, nullptr,
+                                                         OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
   logging_function_called = false;
   OrtSession* ort_session = nullptr;
   std::wstring squeezenet_path = FileHelpers::GetModulePath() + L"relu.onnx";
@@ -329,6 +329,6 @@ const AdapterTestApi& getapi() {
           ModelGetMetadata,
           ModelEnsureNoFloat16,
           EnvConfigureCustomLoggerAndProfiler,
-          };
+      };
   return api;
 }

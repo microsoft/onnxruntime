@@ -6,8 +6,7 @@ using namespace winrt::Windows::Foundation::Collections;
 namespace OrtValueHelpers {
 
 template <ONNXTensorElementDataType T>
-winml::ITensor CreateTensorFromShape(std::vector<int64_t>& shape)
-{
+winml::ITensor CreateTensorFromShape(std::vector<int64_t>& shape) {
   using WinMLTensorKind = typename ONNXTensorElementDataTypeToWinMLTensorKind<T>::Type;
   ITensor tensor = nullptr;
   WINML_EXPECT_NO_THROW(tensor = WinMLTensorKind::Create(shape));
@@ -45,24 +44,23 @@ winml::ITensor CreateStringTensor(Ort::Value& val) {
 
   WINML_EXPECT_NO_THROW(val.GetStringTensorContent(buffer.get(), bufferLength, offsets.data(), offsets.size()));
 
-   // now go build all the strings
+  // now go build all the strings
   for (auto i = 0; i < length; ++i) {
     size_t strLength = 0;
     // are we on the last one?
     if (i == (length - 1)) {
       strLength = bufferLength - offsets[i];
     } else {
-      strLength = offsets[i+1] - offsets[i];
+      strLength = offsets[i + 1] - offsets[i];
     }
     auto strView = std::string_view(reinterpret_cast<const char*>(buffer.get() + offsets[i]), strLength);
     strings.push_back(_winml::Strings::HStringFromUTF8(strView.data(), strLength));
   }
 
-  TensorString tensor =  nullptr;
+  TensorString tensor = nullptr;
   WINML_EXPECT_NO_THROW(tensor = TensorString::CreateFromShapeArrayAndDataArray(shape, strings));
   return tensor;
 }
-
 
 // This function takes in an Ort::Value and returns a copy of winml::ITensor
 // TODO: String types still need to be implemented.
@@ -138,7 +136,7 @@ winml::ITensor LoadTensorFromOrtValue(Ort::Value& val) {
 }
 
 static ONNXTensorElementDataType OnnxTensorTypeFromWinMLType(winml::TensorKind tensorKind) {
-    switch (tensorKind) {
+  switch (tensorKind) {
     case (TensorKind::Float):
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
     case (TensorKind::UInt8):
@@ -192,7 +190,7 @@ Ort::Value CreateOrtValueFromITensor(winml::ITensor winmlTensor) {
             actualData,
             actualSizeInBytes,
             shape.data(),
-            shape.size(), 
+            shape.size(),
             OnnxTensorTypeFromWinMLType(winmlTensor.TensorKind())));
   } else {
     Ort::AllocatorWithDefaultOptions allocator;

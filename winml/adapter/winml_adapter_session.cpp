@@ -38,7 +38,7 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
 };
 
 ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
- _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session) {
+                    _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> inference_session;
   try {
@@ -214,7 +214,7 @@ static OrtDevice GetSessionGetInputDevice(_In_ OrtSession* session, _In_ const c
       static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
   const onnxruntime::SessionState& session_state = session_protected_load_accessor->GetSessionState();
 
-  onnxruntime::InlinedVector<onnxruntime::SessionState::NodeInfo>node_info_vec;
+  onnxruntime::InlinedVector<onnxruntime::SessionState::NodeInfo> node_info_vec;
   ORT_THROW_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
   const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
   return *node_info.device;

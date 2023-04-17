@@ -11,9 +11,9 @@
  * Method:    closeAllocator
  * Signature: (JJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtAllocator_closeAllocator
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle) {
-  (void) jniEnv; (void) jobj; (void) apiHandle; (void) allocatorHandle;
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtAllocator_closeAllocator(JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle) {
+  (void)jniEnv;
+  (void)jobj;
+  (void)apiHandle;
+  (void)allocatorHandle;
 }
-
-
