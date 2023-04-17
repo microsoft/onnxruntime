@@ -56,7 +56,7 @@ def make_sparse_tensor_value_info(
 
         if shape_denotation:
             if len(shape_denotation) != len(shape):
-                raise ValueError("Invalid shape_denotation. " "Must be of the same length as shape.")
+                raise ValueError("Invalid shape_denotation. Must be of the same length as shape.")
 
         for i, d in enumerate(shape):
             dim = sparse_tensor_shape_proto.dim.add()
@@ -67,7 +67,7 @@ def make_sparse_tensor_value_info(
             elif isinstance(d, str):
                 dim.dim_param = d
             else:
-                raise ValueError("Invalid item in shape: {}. " "Needs to be one of `int` or `str`.".format(d))
+                raise ValueError(f"Invalid item in shape: {d}. Needs to be one of `int` or `str`.")
 
             if shape_denotation:
                 dim.denotation = shape_denotation[i]

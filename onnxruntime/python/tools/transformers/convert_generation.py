@@ -1687,7 +1687,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
         if not logits_matmul_weight_padded:
             logger.warning(
-                "Tried and failed to pad logits MatMul weights. " "Performance may be sub-optimal for this MatMul"
+                "Tried and failed to pad logits MatMul weights. Performance may be sub-optimal for this MatMul"
             )
 
     gpt2_init_decoder_generated = False
@@ -2411,8 +2411,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     if sentences is None:
         sentences = [
             "translate English to French: The product is released",
-            "summarize: research continues to show that pets bring real health benefits to their owners."
-            + "Having a dog around can lead to lower levels of stress for both adults and kids.",
+            "summarize: research continues to show that pets bring real health benefits to their owners. Having a dog around can lead to lower levels of stress for both adults and kids.",
             # "summarize: I enjoy walking in the park. It makes my mind feel calm and refreshed. "
             # + "I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
         ]

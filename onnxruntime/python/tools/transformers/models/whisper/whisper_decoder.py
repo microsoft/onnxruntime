@@ -409,8 +409,11 @@ class WhisperDecoderHelper:
 
             test_cases_max_diff.append(max_diff_all)
             logger.info(
-                f"batch_size={batch_size}, encode_sequence_length={encode_sequence_length}, "
-                + f"past_decode_sequence_length={past_decode_sequence_length}, max_diff={max_diff_all}"
+                "batch_size=%s, encode_sequence_length=%s, past_decode_sequence_length=%s, max_diff=%s",
+                batch_size,
+                encode_sequence_length,
+                past_decode_sequence_length,
+                max_diff_all,
             )
 
         return max_diff_all
