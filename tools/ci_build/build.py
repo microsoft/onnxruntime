@@ -2023,6 +2023,8 @@ def build_nuget_package(
     elif use_qnn:
         execution_provider = '/p:ExecutionProvider="qnn"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.QNN"'
+    elif any(map(lambda x: "OrtPackageId=" in x, msbuild_extra_options)):
+        pass
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"

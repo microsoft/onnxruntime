@@ -106,7 +106,8 @@ For example, to build a CUDA GPU package, just run:
     /p:TargetFrameworks=netstandard2.0 \
     /p:IsLinuxBuild=true
 ```
-**Note**: build pure cpu development package is not supported at the moment.
+**Note**: to build a pure CPU development package, you need to add `/p:OrtPackageId="Microsoft.ML.OnnxRuntime"`
+to `--msbuild_extra_options`. Otherwise, it will try to create Xamarin mobile targets which may not be properly configured on your devbox.
 
 A `.nupkg` file will be produced at you build root, say, `build/Release`.
 
