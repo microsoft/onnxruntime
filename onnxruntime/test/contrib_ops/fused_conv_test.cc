@@ -87,23 +87,19 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
       test.AddOutput<float>("Y", expected_output_shape, expected_output);
     }
 
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (enable_cuda) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
 
     if (enable_rocm) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultRocmExecutionProvider());
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
 
     if (enable_cpu) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCpuExecutionProvider());
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 
@@ -117,12 +113,12 @@ void RunConvOp(const ConvOpAndTestAttributes& attributes,
                bool disable_rocm = false) {
   bool weight_is_initializer = false;
   bool use_float16 = false;
-  TestConvOp(attributes, inputs, input_shapes, expected_output, expected_output_shape, weight_is_initializer,
-             disable_cpu, disable_cuda, disable_rocm, use_float16);
+  TestConvOp(attributes, inputs, input_shapes, expected_output, expected_output_shape,
+             disable_cpu, disable_cuda, disable_rocm, use_float16, weight_is_initializer);
 
   use_float16 = true;
-  TestConvOp(attributes, inputs, input_shapes, expected_output, expected_output_shape, weight_is_initializer,
-             disable_cpu, disable_cuda, disable_rocm, use_float16);
+  TestConvOp(attributes, inputs, input_shapes, expected_output, expected_output_shape,
+             disable_cpu, disable_cuda, disable_rocm, use_float16, weight_is_initializer);
 }
 
 TEST(FusedConvTest, Conv2D_HardSigmoid) {
