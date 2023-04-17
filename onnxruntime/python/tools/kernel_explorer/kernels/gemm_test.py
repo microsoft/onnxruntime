@@ -132,7 +132,7 @@ class GemmMetric(ke.ComputeMetric):
     def report(self):
         prefix = (
             f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-            + f"m={self.m:<4} n={self.n:<4} k={self.k:<4} "
+            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} "
         )
         if self.duration <= 0:
             return prefix + "not supported"

@@ -7,6 +7,7 @@ import gc
 import os
 import pathlib
 import platform
+import queue
 import sys
 import threading
 import unittest
@@ -52,6 +53,11 @@ class TestInferenceSession(unittest.TestCase):
         res = session_object.run([], {input_name: x}, run_options=run_options)
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+
+    def run_model_with_input(self, session_object, input_name, input_value, iter_num, queue):
+        for _ in range(iter_num):
+            predict = session_object.run(None, {input_name: input_value})[0]
+            queue.put(max(predict.flatten().tolist()))
 
     def testTvmImported(self):  # noqa: N802
         if "TvmExecutionProvider" not in onnxrt.get_available_providers():
@@ -576,6 +582,33 @@ class TestInferenceSession(unittest.TestCase):
             t2.start()
             t1.join()
             t2.join()
+
+        if "CUDAExecutionProvider" in available_providers:
+            cuda_options = {
+                "gpu_mem_limit": 2 * 1024 * 1024 * 1024,
+                "arena_extend_strategy": "kSameAsRequested",
+            }
+            model_path = "../models/zoo/opset7/ResNet18-v2/resnet18-v2-7.onnx"
+            if not os.path.exists(model_path):
+                print("cannot find resnet18-v2-7.onnx")
+                return
+            session = onnxrt.InferenceSession(model_path, providers=[("CUDAExecutionProvider", cuda_options)])
+            [thread_num, iter_num] = [4, 20]
+            q = queue.Queue()
+            input_name = session.get_inputs()[0].name
+            input_value = np.random.rand(1, 3, 224, 224).astype(np.float32)
+            workers = [
+                threading.Thread(target=self.run_model_with_input, args=(session, input_name, input_value, iter_num, q))
+                for idx in range(thread_num)
+            ]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join()
+
+            result = q.get()
+            while q.qsize() > 0:
+                self.assertEqual(result, q.get())
 
     def testListAsInput(self):  # noqa: N802
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())

@@ -150,7 +150,7 @@ def parse_arguments():
         "--warmup_proportion",
         default=0.01,
         type=float,
-        help="Proportion of training to perform linear learning rate warmup for. " "E.g., 0.1 = 10%% of training.",
+        help="Proportion of training to perform linear learning rate warmup for. E.g., 0.1 = 10%% of training.",
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
@@ -389,9 +389,7 @@ def take_optimizer_step(args, optimizer, model, overflow_buf, global_step):
             # Overflow detected, print message and clear gradients
             if is_main_process():
                 print(
-                    ("Rank {} :: Gradient overflow.  Skipping step, " + "reducing loss scale to {}").format(
-                        torch.distributed.get_rank(), scaler.loss_scale()
-                    )
+                    f"Rank {torch.distributed.get_rank()} :: Gradient overflow.  Skipping step, reducing loss scale to {scaler.loss_scale()}"
                 )
             if _amp_state.opt_properties.master_weights:
                 for param in optimizer._amp_stash.all_fp32_from_fp16_params:

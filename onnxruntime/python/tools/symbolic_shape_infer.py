@@ -1392,7 +1392,7 @@ class SymbolicShapeInference:
 
     def _infer_aten_argmax(self, node):
         new_shape = None
-        if node.input[1] == "":
+        if not node.input[1]:
             # The argmax of the flattened input is returned.
             new_shape = []
         else:
@@ -1458,7 +1458,7 @@ class SymbolicShapeInference:
 
         # this works for opsets < 14 and 14 since we check i < len(node.output) in the loop
         for i in [1, 2, 3, 4]:
-            if i < len(node.output) and node.output[i] != "":
+            if i < len(node.output) and node.output[i]:
                 # all of these parameters have the same shape as the 1st input
                 self._propagate_shape_and_type(node, input_index=1, output_index=i)
 
@@ -1932,7 +1932,7 @@ class SymbolicShapeInference:
                 if len(symbolic_dimensions) > 0:
                     logger.debug(
                         f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
-                        + f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}"
+                        f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}"
                     )
         else:
             axes = [handle_negative_axis(a, len(input_shape)) for a in axes]
@@ -1945,7 +1945,7 @@ class SymbolicShapeInference:
                     if self.verbose_ > 0 and type(input_shape[i]) != int:
                         logger.debug(
                             f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
-                            + f"Assuming the dimension '{input_shape[i]}' at index {i} of the input to be equal to 1."
+                            f"Assuming the dimension '{input_shape[i]}' at index {i} of the input to be equal to 1."
                         )
 
         vi = self.known_vi_[node.output[0]]

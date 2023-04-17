@@ -116,7 +116,7 @@ class GroupNormNHWCMetric(ke.BandwidthMetric):
     def report(self):
         common = (
             f"{self.dtype:<4} batch={self.batch_size:<4} height={self.height:<4} width={self.width:<4}"
-            + f"num_channels={self.num_channels:<6} groups={self.groups:<4} {self.name}"
+            f"num_channels={self.num_channels:<6} groups={self.groups:<4} {self.name}"
         )
         if self.duration > 0:
             return f"{self.duration:.2f} us, {self.gbps:.2f} GB/s  " + common

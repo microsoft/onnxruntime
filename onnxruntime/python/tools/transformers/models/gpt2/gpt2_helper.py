@@ -68,7 +68,7 @@ class MyGPT2Model(GPT2Model):
 
     @staticmethod
     def post_process(result, num_layer):
-        if isinstance(result[1][0], tuple) or isinstance(result[1][0], list):
+        if isinstance(result[1][0], (tuple, list)):
             assert len(result[1]) == num_layer and len(result[1][0]) == 2
             # assert len(result[1][0][0].shape) == 4 and result[1][0][0].shape == result[1][0][1].shape
             present = []
