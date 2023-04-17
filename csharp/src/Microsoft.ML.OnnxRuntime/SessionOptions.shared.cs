@@ -295,11 +295,6 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
         }
 
-        [Obsolete("AppendExecutionProvider_ROCM is deprecated, use AppendExecutionProvider_ROCm instead.")]
-        public void AppendExecutionProvider_ROCM(int deviceId = 0) {
-            AppendExecutionProvider_ROCm(deviceId);
-        }
-
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
