@@ -175,9 +175,11 @@ is_formatter = true
 code = 'CLANGFORMAT'
 include_patterns = [
     '**/*.h',
+    '**/*.hh',
     '**/*.cc',
     '**/*.m',
     '**/*.mm',
+    '**/*.cs',
 ]
 exclude_patterns = [
     'onnxruntime/core/mlas/**', # Contains assembly code

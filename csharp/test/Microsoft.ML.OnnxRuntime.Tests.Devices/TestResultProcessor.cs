@@ -7,46 +7,41 @@ using Xunit.Abstractions;
 
 namespace Microsoft.ML.OnnxRuntime.Tests.Devices
 {
-    public class TestResultProcessor
+public class TestResultProcessor
+{
+    ConcurrentBag<TestResult> _results = new ConcurrentBag<TestResult>();
+
+    public ConcurrentBag<TestResult> Results
     {
-        ConcurrentBag<TestResult> _results = new ConcurrentBag<TestResult>();
+        get => _results == null ? (_results = new ConcurrentBag<TestResult>()) : _results;
+    private
+        set => _results = value;
+    }
 
-        public ConcurrentBag<TestResult> Results
+    internal void RecordResult(TestResult test) => Results.Add(test);
+
+    public void RecordResult(ITestResultMessage testResult, ITestCase testCase, TestOutcome outcome)
+    {
+        try
         {
-            get => _results == null ? (_results = new ConcurrentBag<TestResult>()) : _results;
-            private set => _results = value;
+            RecordResult(new TestResult { TestId = testCase.UniqueID, TestName = testCase.DisplayName,
+                                          Output = testResult.Output, TestOutcome = outcome,
+                                          Duration = TimeSpan.FromSeconds((double)testResult.ExecutionTime)
+                                                         .ToString("c", CultureInfo.InvariantCulture) });
         }
-
-        internal void RecordResult(TestResult test)
-            => Results.Add(test);
-
-        public void RecordResult(ITestResultMessage testResult, ITestCase testCase, TestOutcome outcome)
+        catch (Exception ex)
         {
-            try
-            {
-                RecordResult(new TestResult
-                {
-                    TestId = testCase.UniqueID,
-                    TestName = testCase.DisplayName,
-                    Output = testResult.Output,
-                    TestOutcome = outcome,
-                    Duration = TimeSpan.FromSeconds((double)testResult.ExecutionTime).ToString("c", CultureInfo.InvariantCulture)
-                });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceError(ex.Message);
-            }
-        }
-
-        public TestResultSummary GetResults()
-            => new TestResultSummary(Results.ToList());
-
-        public string GetSerializedResults()
-        {
-            var resultSummary = GetResults();
-            var serializedResultSummary = JsonConvert.SerializeObject(resultSummary, Formatting.Indented);
-            return serializedResultSummary;
+            System.Diagnostics.Trace.TraceError(ex.Message);
         }
     }
+
+    public TestResultSummary GetResults() => new TestResultSummary(Results.ToList());
+
+    public string GetSerializedResults()
+    {
+        var resultSummary = GetResults();
+        var serializedResultSummary = JsonConvert.SerializeObject(resultSummary, Formatting.Indented);
+        return serializedResultSummary;
+    }
+}
 }

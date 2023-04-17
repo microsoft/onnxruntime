@@ -5,36 +5,36 @@ using System;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    class NativeApiStatus
+class NativeApiStatus
+{
+    private static string GetErrorMessage(IntPtr /*(ONNXStatus*)*/ status)
     {
-        private static string GetErrorMessage(IntPtr /*(ONNXStatus*)*/status)
-        {
-            // nativeString belongs to status, no need for separate release
-            IntPtr nativeString = NativeMethods.OrtGetErrorMessage(status);
-            return NativeOnnxValueHelper.StringFromNativeUtf8(nativeString);
-        }
+        // nativeString belongs to status, no need for separate release
+        IntPtr nativeString = NativeMethods.OrtGetErrorMessage(status);
+        return NativeOnnxValueHelper.StringFromNativeUtf8(nativeString);
+    }
 
-        /// <summary>
-        /// Checks the native Status if the errocode is OK/Success. Otherwise constructs an appropriate exception and throws.
-        /// Releases the native status object, as needed.
-        /// </summary>
-        /// <param name="nativeStatus"></param>
-        /// <throws></throws>
-        public static void VerifySuccess(IntPtr nativeStatus)
+    /// <summary>
+    /// Checks the native Status if the errocode is OK/Success. Otherwise constructs an appropriate exception and
+    /// throws. Releases the native status object, as needed.
+    /// </summary>
+    /// <param name="nativeStatus"></param>
+    /// <throws></throws>
+    public static void VerifySuccess(IntPtr nativeStatus)
+    {
+        if (nativeStatus != IntPtr.Zero)
         {
-            if (nativeStatus != IntPtr.Zero)
+            try
             {
-                try
-                {
-                    ErrorCode statusCode = NativeMethods.OrtGetErrorCode(nativeStatus);
-                    string errorMessage = GetErrorMessage(nativeStatus);
-                    throw new OnnxRuntimeException(statusCode, errorMessage);
-                }
-                finally
-                {
-                    NativeMethods.OrtReleaseStatus(nativeStatus);
-                }
+                ErrorCode statusCode = NativeMethods.OrtGetErrorCode(nativeStatus);
+                string errorMessage = GetErrorMessage(nativeStatus);
+                throw new OnnxRuntimeException(statusCode, errorMessage);
+            }
+            finally
+            {
+                NativeMethods.OrtReleaseStatus(nativeStatus);
             }
         }
     }
+}
 }
