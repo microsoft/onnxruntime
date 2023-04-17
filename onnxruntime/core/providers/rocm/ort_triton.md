@@ -64,28 +64,28 @@ The `meta.json` file contains metadata used for launching kernel, and `*.hsaco` 
 To use there kernels in onnxruntime, we need to open a compile flag `onnxruntime_USE_TRITON_KERNEL` in `cmake/CMakeList.txt`, and then build onnxruntime.
 There is no dependency on triton.
 
-Here we implement a tunable op for softmax to use triton kernel in `onnxruntime/core/providers/rocm/math/softmax_triton.cuh`
+Because there are many kernels for softmax, we need to choose the best, so implement a tunable op for softmax to use triton kernel in `onnxruntime/core/providers/rocm/math/softmax_triton.cuh`.
+
+Same as CK, we implement an API that returns all possible triton kernels, and the tunable op will select best one.
 ```
 template <typename T, typename OutputT>
-Status SoftmaxTritonOp(const SoftmaxParams<T, OutputT>* params) {
-  if (params->is_log_softmax) {
-    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, "softmax triton not support log-softmax");
+auto GetSoftmaxTritonOps() {
+  std::vector<std::pair<std::string, tunable::Op<SoftmaxParams<T, OutputT>>>> ret;
+  auto group_name = GetSoftmaxTritonGroupName<T>();
+  // here use group_name to get all kernel with same group_name
+  // for example, 'softmax_fp16' represents a group of kernels with different BLOCK_SIZE for float16 softmax
+  // the group_name is set in metadata.json
+  auto *kernel_list = GetRocmTritonKernelByGroup(group_name);
+  if (kernel_list == nullptr) {
+    return ret;
   }
-  auto fname = GetSoftmaxTritonName<T>(params->softmax_elements);
 
-  // construct args for launch kernel
-  struct {
-    void *out;
-    const void *in;
-    int in_stride;
-    int out_stride;
-    int n_cols;
-  } args = {(void*)params->output, (const void*)params->input, params->input_stride, params->output_stride, params->softmax_elements};
-
-  // grid dim is (batch_count, 1, 1)
-  return LaunchTritonKernel(params->stream, fname, params->batch_count, 1, 1, &args, sizeof(args));
+  for (auto i : *kernel_list) {
+    // check params match
+    .....
+  }
+  return ret;
 }
-
 ```
 ### runtime
 The onnxruntime needs to load compiled triton kernel when executing operators.
