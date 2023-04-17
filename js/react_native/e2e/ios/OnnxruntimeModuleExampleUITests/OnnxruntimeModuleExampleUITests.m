@@ -18,7 +18,7 @@
   [app launch];
 
   XCTAssert([app.textFields[@"output"] waitForExistenceWithTimeout:180]);
-  NSString* value = app.textFields[@"output"].value;
+  NSString *value = app.textFields[@"output"].value;
   XCTAssertEqualObjects(value, @"Result: 3");
 }
 

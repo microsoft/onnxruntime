@@ -176,6 +176,8 @@ code = 'CLANGFORMAT'
 include_patterns = [
     '**/*.h',
     '**/*.cc',
+    '**/*.m',
+    '**/*.mm',
 ]
 exclude_patterns = [
     'onnxruntime/core/mlas/**', # Contains assembly code

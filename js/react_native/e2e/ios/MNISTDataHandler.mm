@@ -117,9 +117,7 @@ RCT_EXPORT_METHOD(postprocess
 
   // dims
   NSArray *dims = @[
-    [NSNumber numberWithInt:1],
-    [NSNumber numberWithInt:1],
-    [NSNumber numberWithInt:static_cast<int>(height)],
+    [NSNumber numberWithInt:1], [NSNumber numberWithInt:1], [NSNumber numberWithInt:static_cast<int>(height)],
     [NSNumber numberWithInt:static_cast<int>(width)]
   ];
   inputTensorMap[@"dims"] = dims;
