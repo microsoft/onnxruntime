@@ -3291,7 +3291,7 @@ Return true if all elements are true and false otherwise.
 
         // Add support for 1D input X, in which case num_channels should default to 1.
         auto& input_shape = getInputShape(ctx, 0);
-        if (input_shape.dim_size() <= 1) {
+        if (input_shape.dim_size() == 1) {
           num_channels.set_dim_value(1);
         } else {
           unifyInputDim(ctx, 0, 1, num_channels);
