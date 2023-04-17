@@ -14,7 +14,7 @@
 # To lint local changes:
 #
 # ```bash
-# lintrunner -m main
+# lintrunner
 # ```
 #
 # To lint all files:
@@ -32,6 +32,8 @@
 # To read more about lintrunner, see [wiki](https://github.com/pytorch/pytorch/wiki/lintrunner).
 # To update an existing linting rule or create a new one, modify this file or create a
 # new adapter following examples in https://github.com/justinchuby/lintrunner-adapters.
+
+merge_base_with = 'origin/main'
 
 [[linter]]
 code = 'RUFF'

@@ -111,11 +111,11 @@ class BFCArena : public IAllocator {
                             Stream* stream,
                             bool enable_cross_stream_reusing,
                             WaitNotificationFn wait_fn);
-  #ifdef ORT_ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
   // for any chunk that associated with target stream, reset it to default (nullptr in stream, timestamp 0)
   // perform coalesce if coalesce_flag is true
   void ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_flag);
-  #endif
+#endif
   ArenaType arena_type_;
 
  private:
