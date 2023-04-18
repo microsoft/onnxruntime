@@ -20,8 +20,7 @@ namespace rocm {
 
 template <typename T>
 struct FastGeluParams : OpParams {
-  FastGeluParams(RocmTuningContext* tuning_ctx, hipStream_t stream, const T* input, const T* bias, T* output, int input_length, int bias_length) :
-    OpParams(tuning_ctx, stream), input(input), bias(bias), output(output), input_length(input_length), bias_length(bias_length) {}
+  FastGeluParams(RocmTuningContext* tuning_ctx, hipStream_t stream, const T* input, const T* bias, T* output, int input_length, int bias_length) : OpParams(tuning_ctx, stream), input(input), bias(bias), output(output), input_length(input_length), bias_length(bias_length) {}
 
   std::string Signature() const override {
     std::string sig = std::to_string(input_length) + "_" + std::to_string(bias_length);

@@ -17,7 +17,7 @@
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
 #endif

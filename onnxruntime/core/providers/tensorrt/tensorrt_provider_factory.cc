@@ -184,7 +184,6 @@ struct Tensorrt_Provider : Provider {
       dest[str_size] = '\0';
       trt_options.trt_tactic_sources = (const char*)dest;
     }
-
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

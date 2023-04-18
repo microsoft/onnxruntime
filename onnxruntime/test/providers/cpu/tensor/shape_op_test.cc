@@ -9,7 +9,7 @@ void TestShape(const std::initializer_list<T>& data, const std::vector<int64_t>&
   OpTester test("Shape");
   test.AddInput<T>("data", shape, data);
   test.AddOutput<int64_t>("output", {static_cast<int64_t>(shape.size())}, shape);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser: unsupported data types
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser: unsupported data types
 }
 
 TEST(ShapeOpTest, ShapeTestBool) { TestShape<bool>({true, true, false, false, true, false}, {2, 3}); }
@@ -29,7 +29,7 @@ TEST(ShapeOpTest, ShapeOpset15_Default) {
   OpTester test("Shape", 15);
   test.AddInput<int32_t>("data", {1, 2, 2}, {1, 2, 3, 4});
   test.AddOutput<int64_t>("output", {3}, {1, 2, 2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser: unsupported data types
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser: unsupported data types
 }
 
 TEST(ShapeOpTest, ShapeOpset15_StartOnly) {
@@ -37,7 +37,7 @@ TEST(ShapeOpTest, ShapeOpset15_StartOnly) {
   test.AddAttribute<int64_t>("start", 1);
   test.AddInput<int32_t>("data", {1, 2, 2}, {1, 2, 3, 4});
   test.AddOutput<int64_t>("output", {2}, {2, 2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser: unsupported data types
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser: unsupported data types
 }
 
 TEST(ShapeOpTest, ShapeOpset15_EndOnly) {
@@ -45,7 +45,7 @@ TEST(ShapeOpTest, ShapeOpset15_EndOnly) {
   test.AddAttribute<int64_t>("end", 2);
   test.AddInput<int32_t>("data", {1, 2, 2}, {1, 2, 3, 4});
   test.AddOutput<int64_t>("output", {2}, {1, 2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser: unsupported data types
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser: unsupported data types
 }
 
 TEST(ShapeOpTest, ShapeOpset15_StartAndEnd) {
@@ -54,7 +54,7 @@ TEST(ShapeOpTest, ShapeOpset15_StartAndEnd) {
   test.AddAttribute<int64_t>("end", 2);
   test.AddInput<int32_t>("data", {1, 2, 2}, {1, 2, 3, 4});
   test.AddOutput<int64_t>("output", {1}, {2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser: unsupported data types
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser: unsupported data types
 }
 
 TEST(ShapeOpTest, ShapeOpset15_StartAndEndNegative) {
@@ -63,7 +63,7 @@ TEST(ShapeOpTest, ShapeOpset15_StartAndEndNegative) {
   test.AddAttribute<int64_t>("end", -1);
   test.AddInput<int32_t>("data", {1, 2, 2}, {1, 2, 3, 4});
   test.AddOutput<int64_t>("output", {1}, {2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser: unsupported data types
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser: unsupported data types
 }
 TEST(ShapeOpTest, ShapeOpset15_StartAndEndProducingEmptySlice) {
   OpTester test("Shape", 15);
@@ -71,7 +71,7 @@ TEST(ShapeOpTest, ShapeOpset15_StartAndEndProducingEmptySlice) {
   test.AddAttribute<int64_t>("end", 2);
   test.AddInput<int32_t>("data", {1, 2, 2}, {1, 2, 3, 4});
   test.AddOutput<int64_t>("output", {0}, {});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser: unsupported data types
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser: unsupported data types
 }
 
 }  // namespace test

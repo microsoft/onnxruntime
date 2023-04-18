@@ -6,7 +6,6 @@
 
 #include "tvm_runner.h"
 
-
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace tvm {
@@ -23,5 +22,5 @@ common::Status TVMRunner::operator()(FunctionState state, const OrtApi* /*api*/,
   return runner_->run(ctx);
 }
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime

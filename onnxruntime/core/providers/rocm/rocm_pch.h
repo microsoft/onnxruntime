@@ -4,7 +4,7 @@
 #pragma once
 #if defined(_MSC_VER)
 #pragma warning(push)
-//hip_fp16.hpp(394,38): warning C4505: '__float2half_rz': unreferenced local function has been removed
+// hip_fp16.hpp(394,38): warning C4505: '__float2half_rz': unreferenced local function has been removed
 #pragma warning(disable : 4505)
 #endif
 

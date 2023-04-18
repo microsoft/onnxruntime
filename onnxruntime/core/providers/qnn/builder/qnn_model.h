@@ -90,7 +90,6 @@ class QnnModel {
   Status SetupTensors(std::vector<Qnn_Tensor_t>& tensors, const std::vector<QnnTensorWrapper>& tensor_wrappers, bool is_input = true);
 
  private:
-
   size_t GetInputOutputIndex(const std::string& name, const std::unordered_map<std::string, OnnxTensorInfo>& io_info) const {
     auto it = io_info.find(name);
     ORT_ENFORCE(it != io_info.end(), "Input/Output name not found.");

@@ -15,5 +15,5 @@ Status GatherElementsGradImpl(const Tensor* indices_input,
                               const int64_t axis,
                               Tensor* data_output);
 
-}  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

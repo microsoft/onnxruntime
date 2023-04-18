@@ -24,7 +24,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 
-  if (include_outer_scope_args){
+  if (include_outer_scope_args) {
     // add the NodeArg info for outer scope NodeArgs so we capture the type information
     for (const auto& name : graph_view.GetOuterScopeNodeArgNames()) {
       auto* node_arg = graph_view.GetNodeArg(name);
@@ -54,12 +54,11 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     }
     std::sort(const_inits.begin(), const_inits.end());
 
-    for (auto& it : const_inits){
+    for (auto& it : const_inits) {
       auto* p_initializer = graph_proto.add_initializer();
       *p_initializer = *(initializers.at(it));
       current_scope_initializer_set.insert(it);
     }
-
 
     // handle outer scope value which is a constant initializer
     if (include_outer_scope_args) {
@@ -80,4 +79,4 @@ void GraphViewerToProto(const GraphViewer& graph_view,
   }
 }
 
-}
+}  // namespace onnxruntime

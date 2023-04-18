@@ -14,11 +14,10 @@ struct OrtTypeInfo;
 
 struct OrtMapTypeInfo {
  public:
-
   ONNXTensorElementDataType map_key_type_ = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
   std::unique_ptr<OrtTypeInfo> map_value_type_;
 
-  static std::unique_ptr<OrtMapTypeInfo> FromTypeProto(const ONNX_NAMESPACE::TypeProto&); 
+  static std::unique_ptr<OrtMapTypeInfo> FromTypeProto(const ONNX_NAMESPACE::TypeProto&);
 
   std::unique_ptr<OrtMapTypeInfo> Clone() const;
 
@@ -27,5 +26,4 @@ struct OrtMapTypeInfo {
 
   OrtMapTypeInfo(const OrtMapTypeInfo& other) = delete;
   OrtMapTypeInfo& operator=(const OrtMapTypeInfo& other) = delete;
-
 };

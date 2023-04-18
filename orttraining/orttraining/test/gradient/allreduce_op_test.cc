@@ -17,7 +17,6 @@
 #include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
 
-
 namespace onnxruntime {
 namespace test {
 

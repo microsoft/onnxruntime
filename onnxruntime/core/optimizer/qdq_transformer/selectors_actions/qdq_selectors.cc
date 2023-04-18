@@ -350,9 +350,9 @@ bool InstanceNormalizationNodeGroupSelector::Check(const GraphViewer& graph_view
 }
 
 bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                                   const Node& node,
-                                                   const std::vector<const Node*>& dq_nodes,
-                                                   const std::vector<const Node*>& q_nodes) const {
+                                                const Node& node,
+                                                const std::vector<const Node*>& dq_nodes,
+                                                const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }

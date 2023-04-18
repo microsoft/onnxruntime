@@ -274,7 +274,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     nodes_to_remove.push_back(ln_node);
 
     // If input types are different than output type and output type is float, insert cast node after inputs.
-    for (auto& input_def: skip_layer_norm_input_defs) {
+    for (auto& input_def : skip_layer_norm_input_defs) {
       input_def = CastToFloat(graph,
                               input_def,
                               ln_node.MutableOutputDefs()[0]->TypeAsProto()->tensor_type().elem_type(),

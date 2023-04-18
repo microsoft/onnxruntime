@@ -50,7 +50,7 @@ Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
-                     "Cannot get shape");
+                      "Cannot get shape");
     // For Softmax opset < 13, it's still supported if axis=rank-1
     if (default_axis == static_cast<int32_t>(input_shape.size() - 1)) {
       return Status::OK();
@@ -153,7 +153,7 @@ Status SimpleOpBuilder::HandleSingleTransposeNode(QnnModelWrapper& qnn_model_wra
     Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
     std::vector<uint32_t> output_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output.node_arg, output_shape),
-                                                     "Cannot get shape for QNN Transpose output");
+                      "Cannot get shape for QNN Transpose output");
 
     QnnTensorWrapper output_tensorwrapper(output_name,
                                           QNN_TENSOR_TYPE_APP_READ,
@@ -161,7 +161,7 @@ Status SimpleOpBuilder::HandleSingleTransposeNode(QnnModelWrapper& qnn_model_wra
                                           quantize_param,
                                           std::move(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)),
-                                                         "Failed to add output tensor for QNN Transpose");
+                      "Failed to add output tensor for QNN Transpose");
   }
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
@@ -186,7 +186,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   if (do_op_validation) {
     ORT_RETURN_IF_ERROR(ExplictOpCheck(qnn_model_wrapper, node_unit));
-  } else if (is_quantized_model &&  NodeUnit::Type::SingleNode == node_unit.UnitType() &&
+  } else if (is_quantized_model && NodeUnit::Type::SingleNode == node_unit.UnitType() &&
              node_unit.OpType() == "Transpose") {
     LOGS(logger, VERBOSE) << "Add single Transpose node: " << node_unit.Name();
     return HandleSingleTransposeNode(qnn_model_wrapper, node_unit, std::move(input_names), is_quantized_model);

@@ -21,7 +21,7 @@ typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn_t)(const QnnInterface_t**
 
 Status QnnBackendManager::LoadBackend() {
   std::string error_msg = "";
-  backend_lib_handle_ = LoadLib(backend_path_.c_str(), 
+  backend_lib_handle_ = LoadLib(backend_path_.c_str(),
                                 static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
                                 error_msg);
   ORT_RETURN_IF(nullptr == backend_lib_handle_, "Unable to load backend, error: ", error_msg, " ", DlError());
@@ -68,7 +68,7 @@ Status QnnBackendManager::InitializeBackend() {
     return Status::OK();
   }
 
-  auto result = qnn_interface_.backendCreate(log_handle_, (const QnnBackend_Config_t**) backend_config_, &backend_handle_);
+  auto result = qnn_interface_.backendCreate(log_handle_, (const QnnBackend_Config_t**)backend_config_, &backend_handle_);
   ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize backend");
 
   backend_initialized_ = true;
@@ -165,7 +165,7 @@ Status QnnBackendManager::ReleaseProfilehandle() {
   // Free Profiling object if it was created
   if (nullptr != profile_backend_handle_) {
     ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != qnn_interface_.profileFree(profile_backend_handle_),
-                 "Could not free backend profile handle!");
+                  "Could not free backend profile handle!");
   }
   profile_backend_handle_ = nullptr;
 
@@ -211,7 +211,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger) {
   LOGS(logger, VERBOSE) << "LoadBackend succeed.";
 
   LOGS(logger, VERBOSE) << "Backend build version: "
-                         << GetBackendBuildId();
+                        << GetBackendBuildId();
 
   SetLogger(&logger);
   LOGS(logger, VERBOSE) << "SetLogger succeed.";
@@ -231,7 +231,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger) {
   // TODO: failed to createPowerConfigId with Qnn v2, need future investigation
   // Disable it for now since it doen't impact any existing feature
   // Also should enable EP options to control the enablement
-  //if (set_power_config && profiling_level_ == qnn::ProfilingLevel::OFF) {
+  // if (set_power_config && profiling_level_ == qnn::ProfilingLevel::OFF) {
   //  ORT_RETURN_IF_ERROR(SetDspPowerConfig());
   //  LOGS(*logger, VERBOSE) << "SetDspPowerConfig succeed.";
   //}

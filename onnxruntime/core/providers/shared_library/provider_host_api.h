@@ -4,9 +4,9 @@
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
-//However, we do not allocate this type on heap.
-//Please do not new or delete this type(and subtypes).
+// The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// However, we do not allocate this type on heap.
+// Please do not new or delete this type(and subtypes).
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -32,8 +32,8 @@ struct Provider {
   virtual void Initialize() = 0; // Called right after loading the shared library, if this throws any errors Shutdown() will be called and the library unloaded
   virtual void Shutdown() = 0; // Called right before unloading the shared library
 
-protected:
-  ~Provider() = default; // Can only be destroyed through a subclass instance
+ protected:
+  ~Provider() = default;  // Can only be destroyed through a subclass instance
 };
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
