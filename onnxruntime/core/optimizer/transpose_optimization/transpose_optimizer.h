@@ -46,9 +46,6 @@ struct OptimizerCtx {
   // Handlers for ops that are not in the ONNX opset, or for ONNX ops where special handling is required.
   // If a handler is not found in this map, the default handlers will be used.
   const HandlerMap& extended_handlers;
-
-  // layout sensitive ops to be excluded from optimization
-  const std::unordered_set<std::string_view>& layout_sensitive_ops;
 };
 
 /// <summary>

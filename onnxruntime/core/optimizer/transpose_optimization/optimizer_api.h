@@ -489,20 +489,21 @@ using HandlerMap = std::unordered_map<std::string_view, const HandlerInfo&>;
 /// total cost of Transpose ops and only push Transposes when doing so has some benefit.
 /// </summary>
 /// <param name="graph">The graph to optimize (or a portion of a graph, see api::GraphRef docs)</param>
-/// <param name="provider_type">Execution provider if applicable.</param>
+/// <param name="provider_type">Execution provider if applicable.
+///   If not specified, unassigned nodes will be considered for optimization.
+///   If specified, unassigned nodes and nodes assigned to the specified EP will be considered for optimization.
+/// </param>
 /// <param name="cost_check_fn">Optional cost checking function to determine whether it is worth pushing a Transpose
-/// through a node.</param>
+/// through a node.
+/// </param>
 /// <param name="extended_handlers">Map of handlers for non-ONNX operators and/or ONNX operators where special handling
 /// is required (e.g. ONNX Resize is layout agnostic but may be implemented in a layout sensitive way).
-/// <param name="layout_sensitive_ops">List of ops which are treated as layout sensitive by the ONNX standard
-/// as well as any runtime specific ops. We will not push a Transpose through node for an operator in this set
-/// even if a handler is registered for the operator.</param>
+/// </param>
 /// <returns>OptimizeResult. If error_msg is set the Optimize failed. If not set, graph_modified indicates whether
 /// any changes were required during optimization.</returns>
 OptimizeResult Optimize(api::GraphRef& graph,
                         const std::string& provider_type = "",
                         CostCheckFn cost_check_fn = nullptr,
-                        const HandlerMap& extended_handlers = {},
-                        const std::unordered_set<std::string_view>& layout_sensitive_ops = {});
+                        const HandlerMap& extended_handlers = {});
 
 }  // namespace onnx_transpose_optimization

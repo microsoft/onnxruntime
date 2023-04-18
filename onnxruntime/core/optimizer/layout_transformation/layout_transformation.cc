@@ -149,6 +149,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         modified = true;
       }
     }
+
     cost_check = PostLayoutTransformCostCheck;
 
     // debug the changes made inserting Transpose nodes around layout sensitive ops.
@@ -175,7 +176,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
 
   modified = modified || (graph.MaxNodeIndex() > max_node_idx);
 
-  // debug optimization of the new Transpose nodes using PostLayoutTransformCostCheck
+  // debug transpose optimization for the current EP
   if (modified && debug_graph_fn) {
     debug_graph_fn(graph);
   }

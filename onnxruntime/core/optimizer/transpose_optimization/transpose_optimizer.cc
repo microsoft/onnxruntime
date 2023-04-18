@@ -1847,7 +1847,6 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph,
                                                  const std::string& provider_type,
                                                  CostCheckFn cost_check_fn,
                                                  const HandlerMap& extended_handlers,
-                                                 const std::unordered_set<std::string_view>& layout_sensitive_ops,
                                                  std::string& error_msg) {
   auto opset = graph.Opset("");
   if (opset == std::nullopt) {
@@ -1863,7 +1862,7 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph,
     return std::nullopt;
   }
 
-  OptimizerCtx ctx{*opset, graph, provider_type, cost_check_fn, extended_handlers, layout_sensitive_ops};
+  OptimizerCtx ctx{*opset, graph, provider_type, cost_check_fn, extended_handlers};
   return ctx;
 }
 
@@ -2042,16 +2041,12 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   return layout_sensitive_ops;
 }
 
-OptimizeResult Optimize(api::GraphRef& graph,
-                        const std::string& provider_type,
-                        CostCheckFn cost_check_fn,
-                        const HandlerMap& extended_handlers,
-                        const std::unordered_set<std::string_view>& layout_sensitive_ops) {
+OptimizeResult Optimize(api::GraphRef& graph, const std::string& provider_type, CostCheckFn cost_check_fn,
+                        const HandlerMap& extended_handlers) {
   OptimizeResult result{};
 
   std::string error_msg;
-  auto ctx = MakeOptimizerContext(graph, provider_type, cost_check_fn, extended_handlers, layout_sensitive_ops,
-                                  error_msg);
+  auto ctx = MakeOptimizerContext(graph, provider_type, cost_check_fn, extended_handlers, error_msg);
 
   if (ctx == std::nullopt) {
     if (!error_msg.empty()) {
