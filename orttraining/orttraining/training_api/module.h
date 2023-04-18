@@ -52,6 +52,19 @@ struct ModuleCheckpointState {
   const DataTransferManager* train_session_data_transfer_mgr;
 };
 
+/**
+ * @brief Module class for running training forward and backward.
+ *
+ * This class is responsible for running forward and backward.
+ * It does NOT own the parameters but only holds a reference to the passed
+ * 'named_parameters' in the constructor. During initialization, if the Parameter's
+ * device does not match the target device, it will re-create the tensor on the
+ * target device and update the Parameter's data in place. The 'target device'
+ * is extracted from node placement.
+ *
+ * Currently, we only support load checkpoints from constructor;
+ * no public API to load checkpoint.
+ */
 struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
