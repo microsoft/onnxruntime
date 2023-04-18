@@ -61,6 +61,10 @@ enum class DataType : int32_t {
   COMPLEX64 = 14,
   COMPLEX128 = 15,
   BFLOAT16 = 16,
+  FLOAT8E4M3FN = 17,
+  FLOAT8E4M3FNUZ = 18,
+  FLOAT8E5M2 = 19,
+  FLOAT8E5M2FNUZ = 20,
 };
 
 /// <summary>
@@ -438,7 +442,7 @@ class GraphRef {
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 18;
+constexpr int64_t kMaxSupportedOpset = 19;
 
 // enum of results that a CostCheckFn can return.
 enum class CostCheckResult {

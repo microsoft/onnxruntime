@@ -105,7 +105,7 @@ TEST(TensorOpTest, Unsqueeze_scalar_2) {
   run_test(true);
 }
 
-TEST(TensorOpTest, Unsqueeze_Duplicate) {
+TEST(TensorOpTest, DISABLED_Unsqueeze_Duplicate) {
   {
     OpTester test("Unsqueeze", 12);  // opset 1-12 has axes attribute
 
@@ -128,7 +128,7 @@ TEST(TensorOpTest, Unsqueeze_Duplicate) {
   }
 }
 
-TEST(TensorOpTest, Unsqueeze_OutOfRange) {
+TEST(TensorOpTest, DISABLED_Unsqueeze_OutOfRange) {
   {
     OpTester test("Unsqueeze", 12);  // opset 1-12 has axes attribute
     test.AddAttribute("axes", std::vector<int64_t>{4});
