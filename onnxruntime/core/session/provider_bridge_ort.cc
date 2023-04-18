@@ -2103,16 +2103,7 @@ ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProvid
 ORT_API_STATUS_IMPL(OrtApis::CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out) {
   API_IMPL_BEGIN
 #ifdef USE_ROCM
-
-// Need to use 'new' here, so disable C26409
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 26409)
-#endif
-  *out = new OrtROCMProviderOptions();
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
+  *out = std::make_unique<OrtROCMProviderOptions>().release();
   (*out)->device_id = 0;
   (*out)->miopen_conv_exhaustive_search = 0;
   (*out)->gpu_mem_limit = std::numeric_limits<size_t>::max();
@@ -2196,19 +2187,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString, _In_ const OrtROCMP
 
 ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions* ptr) {
 #ifdef USE_ROCM
-
-// Need to use 'delete' here, so disable C26409
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 26409)
-#endif
-
-  delete ptr;
-
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
-
+  std::unique_ptr<OrtROCMProviderOptions> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
