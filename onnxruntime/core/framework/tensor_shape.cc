@@ -15,7 +15,7 @@ TensorShape::TensorShape(gsl::span<const int64_t> dims) {
 }
 
 TensorShape& TensorShape::operator=(const TensorShape& other) {
-  if (&other==this)
+  if (&other == this)
     return *this;
 
   Allocate(other.values_.size());
@@ -24,7 +24,7 @@ TensorShape& TensorShape::operator=(const TensorShape& other) {
 }
 
 TensorShape& TensorShape::operator=(TensorShape&& other) noexcept {
-  if (&other==this)
+  if (&other == this)
     return *this;
 
   // If the other TensorShape allocated a buffer, then take ownership of it
@@ -56,7 +56,7 @@ void TensorShape::Allocate(size_t size) {
  */
 int64_t TensorShape::Size() const {
   int64_t size = SizeHelper(0, values_.size());
-  //should we cache the size? as multiple operation may be expensive.
+  // should we cache the size? as multiple operation may be expensive.
   return size;
 }
 

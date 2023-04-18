@@ -71,12 +71,12 @@ struct ThreadOptions {
   // Thread affinity means a thread can only run on the logical processor(s) that the thread is allowed to run on.
   // If the vector is not empty, then set the affinity of each thread to logical cpus ids within the LogicalProcessors.
   // For example, the first thread in the pool will be bound to the logical processors contained in affinity[0].
-  // If the vector is empty, the thread can run on all the processors its process can run on. 
+  // If the vector is empty, the thread can run on all the processors its process can run on.
   // NOTE: When hyperthreading is enabled, for example, on a 4 cores we would have 8 logical processors,
   // processor group [0,1,2,3] may only occupy up some of the physical cores. There might be more than 2 logical
   // processor per physical core on a given computer. Physical cores assigned to a given VM may contain
   // logical processor indices that do not start with 0 and possibly go beyond the number of bits in an integer.
-  // 
+  //
   // If the size of the TP is not specified, ORT creates thread pools with a number of threads that are equal
   // to the number of visible physical cores. The threads affinities are set to all of the logical processors
   // that are contained in a given physical core with the same index as the thread. ORT does not set any affinity

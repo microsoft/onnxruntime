@@ -10,7 +10,7 @@
 
 namespace onnxruntime {
 
-class Gather final : public OpKernel, public GatherBase {
+class Gather : public OpKernel, public GatherBase {
  public:
   Gather(const OpKernelInfo& info) : OpKernel(info), GatherBase(info) {}
 

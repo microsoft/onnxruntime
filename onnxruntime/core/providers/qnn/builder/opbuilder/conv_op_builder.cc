@@ -59,16 +59,27 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
                                     bool is_quantized_model) const {
-  ORT_UNUSED_PARAMETER(qnn_model_wrapper);
-  ORT_UNUSED_PARAMETER(node_unit);
-  ORT_UNUSED_PARAMETER(logger);
-  ORT_UNUSED_PARAMETER(is_quantized_model);
-  auto input_0 = node_unit.Inputs()[0];
+  if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+  }
+
+  const auto& input_0 = node_unit.Inputs()[0];
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape), "Cannot get shape");
   if (input_shape.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Conv only support 2D!");
   }
+
+  ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
+  ORT_RETURN_IF(!is_quantized_model && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
+                "QNN EP: Data type ", input_data_type->c_str(),
+                " is not supported for Conv operator in CPU backend.");
+
+  NodeAttrHelper node_helper(node_unit);
+  auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
+  ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
+                "QNN Conv operators do not support 'auto_pad' value: ", auto_pad.c_str());
+
   return Status::OK();
 }
 
@@ -286,6 +297,9 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
   std::vector<int32_t> pad_values = {0, 0, 0, 0};
   auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
+  ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
+                "QNN Conv operators do not support 'auto_pad' value: ", auto_pad.c_str());
+
   if (auto_pad.compare("NOTSET") != 0) {
     auto input_0 = node_unit.Inputs()[0];
     auto input_1 = node_unit.Inputs()[1];

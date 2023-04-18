@@ -98,7 +98,6 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                                    const logging::Logger& logger,
                                    bool is_quantized_model,
                                    std::vector<std::string>& input_names) const {
-
   const auto& input_name = input.node_arg.Name();
 
   if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
@@ -147,7 +146,8 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_UNUSED_PARAMETER(do_op_validation);
 
   const auto& inputs = node_unit.Inputs();
-  for (size_t input_i = 0; input_i < inputs.size(); ++input_i) {
+  const auto input_count = GetInputCountQnnRequired(node_unit);
+  for (size_t input_i = 0; input_i < input_count; ++input_i) {
     ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[input_i], logger, is_quantized_model, input_names));
   }
 
@@ -180,7 +180,6 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   // Add output
   // Output part is common for all Ops, only difference is the Op attribute
   const auto& outputs = node_unit.Outputs();
-  auto output_size = outputs.size();
   std::vector<std::string> output_names;
   struct CastNodeInfo {
     std::string node_name;
@@ -189,7 +188,8 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   };
   std::vector<CastNodeInfo> cast_node_info_vec;
 
-  for (size_t output_i = 0; output_i < output_size && output_i < output_count_; ++output_i) {
+  const auto output_count = GetOutputCountQnnRequired(node_unit);
+  for (size_t output_i = 0; output_i < output_count; ++output_i) {
     const auto& output_name = outputs[output_i].node_arg.Name();
 
     Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;

@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
 #include "core/providers/rocm/shared_inc/integer_gemm.h"
@@ -58,7 +57,7 @@ Status GemmInt8(int m, int n, int k,
       lda_aligned == lda ? a : a_padded.get(), rocblas_datatype_i8_r, lda_aligned,
       &beta,
       c, rocblas_datatype_i32_r, ldc,
-      c, rocblas_datatype_i32_r, ldc, // C == D
+      c, rocblas_datatype_i32_r, ldc,  // C == D
       rocblas_datatype_i32_r,
       rocblas_gemm_algo_standard,
       0, 0));

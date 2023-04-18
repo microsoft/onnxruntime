@@ -137,7 +137,7 @@ def init_pytorch_model(model_name, tf_checkpoint_path):
     config_path = glob.glob(parent_path + "/*config.json")
     config = model_config() if len(config_path) == 0 else model_config.from_json_file(str(config_path[0]))
 
-    if TFMODELS[model_name][2] == "":
+    if not TFMODELS[model_name][2]:
         from transformers import AutoModelForPreTraining
 
         init_model = AutoModelForPreTraining.from_config(config)

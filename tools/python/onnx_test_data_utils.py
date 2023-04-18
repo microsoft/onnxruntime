@@ -142,7 +142,7 @@ def get_arg_parser():
     image_to_pb_group.add_argument(
         "--add_batch_dim",
         action="store_true",
-        help="Prepend a batch dimension with value of 1 to the shape. " "i.e. convert from CHW to NCHW",
+        help="Prepend a batch dimension with value of 1 to the shape. i.e. convert from CHW to NCHW",
     )
 
     random_to_pb_group = parser.add_argument_group("random_to_pb", "random_to_pb specific options")

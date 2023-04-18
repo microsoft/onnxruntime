@@ -16,21 +16,21 @@ namespace contrib {
 class AttentionCPUBase : public AttentionBase {
  protected:
   AttentionCPUBase(const OpKernelInfo& info, bool require_same_hidden_size)
-  : AttentionBase(info, require_same_hidden_size) {}
+      : AttentionBase(info, require_same_hidden_size) {}
 
   template <typename T>
-  Status ApplyAttention(const T* Q,                           // Q data with shape BxNxSxH
-                        const T* K,                           // K data with shape BxNxSxH
-                        const T* V,                           // V value with size BxNxSxH_v
-                        const Tensor* mask_index,             // mask index. nullptr if no mask or its size is B
-                        const Tensor* past,                   // past state
-                        Tensor* output,                       // output tensor
-                        int batch_size,                       // batch size (B)
-                        int sequence_length,                  // sequence length (S)
-                        int qk_head_size,                     // head size of Q or K (H)
-                        int v_head_size,                      // head size of V (H_v)
-                        int v_hidden_size,                    // hidden size of V (D_v)
-                        const Tensor* relative_position_bias, // bias addition in QK. Its size is BxNxSxT
+  Status ApplyAttention(const T* Q,                            // Q data with shape BxNxSxH
+                        const T* K,                            // K data with shape BxNxSxH
+                        const T* V,                            // V value with size BxNxSxH_v
+                        const Tensor* mask_index,              // mask index. nullptr if no mask or its size is B
+                        const Tensor* past,                    // past state
+                        Tensor* output,                        // output tensor
+                        int batch_size,                        // batch size (B)
+                        int sequence_length,                   // sequence length (S)
+                        int qk_head_size,                      // head size of Q or K (H)
+                        int v_head_size,                       // head size of V (H_v)
+                        int v_hidden_size,                     // hidden size of V (D_v)
+                        const Tensor* relative_position_bias,  // bias addition in QK. Its size is BxNxSxT
                         OpKernelContext* context) const {
     const int kv_sequence_length = sequence_length;
 
@@ -206,7 +206,7 @@ class AttentionCPUBase : public AttentionBase {
                                const T* past,             // past state
                                T* present,                // present state
                                ThreadPool* tp) const {
-    const int total_sequence_length = past_sequence_length + kv_sequence_length;               // T = P + L
+    const int total_sequence_length = past_sequence_length + kv_sequence_length;                 // T = P + L
     const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;  // P x H_v
     const ptrdiff_t input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;   // L x H_v
     const ptrdiff_t present_chunk_length = past_chunk_length + input_chunk_length;               // T x H_v

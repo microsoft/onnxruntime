@@ -34,7 +34,7 @@ def parse_args():
 
     parser.add_argument(
         "--container-registry",
-        help="The Azure container registry name. " "If not provided, no container registry will be used.",
+        help="The Azure container registry name. If not provided, no container registry will be used.",
     )
     parser.add_argument("--repository", required=True, help="The image repository name.")
 

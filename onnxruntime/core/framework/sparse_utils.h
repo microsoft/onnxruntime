@@ -79,7 +79,7 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
 /// <returns>Status instance</returns>
 Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, Tensor& dst);
-#endif  //!ORT_MINIMAL_BUILD
+#endif  //! ORT_MINIMAL_BUILD
 
 /// <summary>
 /// Convert Dense Tensor to COO format.
@@ -100,4 +100,4 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
 }  // namespace sparse_utils
 }  // namespace onnxruntime
 
-#endif  //!defined(DISABLE_SPARSE_TENSORS)
+#endif  //! defined(DISABLE_SPARSE_TENSORS)

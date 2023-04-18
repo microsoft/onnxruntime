@@ -23,7 +23,7 @@ static constexpr int kPresentOutputIndex = 1;
 
 #define REGISTER_KERNEL_TYPED(T1, T2)                                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
-      DecoderMaskedSelfAttention,                                        \
+      DecoderMaskedSelfAttention,                                             \
       kMSDomain,                                                              \
       1,                                                                      \
       T1,                                                                     \
