@@ -7,7 +7,6 @@
 #include <memory>
 #include <string>
 
-
 namespace onnxruntime {
 namespace tvm {
 class HasherImpl;
@@ -27,7 +26,7 @@ class Hasher {
   std::shared_ptr<HasherImpl> hasher_;
 };
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime
 
 #endif  // ONNXRUNTIME_CORE_PROVIDERS_TVM_HASH_ALG_HASHER_H_

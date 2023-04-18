@@ -10,11 +10,11 @@ DnnlSoftmaxGrad::DnnlSoftmaxGrad() {}
 void DnnlSoftmaxGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto eng = sp.GetEngine();
 
-  //get what's available as input
+  // get what's available as input
   auto src_mem = sp.GetMemory(node.Input(IN_X));
   auto diff_dst_mem = sp.GetMemory(node.Input(IN_dY));
 
-  //reorder if needed (gpu)
+  // reorder if needed (gpu)
   auto softmax_bwd_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), src_mem.get_desc(), eng);
   auto softmax_bwd_diff_dst_mem = sp.GetMemoryAndReshape(node.Input(IN_dY), diff_dst_mem.get_desc(), eng);
 
@@ -31,14 +31,14 @@ void DnnlSoftmaxGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node)
                                        diff_dst_mem.get_desc().get_data_type(),
                                        dnnl::memory::format_tag::any);
 
-  //create hints on the fly
-  auto hints_pd = dnnl::softmax_forward::primitive_desc(eng, dnnl::prop_kind::forward_training, 
+  // create hints on the fly
+  auto hints_pd = dnnl::softmax_forward::primitive_desc(eng, dnnl::prop_kind::forward_training,
                                                         dnnl::algorithm::softmax_accurate,
                                                         softmax_bwd_src_mem.get_desc(), fws_dst_md, axis);
 
-  auto softmax_bwd_pd = dnnl::softmax_backward::primitive_desc(eng, dnnl::algorithm::softmax_accurate, 
-                                                              fws_dst_md, softmax_bwd_diff_dst_mem.get_desc(),
-                                                              softmax_bwd_src_mem.get_desc(), axis, hints_pd);
+  auto softmax_bwd_pd = dnnl::softmax_backward::primitive_desc(eng, dnnl::algorithm::softmax_accurate,
+                                                               fws_dst_md, softmax_bwd_diff_dst_mem.get_desc(),
+                                                               softmax_bwd_src_mem.get_desc(), axis, hints_pd);
 
   auto softmax_bwd_diff_src_mem = dnnl::memory(softmax_bwd_pd.diff_src_desc(), eng);
 
@@ -53,7 +53,7 @@ void DnnlSoftmaxGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node)
 
 int64_t DnnlSoftmaxGrad::ReadAxis(DnnlNode& node) {
   auto attr = node.Attributes().find("axis");
-  int64_t axis = -1;  //Default value according to ONNX spec 13 but works with lower opsets too
+  int64_t axis = -1;  // Default value according to ONNX spec 13 but works with lower opsets too
   if (attr != node.Attributes().end() &&
       attr->second().type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT) {
     axis = attr->second().i();

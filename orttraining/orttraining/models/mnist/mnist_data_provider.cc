@@ -29,7 +29,7 @@ pair<vector<vector<float>>, vector<vector<float>>> NormalizeData(const vector<Im
   vector<vector<float>> one_hot_labels;
   for (size_t i = 0; i < labels.size(); i++) {
     vector<float> one_hot_label(10, 0.0f);
-    one_hot_label[labels[i]] = 1.0f;  //one hot
+    one_hot_label[labels[i]] = 1.0f;  // one hot
     one_hot_labels.emplace_back(std::move(one_hot_label));
   }
   return make_pair(normalized_images, one_hot_labels);

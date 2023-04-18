@@ -171,7 +171,9 @@ struct TensorShapeTypeProto {
 };
 
 template <>
-struct TensorShapeTypeProto<> { TensorShapeProto proto; };
+struct TensorShapeTypeProto<> {
+  TensorShapeProto proto;
+};
 
 template <TensorProto_DataType T>
 struct TensorTypeProto {
@@ -668,7 +670,7 @@ TEST_F(DataTypeTest, DataUtilsTest) {
   }
 }
 
-#ifndef  DISABLE_ABSEIL
+#ifndef DISABLE_ABSEIL
 
 template <typename T>
 using Calc = CalculateInlinedVectorDefaultInlinedElements<T>;

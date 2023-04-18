@@ -15,8 +15,8 @@ namespace ml {
 template <typename T>
 class SVMRegressor final : public OpKernel, private SVMCommon {
   using SVMCommon::batched_kernel_dot;
-  using SVMCommon::set_kernel_type;
   using SVMCommon::get_kernel_type;
+  using SVMCommon::set_kernel_type;
 
  public:
   SVMRegressor(const OpKernelInfo& info);
@@ -30,7 +30,7 @@ class SVMRegressor final : public OpKernel, private SVMCommon {
   std::vector<float> coefficients_;
   std::vector<float> support_vectors_;
   POST_EVAL_TRANSFORM post_transform_;
-  SVM_TYPE mode_;  //how are we computing SVM? 0=LibSVC, 1=LibLinear
+  SVM_TYPE mode_;  // how are we computing SVM? 0=LibSVC, 1=LibLinear
 };
 
 }  // namespace ml

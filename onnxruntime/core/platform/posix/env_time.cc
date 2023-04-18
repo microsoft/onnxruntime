@@ -78,8 +78,8 @@ void AccumulateTimeSpec(TIME_SPEC* base, const TIME_SPEC* p_y, const TIME_SPEC* 
   }
 }
 
-//Return the interval in seconds.
-//If the function fails, the return value is zero
+// Return the interval in seconds.
+// If the function fails, the return value is zero
 double TimeSpecToSeconds(const TIME_SPEC* value) {
   return value->tv_sec + value->tv_nsec / static_cast<double>(1000000000);
 }

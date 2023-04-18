@@ -78,7 +78,7 @@ struct Type {
     return Type(std::move(proto));
   }
 
-private:
+ private:
   explicit Type(ONNX_NAMESPACE::TypeProto type_proto) : value(std::move(type_proto)) {}
 };
 

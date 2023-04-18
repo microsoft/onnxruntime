@@ -176,18 +176,6 @@ macro(onnxruntime_fetchcontent_makeavailable)
               set_target_properties(${subdir_target} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
             endif()
           endforeach()
-          if(MSVC)
-            # Replace /Zi and /ZI with /Z7
-            if(MSVC_Z7_OVERRIDE)
-              foreach(flag_var
-                CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG  CMAKE_C_FLAGS_RELWITHDEBINFO
-                CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG  CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-                if(${flag_var} MATCHES "/Z[iI]")
-                  string(REGEX REPLACE "/Z[iI]" "/Z7" ${flag_var} "${${flag_var}}")
-                endif(${flag_var} MATCHES "/Z[iI]")
-              endforeach(flag_var)
-            endif(MSVC_Z7_OVERRIDE)
-        endif()
       endif()
 
       unset(__cmake_srcdir)

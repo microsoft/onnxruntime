@@ -157,7 +157,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       if (add_squeeze_node) {
         for (size_t i = 0; i < output_count; ++i) {
           Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("Squeeze" + std::to_string(i)), "Squeeze",
-                                            "Squeeze for Fused Gather nodes", {split_outputs[i]}, {gather_outputs[i]});
+                                             "Squeeze for Fused Gather nodes", {split_outputs[i]}, {gather_outputs[i]});
           squeeze_node.AddAttribute("axes", std::vector<int64_t>{split_axis});
           squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
         }

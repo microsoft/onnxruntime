@@ -16,11 +16,10 @@ template <typename T>
 static void TestSoftmax(const std::vector<int64_t>& X_dims,
                         const std::vector<int64_t>& Y_dims,
                         int axis = 1,
-                        bool is_log_softmax=false,
+                        bool is_log_softmax = false,
                         double per_sample_tolerance = 1e-4,
                         double relative_per_sample_tolerance = 1e-4) {
-
-  const char* op = is_log_softmax? "LogSoftmax" : "Softmax";
+  const char* op = is_log_softmax ? "LogSoftmax" : "Softmax";
   CompareOpTester test(op);
   test.AddAttribute<int64_t>("axis", axis);
 
@@ -152,8 +151,7 @@ static void TestSoftmaxGrad(const std::vector<int64_t>& dY_dims,
                             bool is_log_softmax = false,
                             double per_sample_tolerance = 1e-4,
                             double relative_per_sample_tolerance = 1e-4) {
-
-  const char* op = is_log_softmax? "LogSoftmaxGrad" : "SoftmaxGrad";
+  const char* op = is_log_softmax ? "LogSoftmaxGrad" : "SoftmaxGrad";
   CompareOpTester test(op, 1, kMSDomain);
   test.AddAttribute<int64_t>("axis", axis);
 
@@ -296,14 +294,13 @@ TEST(CudaKernelTest, LogSoftmaxGrad_LargeTensor_AllAxis_Float16_NoPowerOfTwo) {
 }
 
 static void TestSoftmaxGrad_13(const std::vector<int64_t>& dY_dims,
-                            const std::vector<int64_t>& Y_dims,
-                            const std::vector<int64_t>& dX_dims,
-                            int axis = 1,
-                            bool is_log_softmax = false,
-                            double per_sample_tolerance = 1e-4,
-                            double relative_per_sample_tolerance = 1e-4) {
-
-  const char* op = is_log_softmax? "LogSoftmaxGrad_13" : "SoftmaxGrad_13";
+                               const std::vector<int64_t>& Y_dims,
+                               const std::vector<int64_t>& dX_dims,
+                               int axis = 1,
+                               bool is_log_softmax = false,
+                               double per_sample_tolerance = 1e-4,
+                               double relative_per_sample_tolerance = 1e-4) {
+  const char* op = is_log_softmax ? "LogSoftmaxGrad_13" : "SoftmaxGrad_13";
   CompareOpTester test(op, 1, kMSDomain);
   test.AddAttribute<int64_t>("axis", axis);
 
@@ -384,7 +381,6 @@ TEST(CudaKernelTest, LogSoftmaxGrad_13_LargeTensor_AllAxis) {
   TestSoftmaxGrad_13(dY_dims, Y_dims, dX_dims, 0, true);
   TestSoftmaxGrad_13(dY_dims, Y_dims, dX_dims, 1, true);
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime
