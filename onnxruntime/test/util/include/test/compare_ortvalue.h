@@ -16,7 +16,11 @@ struct Value;
 }
 
 namespace onnxruntime {
-enum class COMPARE_RESULT { SUCCESS, RESULT_DIFFERS, TYPE_MISMATCH, SHAPE_MISMATCH, NOT_SUPPORT };
+enum class COMPARE_RESULT { SUCCESS,
+                            RESULT_DIFFERS,
+                            TYPE_MISMATCH,
+                            SHAPE_MISMATCH,
+                            NOT_SUPPORT };
 std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& real, const OrtValue& expected,
                                                        double per_sample_tolerance,
                                                        double relative_per_sample_tolerance, bool post_processing);

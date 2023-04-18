@@ -56,7 +56,7 @@ void RunQAttention(const std::vector<float>& input_data,
   std::vector<int64_t> bias_dims = {static_cast<int64_t>(3 * hidden_size)};
   std::vector<int64_t> mask_index_dims = {batch_size};
   if constexpr (ep == EP::DNNL) {
-    //onednn only supports raw mask
+    // onednn only supports raw mask
     if (mask_index_data.size() == static_cast<size_t>(batch_size * sequence_length)) {
       mask_index_dims = {batch_size, sequence_length};
     }
@@ -274,7 +274,7 @@ static void RunQAttentionAll(
                     use_special_quantize_parameter, is_unidirectional, input_hidden_size);
 }
 
-//ONEDNN EP only supports 2D raw mask
+// ONEDNN EP only supports 2D raw mask
 #ifdef USE_DNNL
 TEST(QAttentionTest, QAttentionDNNLBatch1) {
   int batch_size = 1;
@@ -400,7 +400,7 @@ TEST(QAttentionTest, QAttentionBatch2) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
-//ONEDNN EP only support 2D raw mask
+// ONEDNN EP only support 2D raw mask
 #ifdef USE_DNNL
 TEST(QAttentionTest, QAttentionDNNLBatch2) {
   int batch_size = 2;
@@ -466,7 +466,7 @@ TEST(QAttentionTest, QAttentionMaskPartialSequence) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
-//oneDNN EP only supports 2D raw mask
+// oneDNN EP only supports 2D raw mask
 #ifdef USE_DNNL
 TEST(QAttentionTest, QAttentionDNNLMaskPartialSequence) {
   int batch_size = 1;

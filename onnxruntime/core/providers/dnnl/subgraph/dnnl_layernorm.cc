@@ -60,7 +60,6 @@ Skip Layer Norm:
 Attributes (epsilon)
 */
 void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
-
   // Get engine
   auto dnnl_engine = sp.GetEngine();
 
@@ -82,7 +81,6 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // This contains the layer norm op and its parameters
   ln_components op_comps;
   if (node.OpType() == "SkipLayerNormalization") {
-
     // Check if shift is available
     shift_exists = node.Input(IN_BETA).Exists();
 
@@ -98,7 +96,6 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
     // Add src + skip
     {
-
       // get skip desc
       auto skip_md = sp.GetMemory(node.Input(IN_SKIP)).get_desc();
       // Move the skip to GPU if needed
@@ -109,12 +106,10 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       auto add_skip = dnnl::binary(add_skip_pd);
       std::unordered_map<int, dnnl::memory> add_skip_mem_map({{DNNL_ARG_SRC_0, src_mem}, {DNNL_ARG_SRC_1, skip_mem}, {DNNL_ARG_DST, src_mem}});
       sp.AddPrimitive(add_skip, add_skip_mem_map);
-
     }
 
     // Add src + skip + bias
     if (node.Input(IN_SLN_BIAS).Exists()) {
-
       // get bias desc
       auto bias_md = sp.GetMemory(node.Input(IN_SLN_BIAS)).get_desc();
       // Move the bias to GPU if needed
@@ -136,11 +131,9 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       auto add_bias = dnnl::binary(add_bias_pd);
       std::unordered_map<int, dnnl::memory> add_bias_mem_map({{DNNL_ARG_SRC_0, src_mem}, {DNNL_ARG_SRC_1, bias_mem}, {DNNL_ARG_DST, src_mem}});
       sp.AddPrimitive(add_bias, add_bias_mem_map);
-
     }
 
   } else if (node.OpType() == "LayerNormalization") {
-
     // Check if shift is available
     shift_exists = node.Input(IN_LN_BIAS).Exists();
 
@@ -158,7 +151,7 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // X = LayerNornm(X)
   // Check if we are training and need the extra outputs for backprop
   dnnl::prop_kind prop_kind;
-#if 0 //defined(ENABLE_TRAINING)
+#if 0  // defined(ENABLE_TRAINING)
   prop_kind = dnnl::prop_kind::forward_training;
 #else
   prop_kind = dnnl::prop_kind::forward_inference;
@@ -221,7 +214,7 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 
 // Check outputs used for training
-#if 0 //defined(ENABLE_TRAINING)
+#if 0   // defined(ENABLE_TRAINING)
   // If Mean exists
   if (node.OutputCount() > 1) {
     if (node.Output(OUT_MEAN).Exists()) {
@@ -258,7 +251,6 @@ void DnnlLayerNorm::ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // define gamma and shift input position, depending on the operation
   int gamma_pos, shift_pos;
   if (node.OpType() == "SkipLayerNormalization") {
-
     // Get skip and evaluate
     auto skip_dims = sp.GetMemory(node.Input(IN_SKIP)).get_desc().get_dims();
     if (input_dims != skip_dims) {
@@ -280,8 +272,8 @@ void DnnlLayerNorm::ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     gamma_pos = IN_SLN_GAMMA;
     shift_pos = IN_BETA;
 
-  // If the op is LayerNorm
-  } else{
+    // If the op is LayerNorm
+  } else {
     // Define the input position when using LN
     gamma_pos = IN_LN_GAMMA;
     shift_pos = IN_LN_BIAS;

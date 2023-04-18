@@ -453,10 +453,10 @@ ORT_API_STATUS_IMPL(Logger_GetLoggingSeverityLevel, _In_ const OrtLogger* logger
 
 ORT_API_STATUS_IMPL(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, _In_ size_t index,
                     _Out_ int* is_constant, _Outptr_ const OrtValue** out);
-                    
+
 ORT_API_STATUS_IMPL(CastTypeInfoToOptionalTypeInfo, _In_ const OrtTypeInfo* type_info,
                     _Outptr_result_maybenull_ const OrtOptionalTypeInfo** out);
 
 ORT_API_STATUS_IMPL(GetOptionalContainedTypeInfo, _In_ const OrtOptionalTypeInfo* optional_type_info,
-                    _Outptr_ OrtTypeInfo** out);                    
+                    _Outptr_ OrtTypeInfo** out);
 }  // namespace OrtApis

@@ -18,8 +18,10 @@ Licensed under the MIT License.
  * limitations under the License.
  */
 
+#include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/relative_attn_bias_impl.h"
+#include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,7 +29,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template<typename T>
+template <typename T>
 __global__ void buildRelativeAttentionBias(T* relative_attention_bias,
                                            const T* relative_attention_bias_table,
                                            const int head_num,
@@ -46,27 +48,25 @@ __global__ void buildRelativeAttentionBias(T* relative_attention_bias,
     int tmp_num_bucket = num_bucket;
 
     if (is_bidirectional) {
-        tmp_num_bucket /= 2;
-        if (relative_position > 0) {
-            relative_buckets += tmp_num_bucket;
-        } else {
-            relative_position *= -1;
-        }
+      tmp_num_bucket /= 2;
+      if (relative_position > 0) {
+        relative_buckets += tmp_num_bucket;
+      } else {
+        relative_position *= -1;
+      }
     } else {
-        if (relative_position > 0) {
-            relative_position = 0;
-        } else {
-            relative_position *= -1;
-        }
+      if (relative_position > 0) {
+        relative_position = 0;
+      } else {
+        relative_position *= -1;
+      }
     }
 
     int max_exact = tmp_num_bucket / 2;
-    bool is_small  = relative_position < max_exact;
+    bool is_small = relative_position < max_exact;
 
     int relative_position_if_large =
-        max_exact
-        + (int)(logf(relative_position * 1.0f / max_exact) / logf((float)max_distance / max_exact)
-                * (tmp_num_bucket - max_exact));
+        max_exact + (int)(logf(relative_position * 1.0f / max_exact) / logf((float)max_distance / max_exact) * (tmp_num_bucket - max_exact));
 
     relative_position_if_large = min(relative_position_if_large, tmp_num_bucket - 1);
 
@@ -74,21 +74,20 @@ __global__ void buildRelativeAttentionBias(T* relative_attention_bias,
 
     relative_attention_bias[head_id * seq_len * seq_len + seq_id] =
         relative_attention_bias_table[head_id * num_bucket + relative_buckets];
-    }
+  }
 }
 
 template <typename T>
 Status LaunchRelPosAttnBiasKernel(
-  cudaStream_t stream,
-  T* output,
-  const T* bias_table,
-  const int num_heads,
-  const int seq_len,
-  const int num_bucket,
-  const int max_distance,
-  const bool is_bidirectional,
-  const int max_threads_per_block)
-{
+    cudaStream_t stream,
+    T* output,
+    const T* bias_table,
+    const int num_heads,
+    const int seq_len,
+    const int num_bucket,
+    const int max_distance,
+    const bool is_bidirectional,
+    const int max_threads_per_block) {
   const int squared_sq_len = seq_len * seq_len;
   if (squared_sq_len <= max_threads_per_block) {
     dim3 grid(num_heads);
@@ -149,15 +148,73 @@ template Status LaunchRelPosAttnBiasKernel<half>(cudaStream_t stream,
                                                  const bool is_bidirectional,
                                                  const int max_threads_per_block);
 
-template <typename T>
+namespace {
+template <typename T, size_t size>
+struct TypeMapper;
+
+template <>
+struct TypeMapper<float, 2> {
+  using type = float2;
+};
+
+template <>
+struct TypeMapper<float, 4> {
+  using type = float4;
+};
+
+template <>
+struct TypeMapper<half, 2> {
+  using type = half2;
+};
+
+template <>
+struct TypeMapper<half, 4> {
+  using type = Half4;
+};
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 530
+inline __device__ half2 operator*(const float a, const half2 b) {
+  return __hmul2_rn(__float2half2_rn(a), b);
+}
+#else
+inline __device__ half2 operator*(const float a, const half2 b) {
+  half2 r;
+  r.x = (half)(a * (float)b.x);
+  r.y = (half)(a * (float)b.y);
+  return r;
+}
+#endif
+
+inline __device__ Half4 operator*(const float a, const Half4 b) {
+  Half4 r;
+  r.x = a * b.x;
+  r.y = a * b.y;
+  return r;
+}
+
+inline __device__ float2 operator*(const float a, const float2 b) {
+  return make_float2(a * b.x, a * b.y);
+}
+
+inline __device__ float4 operator*(const float a, const float4 b) {
+  return make_float4(a * b.x, a * b.y, a * b.z, a * b.w);
+}
+
+inline __device__ half operator*(const float a, const half b) {
+  return (half)(a * float(b));
+}
+}  // anonymous namespace
+
+template <typename T, typename VEC_T>
 __global__ void GatedRelativePositionBiasKernelSmallD(
-    T* output,         // (batch_size, num_heads, seq_len, seq_len)
-    const T* rel_pos,  // (1, num_heads, seq_len, seq_len)
-    const T* qw,       // (batch_size, num_heads, seq_len, D)
-    const T* bias,     // (D)
-    const T* eco_a,    // (1, num_heads, 1, 1)
+    VEC_T* output,         // (batch_size, num_heads, seq_len, seq_len)
+    const VEC_T* rel_pos,  // (1, num_heads, seq_len, seq_len)
+    const T* qw,           // (batch_size, num_heads, seq_len, D)
+    const T* bias,         // (D)
+    const T* eco_a,        // (1, num_heads, 1, 1)
     const int D,
-    const int ldqw) {
+    const int ldqw,
+    const int equiv_seq_len) {
   __shared__ float gate[1];
 
   const int seq_len = gridDim.x;
@@ -166,8 +223,8 @@ __global__ void GatedRelativePositionBiasKernelSmallD(
   const int n = blockIdx.y;
   const int b = blockIdx.z;
 
-  rel_pos += ((int64_t)n * seq_len + s) * seq_len;
-  output += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * seq_len;
+  rel_pos += ((int64_t)n * seq_len + s) * equiv_seq_len;
+  output += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * equiv_seq_len;
   qw += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * ldqw;
 
   float val = 0.0f;
@@ -194,8 +251,8 @@ __global__ void GatedRelativePositionBiasKernelSmallD(
   }
   __syncthreads();
 
-  for (int idx = threadIdx.x; idx < seq_len; idx += blockDim.x) {
-    output[idx] = (T)(gate[0]  * (float)rel_pos[idx]);
+  for (int idx = threadIdx.x; idx < equiv_seq_len; idx += blockDim.x) {
+    output[idx] = gate[0] * rel_pos[idx];
   }
 }
 
@@ -216,7 +273,10 @@ Status LaunchGatedRelativePositionBiasKernel(
   ORT_ENFORCE(D <= 32 && D > 0 && (D % 2 == 0));
   ORT_ENFORCE(ldqw == seq_len || ldqw == D);
 
-  int tpb = std::max(32, std::max(D, seq_len));
+  int equiv_seq_len = (seq_len & 1) == 0 ? (seq_len >> 1) : seq_len;
+  equiv_seq_len = (equiv_seq_len & 1) == 0 ? (equiv_seq_len >> 1) : equiv_seq_len;
+
+  int tpb = std::max(32, std::max(D, equiv_seq_len));
   tpb = std::min(tpb, device_prop.maxThreadsPerBlock);
 
   // round up tpb to power of 2
@@ -231,8 +291,22 @@ Status LaunchGatedRelativePositionBiasKernel(
   dim3 block(tpb);
   dim3 grid(seq_len, num_heads, batch_size);
 
-  GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
-      output, rel_pos, qw, bias, eco_a, D, ldqw);
+  if (seq_len % 4 == 0) {
+    using vec_type = typename TypeMapper<T, 4>::type;
+    GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
+        reinterpret_cast<vec_type*>(output),
+        reinterpret_cast<const vec_type*>(rel_pos),
+        qw, bias, eco_a, D, ldqw, equiv_seq_len);
+  } else if (seq_len & 1 == 0) {
+    using vec_type = typename TypeMapper<T, 2>::type;
+    GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
+        reinterpret_cast<vec_type*>(output),
+        reinterpret_cast<const vec_type*>(rel_pos),
+        qw, bias, eco_a, D, ldqw, equiv_seq_len);
+  } else {
+    GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
+        output, rel_pos, qw, bias, eco_a, D, ldqw, equiv_seq_len);
+  }
 
   return CUDA_CALL(cudaGetLastError());
 }

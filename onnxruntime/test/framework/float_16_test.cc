@@ -65,8 +65,8 @@ class MulFP16Kernel final : public OpKernel {
   }
 };
 
-//For test purpose, we register this MulFP16Kernel kernel to Mul op.
-//Once the custom schema is ready, should update this.
+// For test purpose, we register this MulFP16Kernel kernel to Mul op.
+// Once the custom schema is ready, should update this.
 KernelDefBuilder MulFP16KernelDef() {
   KernelDefBuilder def;
   def.SetName("Mul16")
@@ -144,7 +144,7 @@ TEST(Float16_Tests, Mul_16_Test) {
   EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kOnnxDomain, 5, 7).IsOK());
 
   auto def = MulFP16KernelDef();
-  //Register a foo kernel which is doing Add, but bind to Mul.
+  // Register a foo kernel which is doing Add, but bind to Mul.
   KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<MulFP16Kernel>(info); return Status::OK(); };
   EXPECT_TRUE(registry->RegisterCustomKernel(def, kernel_create_fn).IsOK());
 

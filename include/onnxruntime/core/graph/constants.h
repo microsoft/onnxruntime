@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <stddef.h> // needed for size_t on some platforms
+#include <stddef.h>  // needed for size_t on some platforms
 
 namespace onnxruntime {
 

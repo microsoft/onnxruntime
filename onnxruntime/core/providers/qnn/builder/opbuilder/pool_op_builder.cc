@@ -209,7 +209,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     scalar_param.dataType = QNN_DATATYPE_BOOL_8;
     scalar_param.bool8Value = 1;
     QnnParamWrapper count_pad_for_edges_param(node_unit.Index(),
-                                              node_unit.Name(), 
+                                              node_unit.Name(),
                                               qnn_def::count_pad_for_edges,
                                               scalar_param);
     param_tensor_names.push_back(count_pad_for_edges_param.GetParamTensorName());

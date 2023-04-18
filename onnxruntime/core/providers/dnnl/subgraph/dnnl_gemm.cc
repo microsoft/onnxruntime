@@ -13,7 +13,7 @@ DnnlGemm::DnnlGemm() {}
 
 /*
 Gemm implementation:
-Gemm: 
+Gemm:
   Inputs:
     0) A - Input Tensor
     1) B - Input Tensor
@@ -53,7 +53,6 @@ OneDNN algorithm:
 
 */
 
-
 void DnnlGemm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto eng = sp.GetEngine();
 
@@ -71,13 +70,12 @@ void DnnlGemm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     }
   }
 
-
   dnnl::memory::desc a_md;
   dnnl::memory::desc b_md;
 
   bool transA = GetTransA(node);
   bool transB = GetTransB(node);
-  
+
   dnnl::memory::dim M = (transA) ? a_dims[1] : a_dims[0];
   dnnl::memory::dim K = (transA) ? a_dims[0] : a_dims[1];
   dnnl::memory::dim N = (transB) ? b_dims[0] : b_dims[1];
@@ -97,7 +95,7 @@ void DnnlGemm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   matmul_attr.set_scales_mask(DNNL_ARG_SRC, 0);
   // Create the memory object related to the scale
   auto alpha_mem = dnnl::memory({{1}, dnnl::memory::data_type::f32, {1}}, eng);
-  // Write the alpha value into the memory object 
+  // Write the alpha value into the memory object
   sp.WriteToDnnlMemory<float>(alpha_mem, {alpha});
 
   auto matmul_dst_md = dnnl::memory::desc(output_shape, node.Output(OUT_Y).Type(), {N, 1});

@@ -127,21 +127,21 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-                               GetCublasHandle(ctx),
-                               transB,
-                               transA,
-                               static_cast<int>(helper.N()),
-                               static_cast<int>(helper.M()),
-                               static_cast<int>(helper.K()),
-                               &alpha,
-                               reinterpret_cast<const CudaT*>(right_X->Data<T>()),
-                               ldb,
-                               reinterpret_cast<const CudaT*>(left_X->Data<T>()),
-                               lda,
-                               &zero,
-                               reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                               ldc,
-                               device_prop));
+        GetCublasHandle(ctx),
+        transB,
+        transA,
+        static_cast<int>(helper.N()),
+        static_cast<int>(helper.M()),
+        static_cast<int>(helper.K()),
+        &alpha,
+        reinterpret_cast<const CudaT*>(right_X->Data<T>()),
+        ldb,
+        reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+        lda,
+        &zero,
+        reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+        ldc,
+        device_prop));
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
@@ -183,22 +183,22 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands
   CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
-                             GetCublasHandle(ctx),
-                             transB,
-                             transA,
-                             static_cast<int>(helper.N()),
-                             static_cast<int>(helper.M()),
-                             static_cast<int>(helper.K()),
-                             &alpha,
-                             right_arrays.GpuPtr(),
-                             ldb,
-                             left_arrays.GpuPtr(),
-                             lda,
-                             &zero,
-                             output_arrays.GpuPtr(),
-                             ldc,
-                             static_cast<int>(helper.OutputOffsets().size()),
-                             device_prop));
+      GetCublasHandle(ctx),
+      transB,
+      transA,
+      static_cast<int>(helper.N()),
+      static_cast<int>(helper.M()),
+      static_cast<int>(helper.K()),
+      &alpha,
+      right_arrays.GpuPtr(),
+      ldb,
+      left_arrays.GpuPtr(),
+      lda,
+      &zero,
+      output_arrays.GpuPtr(),
+      ldc,
+      static_cast<int>(helper.OutputOffsets().size()),
+      device_prop));
 
   return Status::OK();
 }

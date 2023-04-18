@@ -200,8 +200,8 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   int64_t axis = 0;
   ORT_THROW_IF_ERROR(cumsum_op::GetAxis(axis_tensor, rank, axis));
 
-  auto dim(output_tensor.Shape()[onnxruntime::narrow<size_t>(axis)]);    // dimension size for the axis
-  TensorShape slice_shape(input->Shape());  // the shape of one slice of input/output for the given value of the axis
+  auto dim(output_tensor.Shape()[onnxruntime::narrow<size_t>(axis)]);  // dimension size for the axis
+  TensorShape slice_shape(input->Shape());                             // the shape of one slice of input/output for the given value of the axis
   slice_shape[onnxruntime::narrow<size_t>(axis)] = 1;
   auto slice_size(slice_shape.Size());     // total number of elements in each slice
   auto slice_dims(slice_shape.GetDims());  // dim array for the slice

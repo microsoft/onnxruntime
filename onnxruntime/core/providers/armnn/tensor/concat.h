@@ -21,22 +21,21 @@ template <typename T>
 class Concat : public onnxruntime::Concat {
  public:
   explicit Concat(const OpKernelInfo& info) : onnxruntime::Concat(info) {
-
     provider_ = (const_cast<ArmNNExecutionProvider*>(
         dynamic_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
   }
 
   ~Concat() {
-	concatLayers.erase(this);
+    concatLayers.erase(this);
   }
 
   Status Compute(OpKernelContext* context) const override;
 
-  static armnn::IRuntimePtr initRuntime(){
-  	if (Concat::run)
-  		return std::move(Concat::run);
-	armnn::IRuntime::CreationOptions options;
-  	return std::move(armnn::IRuntime::Create(options));
+  static armnn::IRuntimePtr initRuntime() {
+    if (Concat::run)
+      return std::move(Concat::run);
+    armnn::IRuntime::CreationOptions options;
+    return std::move(armnn::IRuntime::Create(options));
   }
 
  protected:

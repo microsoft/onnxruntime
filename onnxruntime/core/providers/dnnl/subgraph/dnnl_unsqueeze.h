@@ -22,7 +22,7 @@ class DnnlUnsqueeze {
   DnnlUnsqueeze();
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
 
-  private:
+ private:
   std::vector<int64_t> GetAxes(DnnlNode& node);
 };
 

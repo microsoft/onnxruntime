@@ -12,8 +12,6 @@ namespace test {
 
 static auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
 
-
-
 inline void CreateValueInfo(
     ONNX_NAMESPACE::ValueInfoProto& value_info,
     const std::string& name,
