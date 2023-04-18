@@ -68,7 +68,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
-#include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
+#include "core/optimizer/transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #ifdef ENABLE_TRAINING_CORE
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"

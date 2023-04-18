@@ -9,7 +9,7 @@
 
 #include "core/common/common.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
-#include "core/optimizer/transpose_optimizer/layout_transformation_potentially_added_ops.h"
+#include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
 
 namespace onnxruntime::kernel_type_str_resolver_utils {
 

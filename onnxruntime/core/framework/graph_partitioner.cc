@@ -43,6 +43,7 @@ NonCudaOps non_cuda;
 #endif
 
 namespace onnxruntime {
+using namespace layout_transformation;
 
 namespace {
 
@@ -53,8 +54,8 @@ struct PartitionParams {
   std::reference_wrapper<FuncManager> func_mgr;
   std::reference_wrapper<KernelRegistry> fused_kernel_registry;
   std::reference_wrapper<int> fused_node_unique_id;
-  std::reference_wrapper<const layout_transformer::TransformLayoutFunction> transform_layout_function;
-  std::reference_wrapper<const layout_transformer::DebugGraphFn> debug_graph_fn;
+  std::reference_wrapper<const TransformLayoutFunction> transform_layout_function;
+  std::reference_wrapper<const DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
 }  // namespace
@@ -125,8 +126,8 @@ struct GetCapabilityForEPParams {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   GraphPartitioner::Mode mode;
-  std::reference_wrapper<const layout_transformer::TransformLayoutFunction> transform_layout;
-  std::reference_wrapper<const layout_transformer::DebugGraphFn> debug_graph_fn;
+  std::reference_wrapper<const TransformLayoutFunction> transform_layout;
+  std::reference_wrapper<const DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
 }  // namespace
@@ -177,10 +178,12 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  // Run layout transformer only for EPs other than CPU EP and provided the preferred layout is NHWC
-  // CPU EP layout transformation happens later when level 3 transformers are run.
-  if (params.mode != GraphPartitioner::Mode::kAssignOnly &&
-      current_ep.GetPreferredLayout() == DataLayout::NHWC) {
+  // Run layout transformation for all EPs. 
+  // For an EP that wants NHWC this will wrap layout sensitive nodes with Transpose nodes first.
+  // In both NCHW and NHWC EPs the EP specific transpose optimization is run last to optimize
+  // transposes for nodes assigned to the EP or unassigned nodes. This allows things like the 
+  // EP aware Resize handling to be run. 
+  if (params.mode != GraphPartitioner::Mode::kAssignOnly && params.transform_layout.get()) {
     for (auto& capability : capabilities) {
       TryAssignNodes(graph, *capability->sub_graph, ep_type);
     }
@@ -191,44 +194,46 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
     bool modified = false;
     ORT_RETURN_IF_ERROR(params.transform_layout(graph, modified, current_ep, params.debug_graph_fn));
 
-    // It is possible some new nodes are introduced during transformation. These nodes can be either existing nodes
-    // which are reconstructed to update domain or completely new nodes which are necessary for layout transformation.
-    // we always give GetCapability the second call as long as capabilities is not empty. GetCapability have different
-    // behaviors for first/second call, the first call only tag those nodes supported by this EP and then
-    // assigned by `AssignNodes`, the second call will do some node processing and
-    // node fusion whenever ops were layout-sensitive or not.
-    // So we are calling GetCapability twice here to make things simple and finish the following procedures;
-    // 1. To process new nodes introduced by transform_layout function.
-    // 2. To do Op-fusion and graph optimization
-    // 3. QDQ node-group fusion
+    if (modified) {
+      // It is possible some new nodes are introduced during transformation. These nodes can be either existing nodes
+      // which are reconstructed to update domain or completely new nodes which are necessary for layout transformation.
+      // we always give GetCapability the second call as long as capabilities is not empty. GetCapability have different
+      // behaviors for first/second call, the first call only tag those nodes supported by this EP and then
+      // assigned by `AssignNodes`, the second call will do some node processing and
+      // node fusion whenever ops were layout-sensitive or not.
+      // So we are calling GetCapability twice here to make things simple and finish the following procedures;
+      // 1. To process new nodes introduced by transform_layout function.
+      // 2. To do Op-fusion and graph optimization
+      // 3. QDQ node-group fusion
 
-    const NodeIndex end_node = graph.MaxNodeIndex();
+      const NodeIndex end_node = graph.MaxNodeIndex();
 
-    capabilities.clear();
+      capabilities.clear();
 
-    const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
+      const GraphViewer graph_viewer(graph);
+      capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
 
-    // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
-    InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
-    for (const auto& capability : capabilities) {
-      for (auto node_index : capability->sub_graph->nodes) {
-        if (node_index >= first_new_node) {
-          new_nodes_in_capabilities.insert(node_index);
+      // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
+      InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
+      for (const auto& capability : capabilities) {
+        for (auto node_index : capability->sub_graph->nodes) {
+          if (node_index >= first_new_node) {
+            new_nodes_in_capabilities.insert(node_index);
+          }
         }
       }
-    }
 
-    for (NodeIndex idx = first_new_node; idx < end_node; ++idx) {
-      const Node* node = graph.GetNode(idx);
-      if (node != nullptr && node->Domain() == kMSInternalNHWCDomain) {
-        if (new_nodes_in_capabilities.count(node->Index()) == 0) {
-          return ORT_MAKE_STATUS(
-              ONNXRUNTIME, FAIL,
-              "Node '", node->Name(), "' OpType:", node->OpType(), " with domain:", kMSInternalNHWCDomain,
-              " was inserted using the NHWC format as requested by ", ep_type, ", but was not selected",
-              " by that EP. This means the graph is now invalid as there will not be an EP able to run the node."
-              " This could be a bug in layout transformer, or in the GetCapability implementation of the EP.");
+      for (NodeIndex idx = first_new_node; idx < end_node; ++idx) {
+        const Node* node = graph.GetNode(idx);
+        if (node != nullptr && node->Domain() == kMSInternalNHWCDomain) {
+          if (new_nodes_in_capabilities.count(node->Index()) == 0) {
+            return ORT_MAKE_STATUS(
+                ONNXRUNTIME, FAIL,
+                "Node '", node->Name(), "' OpType:", node->OpType(), " with domain:", kMSInternalNHWCDomain,
+                " was inserted using the NHWC format as requested by ", ep_type, ", but was not selected",
+                " by that EP. This means the graph is now invalid as there will not be an EP able to run the node."
+                " This could be a bug in layout transformer, or in the GetCapability implementation of the EP.");
+          }
         }
       }
     }
@@ -281,7 +286,8 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
       // need to create one ORT format model for Android and one for iOS.
       for (auto node_index : capability.nodes) {
         const auto* node = graph.GetNode(node_index);
-        if ((nullptr == node) || (!node->GetExecutionProviderType().empty() && node->GetExecutionProviderType() != provider_type)) {
+        if ((nullptr == node) ||
+            (!node->GetExecutionProviderType().empty() && node->GetExecutionProviderType() != provider_type)) {
           // The node was fused or assigned, so that the whole sub-graph will not be assigned to this <provider>
           // The assumption is that this <provider> can only run the sub-graph as a whole unit.
           sub_graph_available_for_assignment = false;
@@ -334,8 +340,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            IExecutionProvider& current_ep,
                                            GraphPartitioner::Mode mode,
                                            int& fused_node_unique_id,
-                                           const layout_transformer::TransformLayoutFunction& transform_layout_function,
-                                           const layout_transformer::DebugGraphFn& debug_graph_fn) {
+                                           const TransformLayoutFunction& transform_layout_function,
+                                           const DebugGraphFn& debug_graph_fn) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -692,9 +698,9 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 }
 
 Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
-                                   const layout_transformer::TransformLayoutFunction& transform_layout_function,
+                                   const TransformLayoutFunction& transform_layout_function,
                                    Mode mode,
-                                   const layout_transformer::DebugGraphFn& debug_graph_fn) const {
+                                   const DebugGraphFn& debug_graph_fn) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.

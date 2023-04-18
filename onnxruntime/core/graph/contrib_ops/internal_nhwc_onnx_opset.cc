@@ -75,28 +75,28 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   // so supporting older opsets is unnecessary.
 
   // NOTE: This should be in sync with GetLayoutSensitiveOps in
-  // /onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc
+  // /onnxruntime/core/optimizer/transpose_optimization/transpose_optimizer.cc
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 11);
 
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 9);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 14);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 15);
 
-  REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 11);
-  REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 13);
-
-  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, InstanceNormalization, 6);
-
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, Conv, 11);
 
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, ConvTranspose, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, ConvTranspose, 1);
+
+  REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 11);
+  REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 13);
 
   REGISTER_NHWC_SCHEMA(fn, GlobalAveragePool, 1);
   REGISTER_NHWC_SCHEMA(fn, GlobalLpPool, 2);
   REGISTER_NHWC_SCHEMA(fn, GlobalMaxPool, 1);
 
   REGISTER_NHWC_SCHEMA(fn, GridSample, 16);
+
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, InstanceNormalization, 6);
 
   REGISTER_NHWC_SCHEMA(fn, LRN, 1);
   REGISTER_NHWC_SCHEMA(fn, LRN, 13);
@@ -112,13 +112,15 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
 
   REGISTER_NHWC_SCHEMA(fn, QLinearConv, 10);
 
-  REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 1);
-  REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 13);
-
+  // TODO: Update QNN EP. The Resize spec is not layout sensitive so as long as the layout transformer ensures the
+  // Resize node input is NHWC we should not need this additional registration.
 #if defined(USE_QNN)
   REGISTER_NHWC_SCHEMA(fn, Resize, 11);
   REGISTER_NHWC_SCHEMA(fn, Resize, 13);
 #endif
+
+  REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 1);
+  REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 13);
 
   // internal QLinear ops
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);

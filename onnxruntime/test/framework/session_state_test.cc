@@ -20,7 +20,7 @@
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
-#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace std;
@@ -157,7 +157,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
   GraphPartitioner partitioner(krm, execution_providers);
   status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                 layout_transformer::TransformLayoutForEP);
+                                 layout_transformation::TransformLayoutForEP);
   ASSERT_TRUE(status.IsOK()) << status;
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
@@ -231,7 +231,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                   layout_transformer::TransformLayoutForEP);
+                                   layout_transformation::TransformLayoutForEP);
     ASSERT_TRUE(status.IsOK()) << status;
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
@@ -282,7 +282,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                   layout_transformer::TransformLayoutForEP);
+                                   layout_transformation::TransformLayoutForEP);
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state

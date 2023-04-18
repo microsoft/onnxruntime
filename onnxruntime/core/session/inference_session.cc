@@ -39,12 +39,13 @@
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/optimizer/transformer_memcpy.h"
-#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
+#include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
@@ -898,19 +899,19 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
                                          : GraphPartitioner::Mode::kNormal;
 
-  layout_transformer::TransformLayoutFunction transform_layout_fn = nullptr;
+  layout_transformation::TransformLayoutFunction transform_layout_fn = nullptr;
 
   // only provide NCWH to NHWC layout transformer if supported
-  if (layout_transformer::IsSupportedOpset(graph)) {
+  if (layout_transformation::IsSupportedOpset(graph)) {
     // we want to run L1 transformers after the layout transform primarily to constant fold any initializers
     // that get converted to an alternative layout.
     // create a lambda to combine the two operations in the layout transformation function
     transform_layout_fn = [this](Graph& graph_to_transform, bool& modified,
                                  const IExecutionProvider& execution_provider,
-                                 const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+                                 const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
-                                                   debug_graph_fn));
+          layout_transformation::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
+                                                      debug_graph_fn));
 
       if (modified) {
         ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -931,7 +932,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // debug infrastructure for layout transformation. it's extremely difficult to trace the transpose optimizer changes
   // manually, so dumping out the model so it can be viewed in Netron makes it far easier
-  layout_transformer::DebugGraphFn debug_graph_fn;
+  layout_transformation::DebugGraphFn debug_graph_fn;
   if (transform_layout_fn) {
     bool enable_debug = session_options_.config_options.GetConfigOrDefault(kDebugLayoutTransformation, "0") == "1";
 
@@ -1230,11 +1231,11 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                SessionState& session_state) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // only provide NCWH to NHWC layout transformer if supported
-  layout_transformer::TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
-                                                                        ? layout_transformer::TransformLayoutForEP
-                                                                        : nullptr;
+  layout_transformation::TransformLayoutFunction transform_layout_fn = layout_transformation::IsSupportedOpset(graph)
+                                                                           ? layout_transformation::TransformLayoutForEP
+                                                                           : nullptr;
 #else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  layout_transformer::TransformLayoutFunction transform_layout_fn{};
+  layout_transformation::TransformLayoutFunction transform_layout_fn{};
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
@@ -1568,7 +1569,7 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(inference_session_utils::ParseTuningResultsFromModelMetadata(
         model_metadata_, tuning_results, found_tuning_results));
     if (found_tuning_results) {
-      ORT_RETURN_IF_ERROR_SESSIONID_(SetTuningResults(tuning_results, /*error_on_invalid*/false, /*auto_enable*/true));
+      ORT_RETURN_IF_ERROR_SESSIONID_(SetTuningResults(tuning_results, /*error_on_invalid*/ false, /*auto_enable*/ true));
     }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
