@@ -88,12 +88,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       relative_position_bias,
                                                                       past_key,
                                                                       past_value,
-                                                                      nullptr, // past_seq_len
+                                                                      nullptr,  // past_seq_len
                                                                       &parameters,
                                                                       num_heads_,
                                                                       mask_filter_value_,
                                                                       scale_,
-                                                                      false, // past_present_share_buffer
+                                                                      false,  // past_present_share_buffer
                                                                       device_prop.maxThreadsPerBlock));
 
   int sequence_length = parameters.sequence_length;

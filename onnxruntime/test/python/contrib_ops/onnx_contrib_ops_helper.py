@@ -53,8 +53,8 @@ def expect(
     name,
     **kwargs,
 ):  # type: (...) -> None
-    present_inputs = [x for x in node.input if (x != "")]
-    present_outputs = [x for x in node.output if (x != "")]
+    present_inputs = [x for x in node.input if x]
+    present_outputs = [x for x in node.output if x]
     input_types = [None] * len(inputs)
     if "input_types" in kwargs:
         input_types = kwargs["input_types"]

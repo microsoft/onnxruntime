@@ -93,11 +93,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
             failed.store(true, std::memory_order_release);
             return;
           }
-          int position_col_index = (position_ids_data == nullptr) ?
-                                    index % sequence_length :
-                                    (broadcast_position_ids ?
-                                    position_ids_data[index % sequence_length] :
-                                    position_ids_data[index]);
+          int position_col_index = (position_ids_data == nullptr) ? index % sequence_length : (broadcast_position_ids ? position_ids_data[index % sequence_length] : position_ids_data[index]);
           if (position_col_index >= position_embedding_length) {
             failed.store(true, std::memory_order_release);
             return;

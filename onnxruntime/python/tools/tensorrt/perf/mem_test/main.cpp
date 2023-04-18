@@ -130,7 +130,6 @@ void run_ort_trt2() {
   // Score for class[3] = 0.001180
   // Score for class[4] = 0.001317
 
-
   // we need another run in order to make TRT EP use engine cache
   printf("Second run ...\n");
 
@@ -147,7 +146,7 @@ void run_ort_trt2() {
     printf("Score for class [%d] =  %f\n", i, floatarr[i]);
 
   // release buffers allocated by ORT alloctor
-  for(const char* node_name : input_node_names)
+  for (const char* node_name : input_node_names)
     allocator.Free(const_cast<void*>(reinterpret_cast<const void*>(node_name)));
 
   printf("Done!\n");
@@ -275,9 +274,8 @@ void ort_trt_run_with_default_options() {
   // Score for class[3] = 0.001180
   // Score for class[4] = 0.001317
 
-
   // release buffers allocated by ORT alloctor
-  for(const char* node_name : input_node_names)
+  for (const char* node_name : input_node_names)
     allocator.Free(const_cast<void*>(reinterpret_cast<const void*>(node_name)));
 
   printf("Done!\n");
@@ -375,9 +373,8 @@ void run_ort_trt() {
   // Score for class[3] = 0.001180
   // Score for class[4] = 0.001317
 
-
   // release buffers allocated by ORT alloctor
-  for(const char* node_name : input_node_names)
+  for (const char* node_name : input_node_names)
     allocator.Free(const_cast<void*>(reinterpret_cast<const void*>(node_name)));
 
   printf("Done!\n");

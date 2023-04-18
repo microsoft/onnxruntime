@@ -6,6 +6,6 @@
 // Extending the std namespace is undefined behavior
 // NOLINTNEXTLINE
 namespace std {
-    inline char *getenv(const char*) { return nullptr; }
-}
+inline char* getenv(const char*) { return nullptr; }
+}  // namespace std
 #endif

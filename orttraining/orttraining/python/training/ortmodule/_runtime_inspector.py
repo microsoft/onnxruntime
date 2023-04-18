@@ -42,7 +42,7 @@ class InputDensityObserver:
         self._tensor_to_node_map.clear()
         for node in model.graph.node:
             for output_name in node.output:
-                if output_name != "":
+                if output_name != "":  # noqa: PLC1901
                     self._tensor_to_node_map[output_name] = node
 
         self._initialize_embedding_padding_inspector(model, user_input_names)
@@ -279,7 +279,7 @@ class InputDensityObserver:
             self._stats.clear()
 
     def _try_get_node_from_its_output(self, name):
-        if name == "" or name not in self._tensor_to_node_map:
+        if name == "" or name not in self._tensor_to_node_map:  # noqa: PLC1901
             return None
 
         return self._tensor_to_node_map[name]

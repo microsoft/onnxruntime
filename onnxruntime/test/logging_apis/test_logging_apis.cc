@@ -55,7 +55,7 @@ static std::unique_ptr<onnxruntime::logging::ISink> SetupMockSinkCalls(const std
 
   // Expect calls to the mock sink's SendImpl() method.
   EXPECT_CALL(*mock_sink, SendImpl(ignore_timestamp, log_id_matcher, source_location_matcher))
-      .Times(num_calls)  // Called at most num_calls times
+      .Times(num_calls)              // Called at most num_calls times
       .WillRepeatedly(PrintArgs());  // The PrintArgs() action will generate the expected stdout output for each call.
                                      // See test/common/logging/helpers.h for the PrintArgs() implementation.
 

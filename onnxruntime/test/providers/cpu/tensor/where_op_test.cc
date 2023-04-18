@@ -64,7 +64,7 @@ void WhereBroadcastTest(const T& x_value, const T& y_value) {
 
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
     test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+             {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #else
     test.Run();
 #endif
@@ -88,7 +88,7 @@ void WhereBroadcastTest(const T& x_value, const T& y_value) {
 
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
     test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+             {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #else
     test.Run();
 #endif

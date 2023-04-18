@@ -279,9 +279,8 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Inputs 'mask_index' with 1D data shall have length of batch_size or 2 * batch_size or 3 * batch_size + 2");
     }
-    mask_type = (mask_dims[0] == batch_size ?
-                 AttentionMaskType::MASK_1D_KEY_SEQ_LEN :
-                 mask_dims[0] == 2 * batch_size ? AttentionMaskType::MASK_1D_END_START : AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START);
+    mask_type = (mask_dims[0] == batch_size ? AttentionMaskType::MASK_1D_KEY_SEQ_LEN : mask_dims[0] == 2 * batch_size ? AttentionMaskType::MASK_1D_END_START
+                                                                                                                      : AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START);
   } else if (mask_dims.size() == 2) {
     if (mask_dims[0] == batch_size && mask_dims[1] == total_sequence_length) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;

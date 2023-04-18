@@ -119,9 +119,9 @@ void SplitTestAxis0EqualSplit(bool use_opset_13 = false) {
 
   RunTest<T>(axis, {}, input, outputs,
              // TensorRT parser: Assertion failed: axis != BATCH_DIM
-             {kTensorrtExecutionProvider},    // is_tensorrt_supported
-             false,                           // expect_failure
-             use_opset_13);                   // split_as_input
+             {kTensorrtExecutionProvider},  // is_tensorrt_supported
+             false,                         // expect_failure
+             use_opset_13);                 // split_as_input
 }
 
 }  // namespace
@@ -766,7 +766,7 @@ TEST(SplitOperatorTest, Split18_NumOutputsUnevenSplitAxis1) {
   outputs.push_back({{2, 1}, {3.f, 6.f}});
 
   int64_t num_outputs = 2;
-  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider,kQnnExecutionProvider}, false, true, num_outputs, false);
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, false);
 }
 
 }  // namespace test

@@ -43,4 +43,4 @@ class ReshapeHelper {
   }
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

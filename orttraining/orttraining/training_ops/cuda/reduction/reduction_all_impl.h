@@ -15,6 +15,5 @@ struct MultiTensorReduceL2 {
 
 template <typename Tin, typename Tout>
 void ScalarSqrt(cudaStream_t stream, Tin* input, Tout* output);
-}
+}  // namespace cuda
 }  // namespace onnxruntime
-
