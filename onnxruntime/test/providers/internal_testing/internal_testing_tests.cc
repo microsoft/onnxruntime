@@ -35,9 +35,9 @@ using namespace onnxruntime::internal_testing_ep;
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 
 static Status CreateSession(const SessionOptions& so, std::unique_ptr<InferenceSessionWrapper>& session,
-                          const ORTCHAR_T* model_path = ORT_MODEL_FOLDER "mnist.onnx",  // arbitrary test model
-                          bool enable_custom_ep = true,
-                          const std::unordered_set<std::string>* override_supported_ops = nullptr) {
+                            const ORTCHAR_T* model_path = ORT_MODEL_FOLDER "mnist.onnx",  // arbitrary test model
+                            bool enable_custom_ep = true,
+                            const std::unordered_set<std::string>* override_supported_ops = nullptr) {
   session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
 
   // set supported ops to ops that are ideally found consecutively in the model.

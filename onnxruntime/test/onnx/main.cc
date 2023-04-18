@@ -70,8 +70,7 @@ void usage() {
 static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool useCustom, double atol, double rtol) {
   TestTolerances::Map absolute_overrides;
   TestTolerances::Map relative_overrides;
-  if (useCustom)
-  {
+  if (useCustom) {
     return TestTolerances(atol, rtol, absolute_overrides, relative_overrides);
   }
   std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
@@ -87,11 +86,12 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino,
   const auto overrides_json = nlohmann::json::parse(
       overrides_ifstream,
       /*cb=*/nullptr, /*allow_exceptions=*/true
-      // Comment support is added in 3.9.0 with breaking change to default behavior.
-      #if NLOHMANN_JSON_VERSION_MAJOR * 1000 + NLOHMANN_JSON_VERSION_MINOR >= 3009
-      , /*ignore_comments=*/true
-      #endif
-    );
+// Comment support is added in 3.9.0 with breaking change to default behavior.
+#if NLOHMANN_JSON_VERSION_MAJOR * 1000 + NLOHMANN_JSON_VERSION_MINOR >= 3009
+      ,
+      /*ignore_comments=*/true
+#endif
+  );
   overrides_json["atol_overrides"].get_to(absolute_overrides);
   overrides_json["rtol_overrides"].get_to(relative_overrides);
   return TestTolerances(
@@ -813,7 +813,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_loop16_seq_none", "Optional type not supported in this build flavor."},
     {"test_identity_opt", "Optional type not supported in this build flavor."},
 #endif
-
 
   };
 

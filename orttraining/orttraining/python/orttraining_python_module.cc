@@ -184,12 +184,12 @@ namespace {
 //
 // 1) we make this class a singleton that is a function local static. The function local statics
 //    are constructed when the function is called the very first time. This fact has several important
-//    properties. 
+//    properties.
 //    - First, it is constructed before it is first needed possibly by another static object
 //      and destroyed after that object is destroyed.
 //    - Second, it is constructed in a thread safe manner.
 //    - Last, this order of construction/destruction is enforced across the compilation units, as opposed
-//      to the static objects that are simply declared in order in a single unit, but their lifespan is 
+//      to the static objects that are simply declared in order in a single unit, but their lifespan is
 //      unconnected to that of in other compilation units. This is achieved automatically by run-time
 //      by execution atexit() to build a chain.
 // 2) This ORTTrainingPythonEnv is currently owned by a unique_ptr unlike the Environment singleton. This is
@@ -206,7 +206,6 @@ namespace {
 //    For all the related details and why it is needed see "Modern C++ design" by A. Alexandrescu Chapter 6.
 class TrainingEnvInitialzer {
  public:
-
   static ORTTrainingPythonEnv& Instance() {
     // Guard against attempts to resurrect the singleton
     if (TrainingEnvInitialzer::destroyed) {
@@ -219,7 +218,6 @@ class TrainingEnvInitialzer {
   }
 
  private:
-
   TrainingEnvInitialzer() {
     InitArray();
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);

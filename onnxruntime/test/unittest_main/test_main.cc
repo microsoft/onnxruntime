@@ -20,7 +20,7 @@
 #include "test/test_environment.h"
 
 std::unique_ptr<Ort::Env> ort_env;
-void ortenv_setup(){
+void ortenv_setup() {
   OrtThreadingOptions tpo;
   ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
 }
@@ -28,11 +28,11 @@ void ortenv_setup(){
 #define TEST_MAIN main
 
 #if defined(__APPLE__)
-  #include <TargetConditionals.h>
-  #if TARGET_OS_SIMULATOR || TARGET_OS_IOS
-    #undef TEST_MAIN
-    #define TEST_MAIN main_no_link_  // there is a UI test app for iOS.
-  #endif
+#include <TargetConditionals.h>
+#if TARGET_OS_SIMULATOR || TARGET_OS_IOS
+#undef TEST_MAIN
+#define TEST_MAIN main_no_link_  // there is a UI test app for iOS.
+#endif
 #endif
 
 int TEST_MAIN(int argc, char** argv) {
@@ -51,11 +51,11 @@ int TEST_MAIN(int argc, char** argv) {
     });
   }
 
-  //TODO: Fix the C API issue
-  ort_env.reset();  //If we don't do this, it will crash
+  // TODO: Fix the C API issue
+  ort_env.reset();  // If we don't do this, it will crash
 
 #ifndef USE_ONNXRUNTIME_DLL
-  //make memory leak checker happy
+  // make memory leak checker happy
   ::google::protobuf::ShutdownProtobufLibrary();
 #endif
   return status;

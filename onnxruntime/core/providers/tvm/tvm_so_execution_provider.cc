@@ -13,16 +13,15 @@
 #include "core/graph/model.h"
 
 #include "tvm_so_execution_provider.h"  // NOLINT(build/include_subdir)
-#include "xpu_data_transfer.h"  // NOLINT(build/include_subdir)
-#include "tvm_allocator.h"  // NOLINT(build/include_subdir)
-#include "tvm_utils.h"  // NOLINT(build/include_subdir)
-#include "tvm_api.h"  // NOLINT(build/include_subdir)
+#include "xpu_data_transfer.h"          // NOLINT(build/include_subdir)
+#include "tvm_allocator.h"              // NOLINT(build/include_subdir)
+#include "tvm_utils.h"                  // NOLINT(build/include_subdir)
+#include "tvm_api.h"                    // NOLINT(build/include_subdir)
 #ifdef USE_TVM_HASH
 #include "hash_alg/hasher.h"  // NOLINT(build/include_subdir)
 #endif
 
 using ONNX_NAMESPACE::TensorShapeProto;
-
 
 namespace onnxruntime {
 namespace tvm {
@@ -68,8 +67,7 @@ TvmSoExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   const std::vector<NodeIndex>& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   for (auto& node_idx : sorted_nodes) {
-    graph_viewer.GetNode(node_idx)->ForEachDef([&required_initializers, &init_tensors]
-                                               (const NodeArg& node_arg, bool is_input) {
+    graph_viewer.GetNode(node_idx)->ForEachDef([&required_initializers, &init_tensors](const NodeArg& node_arg, bool is_input) {
               if (is_input && init_tensors.count(node_arg.Name())) {
                   required_initializers.insert(node_arg.Name());
               } }, true);
@@ -219,16 +217,16 @@ void TvmSoExecutionProvider::setInputShapesForUnfreezedNN(const GraphViewer& gra
 }
 
 TensorShapeVector TvmSoExecutionProvider::getInputShape(const NodeArg* node) {
-    TensorShapeVector shape;
-    const auto& node_name = node->Name();
-    if (!options_.input_shapes.empty() &&
-        options_.input_shapes.count(node_name)) {
-      shape = options_.input_shapes[node_name];
-    } else {
-      shape = convertTensorShape(*node->Shape());
-    }
+  TensorShapeVector shape;
+  const auto& node_name = node->Name();
+  if (!options_.input_shapes.empty() &&
+      options_.input_shapes.count(node_name)) {
+    shape = options_.input_shapes[node_name];
+  } else {
+    shape = convertTensorShape(*node->Shape());
+  }
 
-    return shape;
+  return shape;
 }
 
 TensorShapeVector TvmSoExecutionProvider::convertTensorShape(const TensorShapeProto& shape_proto) {
@@ -239,7 +237,7 @@ TensorShapeVector TvmSoExecutionProvider::convertTensorShape(const TensorShapePr
   for (size_t j = 0; j < dims; ++j) {
     int64_t dim = int64_t(ort_shape[j]);
     ORT_ENFORCE(dim > 0, "Input dimension is not positive value (dim = " + std::to_string(dim) + "). " +
-      "Please use provider options to setup input_names and input_shapes");
+                             "Please use provider options to setup input_names and input_shapes");
     shape[j] = dim;
   }
 
@@ -260,9 +258,9 @@ void TvmSoExecutionProvider::prepareOutputTensors(std::vector<DLTensor>& output_
 NodeComputeInfo TvmSoExecutionProvider::prepareComputeInfo(const std::string& func_name) {
   NodeComputeInfo compute_info;
   compute_info.create_state_func = std::bind(&TvmSoExecutionProvider::createStateFunc,
-                                              this,
-                                              std::placeholders::_1,
-                                              std::placeholders::_2);
+                                             this,
+                                             std::placeholders::_1,
+                                             std::placeholders::_2);
 
   compute_info.release_state_func = [](FunctionState state) {
     if (state)

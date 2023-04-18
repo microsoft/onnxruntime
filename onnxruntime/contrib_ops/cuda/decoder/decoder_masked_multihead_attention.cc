@@ -69,7 +69,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,
-                                                                      nullptr, //bias
+                                                                      nullptr,  // bias
                                                                       mask_index,
                                                                       relative_position_bias,
                                                                       past_key,
@@ -108,9 +108,9 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
-    parameters.batch_size, parameters.num_heads,
-    past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
-    parameters.head_size};
+      parameters.batch_size, parameters.num_heads,
+      past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
+      parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(kPresentOutputIndex, present_shape);
   Tensor* present_value = context->Output(kPresentOutputIndex + 1, present_shape);

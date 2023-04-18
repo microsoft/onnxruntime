@@ -163,7 +163,7 @@ Status CheckInputs(const T* query,
 
       qkv_format = Q_KV_BSNH_BSN2H;
       kv_sequence_length = static_cast<int>(key_dims[1]);
-    } else { // key_dims.size() == 4 (cross-attention with past_key)
+    } else {  // key_dims.size() == 4 (cross-attention with past_key)
       if (static_cast<int>(key_dims[1]) != num_heads || static_cast<int>(key_dims[3]) != head_size) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT,
@@ -242,7 +242,7 @@ Status CheckInputs(const T* query,
                                "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
       }
       v_hidden_size = static_cast<int>(value_dims[2]);
-    } else { // value_dims.size() == 4
+    } else {  // value_dims.size() == 4
       if (static_cast<int64_t>(kv_sequence_length) != value_dims[2]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'past_key' and 'past_value' shall have the same dim 2 (kv_sequence_length)");

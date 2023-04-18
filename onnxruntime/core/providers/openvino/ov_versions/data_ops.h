@@ -75,5 +75,5 @@ class DataOps {
   VersionNum GetVersion() const { return version_id_; }
 };
 
-}  //namespace openvino_ep
-}  //namespace onnxruntime
+}  // namespace openvino_ep
+}  // namespace onnxruntime

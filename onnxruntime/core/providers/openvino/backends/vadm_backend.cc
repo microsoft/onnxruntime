@@ -35,16 +35,15 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // of Infer Requests only if the VAD-M accelerator is being used.
   // sets number of maximum parallel inferences
   num_inf_reqs_ = 8;
-  #ifndef NDEBUG
-    if (IsDebugEnabled()) {
-      std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
-      std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
-      model_proto.SerializeToOstream(outfile);
-      // DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
-    }
-  #endif
+#ifndef NDEBUG
+  if (IsDebugEnabled()) {
+    std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
+    std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+    model_proto.SerializeToOstream(outfile);
+    // DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
+  }
+#endif
   ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-
 
   if (const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
@@ -62,7 +61,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   ov::AnyMap device_config;
 
   // Loading model to the plugin
-  //If graph is fully supported and batching is enabled, load the network onto all VPU's and infer
+  // If graph is fully supported and batching is enabled, load the network onto all VPU's and infer
   std::vector<OVExeNetwork> exe_networks;
   if (global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching) {
     for (int j = 0; j < 8; j++) {
@@ -79,8 +78,8 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     }
     LOGS_DEFAULT(INFO) << log_tag << "Infer Requests created: " << num_inf_reqs_ << std::endl;
   }
-  //If the graph is not fully supported, need to schedule each subgraph on different VPU
-  //If batching is disabled just schedule on the first VPU
+  // If the graph is not fully supported, need to schedule each subgraph on different VPU
+  // If batching is disabled just schedule on the first VPU
   else {
     i = GetFirstAvailableDevice(global_context);
     LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
@@ -102,30 +101,30 @@ void VADMBackend::StartAsyncInference(Ort::KernelContext& context,
   auto infer_request = infer_requests_[infer_req_idx];
 
   auto graph_input_info = ie_cnn_network_->inputs();
-    int input_idx = 0;
-    for (auto input_info_iter = graph_input_info.begin();
-      input_info_iter != graph_input_info.end(); ++input_info_iter) {
-      auto input_names = input_info_iter->get_names();
-      std::string onnx_input_name;
-      std::string input_name;
-      // use names retrieved from original ONNX model to assign the right onnx input name for the graph
-      for (auto it = subgraph_context_.input_names.begin(); it != subgraph_context_.input_names.end(); ++it) {
-        if (it->second == input_idx) {
-          onnx_input_name = it->first;
-          break;
-        }
+  int input_idx = 0;
+  for (auto input_info_iter = graph_input_info.begin();
+       input_info_iter != graph_input_info.end(); ++input_info_iter) {
+    auto input_names = input_info_iter->get_names();
+    std::string onnx_input_name;
+    std::string input_name;
+    // use names retrieved from original ONNX model to assign the right onnx input name for the graph
+    for (auto it = subgraph_context_.input_names.begin(); it != subgraph_context_.input_names.end(); ++it) {
+      if (it->second == input_idx) {
+        onnx_input_name = it->first;
+        break;
       }
-      // using the input name retrieved from ONNX original to match with the input names returned by OV tensors
-      if (input_names.find(onnx_input_name) != input_names.end()) {
-          input_name = onnx_input_name;
-      } else {
-        ORT_THROW(log_tag + "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name + " doesn't exist in the list of OpenVINO input tensor names");
-      }
-      OVTensorPtr graph_input_blob;
-      graph_input_blob = infer_request->GetTensor(input_name);
-      FillInputBlob(graph_input_blob, batch_slice_idx, input_name, context, subgraph_context_);
-      input_idx++;
     }
+    // using the input name retrieved from ONNX original to match with the input names returned by OV tensors
+    if (input_names.find(onnx_input_name) != input_names.end()) {
+      input_name = onnx_input_name;
+    } else {
+      ORT_THROW(log_tag + "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name + " doesn't exist in the list of OpenVINO input tensor names");
+    }
+    OVTensorPtr graph_input_blob;
+    graph_input_blob = infer_request->GetTensor(input_name);
+    FillInputBlob(graph_input_blob, batch_slice_idx, input_name, context, subgraph_context_);
+    input_idx++;
+  }
 
   // Start Async inference
   infer_request->StartAsync();
@@ -153,13 +152,13 @@ void VADMBackend::CompleteAsyncInference(Ort::KernelContext& context,
     for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
       onnx_output_name = it->first;
       if (output_names.find(onnx_output_name) != output_names.end()) {
-        //Assigning the output_name
+        // Assigning the output_name
         output_name = it->first;
         output_name_found = true;
         break;
       }
     }
-    if(!output_name_found) {
+    if (!output_name_found) {
       ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. [ONNX Output: ] " + onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
     }
     graph_output_blob = infer_request->GetTensor(output_name);
