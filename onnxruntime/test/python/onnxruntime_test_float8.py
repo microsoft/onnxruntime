@@ -484,7 +484,7 @@ class TestInferenceSession(unittest.TestCase):
             )
         except Exception as e:
             raise AssertionError(
-                f"Cannot build InferenceSession with name={name}, " f"float_name={float_name}, saturate={saturate}."
+                f"Cannot build InferenceSession with name={name}, float_name={float_name}, saturate={saturate}."
             ) from e
         y = sess.run(None, {"X": x})[0]
         assert_allclose(expect, y)
@@ -530,7 +530,7 @@ class TestInferenceSession(unittest.TestCase):
             )
         except Exception as e:
             raise AssertionError(
-                f"Cannot build InferenceSession with name={name}, " f"float_name={float_name}, saturate={saturate}."
+                f"Cannot build InferenceSession with name={name}, float_name={float_name}, saturate={saturate}."
             ) from e
         y = sess.run(None, {"X": x})[0]
         try:
