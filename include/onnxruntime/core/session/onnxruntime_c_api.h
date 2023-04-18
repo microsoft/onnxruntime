@@ -4151,7 +4151,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetOptionalContainedTypeInfo, _In_ const OrtOptionalTypeInfo* optional_type_info,
                   _Outptr_ OrtTypeInfo** out);
 
- /** \brief Set a single string in a string tensor
+  /** \brief Set a single string in a string tensor
    *  Do not zero terminate the string data.
    *
    * \param[in] value A string tensor

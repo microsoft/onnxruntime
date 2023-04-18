@@ -1189,7 +1189,7 @@ struct ValueImpl : ConstValueImpl<T> {
   /// Allocate if necessary and obtain a pointer to a UTF-8
   /// encoded string element buffer indexed by the flat element index,
   /// and at least the specified buffer length.
-  /// 
+  ///
   /// This API is for advanced usage. It avoids a need to construct
   /// an axillary array of string pointers and allows to write data directly (do not zero terminate).
   /// </summary>
