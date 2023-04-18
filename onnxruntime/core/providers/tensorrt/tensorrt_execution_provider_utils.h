@@ -294,7 +294,7 @@ int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64
     
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::iterator it;
   for (it = profile_shapes.begin(); it != profile_shapes.end(); it ++) {
-    return it->second.size();
+    return static_cast<int>(it->second.size());
   }
   return 0;
 }
