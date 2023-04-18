@@ -131,7 +131,7 @@ class SessionState {
   /** Get the allocator for a given OrtDevice. The first allocator that matches will be returned. */
   AllocatorPtr GetAllocator(const OrtDevice& device) const noexcept;
 
-  std::map<OrtDevice, AllocatorPtr>& GetAllocators() { return allocators_; }
+  std::map<OrtDevice, AllocatorPtr>& GetAllocators() { return allocators_; }    // CANNOT be const member function as allocators_ will be changed after SessionState's initialization for shared allocator scenario (InferenceSession::UpdateSessionStateAllocatorsWithSharedAllocators())
 
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 

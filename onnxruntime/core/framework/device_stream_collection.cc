@@ -9,15 +9,9 @@ namespace onnxruntime {
 
 class DeviceStreamCollectionImpl {
  public:
-  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams) {
+  DeviceStreamCollectionImpl(size_t num_streams, const std::map<OrtDevice, AllocatorPtr>& allocators, bool is_main_graph) : num_streams_(num_streams), allocators_(allocators), is_main_graph_(is_main_graph) {
     device_streams_.resize(num_streams, nullptr);
     owned_streams_.reserve(num_streams);
-    auto& providers = sess_state.GetExecutionProviders();
-    eps_.reserve(providers.NumProviders());
-    for (auto& ep : providers) {
-      eps_.push_back(ep);
-    }
-    is_main_graph_ = sess_state.GetGraphViewer().ParentNode() == nullptr;
   }
 
   ~DeviceStreamCollectionImpl() {
@@ -38,20 +32,16 @@ class DeviceStreamCollectionImpl {
     // only clean the streams that is owned by current context
     for (auto& stream : owned_streams_) {
       if (stream) {
-//        for (auto& ep : eps_) {
-//            // TODO: Get allocators from session_state
-//          auto& allocators = ep->CreatePreferredAllocators();
-//          for (auto& alloc : allocators) {
-//            if (alloc->Info().device == stream->GetDevice() &&
-//                alloc->Info().alloc_type == OrtArenaAllocator) {
-//              auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
-//              auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
-//              if (stream_aware_alloc) {
-//                stream_aware_alloc->ReleaseStreamBuffers(stream.get());
-//              }
-//            }
-//          }
-//        }
+        for (auto it : allocators_) {
+          if (it.second->Info().device == stream->GetDevice() && 
+              it.second->Info().alloc_type == OrtArenaAllocator) {
+            auto* arena_alloc = static_cast<BFCArena*>(it.second.get());
+            auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
+            if (stream_aware_alloc) {
+              stream_aware_alloc->ReleaseStreamBuffers(stream.get());
+            }
+          }
+        }
       }
     }
     return Status::OK();
@@ -83,14 +73,13 @@ class DeviceStreamCollectionImpl {
   size_t num_streams_;
   std::vector<Stream*> device_streams_;
   InlinedVector<std::unique_ptr<Stream>> owned_streams_;
-  // due to training's partial execution, the device streams collection may need to be hold
-  // with a different lifetime of session state, we need to hold the reference of EPs.
-  InlinedVector<std::shared_ptr<IExecutionProvider>> eps_;
+  // TODO(leca): review
+  const std::map<OrtDevice, AllocatorPtr>& allocators_;
   bool is_main_graph_ = false;
 };
 
-DeviceStreamCollection::DeviceStreamCollection(size_t num_streams,
-                                               const SessionState& sess_state) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
+DeviceStreamCollection::DeviceStreamCollection(size_t num_streams, const std::map<OrtDevice, AllocatorPtr>& allocators, bool is_main_graph) 
+                        : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, allocators, is_main_graph)) {}
 
 DeviceStreamCollection::~DeviceStreamCollection() {}
 

@@ -1575,7 +1575,7 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
       device_stream_pool_.pop_back();
       return device_stream;
     } else {
-      auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *this);
+      auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), allocators_, graph_viewer_->ParentNode() == nullptr);
       BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
       return device_stream;
     }

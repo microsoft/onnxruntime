@@ -1313,7 +1313,7 @@ common::Status InferenceSession::Initialize() {
         session_options_,
         prepacked_weights_container_);
 
-    bool use_env_allocators =
+    bool use_env_allocators =       // TODO(leca): review
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
     if (use_env_allocators) {
       LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
