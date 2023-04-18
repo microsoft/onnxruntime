@@ -218,12 +218,12 @@ class FusionAttention(Fusion):
 
     def create_attention_node(
         self,
-        mask_index: str,
+        mask_index: Optional[str],
         q_matmul: NodeProto,
         k_matmul: NodeProto,
         v_matmul: NodeProto,
         q_add: NodeProto,
-        k_add: NodeProto,
+        k_add: Optional[NodeProto],
         v_add: NodeProto,
         num_heads: int,
         hidden_size: int,
@@ -263,22 +263,27 @@ class FusionAttention(Fusion):
         q_weight = self.model.get_initializer(q_matmul.input[1])
         k_weight = self.model.get_initializer(k_matmul.input[1])
         v_weight = self.model.get_initializer(v_matmul.input[1])
+        if (q_weight is None) or (k_weight is None) or (v_weight is None):
+            print(
+                f"input projection weight for Q, K or V is not an initializer. "
+                "Please set do_constant_folding=True in torch.onnx.export to unblock attention fusion"
+            )
+            return None
 
         q_bias, k_bias, v_bias = None, None, None
         if has_bias:
             q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
-            k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
-            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
-
-            if not (k_weight and v_weight and q_bias and k_bias):
+            if q_bias is None:
                 return None
 
-        if q_weight is None:
-            print(
-                f"{q_matmul.input[1]} is not an initializer. "
-                "Please set do_constant_folding=True in torch.onnx.export to unblock attention fusion"
-            )
-            return None
+            if k_add is not None:  # BEiT does not have bias for K
+                k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
+                if k_bias is None:
+                    return None
+
+            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
+            if v_bias is None:
+                return None
 
         qw = NumpyHelper.to_array(q_weight)
         kw = NumpyHelper.to_array(k_weight)
@@ -320,7 +325,10 @@ class FusionAttention(Fusion):
 
         if has_bias:
             qb = NumpyHelper.to_array(q_bias)
-            kb = NumpyHelper.to_array(k_bias)
+            if k_bias:
+                kb = NumpyHelper.to_array(k_bias)
+            else:
+                kb = np.zeros([kw_out_size], dtype=qb.dtype)
             vb = NumpyHelper.to_array(v_bias)
 
             q_bias_shape = np.prod(qb.shape)

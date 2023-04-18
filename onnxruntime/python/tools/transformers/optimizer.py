@@ -26,6 +26,7 @@ import coloredlogs
 from fusion_options import FusionOptions
 from onnx import ModelProto, load_model
 from onnx_model_bart import BartOnnxModel
+from onnx_model_beit import BeitOnnxModel
 from onnx_model_bert import BertOnnxModel
 from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_bert_tf import BertOnnxModelTF
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 # Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx), and default opt_level
 MODEL_TYPES = {
     "bart": (BartOnnxModel, "pytorch", 1),
+    "beit": (BeitOnnxModel, "pytorch", 1),
     "bert": (BertOnnxModel, "pytorch", 1),
     "bert_tf": (BertOnnxModelTF, "tf2onnx", 0),
     "bert_keras": (BertOnnxModelKeras, "keras2onnx", 0),
@@ -159,7 +161,7 @@ def optimize_by_fusion(
      Returns:
         object of an optimizer class.
     """
-    if model_type not in ["bert", "unet", "vae", "clip"] and (num_heads == 0 or hidden_size == 0):
+    if model_type not in ["bert", "beit", "unet", "vae", "clip"] and (num_heads == 0 or hidden_size == 0):
         logger.warning(f"Please specify parameters of num_heads and hidden_size for model_type {model_type}")
 
     (optimizer_class, producer, _) = MODEL_TYPES[model_type]
