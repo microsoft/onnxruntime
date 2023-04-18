@@ -20,6 +20,33 @@ def getExtOrIntegerDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties['OnnxruntimeModule_' + name]).toInteger()
 }
 
+def getOnnxruntimePackageName() {
+  // locate user's project dir
+  def reactnativeRootDir = project.rootDir.parentFile
+  println(reactnativeRootDir)
+  // get file path of package.json
+  def packageJsonFile = new File(reactnativeRootDir, 'package.json')
+  // read field 'onnxruntime-package-name'
+  if (packageJsonFile.exists()) {
+    def packageJsonContents = packageJsonFile.getText()
+    def packageJson = new groovy.json.JsonSlurper().parseText(packageJsonContents)
+    def packageName = packageJson.ortpackagename
+    return packageName
+  } else {
+    throw new GradleException(
+        "Unable to find the package.json file the project root directory."
+    )
+  }
+  return ""
+}
+
+task generateOrtPackageName {
+    def ortPackageName = getOnnxruntimePackageName()
+    def file = file("${buildDir}/generated/ort_package_name.txt")
+    file.getParentFile().mkdirs()
+    file.write(ortPackageName)
+}
+
 android {
   compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
   buildToolsVersion getExtOrDefault('buildToolsVersion')
@@ -29,6 +56,7 @@ android {
     versionCode 1
     versionName "1.0"
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    buildConfigField "String", "ORT_PACKAGE_VERSION", "\"${file("${buildDir}/generated/ort_package_name.txt").text}\""
   }
 
   buildTypes {
@@ -136,4 +164,9 @@ dependencies {
   // Mobile build:
   // implementation "com.microsoft.onnxruntime:onnxruntime-mobile:latest.integration@aar"
   implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+
+  // By default it will just include onnxruntime full aar package
+  if (getOnnxruntimePackageName() == "onnxruntime-ext") {
+    implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
+  }
 }

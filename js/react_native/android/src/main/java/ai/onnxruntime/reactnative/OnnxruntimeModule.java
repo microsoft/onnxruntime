@@ -39,6 +39,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import ai.onnxruntime.extensions.OrtxPackage;
+
 @RequiresApi(api = Build.VERSION_CODES.N)
 public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   private static ReactApplicationContext reactContext;
@@ -128,6 +130,10 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       modelStream.read(modelArray);
 
       SessionOptions sessionOptions = parseSessionOptions(options);
+      // Optional call of sessionOptions java level api to enable usage of custom ops in ort-extensions package
+      if (BuildConfig.ORT_PACKAGE_VERSION == "onnxruntime-ext") {
+        sessionOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath());
+      }
       ortSession = ortEnvironment.createSession(modelArray, sessionOptions);
       sessionMap.put(uri, ortSession);
     } else {
