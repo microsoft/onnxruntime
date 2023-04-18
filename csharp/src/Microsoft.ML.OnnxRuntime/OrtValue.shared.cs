@@ -317,12 +317,6 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new OnnxRuntimeException(ErrorCode.Fail, "Cast to Tensor<string> failed. BUG check!");
             }
 
-            int totalLength = 0;
-            for (int i = 0; i < tensor.Length; i++)
-            {
-                totalLength += System.Text.Encoding.UTF8.GetByteCount(tensor.GetValue(i));
-            }
-
             long[] shape = new long[tensor.Dimensions.Length];
             for (int i = 0; i < tensor.Dimensions.Length; i++)
             {
@@ -340,24 +334,22 @@ namespace Microsoft.ML.OnnxRuntime
 
             // We must take possession of valueHande, so we can dispose of it if we fail
             var ortValue = new OrtValue(valueHandle);
-            MarshaledStringArray marshaledStrings = default;
             try
             {
-                marshaledStrings = new MarshaledStringArray(tensor);
-                // fill the native tensor, using GetValue(index) from the Tensor<string>
                 var len = tensor.Length;
-                var nativeStrings = new IntPtr[len];
-                marshaledStrings.Fill(nativeStrings);
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(ortValue.Handle, nativeStrings, (UIntPtr)len));
+                for(int i = 0; i < len; ++i)
+                {
+                    var str = tensor.GetValue(i);
+                    var bytesCount = System.Text.Encoding.UTF8.GetByteCount(str);
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorElementBuffer(valueHandle,
+                        (UIntPtr)i, (UIntPtr)bytesCount, out IntPtr buffer));
+                    NativeOnnxValueHelper.StringToUtf8NativeMemory(str, buffer, bytesCount);
+                }
             }
             catch (Exception)
             {
                 ortValue.Dispose();
                 throw;
-            }
-            finally
-            {
-                marshaledStrings.Dispose();
             }
             return ortValue;
         }

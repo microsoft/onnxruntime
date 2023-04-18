@@ -286,6 +286,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr KernelInfoGetConstantInput_tensor;
         public IntPtr CastTypeInfoToOptionalTypeInfo;
         public IntPtr GetOptionalContainedTypeInfo;
+        public IntPtr GetStringTensorElementBuffer;
     }
 
     internal static class NativeMethods
@@ -421,6 +422,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateTensorWithDataAsOrtValue = (DOrtCreateTensorWithDataAsOrtValue)Marshal.GetDelegateForFunctionPointer(api_.CreateTensorWithDataAsOrtValue, typeof(DOrtCreateTensorWithDataAsOrtValue));
             OrtGetTensorMutableData = (DOrtGetTensorMutableData)Marshal.GetDelegateForFunctionPointer(api_.GetTensorMutableData, typeof(DOrtGetTensorMutableData));
             OrtFillStringTensor = (DOrtFillStringTensor)Marshal.GetDelegateForFunctionPointer(api_.FillStringTensor, typeof(DOrtFillStringTensor));
+            OrtGetStringTensorElementBuffer = (DOrtGetStringTensorElementBuffer)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorElementBuffer, typeof(DOrtGetStringTensorElementBuffer));
             OrtGetStringTensorContent = (DOrtGetStringTensorContent)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorContent, typeof(DOrtGetStringTensorContent));
             OrtGetStringTensorDataLength = (DOrtGetStringTensorDataLength)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorDataLength, typeof(DOrtGetStringTensorDataLength));
             OrtCastTypeInfoToTensorInfo = (DOrtCastTypeInfoToTensorInfo)Marshal.GetDelegateForFunctionPointer(api_.CastTypeInfoToTensorInfo, typeof(DOrtCastTypeInfoToTensorInfo));
@@ -1656,6 +1658,15 @@ namespace Microsoft.ML.OnnxRuntime
                                                         UIntPtr /* size_t */ s_len);
 
         public static DOrtFillStringTensor OrtFillStringTensor;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorElementBuffer(
+                IntPtr /* OrtValue */ value,
+                UIntPtr /* size_t */ index,
+                UIntPtr /* size_t */ length_in_bytes,
+                out IntPtr /* char** */ buffer
+            );
+
+        public static DOrtGetStringTensorElementBuffer OrtGetStringTensorElementBuffer;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorContent(
