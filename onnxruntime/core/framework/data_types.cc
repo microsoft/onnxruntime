@@ -1247,7 +1247,7 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesWith
         temp.insert(temp.end(), seq.begin(), seq.end());
         return temp;
       }();
-  return all_optional_and_tensor_and_sequence_types;
+  return all_tensor_and_sequence_types_with_float8;
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes() {
