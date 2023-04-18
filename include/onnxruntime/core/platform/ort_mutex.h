@@ -197,27 +197,26 @@ calling thread will not be put to sleep on blocked,
 which reduces cpu usage on context switching.
 */
 struct OrtSpinLock {
+  typedef enum { Locked = 0,
+                 Unlocked } LockState;
+
   void lock() noexcept {
-    bool occupied = false;
-    while (!occupied_.compare_exchange_weak(
-        occupied,
-        true)) {
-      occupied = false;
+    LockState state = Unlocked;
+    while (!state_.compare_exchange_weak(state, Locked, std::memory_order_acq_rel, std::memory_order_relaxed)) {
+      state = Unlocked;
       concurrency::SpinPause();  // pause and retry
     }
   }
   bool try_lock() noexcept {
-    bool occupied = false;
-    return occupied_.compare_exchange_weak(
-        occupied,
-        true);
+    LockState state = Unlocked;
+    return state_.compare_exchange_weak(state, Locked, std::memory_order_acq_rel, std::memory_order_relaxed);
   }
   void unlock() noexcept {
-    occupied_.store(false);
+    state_.store(Unlocked, std::memory_order_release);
   }
 
  private:
-  std::atomic_bool occupied_{false};
+  std::atomic<LockState> state_{Unlocked};
 };
 
 }  // namespace onnxruntime
