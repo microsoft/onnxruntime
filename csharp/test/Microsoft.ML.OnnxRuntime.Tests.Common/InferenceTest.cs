@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using Xunit.Abstractions;
@@ -16,6 +15,9 @@ using Xunit.Abstractions;
 // of Onnxruntime package
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
+    // This is to make sure it does not run in parallel with OrtEnvTests
+    // or any other test class within the same collection
+    [Collection("Ort Inference Tests")]
     public partial class InferenceTest
     {
         private readonly ITestOutputHelper output;
@@ -210,173 +212,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.GlobalInterOpNumThreads = 1;
                 opt.GlobalIntraOpNumThreads = 1;
                 opt.SetGlobalDenormalAsZero();
-            }
-        }
-
-        [Fact(DisplayName = "EnablingAndDisablingTelemetryEventCollection")]
-        public void EnablingAndDisablingTelemetryEventCollection()
-        {
-            var ortEnvInstance = OrtEnv.Instance();
-            ortEnvInstance.DisableTelemetryEvents();
-
-            // no-op on non-Windows builds
-            // may be no-op on certain Windows builds based on build configuration
-
-            ortEnvInstance.EnableTelemetryEvents();
-        }
-
-        [Fact(DisplayName = "GetVersionString")]
-        public void GetVersionString()
-        {
-            var ortEnvInstance = OrtEnv.Instance();
-            string versionString = ortEnvInstance.GetVersionString();
-            Assert.False(versionString.Length == 0);
-        }
-
-        [Fact(DisplayName = "GetAvailableProviders")]
-        public void GetAvailableProviders()
-        {
-            var ortEnvInstance = OrtEnv.Instance();
-            string[] providers = ortEnvInstance.GetAvailableProviders();
-
-            Assert.True(providers.Length > 0);
-            Assert.Equal("CPUExecutionProvider", providers[providers.Length - 1]);
-
-#if USE_CUDA
-            Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"));
-#endif
-#if USE_ROCM
-            Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"));
-#endif
-        }
-
-        [Fact(DisplayName = "TestUpdatingEnvWithCustomLogLevel")]
-        public void TestUpdatingEnvWithCustomLogLevel()
-        {
-            var ortEnvInstance = OrtEnv.Instance();
-            Assert.True(OrtEnv.IsCreated);
-            ortEnvInstance.Dispose();
-            Assert.False(OrtEnv.IsCreated);
-
-            // Must be default level of warning
-            ortEnvInstance = OrtEnv.Instance();
-            ortEnvInstance.Dispose();
-            Assert.False(OrtEnv.IsCreated);
-
-            var envOptions = new EnvironmentCreationOptions
-            {
-                // Everything else is unpopulated
-                logLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL
-            };
-
-            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(envOptions);
-            Assert.True(OrtEnv.IsCreated);
-            Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL, ortEnvInstance.EnvLogLevel);
-
-            ortEnvInstance.Dispose();
-            Assert.False(OrtEnv.IsCreated);
-            envOptions = new EnvironmentCreationOptions
-            {
-                // Everything else is unpopulated
-                logId = "CSharpOnnxRuntimeTestLogid"
-            };
-
-            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(envOptions);
-            Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, ortEnvInstance.EnvLogLevel);
-
-            // Change and see if this takes effect
-            ortEnvInstance.EnvLogLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO;
-            Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO, ortEnvInstance.EnvLogLevel);
-        }
-
-        [Fact(DisplayName = "TestUpdatingEnvWithThreadingOptions")]
-        public void TestUpdatingEnvWithThreadingOptions()
-        {
-            OrtEnv.Instance().Dispose();
-            Assert.False(OrtEnv.IsCreated);
-
-            using (var opt = new OrtThreadingOptions())
-            {
-                var envOptions = new EnvironmentCreationOptions
-                {
-                    threadOptions = opt
-                };
-
-                // Make sure we start anew
-                var env = OrtEnv.CreateInstanceWithOptions(envOptions);
-                Assert.True(OrtEnv.IsCreated);
-            }
-        }
-
-        // Custom logging constants
-        private static readonly string TestLogId = "CSharpTestLogId";
-        private static readonly IntPtr TestLogParam = (IntPtr)5;
-        private static int LoggingInvokes = 0;
-
-        private static void CustomLoggingFunction(IntPtr param,
-                                                  OrtLoggingLevel severity,
-                                                  string category,
-                                                  string logId,
-                                                  string codeLocation,
-                                                  string message)
-        {
-            Assert.Equal(TestLogParam, param); // Passing test param
-            Assert.False(string.IsNullOrEmpty(codeLocation));
-            Assert.False(string.IsNullOrEmpty(message));
-            LoggingInvokes++;
-        }
-
-        [Fact(DisplayName = "TestUpdatingEnvWithCustomLogger")]
-        public void TestUpdatingEnvWithCustomLogger()
-        {
-            // Make sure we start anew
-            OrtEnv.Instance().Dispose();
-            Assert.False(OrtEnv.IsCreated);
-            var envOptions = new EnvironmentCreationOptions
-            {
-                logId = TestLogId,
-                logLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE,
-                loggingFunction = CustomLoggingFunction,
-                loggingParam = TestLogParam
-            };
-
-            LoggingInvokes = 0;
-
-            var env = OrtEnv.CreateInstanceWithOptions(envOptions);
-            Assert.True(OrtEnv.IsCreated);
-
-            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
-            // Trigger some logging
-            using (var session = new InferenceSession(model));
-            Assert.True(LoggingInvokes > 0);
-        }
-
-        [Fact(DisplayName = "TestUpdatingEnvWithCustomLoggerAndThredingOptions")]
-        public void TestUpdatingEnvWithCustomLoggerAndThredingOptions()
-        {
-            OrtEnv.Instance().Dispose();
-            Assert.False(OrtEnv.IsCreated);
-
-            using (var opt = new OrtThreadingOptions())
-            {
-                var envOptions = new EnvironmentCreationOptions
-                {
-                    logId = TestLogId,
-                    logLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE,
-                    threadOptions = opt,
-                    loggingFunction = CustomLoggingFunction,
-                    loggingParam = TestLogParam
-                };
-
-                LoggingInvokes = 0;
-
-                var env = OrtEnv.CreateInstanceWithOptions(envOptions);
-                Assert.True(OrtEnv.IsCreated);
-
-                var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
-                // Trigger some logging
-                using (var session = new InferenceSession(model));
-                Assert.True(LoggingInvokes > 0);
             }
         }
 
