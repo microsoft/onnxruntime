@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 2, 0);
-  if (hasInputShape(ctx, 7)) {
+  if (!ctx.getOutputType(1)) {
     propagateElemTypeFromInputToOutput(ctx, 0, 1);
   }
   if (!hasInputShape(ctx, 0)) {
