@@ -969,7 +969,6 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
             input_perms.push_back(nullptr);
           }
         }
-
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm});
       } else {
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
