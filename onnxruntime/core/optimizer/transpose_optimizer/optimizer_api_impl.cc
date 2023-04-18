@@ -970,9 +970,6 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
           }
         }
 
-        // Although we add transposes around NHWC Resize, we need to leave Resize in the ONNX domain to ensure
-        // that the default type/shape inferencing is used. Thus, there is no need to
-        // call SwapNodeOpTypeAndDomain(), which creates a copy of the node.
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm});
       } else {
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});

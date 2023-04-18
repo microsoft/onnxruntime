@@ -65,8 +65,7 @@ TEST(QnnEP, TestAddEpUsingPublicApi) {
 
 // Helper function that runs an ONNX model with a NHWC Resize operator to test that
 // type/shape inference succeeds during layout transformation.
-// This function essentially tests the implementation of NhwcResizeInferenceContext in
-// onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
+// Refer to onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
 //
 // The models passed to this function are subgraphs extracted from a larger model that exhibited
 // shape inferencing issues on QNN. Thus, the models are expected to have a specific input/output
