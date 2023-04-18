@@ -185,6 +185,17 @@ class Session:
         """
         self._enable_fallback = True
 
+    def _validate_input(self, feed_input_names):
+        # import pdb; pdb.set_trace()
+        missing_input_names = []
+        for input in self._inputs_meta:
+            if input.name not in feed_input_names and not input.type.startswith("optional"):
+                missing_input_names.append(input.name)
+        if missing_input_names:
+            raise ValueError(
+                f"Required inputs ({missing_input_names}) are missing from input feed ({feed_input_names})."
+            )
+
     def run(self, output_names, input_feed, run_options=None):
         """
         Compute the predictions.
@@ -199,11 +210,7 @@ class Session:
 
             sess.run([output_name], {input_name: x})
         """
-        num_required_inputs = len(self._inputs_meta)
-        num_inputs = len(input_feed)
-        # the graph may have optional inputs used to override initializers. allow for that.
-        if num_inputs < num_required_inputs:
-            raise ValueError(f"Model requires {num_required_inputs} inputs. Input Feed contains {num_inputs}")
+        self._validate_input(list(input_feed.keys()))
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
@@ -244,11 +251,7 @@ class Session:
             ort_values = [OrtValue(v) for v in result]
             return ort_values
 
-        num_required_inputs = len(self._inputs_meta)
-        num_inputs = len(input_dict_ort_values)
-        # the graph may have optional inputs used to override initializers. allow for that.
-        if num_inputs < num_required_inputs:
-            raise ValueError(f"Model requires {num_required_inputs} inputs. Input Feed contains {num_inputs}")
+        self._validate_input(list(input_dict_ort_values.keys()))
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
@@ -359,11 +362,8 @@ class InferenceSession(Session):
         """
         super().__init__()
 
-        if isinstance(path_or_bytes, str):
-            self._model_path = path_or_bytes
-            self._model_bytes = None
-        elif isinstance(path_or_bytes, os.PathLike):
-            self._model_path = str(path_or_bytes)
+        if isinstance(path_or_bytes, (str, os.PathLike)):
+            self._model_path = os.fspath(path_or_bytes)
             self._model_bytes = None
         elif isinstance(path_or_bytes, bytes):
             self._model_path = None
@@ -381,15 +381,19 @@ class InferenceSession(Session):
 
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)
-        except ValueError as e:
+        except (ValueError, RuntimeError) as e:
             if self._enable_fallback:
-                print(f"EP Error {e} when using {providers}")
-                print(f"Falling back to {self._fallback_providers} and retrying.")
-                self._create_inference_session(self._fallback_providers, None)
-                # Fallback only once.
-                self.disable_fallback()
-                return
-            raise
+                try:
+                    print(f"EP Error {e} when using {providers}")
+                    print(f"Falling back to {self._fallback_providers} and retrying.")
+                    self._create_inference_session(self._fallback_providers, None)
+                    # Fallback only once.
+                    self.disable_fallback()
+                    return
+                except Exception as fallback_error:
+                    raise fallback_error from e
+            # Fallback is disabled. Raise the original error.
+            raise e
 
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
@@ -406,13 +410,13 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(
             providers, provider_options, available_providers
         )
-        if providers == [] and len(available_providers) > 1:
+        if not providers and len(available_providers) > 1:
             self.disable_fallback()
             raise ValueError(
                 f"This ORT build has {available_providers} enabled. "
-                + "Since ORT 1.9, you are required to explicitly set "
-                + "the providers parameter when instantiating InferenceSession. For example, "
-                "onnxruntime.InferenceSession(..., providers={}, ...)".format(available_providers)
+                "Since ORT 1.9, you are required to explicitly set "
+                "the providers parameter when instantiating InferenceSession. For example, "
+                f"onnxruntime.InferenceSession(..., providers={available_providers}, ...)"
             )
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
@@ -609,7 +613,7 @@ class OrtValue:
         else:
             # An end user won't hit this error
             raise ValueError(
-                "`Provided ortvalue` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`"
+                "`Provided ortvalue` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`"
             )
 
     def _get_c_value(self):
@@ -767,7 +771,7 @@ class OrtDevice:
             self._ort_device = c_ort_device
         else:
             raise ValueError(
-                "`Provided object` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
+                "`Provided object` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
             )
 
     def _get_c_device(self):
@@ -810,7 +814,7 @@ class SparseTensor:
         else:
             # An end user won't hit this error
             raise ValueError(
-                "`Provided object` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`"
+                "`Provided object` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`"
             )
 
     def _get_c_tensor(self):

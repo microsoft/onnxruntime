@@ -12,7 +12,6 @@
 #include <string>
 #include <vector>
 
-
 // TODO(agladyshev): Make conditional choice of sep for Windows and UNIX
 std::string GetFileName(const std::string& file_path, char sep = '/') {
   return {std::next(file_path.begin(), file_path.find_last_of(sep) + 1),
@@ -40,13 +39,13 @@ std::string GetTimedLogMessage(const std::string& file, int lineno, const std::s
 namespace tvm {
 namespace runtime {
 namespace detail {
-  void LogFatalImpl(const std::string& file, int lineno, const std::string& message) {
-    throw std::runtime_error(GetTimedLogMessage(file, lineno, message));
-  }
+void LogFatalImpl(const std::string& file, int lineno, const std::string& message) {
+  throw std::runtime_error(GetTimedLogMessage(file, lineno, message));
+}
 
-  void LogMessageImpl(const std::string& file, int lineno, const std::string& message) {
-    std::cerr << GetTimedLogMessage(file, lineno, message) << std::endl;
-  }
+void LogMessageImpl(const std::string& file, int lineno, const std::string& message) {
+  std::cerr << GetTimedLogMessage(file, lineno, message) << std::endl;
+}
 
 }  // namespace detail
 }  // namespace runtime

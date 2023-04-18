@@ -196,10 +196,10 @@ class FuseConvAddActivation : public ReplaceWithNew {
   NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
     NodeAttributes extra_fused_conv_attributes;
 
-    const auto* activation = state.selected_nodes.Output(state.selected_nodes.num_outputs-1);
+    const auto* activation = state.selected_nodes.Output(state.selected_nodes.num_outputs - 1);
     if (state.selected_nodes.num_outputs == 1 || activation->OpType() == "Add") {
-        //activation node is the last node in conv+add+activation fusion pattern, while conv+add is also possible
-        return extra_fused_conv_attributes;
+      // activation node is the last node in conv+add+activation fusion pattern, while conv+add is also possible
+      return extra_fused_conv_attributes;
     }
     ORT_ENFORCE(activation != nullptr, "Expected activation node.");
 
@@ -242,7 +242,7 @@ class FuseConvAddActivation : public ReplaceWithNew {
     const auto conv_location = NTO::NodeLocation{NTO::NodeType::kTarget, 0};
     const auto add_location = NTO::NodeLocation{NTO::NodeType::kOutput, 0};
     const auto activation_location = NTO::NodeLocation{NTO::NodeType::kOutput, 1};
-    //Conv+add+activation
+    // Conv+add+activation
     if (state.selected_nodes.num_outputs == 2) {
       return {
           MoveAll(conv_location, ArgType::kInput),                                       // move all inputs from conv
@@ -250,7 +250,7 @@ class FuseConvAddActivation : public ReplaceWithNew {
           MoveAll(activation_location, ArgType::kOutput),                                // move all outputs from relu
       };
     } else {
-      //Conv+Add only
+      // Conv+Add only
       return {
           MoveAll(conv_location, ArgType::kInput),                                       // move all inputs from conv
           MoveAndAppend(add_location, ArgType::kInput, add_input_idx, ArgType::kInput),  // append add input
@@ -268,7 +268,6 @@ void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 }
-
 
 SelectorActionRegistry CreateSelectorActionRegistry() {
   SelectorActionRegistry registry{};

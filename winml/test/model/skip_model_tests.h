@@ -118,6 +118,21 @@ std::unordered_map<std::string, std::string> disabledTests(
      // ONNX zoo models
      {"mask_rcnn_opset10_GPU", "Bug 31005388: mask_rcnn opset 10 onnx zoo model fails to evaluate on DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005388"},
      {"faster_rcnn_opset10_GPU", "Bug 31005511: Failed to extract tensor data from evaluate result of faster_rcnn opset 10 model in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005511"},
+     // ONNX model zoo's int8/qdq models generally do not work on CPUs that lack 8-bit instructions.
+     {"YOLOv3_12_int8_opset12", disabledTestDefaultReason},
+     {"VGG_16_int8_opset12", disabledTestDefaultReason},
+     {"SSD_int8_opset12", disabledTestDefaultReason},
+     {"ShuffleNet_v2_qdq_opset12", disabledTestDefaultReason},
+     {"ShuffleNet_v2_int8_opset12", disabledTestDefaultReason},
+     {"ResNet50_qdq_opset12", disabledTestDefaultReason},
+     {"ResNet50_int8_opset12", disabledTestDefaultReason},
+     {"MobileNet_v2_1_0_qdq_opset12", disabledTestDefaultReason},
+     {"MobileNet_v2_1_0_int8_opset12", disabledTestDefaultReason},
+     {"Inception_1_int8_opset12", disabledTestDefaultReason},
+     {"Faster_R_CNN_R_50_FPN_int8_opset12", disabledTestDefaultReason},
+     {"BERT_Squad_int8_opset12", disabledTestDefaultReason},
+     {"EfficientNet_Lite4_qdq_opset11", disabledTestDefaultReason},
+     {"EfficientNet_Lite4_int8_opset11", disabledTestDefaultReason},
 
      // Tier 2 models
      {"fp16_test_tiny_yolov2_opset7_GPU", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},

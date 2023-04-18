@@ -7,7 +7,6 @@
 #include "core/framework/allocator.h"
 #include "tvm_common.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
@@ -15,14 +14,14 @@ namespace tvm {
 
 class TVMAllocator : public IAllocator {
  public:
-   TVMAllocator() : TVMAllocator(OrtMemoryInfo("TVM",
-                                               OrtAllocatorType::OrtDeviceAllocator,
-                                               OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
-                                               0,
-                                               OrtMemTypeDefault)) {}
+  TVMAllocator() : TVMAllocator(OrtMemoryInfo("TVM",
+                                              OrtAllocatorType::OrtDeviceAllocator,
+                                              OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
+                                              0,
+                                              OrtMemTypeDefault)) {}
   explicit TVMAllocator(const OrtMemoryInfo& info)
-    : IAllocator(info) {
-      switch (info.device.Type()) {
+      : IAllocator(info) {
+    switch (info.device.Type()) {
       case OrtDevice::CPU:
         ctx = {kDLCPU, info.device.Id()};
         break;
@@ -32,15 +31,15 @@ class TVMAllocator : public IAllocator {
       default:
         ORT_NOT_IMPLEMENTED("Unsupported device");
         break;
-      }
     }
+  }
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
   DLDevice ctx;
 };
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime
 
-#endif // TVM_ALLOCATOR
+#endif  // TVM_ALLOCATOR

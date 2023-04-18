@@ -354,7 +354,6 @@ def generate_test_data(
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         sess = onnxruntime.InferenceSession(onnx_file, sess_options, providers=["CPUExecutionProvider"])
 
-        sess.get_inputs()[0].name
         output_names = [output.name for output in sess.get_outputs()]
         inputs = {
             "input_ids": input_1,

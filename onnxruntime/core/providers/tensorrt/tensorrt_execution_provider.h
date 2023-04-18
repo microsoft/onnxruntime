@@ -33,6 +33,11 @@ static const std::string kLayerNormFP32Fallback = "ORT_TENSORRT_LAYER_NORM_FP32_
 static const std::string kTimingCacheEnable = "ORT_TENSORRT_TIMING_CACHE_ENABLE";
 static const std::string kForceTimingCache = "ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE";
 static const std::string kDetailedBuildLog = "ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE";
+static const std::string kBuildHeuristics = "ORT_TENSORRT_BUILD_HEURISTICS_ENABLE";
+static const std::string kSparsityEnable = "ORT_TENSORRT_SPARSITY_ENABLE";
+static const std::string kBuilderOptimizationLevel = "ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL";
+static const std::string kAuxiliaryStreams = "ORT_TENSORRT_AUXILIARY_STREAMS";
+static const std::string kTacticSources = "ORT_TENSORRT_TACTIC_SOURCES";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -120,6 +125,12 @@ struct TensorrtFuncState {
   bool timing_cache_enable = true;
   bool force_timing_cache = false;
   bool detailed_build_log = false;
+  bool build_heuristics_enable = false;
+  bool sparsity_enable = false;
+  int builder_optimization_level = 2;
+  int auxiliary_streams = -1;
+  bool filter_tactic_sources = false;
+  nvinfer1::TacticSources tactic_sources;
 };
 
 // Logical device representation.
@@ -169,6 +180,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
+  bool build_heuristics_enable_ = false;
+  bool sparsity_enable_ = false;
+  int builder_optimization_level_ = 2;
+  int auxiliary_streams_ = -1;
+  std::string tactic_sources_;
   std::string cache_path_, engine_decryption_lib_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;

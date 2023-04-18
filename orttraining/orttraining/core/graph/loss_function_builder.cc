@@ -14,8 +14,8 @@ std::unique_ptr<ILossFunction> LossFunctionBuilder::Build(const std::string& los
 
   // If not in the loss function registry.
   if (!registry.Contains(loss_func_type)) {
-    //If is a valid op, add to the loss function registry
-    //TODO: Better handle op version and domain.
+    // If is a valid op, add to the loss function registry
+    // TODO: Better handle op version and domain.
     if (ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(loss_func_type,
                                                                 GRADIENT_OP_VERSION,
                                                                 ONNX_NAMESPACE::ONNX_DOMAIN) ||

@@ -34,7 +34,7 @@ void WordConvEmbedding::CharEmbeddingLookup(
   }
 }
 
-//input : [sequence_length, word_length, char_embedding_size]
+// input : [sequence_length, word_length, char_embedding_size]
 void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
     AllocatorPtr allocator,
     const float* input,
@@ -190,11 +190,11 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
   // SafeInt<size_t>(seq_len) * word_len * char_embedding_size
   size_t chars_embeddings_size = SafeInt<size_t>(seq_len) * word_len * char_embedding_size;
   auto chars_embeddings_ptr = IAllocator::MakeUniquePtr<float>(alloc, chars_embeddings_size);
-  auto words_length_ptr = IAllocator::MakeUniquePtr<int>(alloc, onnxruntime::narrow<size_t>(seq_len) );
+  auto words_length_ptr = IAllocator::MakeUniquePtr<int>(alloc, onnxruntime::narrow<size_t>(seq_len));
   std::memset(chars_embeddings_ptr.get(), 0, chars_embeddings_size * sizeof(float));
   std::memset(words_length_ptr.get(), 0, SafeInt<size_t>(seq_len) * sizeof(int));
 
-  CalculateLengthOfEachWordInSequence(seq_ptr, words_length_ptr.get(), onnxruntime::narrow<size_t>(seq_len) , onnxruntime::narrow<size_t>(word_len));
+  CalculateLengthOfEachWordInSequence(seq_ptr, words_length_ptr.get(), onnxruntime::narrow<size_t>(seq_len), onnxruntime::narrow<size_t>(word_len));
 
   CharEmbeddingLookup(seq_ptr,
                       w_char_embedding.Data<float>(),
@@ -224,7 +224,7 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
 
 /* Range operator */
 ONNX_OPERATOR_KERNEL_EX(
-    WordConvEmbedding,  //name
+    WordConvEmbedding,  // name
     kMSDomain,
     1,
     kCpuExecutionProvider,

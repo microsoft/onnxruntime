@@ -213,7 +213,7 @@ bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,
 
 bool QnnModelWrapper::ComposeQnnGraph() {
   LOGS(logger_, VERBOSE) << "Compose Qnn Graph.";
-  //ORT_RETURN_IF(qnn_op_property_list_.empty(), "Empty Qnn op list, no graph to compose.");
+  // ORT_RETURN_IF(qnn_op_property_list_.empty(), "Empty Qnn op list, no graph to compose.");
   if (qnn_op_property_list_.empty()) {
     return false;
   }
@@ -397,8 +397,7 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                 qnn_node_type,
                 {input_name},
                 {output_name},
-                {param_tensor_name}
-  );
+                {param_tensor_name});
 
   return Status::OK();
 }

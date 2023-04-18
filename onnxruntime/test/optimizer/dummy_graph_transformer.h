@@ -48,7 +48,7 @@ class DummyRewriteRule : public RewriteRule {
   }
 
   Status Apply(Graph& /*graph*/, Node& /*node*/, RewriteRuleEffect& /*rule_effect*/,
-      const logging::Logger& /*logger*/) const override {
+               const logging::Logger& /*logger*/) const override {
     rewrite_rule_invoked_ = true;
     return Status::OK();
   }

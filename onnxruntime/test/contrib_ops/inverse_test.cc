@@ -47,17 +47,12 @@ TEST(InverseContribOpTest, two_by_two_float16) {
 
 TEST(InverseContribOpTest, four_by_four_float) {
   OpTester test("Inverse", 1, kMSDomain);
-  test.AddInput<float>("X", {4, 4}, 
-    {4.f, 0.f, 0.f, 0.f,
-     0.f, 0.f, 2.f, 0.f,
-     0.f, 1.f, 2.f, 0.f,
-     1.f, 0.f, 0.f, 1.f
-    });
-  test.AddOutput<float>("Y", {4, 4}, {
-      0.25f, 0.f, 0.f, 0.f,
-      0.f,  -1.f, 1.f, 0.f,
-      0.f,  0.5f, 0.f, 0.f,
-     -0.25f, 0.f, 0.f, 1.f});
+  test.AddInput<float>("X", {4, 4},
+                       {4.f, 0.f, 0.f, 0.f,
+                        0.f, 0.f, 2.f, 0.f,
+                        0.f, 1.f, 2.f, 0.f,
+                        1.f, 0.f, 0.f, 1.f});
+  test.AddOutput<float>("Y", {4, 4}, {0.25f, 0.f, 0.f, 0.f, 0.f, -1.f, 1.f, 0.f, 0.f, 0.5f, 0.f, 0.f, -0.25f, 0.f, 0.f, 1.f});
   test.Run();
 }
 

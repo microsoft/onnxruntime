@@ -185,6 +185,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._enable_compute_optimizer = (
             ortmodule._defined_from_envvar("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER", 1, warn=True) == 1
         )
+        self._enable_label_sparsity_optimization = (
+            self._enable_compute_optimizer
+            and ortmodule._defined_from_envvar("ORTMODULE_ENABLE_LABEL_SPARSITY_OPT", 0, warn=True) == 1
+        )
 
         # Flag to re-export the model due to attribute change on the original module.
         # Re-export will be avoided if _skip_check is enabled.
@@ -459,6 +463,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.propagate_cast_ops_config.allow = self._propagate_cast_ops_allow
         graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_strategy
         graph_transformer_config.enable_compute_optimizer = self._enable_compute_optimizer
+        graph_transformer_config.enable_label_sparsity_optimization = self._enable_label_sparsity_optimization
         return graph_transformer_config
 
     def _initialize_graph_builder(self):

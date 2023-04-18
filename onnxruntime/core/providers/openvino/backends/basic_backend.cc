@@ -24,18 +24,18 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
   std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
-  try{
-    #ifndef NDEBUG
-      if (IsDebugEnabled()) {
-        std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
-        std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
-        model_proto.SerializeToOstream(outfile);
-        // DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
-      }
-    #endif
+  try {
+#ifndef NDEBUG
+    if (IsDebugEnabled()) {
+      std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
+      std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto.SerializeToOstream(outfile);
+      // DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
+    }
+#endif
     ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-  } catch (std::string const & msg) {
-      throw msg;
+  } catch (std::string const& msg) {
+    throw msg;
   }
   if (ValidateSubgraph(const_outputs_map_))
     return;
@@ -45,43 +45,42 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   ov::AnyMap device_config;
   PopulateConfigValue(config, device_config);
 
-  //Enable caching
+  // Enable caching
   EnableCaching();
 
-  //Setting OpenCL queue throttling for GPU
+  // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
-  #if defined(IO_BUFFER_ENABLED)
-    try {
-      if ((global_context.device_type.find("GPU") != std::string::npos)  &&
+#if defined(IO_BUFFER_ENABLED)
+  try {
+    if ((global_context.device_type.find("GPU") != std::string::npos) &&
         (global_context_.context != nullptr) &&
         (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
-        LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
-        cl_context ctx = static_cast<cl_context>(global_context_.context);
-        #ifdef OV_API_20
-          remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
-        #else
-          remote_context_ = InferenceEngine::gpu::make_shared_context(global_context_.ie_core.Get(), hw_target, ctx);
-        #endif
-        exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
-      } else {
-          exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, device_config, subgraph_context_.subgraph_name);
-      }
-    }catch (const char* msg) {
-        throw(msg);
-    }
-  #else
-  try{
+      LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
+      cl_context ctx = static_cast<cl_context>(global_context_.context);
+#ifdef OV_API_20
+      remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
+#else
+      remote_context_ = InferenceEngine::gpu::make_shared_context(global_context_.ie_core.Get(), hw_target, ctx);
+#endif
+      exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
+    } else {
       exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, device_config, subgraph_context_.subgraph_name);
+    }
   } catch (const char* msg) {
-      throw(msg);
+    throw(msg);
   }
-  #endif
+#else
+  try {
+    exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, device_config, subgraph_context_.subgraph_name);
+  } catch (const char* msg) {
+    throw(msg);
+  }
+#endif
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
-
-  //The infer_requests_ pool will be intialized with a default value of 8 infer_request's
-  //The nireq value can also be configured to any num_of_threads during runtime
+  // The infer_requests_ pool will be intialized with a default value of 8 infer_request's
+  // The nireq value can also be configured to any num_of_threads during runtime
   size_t nireq = global_context_.num_of_threads;
   LOGS_DEFAULT(INFO) << log_tag << "The value of nireq being used is: " << nireq;
 #ifndef NDEBUG
@@ -108,40 +107,40 @@ void BasicBackend::PopulateConfigValue(OVConfig& config, ov::AnyMap& device_conf
   //   device_config.emplace(ov::hint::inference_precision(global_context_.precision_str));
   // }
   device_config = {};
-  #ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      device_config.emplace(ov::enable_profiling(true));
-    }
-  #endif
+#ifndef NDEBUG
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    device_config.emplace(ov::enable_profiling(true));
+  }
+#endif
   if (global_context_.device_type.find("MYRIAD") != std::string::npos) {
-      #ifndef NDEBUG
-      if (openvino_ep::backend_utils::IsDebugEnabled()) {
-        config["PERF_COUNT"] = CONFIG_VALUE(YES);
-      }
-      #endif
-      if (subgraph_context_.set_vpu_config) {
-        config["MYRIAD_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
-      }
-      if (global_context_.enable_vpu_fast_compile) {
-        config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
-        config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
-      }
-      //to check preprocessing inside model
-      #if defined (OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3)
-        config["MYRIAD_CHECK_PREPROCESSING_INSIDE_MODEL"] = CONFIG_VALUE(NO);
-      #endif
+#ifndef NDEBUG
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      config["PERF_COUNT"] = CONFIG_VALUE(YES);
+    }
+#endif
+    if (subgraph_context_.set_vpu_config) {
+      config["MYRIAD_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
+    }
+    if (global_context_.enable_vpu_fast_compile) {
+      config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
+      config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
+    }
+// to check preprocessing inside model
+#if defined(OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3)
+    config["MYRIAD_CHECK_PREPROCESSING_INSIDE_MODEL"] = CONFIG_VALUE(NO);
+#endif
   }
 }
 
 void BasicBackend::EnableCaching() {
   if (!global_context_.cache_dir.empty() && global_context_.is_wholly_supported_graph) {
-    #if defined (OPENVINO_2022_3)
-      #if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
-      _putenv_s("OV_GPU_CACHE_MODEL", "1");
-      #else
-      setenv("OV_GPU_CACHE_MODEL", "1", 1);
-      #endif
-    #endif
+#if defined(OPENVINO_2022_3)
+#if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
+    _putenv_s("OV_GPU_CACHE_MODEL", "1");
+#else
+    setenv("OV_GPU_CACHE_MODEL", "1", 1);
+#endif
+#endif
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
     global_context_.ie_core.SetCache(global_context_.cache_dir);
   }
@@ -157,11 +156,11 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
-  try{
+  try {
     auto graph_input_info = exe_network_.Get().inputs();
     int input_idx = 0;
     for (auto input_info_iter = graph_input_info.begin();
-      input_info_iter != graph_input_info.end(); ++input_info_iter) {
+         input_info_iter != graph_input_info.end(); ++input_info_iter) {
       auto input_names = input_info_iter->get_names();
       std::string onnx_input_name;
       std::string input_name;
@@ -174,14 +173,14 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
       }
       // using the input name retrieved from ONNX original to match with the input names returned by OV tensors
       if (input_names.find(onnx_input_name) != input_names.end()) {
-          input_name = onnx_input_name;
+        input_name = onnx_input_name;
       } else {
         throw(log_tag + "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name + " doesn't exist in the list of OpenVINO input tensor names");
       }
       size_t batch_slice_idx = 0;
       if (subgraph_context_.has_dynamic_input_shape &&
-        global_context_.enable_dynamic_shapes == true &&
-        global_context_.device_type.find("CPU") != std::string::npos) {
+          global_context_.enable_dynamic_shapes == true &&
+          global_context_.device_type.find("CPU") != std::string::npos) {
         auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
         auto tensor_info = tensor.GetTensorTypeAndShapeInfo();
         auto tensor_shape = tensor_info.GetShape();
@@ -190,42 +189,42 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         ov::Shape input_tensor_shape = ov::Shape(tensor_size, 0);
         for (auto i = tensor_shape.begin(); i != tensor_shape.end(); ++i) {
           input_tensor_shape[tensor_iter] = *i;
-          tensor_iter+=1;
+          tensor_iter += 1;
         }
         auto input = ie_cnn_network_->get_parameters().at(0);
         OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(input->get_element_type(), input_tensor_shape);
         FillInputBlob(tensor_ptr, batch_slice_idx, input_name, context, subgraph_context_);
-        try{
+        try {
           infer_request->SetTensor(input_name, tensor_ptr);
         } catch (const char* msg) {
-            throw(msg);
+          throw(msg);
         }
       } else {
         OVTensorPtr graph_input_blob;
-          try{
-            graph_input_blob = infer_request->GetTensor(input_name);
-          } catch (const char* msg) {
-              throw(msg);
-          }
+        try {
+          graph_input_blob = infer_request->GetTensor(input_name);
+        } catch (const char* msg) {
+          throw(msg);
+        }
         FillInputBlob(graph_input_blob, batch_slice_idx, input_name, context, subgraph_context_);
       }
       input_idx++;
     }
     // Start Async inference
     infer_request->StartAsync();
-    }catch (const char* msg) {
-      throw(msg);
-    }
+  } catch (const char* msg) {
+    throw(msg);
+  }
 }
 
 #ifdef IO_BUFFER_ENABLED
-//Wait for Remote Aynchronous inference completion
+// Wait for Remote Aynchronous inference completion
 void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
-  try{
+  try {
     auto graph_input_info = exe_network_.Get().inputs();
     int input_idx = 0;
     for (auto input_info_iter = graph_input_info.begin();
-      input_info_iter != graph_input_info.end(); ++input_info_iter) {
+         input_info_iter != graph_input_info.end(); ++input_info_iter) {
       auto input_names = input_info_iter->get_names();
       std::string onnx_input_name;
       std::string input_name;
@@ -238,7 +237,7 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       }
       // using the input name retrieved from ONNX original to match with the input names returned by OV tensors
       if (input_names.find(onnx_input_name) != input_names.end()) {
-          input_name = onnx_input_name;
+        input_name = onnx_input_name;
       } else {
         throw(log_tag + "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name + " doesn't exist in the list of OpenVINO input tensor names");
       }
@@ -248,10 +247,10 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       // If the ORTValue wraps a device pointer
       auto mem_info = tensor.GetTensorMemoryInfo();
       if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-        //Get the shared buffer pointer
-        const void *tensor_data = tensor.GetTensorRawData();
+        // Get the shared buffer pointer
+        const void* tensor_data = tensor.GetTensorRawData();
         const cl::Buffer* shared_buffer_const = static_cast<const cl::Buffer*>(tensor_data);
-        //Create an Input Remote Blob
+        // Create an Input Remote Blob
         auto input = ie_cnn_network_->get_parameters().at(0);
         auto remote_blob = remote_context_->create_tensor(input->get_element_type(), input->get_shape(), *shared_buffer_const);
         ov::Tensor tensor = static_cast<ov::Tensor>(remote_blob);
@@ -265,10 +264,10 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       }
     }
 
-    //Set the output blob as remote blob
+    // Set the output blob as remote blob
     auto graph_output_info = exe_network_.Get().outputs();
     for (auto output_info_iter = graph_output_info.begin();
-        output_info_iter != graph_output_info.end(); ++output_info_iter) {
+         output_info_iter != graph_output_info.end(); ++output_info_iter) {
       auto output_names = output_info_iter->get_names();
       std::string onnx_output_name;
       std::string output_name;
@@ -277,13 +276,13 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
         onnx_output_name = it->first;
         if (output_names.find(onnx_output_name) != output_names.end()) {
-          //Assigning the output_name
+          // Assigning the output_name
           output_name = it->first;
           output_name_found = true;
           break;
         }
       }
-      if(!output_name_found) {
+      if (!output_name_found) {
         throw std::string(log_tag + "Output names mismatch between OpenVINO and ONNX. [ONNX Output: ] " + onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
       }
 
@@ -292,7 +291,7 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       auto mem_info = tensor.GetTensorMemoryInfo();
       // Check if ORT Value wraps a device pointer
       if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-        const void *tensor_data = tensor.GetTensorRawData();
+        const void* tensor_data = tensor.GetTensorRawData();
         const cl::Buffer* shared_buffer_const = static_cast<const cl::Buffer*>(tensor_data);
         // Create a shared Blob, set the Infer Request Output Blob
         auto output = ie_cnn_network_->get_results().at(0);
@@ -309,8 +308,8 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
 
     // Start Async inference
     infer_request->StartAsync();
-  }catch (const char* msg) {
-      throw(msg);
+  } catch (const char* msg) {
+    throw(msg);
   }
 }
 #endif
@@ -319,11 +318,11 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
 void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
   // Wait for Async inference completion
-  try{
+  try {
     infer_request->WaitRequest();
     auto graph_output_info = exe_network_.Get().outputs();
     for (auto output_info_iter = graph_output_info.begin();
-        output_info_iter != graph_output_info.end(); ++output_info_iter) {
+         output_info_iter != graph_output_info.end(); ++output_info_iter) {
       OVTensorPtr graph_output_blob;
       auto output_names = output_info_iter->get_names();
       std::string onnx_output_name;
@@ -340,14 +339,17 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
         }
       }
       if (!output_name_found) {
-        throw(log_tag + "Output names mismatch between OpenVINO and ONNX. "
-                  "[ONNX Output: ] " + onnx_output_name + " doesn't exist in the "
-                  "list of OpenVINO output tensor names");
+        throw(log_tag +
+              "Output names mismatch between OpenVINO and ONNX. "
+              "[ONNX Output: ] " +
+              onnx_output_name +
+              " doesn't exist in the "
+              "list of OpenVINO output tensor names");
       }
-      try{
+      try {
         graph_output_blob = infer_request->GetTensor(output_name);
       } catch (const char* msg) {
-          throw(msg);
+        throw(msg);
       }
       size_t batch_size = 1;
       auto output_tensor = GetOutputTensor(context, batch_size, infer_request, output_name, subgraph_context_.output_names);
@@ -373,8 +375,8 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
         }
       }
     }
-  }catch (const char* msg) {
-      throw(msg);
+  } catch (const char* msg) {
+    throw(msg);
   }
 }
 
@@ -393,68 +395,68 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
       try {
         auto output_tensor = GetOutputTensor(context, out_name, subgraph_context_.output_names, node);
         FillOutputsWithConstantData(node, output_tensor);
-      } catch (std::string const & msg) {
+      } catch (std::string const& msg) {
         throw msg;
       }
     }
     // Get Output tensors
     LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
-    //Enable CI Logs
-    if(IsCILogEnabled()) {
+    // Enable CI Logs
+    if (IsCILogEnabled()) {
       std::cout << "Inference successful" << std::endl;
     }
 
   } else {
-      //Requesting for an idle infer_request from a pool of infer_requests_
-      OVInferRequestPtr infer_request;
-      infer_request = inferRequestsQueue_->getIdleRequest();
+    // Requesting for an idle infer_request from a pool of infer_requests_
+    OVInferRequestPtr infer_request;
+    infer_request = inferRequestsQueue_->getIdleRequest();
 
-      #ifdef IO_BUFFER_ENABLED
-      if ((global_context_.device_type.find("GPU") != std::string::npos)  &&
-          (global_context_.context != nullptr) &&
-          (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
-        try {
-          StartRemoteAsyncInference(context, infer_request);
-        } catch (std::string const & msg) {
-          throw msg;
-        }
-      } else {
-        try{
-          StartAsyncInference(context, infer_request);
-        } catch(std::string const & msg) {
-          throw msg;
-        }
+#ifdef IO_BUFFER_ENABLED
+    if ((global_context_.device_type.find("GPU") != std::string::npos) &&
+        (global_context_.context != nullptr) &&
+        (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
+      try {
+        StartRemoteAsyncInference(context, infer_request);
+      } catch (std::string const& msg) {
+        throw msg;
       }
-      #else
-        try{
-          StartAsyncInference(context, infer_request);
-        } catch(std::string const & msg) {
-          throw msg;
-        }
-      #endif
-        try{
-          CompleteAsyncInference(context, infer_request);
-        }catch(std::string const & msg) {
-          throw msg;
-        }
-
-      // Get Output tensors
-      LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
-      //Enable CI Logs
-      if (IsCILogEnabled()) {
-        std::cout << "Inference successful" << std::endl;
+    } else {
+      try {
+        StartAsyncInference(context, infer_request);
+      } catch (std::string const& msg) {
+        throw msg;
       }
+    }
+#else
+    try {
+      StartAsyncInference(context, infer_request);
+    } catch (std::string const& msg) {
+      throw msg;
+    }
+#endif
+    try {
+      CompleteAsyncInference(context, infer_request);
+    } catch (std::string const& msg) {
+      throw msg;
+    }
 
-      //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
-      inferRequestsQueue_->putIdleRequest(infer_request);
+    // Get Output tensors
+    LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+    // Enable CI Logs
+    if (IsCILogEnabled()) {
+      std::cout << "Inference successful" << std::endl;
+    }
+
+    // Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
+    inferRequestsQueue_->putIdleRequest(infer_request);
 #ifndef NDEBUG
-  #ifndef IO_BUFFER_ENABLED // Printing performance counts is disabled when IO_BUFFER_ENABLED
+#ifndef IO_BUFFER_ENABLED  // Printing performance counts is disabled when IO_BUFFER_ENABLED
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      inferRequestsQueue_->printstatus();  //Printing the elements of infer_requests_ vector pool only in debug mode
+      inferRequestsQueue_->printstatus();  // Printing the elements of infer_requests_ vector pool only in debug mode
       std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
       printPerformanceCounts(infer_request, std::cout, hw_target);
     }
-  #endif
+#endif
 #endif
   }
 }

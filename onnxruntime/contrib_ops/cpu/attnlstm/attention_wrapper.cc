@@ -8,7 +8,7 @@
 #include <memory>
 
 using onnxruntime::rnn::detail::Allocate;
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
 #endif
@@ -55,9 +55,9 @@ void AttentionWrapper<T>::ProcessOutput(const gsl::span<const T>& rnn_cell_outpu
   }
 
   if (has_attn_layer_) {
-    //concat([p_cell_output, context]) * stack([attn_layer_cell_weights_, attn_layer_attn_weights_]) =
-    //     p_cell_output * attn_layer_cell_weights_ + context * attn_layer_attn_weights_
-    // The first part is calulated above. Here just add the later.
+    // concat([p_cell_output, context]) * stack([attn_layer_cell_weights_, attn_layer_attn_weights_]) =
+    //      p_cell_output * attn_layer_cell_weights_ + context * attn_layer_attn_weights_
+    //  The first part is calulated above. Here just add the later.
     math::GemmEx<T>(CblasNoTrans, CblasNoTrans,
                     batch_size_, attn_layer_depth_, attn_context_depth_, T{1.0},
                     attn_context_.data(), attn_context_depth_,
@@ -76,7 +76,7 @@ void AttentionWrapper<T>::SetWeights(const gsl::span<const T>& wrapper_weights) 
   has_attn_layer_ = !wrapper_weights.empty();
 
   if (has_attn_layer_) {
-    //cell weight size and attn weight size in the attn layer
+    // cell weight size and attn weight size in the attn layer
     size_t cws = inner_cell_hidden_size_ * attn_layer_depth_;
     size_t aws = attn_context_depth_ * attn_layer_depth_;
     attn_layer_cell_weights_ = wrapper_weights.subspan(0, cws);
