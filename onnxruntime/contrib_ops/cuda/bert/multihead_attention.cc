@@ -247,7 +247,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.cumulated_sequence_length_kv_cache = &(this->cumulated_sequence_length_kv_cache_);
 
   cublasHandle_t cublas = GetCublasHandle(context);
-  
+
   return QkvToContext<CudaT>(
       device_prop, cublas, Stream(context), parameters, data);
 }

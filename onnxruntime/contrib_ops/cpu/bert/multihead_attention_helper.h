@@ -332,7 +332,6 @@ Status CheckInputs(const T* query,
                    float scale,
                    bool past_present_share_buffer,
                    int max_threads_per_block) {
-
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }

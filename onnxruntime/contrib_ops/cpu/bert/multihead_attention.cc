@@ -68,15 +68,15 @@ Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
 
 // Add bias + transpose for each of Q/K/V
 template <typename T>
-Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data - query is BxSxD, key is BxLxD, value is BxLxD_v
-                        const T* qkv_bias,                  // Input: QKV bias - bias is (D + D + D_v)
-                        OrtValue& qkv_with_bias_transposed, // Output: Q/K/V data - query is BxNxSxH, key is BxNxLxH, value is BxNxLxH_v
-                        int bias_offset,                    // bias offset to enter qkv_bias
-                        int batch_size,                     // batch size
-                        int sequence_length,                // sequence_length for Q, kv_sequence_length for K/V
-                        int num_heads,                      // num heads
-                        int head_size,                      // head_size for Q/K, v_head_size for V
-                        int hidden_size,                    // hidden_size for Q/K, v_hidden_size for V
+Status AddBiasTranspose(const Tensor* qkv,                   // Input: Q/K/V data - query is BxSxD, key is BxLxD, value is BxLxD_v
+                        const T* qkv_bias,                   // Input: QKV bias - bias is (D + D + D_v)
+                        OrtValue& qkv_with_bias_transposed,  // Output: Q/K/V data - query is BxNxSxH, key is BxNxLxH, value is BxNxLxH_v
+                        int bias_offset,                     // bias offset to enter qkv_bias
+                        int batch_size,                      // batch size
+                        int sequence_length,                 // sequence_length for Q, kv_sequence_length for K/V
+                        int num_heads,                       // num heads
+                        int head_size,                       // head_size for Q/K, v_head_size for V
+                        int hidden_size,                     // hidden_size for Q/K, v_hidden_size for V
                         OpKernelContext* context) {
   // Note: the comments below will refer to Q's dimensions for simplicity
   auto element_type = DataTypeImpl::GetType<T>();
@@ -90,7 +90,7 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
       },
       [](BroadcastHelper& per_iter_bh) {
         per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
-      }}; // For element-wise add
+      }};  // For element-wise add
 
   // Allocate space for output of Q(BS, D) + bias(D)
   AllocatorPtr allocator;
@@ -108,7 +108,7 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
   OrtValue bias;
   Tensor::InitOrtValue(element_type, bias_shape, allocator, bias);
   memcpy(bias.GetMutable<Tensor>()->MutableData<T>(), qkv_bias + bias_offset, hidden_size * element_size);
-  
+
   // Compute Q(BS, D) + bias(D) as broadcasted element-wise add
   {
     InputBroadcaster input_broadcaster(*bias.GetMutable<Tensor>(), *qkv);
@@ -125,18 +125,18 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
                                    static_cast<double>(output_tensor.DataType()->Size()) * span_size,
                                    unit_cost * span_size};
     auto tp = context->GetOperatorThreadPool();
-    ThreadPool::TryParallelFor(tp, loop_len, cost, \
-      [span_size, &const_input_broadcaster, &output_tensor, &add_funcs, user_data](std::ptrdiff_t first_span,
-                                                                                   std::ptrdiff_t last_span) {
-        InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
-        segment_input_broadcaster.AdvanceBy(first_span * span_size);
+    ThreadPool::TryParallelFor(tp, loop_len, cost,
+                               [span_size, &const_input_broadcaster, &output_tensor, &add_funcs, user_data](std::ptrdiff_t first_span,
+                                                                                                            std::ptrdiff_t last_span) {
+                                 InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
+                                 segment_input_broadcaster.AdvanceBy(first_span * span_size);
 
-        OutputBroadcaster segment_output_broadcaster(span_size, output_tensor,
-                                                     first_span * span_size, last_span * span_size);
+                                 OutputBroadcaster segment_output_broadcaster(span_size, output_tensor,
+                                                                              first_span * span_size, last_span * span_size);
 
-        BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
-        BroadcastLooper(segment_helper, add_funcs);
-    });
+                                 BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
+                                 BroadcastLooper(segment_helper, add_funcs);
+                               });
   }
 
   // Reshape Q from BxSxD to BxSxNxH
@@ -151,17 +151,16 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
 // Add bias + reshape for each of Q/K/V
 // This is used in decoder_with_past when the sequence length is 1
 template <typename T>
-Status AddBiasReshape(const Tensor* qkv,           // Input: Q/K/V data - query is BxSxD, key is BxLxD, value is BxLxD_v
-                      const T* qkv_bias,           // Input: QKV bias - bias is (D + D + D_v)
-                      OrtValue& qkv_with_bias,     // Output: Q/K/V data - query is BxNxSxH, key is BxNxLxH, value is BxNxLxH_v
-                      int bias_offset,             // bias offset to enter qkv_bias
-                      int batch_size,              // batch size
-                      int sequence_length,         // sequence_length for Q, kv_sequence_length for K/V
-                      int num_heads,               // num heads
-                      int head_size,               // head_size for Q/K, v_head_size for V
-                      int hidden_size,             // hidden_size for Q/K, v_hidden_size for V
+Status AddBiasReshape(const Tensor* qkv,        // Input: Q/K/V data - query is BxSxD, key is BxLxD, value is BxLxD_v
+                      const T* qkv_bias,        // Input: QKV bias - bias is (D + D + D_v)
+                      OrtValue& qkv_with_bias,  // Output: Q/K/V data - query is BxNxSxH, key is BxNxLxH, value is BxNxLxH_v
+                      int bias_offset,          // bias offset to enter qkv_bias
+                      int batch_size,           // batch size
+                      int sequence_length,      // sequence_length for Q, kv_sequence_length for K/V
+                      int num_heads,            // num heads
+                      int head_size,            // head_size for Q/K, v_head_size for V
+                      int hidden_size,          // hidden_size for Q/K, v_hidden_size for V
                       OpKernelContext* context) {
-  
   // Note: the comments below will refer to Q's dimensions for simplicity
   auto element_type = DataTypeImpl::GetType<T>();
   constexpr size_t element_size = sizeof(T);
@@ -174,7 +173,7 @@ Status AddBiasReshape(const Tensor* qkv,           // Input: Q/K/V data - query 
       },
       [](BroadcastHelper& per_iter_bh) {
         per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
-      }}; // For element-wise add
+      }};  // For element-wise add
 
   // Get Q's bias from combined bias
   AllocatorPtr allocator;
@@ -186,7 +185,7 @@ Status AddBiasReshape(const Tensor* qkv,           // Input: Q/K/V data - query 
   Tensor::InitOrtValue(element_type, bias_shape, allocator, bias);
   auto num_bias_elements = SafeInt<size_t>(hidden_size) * element_size;
   memcpy(bias.GetMutable<Tensor>()->MutableData<T>(), qkv_bias + bias_offset, num_bias_elements);
-  
+
   // Compute Q(BS, D) + bias(D) as broadcasted element-wise add
   {
     InputBroadcaster input_broadcaster(*bias.GetMutable<Tensor>(), *qkv);
@@ -203,18 +202,18 @@ Status AddBiasReshape(const Tensor* qkv,           // Input: Q/K/V data - query 
                                    static_cast<double>(output_tensor.DataType()->Size()) * span_size,
                                    unit_cost * span_size};
     auto tp = context->GetOperatorThreadPool();
-    ThreadPool::TryParallelFor(tp, loop_len, cost, \
-      [span_size, &const_input_broadcaster, &output_tensor, &add_funcs, user_data](std::ptrdiff_t first_span,
-                                                                                   std::ptrdiff_t last_span) {
-        InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
-        segment_input_broadcaster.AdvanceBy(first_span * span_size);
+    ThreadPool::TryParallelFor(tp, loop_len, cost,
+                               [span_size, &const_input_broadcaster, &output_tensor, &add_funcs, user_data](std::ptrdiff_t first_span,
+                                                                                                            std::ptrdiff_t last_span) {
+                                 InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
+                                 segment_input_broadcaster.AdvanceBy(first_span * span_size);
 
-        OutputBroadcaster segment_output_broadcaster(span_size, output_tensor,
-                                                     first_span * span_size, last_span * span_size);
+                                 OutputBroadcaster segment_output_broadcaster(span_size, output_tensor,
+                                                                              first_span * span_size, last_span * span_size);
 
-        BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
-        BroadcastLooper(segment_helper, add_funcs);
-    });
+                                 BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
+                                 BroadcastLooper(segment_helper, add_funcs);
+                               });
   }
 
   // Reshape Q from BxSxD to BxNxSxH
@@ -222,7 +221,7 @@ Status AddBiasReshape(const Tensor* qkv,           // Input: Q/K/V data - query 
   gsl::span<const int64_t> reshape_dims_span{reshape_dims};
   TensorShape qkv_final_dims(reshape_dims_span);
   qkv_with_bias.GetMutable<Tensor>()->Reshape(qkv_final_dims);
-  
+
   return Status::OK();
 }
 
@@ -243,7 +242,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   if (key != nullptr && key->Shape().GetDims().size() == 5) {
     ORT_NOT_IMPLEMENTED("Packed KV not implemented for CPU");
   }
-  
+
   AttentionParameters parameters = {};
   constexpr float scale = 1.0f;
   bool past_present_share_buffer = false;
@@ -284,7 +283,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const int v_bias_offset = 2 * qk_hidden_size;
 
   bool kv_BNSH = key != nullptr && value != nullptr && key->Shape().GetDims().size() == 4 && value->Shape().GetDims().size() == 4;
-  
+
   // If optional outputs aren't needed, present_k and present_v will be null
   std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(qk_head_size)});
   std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(v_head_size)});
@@ -295,15 +294,15 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   if (qkv_bias == nullptr) {
     // We assume query, key/past_key, and value/past_value are already in the correct shape
-    
+
     // Check that key/value or past_key/past_value is valid
     ORT_ENFORCE((key != nullptr && value != nullptr) || (past_key != nullptr && past_value != nullptr));
     return ApplyAttention(query->Data<T>(),
                           (key != nullptr) ? key->Data<T>() : past_key->Data<T>(),
-                          (value != nullptr) ? value->Data<T>() : past_value->Data<T>(), 
+                          (value != nullptr) ? value->Data<T>() : past_value->Data<T>(),
                           key_padding_mask, nullptr /* past */, nullptr /* past_k */, nullptr /* past_v */,
                           output, present_k, present_v,
-                          batch_size, q_sequence_length, kv_sequence_length, 
+                          batch_size, q_sequence_length, kv_sequence_length,
                           qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
   }
 
@@ -329,12 +328,10 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
         ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(query_reshaped, batch_size, q_sequence_length, num_heads_, qk_head_size));
       }
       ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((query_reshaped == nullptr) ? query : query_reshaped, Q));
-    }
-    else {
+    } else {
       if (q_sequence_length == 1) {
         ORT_RETURN_IF_ERROR(AddBiasReshape(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context));
-      }
-      else {
+      } else {
         ORT_RETURN_IF_ERROR(AddBiasTranspose(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context));
       }
     }
@@ -344,8 +341,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     // No bias add needed for K/V, key already of shape BxNxLxH, value already of shape BxNxLxH_v
     return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), key->Data<T>(), value->Data<T>(),
                           key_padding_mask, nullptr /* past */, nullptr /* past_k */, nullptr /* past_v */,
-                          output, present_k, present_v, 
-                          batch_size, q_sequence_length, kv_sequence_length, 
+                          output, present_k, present_v,
+                          batch_size, q_sequence_length, kv_sequence_length,
                           qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
   }
 
@@ -363,12 +360,10 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
         ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(key_reshaped, batch_size, kv_sequence_length, num_heads_, qk_head_size));
       }
       ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((key_reshaped == nullptr) ? key : key_reshaped, K));
-    }
-    else {
+    } else {
       if (kv_sequence_length == 1) {
         ORT_RETURN_IF_ERROR(AddBiasReshape(key, qkv_bias, K, k_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context));
-      }
-      else {
+      } else {
         ORT_RETURN_IF_ERROR(AddBiasTranspose(key, qkv_bias, K, k_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context));
       }
     }
@@ -388,21 +383,19 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
         ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(value_reshaped, batch_size, kv_sequence_length, num_heads_, v_head_size));
       }
       ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((value_reshaped == nullptr) ? value : value_reshaped, V));
-    }
-    else {
+    } else {
       if (kv_sequence_length == 1) {
         ORT_RETURN_IF_ERROR(AddBiasReshape(value, qkv_bias, V, v_bias_offset, batch_size, kv_sequence_length, num_heads_, v_head_size, v_hidden_size, context));
-      }
-      else {
+      } else {
         ORT_RETURN_IF_ERROR(AddBiasTranspose(value, qkv_bias, V, v_bias_offset, batch_size, kv_sequence_length, num_heads_, v_head_size, v_hidden_size, context));
       }
     }
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), K.GetMutable<Tensor>()->MutableData<T>(), V.GetMutable<Tensor>()->MutableData<T>(), 
+  return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), K.GetMutable<Tensor>()->MutableData<T>(), V.GetMutable<Tensor>()->MutableData<T>(),
                         key_padding_mask, nullptr /* past */, past_key, past_value, output, present_k, present_v,
-                        batch_size, q_sequence_length, kv_sequence_length, 
+                        batch_size, q_sequence_length, kv_sequence_length,
                         qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
 }
 }  // namespace contrib

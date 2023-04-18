@@ -29,7 +29,7 @@ class AttentionBase {
                      int head_size,
                      int kv_sequence_length,
                      int& past_sequence_length) const;
-  
+
  protected:
   AttentionBase(const OpKernelInfo& info, bool require_same_hidden_size) {
     int64_t num_heads = 0;
