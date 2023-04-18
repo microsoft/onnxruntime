@@ -753,7 +753,7 @@ TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLossGrad_TinySizeTensor_half)
   TestSoftmaxCrossEntropyLossGrad({8}, log_prob_dims, index_dims, dX_dims, "none", 0, true, 5e-2);
 }
 
-TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLossGrad_SmallSizeTensor_half) { //  [E:onnxruntime:Default, compare_provider_test_utils.cc:105 CompareWithCPU] Initialize failed with status: Could not find an implementation for Equal(19) node with name ''
+TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLossGrad_SmallSizeTensor_half) {  //  [E:onnxruntime:Default, compare_provider_test_utils.cc:105 CompareWithCPU] Initialize failed with status: Could not find an implementation for Equal(19) node with name ''
   std::vector<int64_t> dY_dims{};
   std::vector<int64_t> log_prob_dims{8, 20, 10};
   std::vector<int64_t> index_dims{8, 10};
@@ -763,7 +763,7 @@ TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLossGrad_SmallSizeTensor_half
   TestSoftmaxCrossEntropyLossGrad({8, 10}, log_prob_dims, index_dims, dX_dims, "none", -1, true, 5e-2);
 }
 
-TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLossGrad_LargeSizeTensor_half) { //  [E:onnxruntime:Default, compare_provider_test_utils.cc:105 CompareWithCPU] Initialize failed with status: Could not find an implementation for Equal(19) node with name ''
+TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLossGrad_LargeSizeTensor_half) {  //  [E:onnxruntime:Default, compare_provider_test_utils.cc:105 CompareWithCPU] Initialize failed with status: Could not find an implementation for Equal(19) node with name ''
   std::vector<int64_t> dY_dims{};
   std::vector<int64_t> log_prob_dims{2, 512, 30528};
   std::vector<int64_t> index_dims{2, 30528};

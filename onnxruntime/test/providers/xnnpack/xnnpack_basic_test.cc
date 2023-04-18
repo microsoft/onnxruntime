@@ -264,7 +264,7 @@ TEST(XnnpackEP, TestQDQConvS8S8_per_channel) {
   RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8_perchannel", graph_verify, 0.2f);
 }
 
-TEST(XnnpackEP, DISABLED_TestAveragePool) { // [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for AveragePool(19) node with name 'node'
+TEST(XnnpackEP, DISABLED_TestAveragePool) {  // [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for AveragePool(19) node with name 'node'
   const std::vector<int64_t> input_shape = {1, 2, 3, 3};
   auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
@@ -517,7 +517,7 @@ TEST(XnnpackEP, DISABLED_TestResize_u8_and_s8_NHWC_half_pixel) {  // [ONNXRuntim
                "xnnpack_qdq_test_graph_resize",
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
 }
-TEST(XnnpackEP, DISABLED_TestResize_u8_and_s8_NHWC_align_corners) { // [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for Resize(19) node with name 'node_token_5'
+TEST(XnnpackEP, DISABLED_TestResize_u8_and_s8_NHWC_align_corners) {  // [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for Resize(19) node with name 'node_token_5'
   RunModelTest(BuildQDQResizeTestCase({1, 64, 64, 3} /* input_shape */,
                                       {1, 32, 32, 3} /* sizes_data */,
                                       "linear" /* mode */,
