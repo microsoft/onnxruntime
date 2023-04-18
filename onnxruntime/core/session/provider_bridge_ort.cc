@@ -1286,6 +1286,9 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_builder_optimization_level = 2;
   trt_options_converted.trt_auxiliary_streams = -1;
   trt_options_converted.trt_tactic_sources = "";
+  trt_options_converted.trt_profile_min_shapes = "";
+  trt_options_converted.trt_profile_max_shapes = "";
+  trt_options_converted.trt_profile_opt_shapes = "";
   return trt_options_converted;
 }
 

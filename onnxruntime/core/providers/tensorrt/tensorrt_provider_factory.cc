@@ -168,6 +168,48 @@ struct Tensorrt_Provider : Provider {
       dest[str_size] = '\0';
       trt_options.trt_tactic_sources = (const char*)dest;
     }
+
+    str_size = internal_options.profile_min_shapes.size();
+    if (str_size == 0) {
+      trt_options.trt_profile_min_shapes = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.profile_min_shapes.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.profile_min_shapes.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_options.trt_profile_min_shapes = (const char*)dest;
+    }
+
+    str_size = internal_options.profile_max_shapes.size();
+    if (str_size == 0) {
+      trt_options.trt_profile_max_shapes = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.profile_max_shapes.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.profile_max_shapes.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_options.trt_profile_max_shapes = (const char*)dest;
+    }
+
+    str_size = internal_options.profile_opt_shapes.size();
+    if (str_size == 0) {
+      trt_options.trt_profile_opt_shapes = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.profile_opt_shapes.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.profile_opt_shapes.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_options.trt_profile_opt_shapes = (const char*)dest;
+    }
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
