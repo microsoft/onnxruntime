@@ -85,7 +85,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kAuxiliaryStreams, info.auxiliary_streams)
           .AddAssignmentToReference(tensorrt::provider_option_names::kTacticSources, info.tactic_sources)
           .AddAssignmentToReference(tensorrt::provider_option_names::kExtraPluginLibPaths, info.extra_plugin_lib_paths)
-          .Parse(options));// add new provider option here.
+          .Parse(options));  // add new provider option here.
 
   return info;
 }

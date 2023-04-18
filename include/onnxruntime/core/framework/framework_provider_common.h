@@ -8,4 +8,3 @@ struct OrtCustomOpDomain {
   std::string domain_;
   std::vector<const OrtCustomOp*> custom_ops_;
 };
-
