@@ -1,5 +1,5 @@
 parameters:
-  AgentPool: 'Linux-CPU'
+  AgentPool: 'aiinfra-Linux-CPU'
   StageSuffix: ''
 stages:
 - stage: Nodejs_Test_${{ parameters.StageSuffix }}

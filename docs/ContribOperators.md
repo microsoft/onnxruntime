@@ -33,6 +33,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
+  * <a href="#com.microsoft.FusedMatMulActivation">com.microsoft.FusedMatMulActivation</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
@@ -51,6 +52,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
   * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
+  * <a href="#com.microsoft.NhwcFusedConv">com.microsoft.NhwcFusedConv</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
   * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
@@ -429,7 +431,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (5 - 10)
 
 <dl>
-<dt><tt>input_ids</tt> : I</dt>
+<dt><tt>input_ids</tt> : F</dt>
 <dd>The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)</dd>
 <dt><tt>max_length</tt> : I</dt>
 <dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
@@ -465,8 +467,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float)</dt>
-<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain to float tensors.</dd>
+<dt><tt>F</tt> : tensor(float), tensor(int32), tensor(float16)</dt>
+<dd>Constrain input type to float or int tensors.</dd>
 <dt><tt>I</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
@@ -1794,6 +1798,63 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.FusedMatMulActivation"></a><a name="com.microsoft.fusedmatmulactivation">**com.microsoft.FusedMatMulActivation**</a>
+
+  Executes the same operation as FusedMatMul, but also has an activation function fused to its output.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string (required)</dt>
+<dd></dd>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd></dd>
+<dt><tt>activation_axis</tt> : int</dt>
+<dd></dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd></dd>
+<dt><tt>activation_gamma</tt> : float</dt>
+<dd></dd>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Scalar multiplier for the product of the input tensors.</dd>
+<dt><tt>transA</tt> : int</dt>
+<dd>Whether A should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transBatchA</tt> : int</dt>
+<dd>Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
+<dt><tt>transBatchB</tt> : int</dt>
+<dd>Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>N-dimensional matrix A</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>N-dimensional matrix B</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Matrix multiply results</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.GatedRelativePositionBias"></a><a name="com.microsoft.gatedrelativepositionbias">**com.microsoft.GatedRelativePositionBias**</a>
 
   query_layer = (query_layer + query_bias).reshape(batch_size, seq_len, num_heads, head_size).transpose(1, 2)
@@ -2632,6 +2693,64 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.NhwcFusedConv"></a><a name="com.microsoft.nhwcfusedconv">**com.microsoft.NhwcFusedConv**</a>
+
+  NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
+  Only has fp16 implementation as of 2023/04/15.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd></dd>
+<dt><tt>activation_params</tt> : list of floats</dt>
+<dd></dd>
+<dt><tt>auto_pad</tt> : string</dt>
+<dd></dd>
+<dt><tt>dilations</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>group</tt> : int</dt>
+<dd></dd>
+<dt><tt>kernel_shape</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>pads</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>strides</tt> : list of ints</dt>
+<dd></dd>
+</dl>
+
+#### Inputs (2 - 4)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd></dd>
+<dt><tt>W</tt> : T</dt>
+<dd></dd>
+<dt><tt>B</tt> (optional) : T</dt>
+<dd></dd>
+<dt><tt>Z</tt> (optional) : T</dt>
+<dd>Tensor to be added to the output, must be the same shape and format as the output tensor.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd></dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors</dd>
 </dl>
 
 

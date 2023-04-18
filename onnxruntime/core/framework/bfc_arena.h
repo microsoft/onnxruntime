@@ -101,6 +101,10 @@ class BFCArena : public IAllocator {
 
   ArenaType GetArenaType() const { return arena_type_; }
 
+  virtual void SecureTheChunk(Stream* /*chunk_stream*/,
+                              Stream* /*target_stream*/,
+                              WaitNotificationFn /*wait_fn*/) const {}
+
  protected:
   void* AllocateRawInternal(size_t num_bytes,
                             bool dump_log_on_failure,
@@ -112,11 +116,6 @@ class BFCArena : public IAllocator {
   // perform coalesce if coalesce_flag is true
   void ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_flag);
   #endif
-  // Secure the allocated chunk on the target stream
-  virtual void SecureTheChunk(Stream* /*chunk_stream*/,
-                              Stream* /*target_stream*/,
-                              WaitNotificationFn /*wait_fn*/) const {}
-
   ArenaType arena_type_;
 
  private:
@@ -536,7 +535,6 @@ class StreamAwareArena : public BFCArena {
     return arena.GetArenaType() == ArenaType::StreamAwareArena ? reinterpret_cast<StreamAwareArena*>(&arena) : nullptr;
   }
 
- protected:
   virtual void SecureTheChunk(Stream* chunk_stream, Stream* target_stream, WaitNotificationFn wait_fn) const override;
 
  private:
