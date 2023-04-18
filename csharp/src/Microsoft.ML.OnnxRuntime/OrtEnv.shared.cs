@@ -7,39 +7,9 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// Logging level used to specify amount of logging when
-    /// creating environment. The lower the value is the more logging
-    /// will be output. A specific value output includes everything
-    /// that higher values output.
-    /// 
-    /// XXX: Duplicate definition
-    /// </summary>
-    public enum LogLevel
-    {
-        Verbose = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE, // Everything
-        Info = OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO,    // Informational
-        Warning = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, // Warnings
-        Error = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR,   // Errors
-        Fatal = OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL    // Results in the termination of the application.
-    }
-
-    /// <summary>
-    /// Language projection property for telemetry event for tracking the source usage of ONNXRUNTIME
-    /// </summary>
-    public enum OrtLanguageProjection
-    {
-        ORT_PROJECTION_C = 0,
-        ORT_PROJECTION_CPLUSPLUS = 1,
-        ORT_PROJECTION_CSHARP = 2,
-        ORT_PROJECTION_PYTHON = 3,
-        ORT_PROJECTION_JAVA = 4,
-        ORT_PROJECTION_WINML = 5,
-    }
-
-    /// <summary>
     /// Delegate for logging function callback.
     /// Supply your function and register it with the environment to receive logging callbacks via
-    /// EnvironmentCreateOptions
+    /// EnvironmentCreationOptions
     /// </summary>
     /// <param name="param">Pointer to data passed into Constructor `log_param` parameter.</param>
     /// <param name="severity">Log severity level.</param>
@@ -48,7 +18,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// <param name="codeLocation">Code location detail.</param>
     /// <param name="message">Log message.</param>
     public delegate void DOrtLoggingFunction(IntPtr param,
-        LogLevel severity,
+        OrtLoggingLevel severity,
         string category,
         string logId,
         string codeLocation,
@@ -58,7 +28,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// Options you might want to supply when creating the environment.
     /// Everything is optional.
     /// </summary>
-    public struct EnvironmentCreateOptions
+    public struct EnvironmentCreationOptions
     {
         /// <summary>
         ///  Supply a log id to identify the application using ORT, otherwise, a default one will be used
@@ -69,7 +39,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Initial logging level so that you can see what is going on during environment creation
         /// Default is LogLevel.Warning
         /// </summary>
-        public LogLevel? logLevel;
+        public OrtLoggingLevel? logLevel;
 
         /// <summary>
         /// Supply OrtThreadingOptions instance, otherwise null
@@ -99,15 +69,18 @@ namespace Microsoft.ML.OnnxRuntime
     /// CreateInstanceWithOptions() provides a way to create environment with options.
     /// It must be called once before Instance() is called, otherwise it would not have effect.
     /// 
-    /// If the environment is not explicitly created, it would be created when SessionOptions are instantiated.
+    /// If the environment is not explicitly created, it will be created as needed, e.g.,
+    /// when creating a SessionOptions instance.
     /// </summary>
     public sealed class OrtEnv : SafeHandle
     {
         #region Static members
+        private static readonly int ORT_PROJECTION_CSHARP = 2;
+
         private static readonly byte[] _defaultLogId = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(@"CSharpOnnxRuntime");
 
         // This must be static and set before the first creation call, otherwise, has no effect.
-        private static EnvironmentCreateOptions? _createOptions;
+        private static EnvironmentCreationOptions? _createOptions;
 
         // Lazy instantiation. _createOptions must be set before the first creation of the instance.
         private static Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(CreateInstance);
@@ -121,7 +94,7 @@ namespace Microsoft.ML.OnnxRuntime
                 IntPtr /* utf-8 const char* */ message);
 
         // Must keep this delegate alive, otherwise GC will collect it and native code will call into freed memory
-        private static DOrtLoggingFunctionInternal _loggingFunctionInternal = LoggingFunctionThunk;
+        private static readonly DOrtLoggingFunctionInternal _loggingFunctionInternal = LoggingFunctionThunk;
 
         // Customer supplied logging function (if specified)
         private static DOrtLoggingFunction _userLoggingFunction;
@@ -130,7 +103,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Instance members
 
-        private LogLevel _envLogLevel;
+        private OrtLoggingLevel _envLogLevel;
 
         #endregion
 
@@ -140,7 +113,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="handle"></param>
         /// <param name="logLevel"></param>
-        private OrtEnv(IntPtr handle, LogLevel logLevel)
+        private OrtEnv(IntPtr handle, OrtLoggingLevel logLevel)
             : base(handle, true)
         {
             _envLogLevel = logLevel;
@@ -166,7 +139,7 @@ namespace Microsoft.ML.OnnxRuntime
             var logidStr = NativeOnnxValueHelper.StringFromNativeUtf8(logid);
             var codeLocationStr = NativeOnnxValueHelper.StringFromNativeUtf8(codeLocation);
             var messageStr = NativeOnnxValueHelper.StringFromNativeUtf8(message);
-            _userLoggingFunction(param, (LogLevel)severity, categoryStr, logidStr, codeLocationStr, messageStr);
+            _userLoggingFunction(param, (OrtLoggingLevel)severity, categoryStr, logidStr, codeLocationStr, messageStr);
         }
 
         /// <summary>
@@ -179,7 +152,7 @@ namespace Microsoft.ML.OnnxRuntime
             if (!_createOptions.HasValue)
             {
                 // Default creation
-                result = CreateDefaultEnv(LogLevel.Warning, _defaultLogId);
+                result = CreateDefaultEnv(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, _defaultLogId);
             }
             else
             {
@@ -187,7 +160,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 var logId = (string.IsNullOrEmpty(opts.logId)) ? _defaultLogId :
                     NativeOnnxValueHelper.StringToZeroTerminatedUtf8(opts.logId);
-                var logLevel = opts.logLevel ?? LogLevel.Warning;
+                var logLevel = opts.logLevel ?? OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
 
                 var threadOps = opts.threadOptions;
                 var loggingFunc = opts.loggingFunction;
@@ -203,7 +176,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 else if (loggingFunc == null)
                 {
-                    result = CreateWithThreadingOptons(logLevel, logId, threadOps);
+                    result = CreateWithThreadingOptions(logLevel, logId, threadOps);
                 }
                 else
                 {
@@ -214,7 +187,7 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
-        private static OrtEnv CreateDefaultEnv(LogLevel logLevel, byte[] logIdUtf8)
+        private static OrtEnv CreateDefaultEnv(OrtLoggingLevel logLevel, byte[] logIdUtf8)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(logLevel, logIdUtf8, out IntPtr handle));
             var result = new OrtEnv(handle, logLevel);
@@ -222,7 +195,7 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
-        private static OrtEnv CreateWithCustomLogger(LogLevel logLevel, byte[] logIdUtf8, IntPtr loggerParam, DOrtLoggingFunction loggingFunction)
+        private static OrtEnv CreateWithCustomLogger(OrtLoggingLevel logLevel, byte[] logIdUtf8, IntPtr loggerParam, DOrtLoggingFunction loggingFunction)
         {
             System.Diagnostics.Debug.Assert(loggingFunction != null);
 
@@ -236,7 +209,7 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
-        private static OrtEnv CreateWithThreadingOptons(LogLevel logLevel, byte[] logIdUtf8, OrtThreadingOptions threadingOptions)
+        private static OrtEnv CreateWithThreadingOptions(OrtLoggingLevel logLevel, byte[] logIdUtf8, OrtThreadingOptions threadingOptions)
         {
             System.Diagnostics.Debug.Assert(threadingOptions != null);
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnvWithGlobalThreadPools(
@@ -246,7 +219,7 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
-        private static OrtEnv CreateEnvWithCustomLoggerAndGlobalThreadPools(LogLevel logLevel, byte[] logIdUtf8, IntPtr logParam,
+        private static OrtEnv CreateEnvWithCustomLoggerAndGlobalThreadPools(OrtLoggingLevel logLevel, byte[] logIdUtf8, IntPtr logParam,
             OrtThreadingOptions threadingOptions, DOrtLoggingFunction loggingFunction)
         {
             System.Diagnostics.Debug.Assert(threadingOptions != null);
@@ -269,8 +242,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(env.Handle,
-                    OrtLanguageProjection.ORT_PROJECTION_CSHARP));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(env.Handle, ORT_PROJECTION_CSHARP));
             }
             catch (Exception)
             {
@@ -304,14 +276,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options"></param>
         /// <returns></returns>
         /// <exception cref="OnnxRuntimeException">if the singleton has already been created</exception>
-        public static OrtEnv CreateInstanceWithOptions(EnvironmentCreateOptions options)
+        public static OrtEnv CreateInstanceWithOptions(EnvironmentCreationOptions options)
         {
             // Non-thread safe, best effort hopefully helpful check.
             // Environment is usually created once per process, so this should be fine.
             if (_instance.IsValueCreated)
             {
                 throw new OnnxRuntimeException(ErrorCode.RuntimeException,
-                    "Instance already exists, supplied options would not have effect");
+                    "OrtEnv singleton instance already exists, supplied options would not have effect");
             }
 
             _createOptions = options;
@@ -394,7 +366,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Default LogLevel.Warning
         /// </summary>
         /// <returns>env log level</returns>
-        public LogLevel EnvLogLevel
+        public OrtLoggingLevel EnvLogLevel
         {
             get { return _envLogLevel; }
             set

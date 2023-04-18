@@ -71,8 +71,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogVerbosityLevel = 1;
                 Assert.Equal(1, opt.LogVerbosityLevel);
 
-                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
-                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR, opt.LogSeverityLevel);
+                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, opt.LogSeverityLevel);
 
                 opt.IntraOpNumThreads = 4;
                 Assert.Equal(4, opt.IntraOpNumThreads);
@@ -185,8 +185,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogVerbosityLevel = 1;
                 Assert.Equal(1, opt.LogVerbosityLevel);
 
-                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
-                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR, opt.LogSeverityLevel);
+                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, opt.LogSeverityLevel);
 
                 opt.LogId = "MyLogTag";
                 Assert.Equal("MyLogTag", opt.LogId);
@@ -263,31 +263,30 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             ortEnvInstance.Dispose();
             Assert.False(OrtEnv.IsCreated);
 
-            // Re-create with empty options
-            var envOptions = new EnvironmentCreateOptions
+            var envOptions = new EnvironmentCreationOptions
             {
                 // Everything else is unpopulated
-                logLevel = LogLevel.Fatal
+                logLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL
             };
 
             ortEnvInstance = OrtEnv.CreateInstanceWithOptions(envOptions);
             Assert.True(OrtEnv.IsCreated);
-            Assert.Equal(LogLevel.Fatal, ortEnvInstance.EnvLogLevel);
+            Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL, ortEnvInstance.EnvLogLevel);
 
             ortEnvInstance.Dispose();
             Assert.False(OrtEnv.IsCreated);
-            envOptions = new EnvironmentCreateOptions
+            envOptions = new EnvironmentCreationOptions
             {
                 // Everything else is unpopulated
                 logId = "CSharpOnnxRuntimeTestLogid"
             };
 
             ortEnvInstance = OrtEnv.CreateInstanceWithOptions(envOptions);
-            Assert.Equal(LogLevel.Warning, ortEnvInstance.EnvLogLevel);
+            Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, ortEnvInstance.EnvLogLevel);
 
             // Change and see if this takes effect
-            ortEnvInstance.EnvLogLevel = LogLevel.Info;
-            Assert.Equal(LogLevel.Info, ortEnvInstance.EnvLogLevel);
+            ortEnvInstance.EnvLogLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO;
+            Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO, ortEnvInstance.EnvLogLevel);
         }
 
         [Fact(DisplayName = "TestUpdatingEnvWithThreadingOptions")]
@@ -298,7 +297,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             using (var opt = new OrtThreadingOptions())
             {
-                var envOptions = new EnvironmentCreateOptions
+                var envOptions = new EnvironmentCreationOptions
                 {
                     threadOptions = opt
                 };
@@ -315,7 +314,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private static int LoggingInvokes = 0;
 
         private static void CustomLoggingFunction(IntPtr param,
-                                                  LogLevel severity,
+                                                  OrtLoggingLevel severity,
                                                   string category,
                                                   string logId,
                                                   string codeLocation,
@@ -333,10 +332,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // Make sure we start anew
             OrtEnv.Instance().Dispose();
             Assert.False(OrtEnv.IsCreated);
-            var envOptions = new EnvironmentCreateOptions
+            var envOptions = new EnvironmentCreationOptions
             {
                 logId = TestLogId,
-                logLevel = LogLevel.Verbose,
+                logLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE,
                 loggingFunction = CustomLoggingFunction,
                 loggingParam = TestLogParam
             };
@@ -360,10 +359,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             using (var opt = new OrtThreadingOptions())
             {
-                var envOptions = new EnvironmentCreateOptions
+                var envOptions = new EnvironmentCreationOptions
                 {
                     logId = TestLogId,
-                    logLevel = LogLevel.Verbose,
+                    logLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE,
                     threadOptions = opt,
                     loggingFunction = CustomLoggingFunction,
                     loggingParam = TestLogParam

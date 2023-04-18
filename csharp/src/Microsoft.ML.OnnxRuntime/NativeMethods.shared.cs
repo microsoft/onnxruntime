@@ -514,7 +514,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */DOrtCreateEnv(
-            LogLevel defaultLoggingLevel,
+            OrtLoggingLevel defaultLoggingLevel,
             byte[] /*const char* */ logId,
             out IntPtr /*(OrtEnv*)*/ env);
 
@@ -524,7 +524,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /* OrtStatus* */DOrtCreateEnvWithCustomLogger(
             IntPtr /* (OrtLoggingFunction*) */ loggingFunction,
             IntPtr /* (void*) */ loggerParam,
-            LogLevel defaultLoggingLevel,
+            OrtLoggingLevel defaultLoggingLevel,
             byte[] /* const char* */ logId,
             out IntPtr /*(OrtEnv*)*/ env);
 
@@ -532,7 +532,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */DOrtCreateEnvWithGlobalThreadPools(
-            LogLevel defaultWarningLevel,
+            OrtLoggingLevel defaultWarningLevel,
             byte[] /*const char* */ logId,
             IntPtr /*(const OrtThreadingOptions *) */ threadingOptions,
             out IntPtr /*(OrtEnv*)*/ env);
@@ -543,7 +543,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /* OrtStatus* */ DOrtCreateEnvWithCustomLoggerAndGlobalThreadPools(
             IntPtr /* OrtLoggingFunction */ loggingFunction,
             IntPtr /* void* */loggerParam,
-            LogLevel logSeverityLevel,
+            OrtLoggingLevel logSeverityLevel,
             byte[] /* const char* */ logId,
             IntPtr /*(const OrtThreadingOptions *) */ threadingOptions,
             out IntPtr /*(OrtEnv*)*/ env);
@@ -564,7 +564,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtDisableTelemetryEvents OrtDisableTelemetryEvents;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */DOrtUpdateEnvWithCustomLogLevel(IntPtr /*(OrtEnv*)*/ env, LogLevel custom_log_level);
+        public delegate IntPtr /* OrtStatus* */DOrtUpdateEnvWithCustomLogLevel(IntPtr /*(OrtEnv*)*/ env, OrtLoggingLevel custom_log_level);
         public static DOrtUpdateEnvWithCustomLogLevel OrtUpdateEnvWithCustomLogLevel;
 
         #endregion Runtime/Environment API
@@ -1142,7 +1142,8 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtRunOptionsGetRunLogVerbosityLevel OrtRunOptionsGetRunLogVerbosityLevel;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunLogSeverityLevel(IntPtr /* OrtRunOptions* */ options, out OrtLoggingLevel severityLevel);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunLogSeverityLevel(IntPtr /* OrtRunOptions* */ options,
+            out OrtLoggingLevel severityLevel);
         public static DOrtRunOptionsGetRunLogSeverityLevel OrtRunOptionsGetRunLogSeverityLevel;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -1526,7 +1527,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="projection">the source projected language</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetLanguageProjection(IntPtr /* (OrtEnv*) */ environment, OrtLanguageProjection projection);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetLanguageProjection(IntPtr /* (OrtEnv*) */ environment,
+            int projection);
 
         public static DOrtSetLanguageProjection OrtSetLanguageProjection;
 

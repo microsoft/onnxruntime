@@ -623,7 +623,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Log Id to be used for the session. Default is empty string.
         /// </summary>
-        /// <value>returns _defaultLogId value</value>
+        /// <value>returns _logId value</value>
         public string LogId
         {
             get
@@ -642,7 +642,7 @@ namespace Microsoft.ML.OnnxRuntime
                 _logId = value;
             }
         }
-        private string _logId = "";
+        private string _logId = string.Empty;
 
         /// <summary>
         /// Log Severity Level for the session logs. Default = ORT_LOGGING_LEVEL_WARNING

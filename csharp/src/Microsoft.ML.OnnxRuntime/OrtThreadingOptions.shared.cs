@@ -29,6 +29,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Set global inter-op thread count.
         /// Setting it to 0 will allow ORT to choose the number of threads used for parallelization of
         /// multiple kernels. Setting it to 1 will cause the main thread to be used (i.e., no thread pools will be used).
+        /// This setting is only meaningful when the execution mode is set to Parallel.
         /// </summary>
         /// <param name="value">The number of threads.</param>
         public int GlobalInterOpNumThreads
