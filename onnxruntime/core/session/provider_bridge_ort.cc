@@ -1640,7 +1640,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
-  *out = new OrtTensorRTProviderOptionsV2();
+  *out = std::make_unique<OrtTensorRTProviderOptionsV2>().release();
   (*out)->device_id = 0;
   (*out)->has_user_compute_stream = 0;
   (*out)->user_compute_stream = nullptr;
@@ -1755,7 +1755,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
     }
   }
 
-  delete ptr;
+  std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
@@ -1776,16 +1776,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
 ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
   API_IMPL_BEGIN
 #ifdef USE_CUDA
-
-// Need to use 'new' here, so disable C26409
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 26409)
-#endif
-  *out = new OrtCUDAProviderOptionsV2();
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
+  *out = std::make_unique<OrtCUDAProviderOptionsV2>().release();
   (*out)->device_id = 0;
   (*out)->cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::OrtCudnnConvAlgoSearchExhaustive;
   (*out)->gpu_mem_limit = std::numeric_limits<size_t>::max();
@@ -1871,19 +1862,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAP
 
 ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2* ptr) {
 #ifdef USE_CUDA
-
-// Need to use 'delete' here, so disable C26409
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 26409)
-#endif
-
-  delete ptr;
-
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
-
+  std::unique_ptr<OrtCUDAProviderOptionsV2> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
@@ -1905,7 +1884,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CANN,
 ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProviderOptions** out) {
   API_IMPL_BEGIN
 #ifdef USE_CANN
-  *out = new OrtCANNProviderOptions();
+  *out = std::make_unique<OrtCANNProviderOptions>.release();
   (*out)->device_id = 0;
   (*out)->npu_mem_limit = SIZE_MAX;
   (*out)->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
@@ -1986,7 +1965,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
 
 ORT_API(void, OrtApis::ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions* ptr) {
 #ifdef USE_CANN
-  delete ptr;
+  std::unique_ptr<OrtCANNProviderOptions> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
@@ -2009,7 +1988,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
 ORT_API_STATUS_IMPL(OrtApis::CreateDnnlProviderOptions, _Outptr_ OrtDnnlProviderOptions** out) {
   API_IMPL_BEGIN
 #ifdef USE_DNNL
-  *out = new OrtDnnlProviderOptions();
+  *out = std::make_unique<OrtDnnlProviderOptions>.release();
   (*out)->use_arena = true;
   (*out)->threadpool_args = nullptr;
   return nullptr;
@@ -2086,7 +2065,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
 
 ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions* ptr) {
 #ifdef USE_DNNL
-  delete ptr;
+  std::unique_ptr<OrtDnnlProviderOptions> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
