@@ -27,7 +27,6 @@ template <typename T>
 class Concat : public onnxruntime::Concat {
  public:
   explicit Concat(const OpKernelInfo& info) : onnxruntime::Concat(info) {
-
     provider_ = (const_cast<ACLExecutionProvider*>(
         static_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
   }
@@ -39,7 +38,6 @@ class Concat : public onnxruntime::Concat {
  private:
   ACLExecutionProvider* provider_;
 };
-
 
 }  // namespace acl
 }  // namespace onnxruntime

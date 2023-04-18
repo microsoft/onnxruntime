@@ -19,7 +19,7 @@
 #include "arm_compute/runtime/BlobLifetimeManager.h"
 #include "arm_compute/runtime/MemoryManagerOnDemand.h"
 
-//NEON
+// NEON
 #include "arm_compute/runtime/NEON/functions/NEFullyConnectedLayer.h"
 
 namespace onnxruntime {
@@ -65,28 +65,28 @@ class Gemm : public onnxruntime::Gemm<T> {
     bool FC = alpha_ == 1 && (beta_ == 1 || beta_ == 0);
     bool useC = C != nullptr && beta_ != 0;
 
-    if(trans_A_ == CblasTrans){ // transpose input
+    if (trans_A_ == CblasTrans) {  // transpose input
       LOGS_DEFAULT(WARNING) << "Transposed input not supported ; defaulting to cpu implementation";
       return onnxruntime::Gemm<T>::Compute(context);
     }
 
     arm_compute::TensorShape cShape = ACLTensorShape(C->Shape());
-    if(useC &&
-      (cShape.num_dimensions() > 2 ||
-      (cShape.num_dimensions() == 2 && cShape[0] > 1 && cShape[1] > 1))) { // Multi-dimensional Bias
+    if (useC &&
+        (cShape.num_dimensions() > 2 ||
+         (cShape.num_dimensions() == 2 && cShape[0] > 1 && cShape[1] > 1))) {  // Multi-dimensional Bias
       LOGS_DEFAULT(WARNING) << "Multi-dimensional Bias not supported in this implementation; defaulting to cpu implementation";
       return onnxruntime::Gemm<T>::Compute(context);
     }
 
-    if(useC && (cShape.num_dimensions() == 1 && cShape[0] != (long unsigned int) N)) { // Broadcast
+    if (useC && (cShape.num_dimensions() == 1 && cShape[0] != (long unsigned int)N)) {  // Broadcast
       LOGS_DEFAULT(WARNING) << "Multi-dimensional Bias not supported in this implementation; defaulting to cpu implementation";
       return onnxruntime::Gemm<T>::Compute(context);
     }
 
     LOGS_DEFAULT(VERBOSE) << "Gemm ACL:";
-    if(useC && cShape.num_dimensions() == 2){
-      if((cShape[0] == 1 && cShape[1] != (long unsigned int) N) ||
-         (cShape[1] == 1 && cShape[0] != (long unsigned int) N)) {
+    if (useC && cShape.num_dimensions() == 2) {
+      if ((cShape[0] == 1 && cShape[1] != (long unsigned int)N) ||
+          (cShape[1] == 1 && cShape[0] != (long unsigned int)N)) {
         return onnxruntime::Gemm<T>::Compute(context);
       }
       cShape = arm_compute::TensorShape(1, N);
@@ -121,7 +121,7 @@ class Gemm : public onnxruntime::Gemm<T> {
 
       tGEMM.mm_layer = ACLCreateMemoryManager();
 
-      if(FC) {
+      if (FC) {
         auto layer = std::make_shared<arm_compute::NEFullyConnectedLayer>(tGEMM.mm_layer);
         arm_compute::FullyConnectedLayerInfo fc_info;
         fc_info.transpose_weights = trans_B_ == CblasTrans;
@@ -135,7 +135,7 @@ class Gemm : public onnxruntime::Gemm<T> {
       ret = gemmLayers.insert(std::pair<OpKernel*, ACLNEGEMM>((OpKernel*)this, tGEMM));
       pGEMM = &ret.first->second;
     } else {
-      //TODO: valildate shapes
+      // TODO: valildate shapes
       pGEMM = &it->second;
     }
 
@@ -145,12 +145,12 @@ class Gemm : public onnxruntime::Gemm<T> {
 
     ACLImportMemory(pGEMM->a->allocator(), (void*)a_data, A->Shape().Size() * 4);
     ACLImportMemory(pGEMM->b->allocator(), (void*)b_data, B->Shape().Size() * 4);
-    if(useC){
+    if (useC) {
       const T* c_data = C->Data<T>();
       ACLImportMemory(pGEMM->c->allocator(), (void*)c_data, C->Shape().Size() * 4);
     }
 
-    if(D->Shape().Size() != 0 && pGEMM->d->info()->has_padding() ){
+    if (D->Shape().Size() != 0 && pGEMM->d->info()->has_padding()) {
       pGEMM->d.get()->allocator()->allocate();
     } else {
       ACLImportMemory(pGEMM->d->allocator(), (void*)d_data, D->Shape().Size() * 4);
@@ -166,7 +166,7 @@ class Gemm : public onnxruntime::Gemm<T> {
     pGEMM->layer->run();
     pGEMM->mm_layer->clear();
 
-    if(D->Shape().Size() != 0 && pGEMM->d->info()->has_padding() ){
+    if (D->Shape().Size() != 0 && pGEMM->d->info()->has_padding()) {
       importDataFromTensor<T>(pGEMM->d.get(), d_data);
     }
 

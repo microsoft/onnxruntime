@@ -20,7 +20,7 @@ def check_usability():
 
     parser.add_argument(
         "--config_path",
-        help="Path to required operators and types configuration used to build " "the pre-built ORT mobile package.",
+        help="Path to required operators and types configuration used to build the pre-built ORT mobile package.",
         required=False,
         type=pathlib.Path,
         default=check_model_can_use_ort_mobile_pkg.get_default_config_path(),

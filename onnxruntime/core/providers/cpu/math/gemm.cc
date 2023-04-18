@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include "core/providers/cpu/math/gemm.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"

@@ -437,7 +437,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_WithGradientAccumulation_WithMixedPreci
   config.loss_scale_input_name = k_loss_scaling_factor_name;
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
-#endif //ORT_USE_NCCL && USE_MPI
+#endif  // ORT_USE_NCCL && USE_MPI
 
 #ifdef ORT_USE_NCCL
 TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_NoMixedPrecision) {

@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 namespace ort_dnnl {
-DnnlReshape::DnnlReshape() { }
+DnnlReshape::DnnlReshape() {}
 
 void DnnlReshape::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
@@ -28,7 +28,7 @@ void DnnlReshape::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   ReshapeHelper helper(TensorShape(data_dims_span), reshape_shape, GetAllowZero(node));
 
   dnnl::memory::dims reshape_shape_dims(reshape_shape.cbegin(), reshape_shape.cend());
-  //the dnnl::memory::desc.reshape(shape) failed on some models so we instead create a new dnnl:memory::desc
+  // the dnnl::memory::desc.reshape(shape) failed on some models so we instead create a new dnnl:memory::desc
   dnnl::memory::desc reshaped_md(reshape_shape_dims, node.Input(IN_DATA).Type(), sp.GetDnnlFormat(reshape_shape.size()));
 
   dnnl::memory reshaped_mem = dnnl::memory(reshaped_md, dnnl_engine, nullptr);
@@ -39,7 +39,7 @@ void DnnlReshape::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
 bool DnnlReshape::GetAllowZero(DnnlNode& node) {
   auto attr = node.Attributes().find("allowzero");
-  int64_t allowzero = 0;  //Default value according to ONNX spec
+  int64_t allowzero = 0;  // Default value according to ONNX spec
   if (attr != node.Attributes().end() &&
       attr->second().type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT) {
     allowzero = attr->second().i();

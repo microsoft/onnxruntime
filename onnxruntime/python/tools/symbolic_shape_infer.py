@@ -190,6 +190,9 @@ class SymbolicShapeInference:
             "Neg": self._infer_symbolic_compute_ops,
             # contrib ops:
             "Attention": self._infer_Attention,
+            "PackedAttention": self._infer_PackedAttention,
+            "RemovePadding": self._infer_RemovePadding,
+            "RestorePadding": self._infer_RestorePadding,
             "BiasGelu": self._infer_BiasGelu,
             "MultiHeadAttention": self._infer_MultiHeadAttention,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
@@ -445,9 +448,12 @@ class SymbolicShapeInference:
             "LayerNormalization",
             "LongformerAttention",
             "RelativePositionBias",
+            "RemovePadding",
+            "RestorePadding",
             "SimplifiedLayerNormalization",
             "SkipLayerNormalization",
             "SkipSimplifiedLayerNormalization",
+            "PackedAttention",
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
@@ -548,7 +554,13 @@ class SymbolicShapeInference:
         self.symbolic_dims_.update(new_dims)
         return symbolic_shape_inference
 
-    def _get_int_values(self, node, broadcast=False):
+    def _get_int_or_float_values(self, node, broadcast=False, allow_float_values=False):
+        def int_or_float(value, allow_float_values):
+            # If casting into int has precision loss: keep float output
+            if allow_float_values and value % 1 != 0:
+                return value
+            return int(value)
+
         values = [self._try_get_value(node, i) for i in range(len(node.input))]
         if all([v is not None for v in values]):
             # some shape compute is in floating point, cast to int for sympy
@@ -558,10 +570,10 @@ class SymbolicShapeInference:
                 if len(v.shape) > 1:
                     new_v = None  # ignore value for rank > 1
                 elif len(v.shape) == 0:
-                    new_v = int(v.item())
+                    new_v = int_or_float(v.item(), allow_float_values)
                 else:
                     assert len(v.shape) == 1
-                    new_v = [int(vv) for vv in v]
+                    new_v = [int_or_float(vv, allow_float_values) for vv in v]
                 values[i] = new_v
         values_len = [len(v) if type(v) == list else 0 for v in values]
         max_len = max(values_len)
@@ -581,7 +593,15 @@ class SymbolicShapeInference:
 
     def _compute_on_sympy_data(self, node, op_func):
         assert len(node.output) == 1
-        values = self._get_int_values(node, broadcast=True)
+
+        # Before mul & div operations
+        # cast inputs into interger might lose decimal part and reduce precision
+        # keep them as float, finish the operation, then cast the result into integer
+        if node.op_type in ["Mul", "Div"]:
+            values = self._get_int_or_float_values(node, broadcast=True, allow_float_values=True)
+        else:
+            values = self._get_int_or_float_values(node, broadcast=True)
+
         if all([v is not None for v in values]):
             is_list = [type(v) == list for v in values]
             as_list = any(is_list)
@@ -781,7 +801,9 @@ class SymbolicShapeInference:
     def _infer_symbolic_compute_ops(self, node):
         funcs = {
             "Add": lambda l: l[0] + l[1],  # noqa: E741
-            "Div": lambda l: l[0] // l[1],  # integer div in sympy  # noqa: E741
+            "Div": lambda l: int(l[0] // l[1])  # noqa: E741
+            if isinstance(l[0] // l[1], float)
+            else l[0] // l[1],  # integer div in sympy
             "Equal": lambda l: l[0] == l[1],  # noqa: E741
             "Floor": lambda l: sympy.floor(l[0]),  # noqa: E741
             "Max": lambda l: l[1]  # noqa: E741
@@ -790,7 +812,7 @@ class SymbolicShapeInference:
             "Min": lambda l: l[1]  # noqa: E741
             if is_literal(l[0]) and int(l[0]) > self.int_max_
             else (l[0] if is_literal(l[1]) and int(l[1]) > self.int_max_ else sympy.Min(l[0], l[1])),
-            "Mul": lambda l: l[0] * l[1],  # noqa: E741
+            "Mul": lambda l: int(l[0] * l[1]) if isinstance(l[0] * l[1], float) else l[0] * l[1],  # noqa: E741
             "Sub": lambda l: l[0] - l[1],  # noqa: E741
             "Where": lambda l: l[1] if l[0] else l[2],  # noqa: E741
             "Neg": lambda l: -l[0],  # noqa: E741
@@ -832,7 +854,7 @@ class SymbolicShapeInference:
 
     def _infer_Concat(self, node):  # noqa: N802
         if any([i in self.sympy_data_ or i in self.initializers_ for i in node.input]):
-            values = self._get_int_values(node)
+            values = self._get_int_or_float_values(node)
             if all([v is not None for v in values]):
                 assert get_attribute(node, "axis") == 0
                 self.sympy_data_[node.output[0]] = []
@@ -895,7 +917,7 @@ class SymbolicShapeInference:
         self.sympy_data_[node.output[0]] = numpy_helper.to_array(t)
 
     def _infer_ConstantOfShape(self, node):  # noqa: N802
-        sympy_shape = self._get_int_values(node)[0]
+        sympy_shape = self._get_int_or_float_values(node)[0]
         vi = self.known_vi_[node.output[0]]
         if sympy_shape is not None:
             if type(sympy_shape) != list:
@@ -1370,7 +1392,7 @@ class SymbolicShapeInference:
 
     def _infer_aten_argmax(self, node):
         new_shape = None
-        if node.input[1] == "":
+        if not node.input[1]:
             # The argmax of the flattened input is returned.
             new_shape = []
         else:
@@ -1436,13 +1458,13 @@ class SymbolicShapeInference:
 
         # this works for opsets < 14 and 14 since we check i < len(node.output) in the loop
         for i in [1, 2, 3, 4]:
-            if i < len(node.output) and node.output[i] != "":
+            if i < len(node.output) and node.output[i]:
                 # all of these parameters have the same shape as the 1st input
                 self._propagate_shape_and_type(node, input_index=1, output_index=i)
 
     def _infer_Range(self, node):  # noqa: N802
         vi = self.known_vi_[node.output[0]]
-        input_data = self._get_int_values(node)
+        input_data = self._get_int_or_float_values(node)
         if all([i is not None for i in input_data]):
             start = as_scalar(input_data[0])
             limit = as_scalar(input_data[1])
@@ -1496,7 +1518,7 @@ class SymbolicShapeInference:
         axes = get_attribute(node, "axes")
         keep_dims = get_attribute(node, "keepdims", 1)
         if keep_dims == 0 and axes == [0]:
-            data = self._get_int_values(node)[0]
+            data = self._get_int_or_float_values(node)[0]
             if data is not None:
                 self.sympy_data_[node.output[0]] = sympy_reduce_product(data)
 
@@ -1910,7 +1932,7 @@ class SymbolicShapeInference:
                 if len(symbolic_dimensions) > 0:
                     logger.debug(
                         f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
-                        + f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}"
+                        f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}"
                     )
         else:
             axes = [handle_negative_axis(a, len(input_shape)) for a in axes]
@@ -1923,7 +1945,7 @@ class SymbolicShapeInference:
                     if self.verbose_ > 0 and type(input_shape[i]) != int:
                         logger.debug(
                             f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
-                            + f"Assuming the dimension '{input_shape[i]}' at index {i} of the input to be equal to 1."
+                            f"Assuming the dimension '{input_shape[i]}' at index {i} of the input to be equal to 1."
                         )
 
         vi = self.known_vi_[node.output[0]]
@@ -1964,7 +1986,7 @@ class SymbolicShapeInference:
         if get_opset(self.out_mp_) <= 9:
             k = get_attribute(node, "k")
         else:
-            k = self._get_int_values(node)[1]
+            k = self._get_int_or_float_values(node)[1]
 
         if k is None:
             k = self._new_symbolic_dim_from_output(node)
@@ -2080,6 +2102,54 @@ class SymbolicShapeInference:
                             past_shape[3] = f"{past_shape[3]}+{input_shape[1]}"
                     vi = self.known_vi_[node.output[1]]
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+
+    def _infer_PackedAttention(self, node):  # noqa: N802
+        shape = self._get_shape(node, 0)
+        shape_weights = self._get_shape(node, 1)
+        shape_bias = self._try_get_shape(node, 2)
+        if shape_bias is not None:
+            assert len(shape_bias) == 1
+        tripled_hidden_size = shape_bias[0] if shape_bias is not None else shape_weights[1]
+        if shape and len(shape) == 2:
+            qkv_hidden_sizes_attr = get_attribute(node, "qkv_hidden_sizes")
+            if qkv_hidden_sizes_attr is not None:
+                assert len(qkv_hidden_sizes_attr) == 3
+                shape[1] = int(qkv_hidden_sizes_attr[2])
+            elif isinstance(tripled_hidden_size, int):
+                shape[1] = int(tripled_hidden_size / 3)
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
+
+    def _infer_RemovePadding(self, node):  # noqa: N802
+        shape = self._get_shape(node, 0)
+        if shape and len(shape) == 3:
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, ["token_count", shape[2]]))
+
+            vi_token_offset = self.known_vi_[node.output[1]]
+            vi_token_offset.CopyFrom(
+                helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT32, [shape[0], shape[1]])
+            )
+
+            vi_cumulated_seq_len = self.known_vi_[node.output[2]]
+            vi_cumulated_seq_len.CopyFrom(
+                helper.make_tensor_value_info(node.output[2], onnx.TensorProto.INT32, ["batch_size + 1"])
+            )
+
+            vi_max_seq_len = self.known_vi_[node.output[3]]
+            vi_max_seq_len.CopyFrom(helper.make_tensor_value_info(node.output[3], onnx.TensorProto.INT32, [1]))
+
+    def _infer_RestorePadding(self, node):  # noqa: N802
+        shape_input = self._get_shape(node, 0)
+        shape_token_offset = self._get_shape(node, 1)
+        if shape_input and len(shape_input) == 2 and shape_token_offset and len(shape_token_offset) == 2:
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+
+            output_shape = [shape_token_offset[0], shape_token_offset[1], shape_input[1]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_BiasGelu(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)

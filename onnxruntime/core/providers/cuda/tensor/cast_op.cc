@@ -71,15 +71,15 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<SrcT>());
   size_t count = shape.Size();
 
-#define CASE(TP_TYPE, DstT)                                                                          \
-  case TP_TYPE:                                                                                      \
-    if (count > 0) {                                                                                 \
-      Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                                    \
-          Stream(context),                                                                           \
-          x_data,                                                                                    \
+#define CASE(TP_TYPE, DstT)                                                                 \
+  case TP_TYPE:                                                                             \
+    if (count > 0) {                                                                        \
+      Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                           \
+          Stream(context),                                                                  \
+          x_data,                                                                           \
           reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->MutableData<DstT>()), \
-          count);                                                                                    \
-    }                                                                                                \
+          count);                                                                           \
+    }                                                                                       \
     break;
 
   switch (to_) {

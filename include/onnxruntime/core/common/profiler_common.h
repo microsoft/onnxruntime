@@ -75,7 +75,7 @@ struct EventRecord {
 
 using Events = std::vector<EventRecord>;
 
-//Execution Provider Profiler
+// Execution Provider Profiler
 class EpProfiler {
  public:
   virtual ~EpProfiler() = default;

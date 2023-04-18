@@ -392,18 +392,16 @@ ORT_API_STATUS_IMPL(winmla::ModelGetOutputDescription, _In_ const OrtModel* mode
 
 ORT_API_STATUS_IMPL(winmla::ModelGetInputTypeInfo, _In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
-  if (auto status = OrtTypeInfo::FromTypeProto(&model->UseModelInfo()->input_features_[index]->type(), type_info)) {
-    return status;
-  }
+  auto info = OrtTypeInfo::FromTypeProto(model->UseModelInfo()->input_features_[index]->type());
+  *type_info = info.release();
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::ModelGetOutputTypeInfo, _In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
-  if (auto status = OrtTypeInfo::FromTypeProto(&model->UseModelInfo()->output_features_[index]->type(), type_info)) {
-    return status;
-  }
+  auto info = OrtTypeInfo::FromTypeProto(model->UseModelInfo()->output_features_[index]->type());
+  *type_info = info.release();
   return nullptr;
   API_IMPL_END
 }
@@ -744,17 +742,11 @@ ORT_API(void, winmla::ReleaseModel, OrtModel* ptr) {
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/tensor_type_and_shape.h"
 
-OrtStatus* GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type, const onnxruntime::TensorShape shape, const std::vector<std::string>* dim_params, OrtTensorTypeAndShapeInfo** out);
-
 ORT_API_STATUS_IMPL(winmla::CreateTensorTypeInfo, _In_ const int64_t* dim_values, size_t dim_count, ONNXTensorElementDataType type, _Out_ OrtTypeInfo** ort_type_info) {
   API_IMPL_BEGIN
-  OrtTensorTypeAndShapeInfo* data = nullptr;
   auto tensor_shape = onnxruntime::TensorShape(dim_values, dim_count);
-  auto st = GetTensorShapeAndTypeHelper(type, tensor_shape, nullptr, &data);
-  if (st != nullptr){
-    return st;
-  }
-  *ort_type_info = new OrtTypeInfo(ONNX_TYPE_TENSOR, data);
+  auto type_and_shape =  OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(type, std::move(tensor_shape), nullptr);
+  *ort_type_info = OrtTypeInfo::MakePtr(ONNX_TYPE_TENSOR, std::move(type_and_shape)).release();
   return nullptr;
   API_IMPL_END
 }
