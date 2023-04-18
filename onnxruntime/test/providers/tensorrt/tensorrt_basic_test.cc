@@ -347,7 +347,7 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   cuda_provider->RegisterAllocator(allocator_manager);
   auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
   std::vector<int64_t> dims_op_x = {12, 256, 256};
-  std::vector<float> values_op_x(1.0f, 786432); // 786432=12*256*256
+  std::vector<float> values_op_x(1.0f, 786432);// 786432=12*256*256
   OrtValue ml_value_x;
   CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
   OrtValue ml_value_y;
@@ -395,15 +395,15 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
       nullptr,
       nullptr};
 
-    std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-    std::cout << model_name << std::endl;
-    auto status = session_object.Load(model_name);
-    ASSERT_TRUE(status.IsOK());
-    status = session_object.Initialize();
-    ASSERT_TRUE(status.IsOK());
-    status = session_object.Run(run_options, feeds, output_names, &fetches);
-    ASSERT_TRUE(status.IsOK());
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  std::cout << model_name << std::endl;
+  auto status = session_object.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
 }
 
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {

@@ -15,7 +15,7 @@ extern TensorrtLogger& GetTensorrtLogger();
 /*
  * Create custom op domain list for TRT plugins.
  *
- * Here, we collect all registered TRT plugins from TRT registry and create custom ops with "trt.plugins" domain. 
+ * Here, we collect all registered TRT plugins from TRT registry and create custom ops with "trt.plugins" domain.
  * Additionally, if users specify extra plugin libraries, TRT EP will load them at runtime which will register those
  * plugins to TRT plugin registry and later TRT EP can get them as well.
  *
@@ -38,7 +38,7 @@ common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& i
   if (info.has_trt_options) {
     if (!info.extra_plugin_lib_paths.empty()) {
       extra_plugin_lib_paths = info.extra_plugin_lib_paths;
-    } 
+    }
   } else {
     const std::string extra_plugin_lib_paths_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kExtraPluginLibPaths);
     if (!extra_plugin_lib_paths_env.empty()) {
@@ -53,7 +53,7 @@ common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& i
     while (std::getline(extra_plugin_libs, lib, ';')) {
       auto status = LoadDynamicLibrary(ToPathString(lib));
       if (status == Status::OK()) {
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully load " << lib; 
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully load " << lib;
       } else {
         LOGS_DEFAULT(WARNING) << "[TensorRT EP]" << status.ToString();
       }

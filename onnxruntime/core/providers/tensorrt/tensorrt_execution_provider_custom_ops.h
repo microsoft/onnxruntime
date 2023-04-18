@@ -22,7 +22,7 @@ struct TensorRTCustomKernel {
       : compute_stream_(compute_stream) {
   }
 
-  void Compute(OrtKernelContext* context) {};  // The implementation is in TensorRT plugin. No need to implement it here.
+  void Compute(OrtKernelContext* context){};  // The implementation is in TensorRT plugin. No need to implement it here.
 
  private:
   void* compute_stream_;
@@ -45,7 +45,7 @@ struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKern
 
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
-  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };   
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };
 
   size_t GetOutputTypeCount() const { return num_outputs_; };
 
@@ -59,7 +59,7 @@ struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKern
   const char* provider_{onnxruntime::kTensorrtExecutionProvider};
   void* compute_stream_;
   const char* name_;
-  size_t num_inputs_ = 1;  // set to 1 to match with default min_arity for variadic input  
-  size_t num_outputs_ = 1; // set to 1 to match with default min_arity for variadic output 
+  size_t num_inputs_ = 1;  // set to 1 to match with default min_arity for variadic input
+  size_t num_outputs_ = 1; // set to 1 to match with default min_arity for variadic output
 };
-}
+}  // namespace onnxruntime

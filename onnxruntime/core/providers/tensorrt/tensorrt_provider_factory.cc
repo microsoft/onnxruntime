@@ -190,12 +190,12 @@ struct Tensorrt_Provider : Provider {
     auto& options = *reinterpret_cast<const OrtTensorRTProviderOptionsV2*>(provider_options);
     return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(options);
   }
-  
+ 
   void GetCustomOpDomainList(IExecutionProviderFactory* factory, std::vector<OrtCustomOpDomain*>& custom_op_domains_ptr) override {
     TensorrtProviderFactory* trt_factory = reinterpret_cast<TensorrtProviderFactory*>(factory);
     trt_factory->GetCustomOpDomainList(custom_op_domains_ptr);
   }
-  
+
   void Initialize() override {
     InitializeRegistry();
   }

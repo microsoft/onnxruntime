@@ -1608,7 +1608,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ Or
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Rocm: Failed to load shared library");
   }
- 
+
   options->provider_factories.push_back(factory);
   return nullptr;
   API_IMPL_END
@@ -1626,7 +1626,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   std::vector<OrtCustomOpDomain*> custom_op_domains;
   TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
   for (auto ptr : custom_op_domains) {
-      options->custom_op_domains_.push_back(ptr);
+    options->custom_op_domains_.push_back(ptr);
   }
   return nullptr;
   API_IMPL_END
