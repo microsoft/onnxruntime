@@ -114,7 +114,7 @@ TEST(GemmOpTest, GemmNoTrans_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -414,7 +414,7 @@ TEST(GemmOpTest, GemmNaN) {
 #if defined(USE_DNNL)
 TEST(GemmOpTest, GemmNaN_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -426,20 +426,20 @@ TEST(GemmOpTest, GemmNaN_bfloat16) {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 0.0f);
   test.AddInput<BFloat16>("A", {2, 4},
-                               MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
-                                             -1.0f, -2.0f, -3.0f, -4.0f}));
+                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
+                                        -1.0f, -2.0f, -3.0f, -4.0f}));
   test.AddInput<BFloat16>("B", {4, 3},
-                               MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
-                                             1.0f, 1.0f, 1.0f, 1.0f,
-                                             1.0f, 1.0f, 1.0f, 1.0f}));
+                          MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
+                                        1.0f, 1.0f, 1.0f, 1.0f,
+                                        1.0f, 1.0f, 1.0f, 1.0f}));
   test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
   test.AddOutput<BFloat16>("Y", {2, 3},
-                               MakeBFloat16({10.0f, 10.0f, 10.0f,
-                                             -10.0f, -10.0f, -10.0f}));
+                           MakeBFloat16({10.0f, 10.0f, 10.0f,
+                                         -10.0f, -10.0f, -10.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif  //  USE_DNNL
+#endif                                                                                                                //  USE_DNNL
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: Seg fault in parser
 }
 #endif  //  USE_DNNL
@@ -473,7 +473,7 @@ TEST(GemmOpTest, GemmScalarBroadcast) {
 #if defined(USE_DNNL)
 TEST(GemmOpTest, GemmScalarBroadcast_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -497,7 +497,7 @@ TEST(GemmOpTest, GemmScalarBroadcast_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif  //  USE_DNNL
+#endif                                                                                                                //  USE_DNNL
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: Seg fault in parser
 }
 #endif  //  USE_DNNL
@@ -530,7 +530,7 @@ TEST(GemmOpTest, Gemm2DBroadcast_1) {
 #if defined(USE_DNNL)
 TEST(GemmOpTest, Gemm2DBroadcast_1_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -554,7 +554,7 @@ TEST(GemmOpTest, Gemm2DBroadcast_1_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif  //  USE_DNNL
+#endif                                                                                                                //  USE_DNNL
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: Seg fault in parser
 }
 #endif  //  USE_DNNL
@@ -589,7 +589,7 @@ TEST(GemmOpTest, Gemm2DBroadcast_2) {
 #if defined(USE_DNNL)
 TEST(GemmOpTest, Gemm2DBroadcast_2_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -613,7 +613,7 @@ TEST(GemmOpTest, Gemm2DBroadcast_2_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif  //  USE_DNNL
+#endif                                                                                                                //  USE_DNNL
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: Seg fault in parser
 }
 #endif  //  USE_DNNL
@@ -647,7 +647,7 @@ TEST(GemmOpTest, GemmFalseBroadcast) {
 #if defined(USE_DNNL)
 TEST(GemmOpTest, GemmFalseBroadcast_2_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }

@@ -12,14 +12,13 @@ using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      RelativePositionBias ,                                      \
+      RelativePositionBias,                                       \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
@@ -63,8 +62,8 @@ Status RelPosAttnBias<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t num_buckets = bias_table_dims[0];
   const int64_t num_heads = bias_table_dims[1];
 
-  const int64_t query_len =  *query_length->Data<int64_t>();
-  const int64_t key_len =  *key_length->Data<int64_t>();
+  const int64_t query_len = *query_length->Data<int64_t>();
+  const int64_t key_len = *key_length->Data<int64_t>();
 
   if (query_len != key_len) {
     ORT_THROW("Relatvie position bias currently only support query length equal to key length in Self Attention.");
@@ -145,7 +144,7 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   typedef typename ToCudaType<T>::MappedType CudaT;
   const auto BNS = batch_size * num_heads_ * seq_len;
   const size_t elements_in_query = (size_t)BNS * (size_t)head_size;
-  const size_t elements_after_gemm = (size_t)BNS *(size_t)D;
+  const size_t elements_after_gemm = (size_t)BNS * (size_t)D;
   bool reuse_output = (seq_len >= D);
   size_t workspace_size = sizeof(T) * (elements_in_query + (reuse_output ? (size_t)0 : elements_after_gemm));
   auto workspace = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());

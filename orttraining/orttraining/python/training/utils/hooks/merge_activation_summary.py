@@ -144,7 +144,7 @@ def main():
             shutil.rmtree(args.output_dir)
         else:
             raise FileExistsError(
-                f"Output directory {args.output_dir} already exists. " "Enable --overwrite to allow overwriting it."
+                f"Output directory {args.output_dir} already exists. Enable --overwrite to allow overwriting it."
             )
 
     logger.info("Arguments: %s", str(args))

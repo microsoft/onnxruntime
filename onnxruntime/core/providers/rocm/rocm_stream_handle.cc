@@ -1,6 +1,6 @@
 #include "core/providers/rocm/rocm_stream_handle.h"
 #include "core/providers/rocm/rocm_common.h"
-//#include "core/common/spin_pause.h"
+// #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
 
@@ -40,9 +40,9 @@ RocmStream::RocmStream(hipStream_t stream,
                        bool own_flag,
                        miopenHandle_t external_miopen_handle,
                        rocblas_handle external_rocblas_handle) : Stream(stream, device),
-                                                                own_stream_(own_flag),
-                                                                cpu_allocator_(cpu_allocator),
-                                                                release_cpu_buffer_on_rocm_stream_(release_cpu_buffer_on_rocm_stream) {
+                                                                 own_stream_(own_flag),
+                                                                 cpu_allocator_(cpu_allocator),
+                                                                 release_cpu_buffer_on_rocm_stream_(release_cpu_buffer_on_rocm_stream) {
   if (own_flag) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
     ROCBLAS_CALL_THROW(rocblas_set_stream(rocblas_handle_, stream));

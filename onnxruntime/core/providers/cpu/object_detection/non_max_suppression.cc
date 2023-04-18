@@ -15,7 +15,7 @@ limitations under the License.
 #include "non_max_suppression_helper.h"
 #include <queue>
 #include <utility>
-//TODO:fix the warnings
+// TODO:fix the warnings
 #ifdef _MSC_VER
 #pragma warning(disable : 4244)
 #endif
@@ -190,9 +190,9 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
           selected_indices.emplace_back(batch_index, class_index, next_top_score.index_);
         }
         sorted_boxes.pop();
-      }  //while
-    }    //for class_index
-  }      //for batch_index
+      }  // while
+    }    // for class_index
+  }      // for batch_index
 
   constexpr auto last_dim = 3;
   const auto num_selected = selected_indices.size();

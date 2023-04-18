@@ -97,8 +97,8 @@ struct PoolAttributes {
   AutoPadType auto_pad;
 
   TensorShapeVector SetOutputSize(const TensorShape& input_shape,
-                                     int64_t output_channel,
-                                     TensorShapeVector* actual_pads) const {
+                                  int64_t output_channel,
+                                  TensorShapeVector* actual_pads) const {
     ORT_ENFORCE(input_shape.Size() > 0 || input_shape[0] == 0,
                 "Invalid input shape. Only N can be zero. Got:", input_shape);
     TensorShapeVector output_dims;

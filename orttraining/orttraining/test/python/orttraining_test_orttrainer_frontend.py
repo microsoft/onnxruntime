@@ -28,7 +28,7 @@ pytorch_110 = StrictVersion(".".join(torch.__version__.split(".")[:2])) >= Stric
 
 def get_model_opset(model_onnx):
     for op in model_onnx.opset_import:
-        if op.domain == "":
+        if op.domain == "":  # noqa: PLC1901
             return op.version
     return None
 

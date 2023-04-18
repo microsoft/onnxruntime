@@ -19,7 +19,6 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 static const char* c_OpDomain = "test.customop";
 
 struct KernelOne {
-
   void Compute(OrtKernelContext* context) {
     // Setup inputs
     Ort::KernelContext ctx(context);
@@ -49,7 +48,6 @@ struct KernelOne {
 };
 
 struct KernelTwo {
-
   void Compute(OrtKernelContext* context) {
     // Setup inputs
     Ort::KernelContext ctx(context);
@@ -87,7 +85,6 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
 
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
-
 };
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
@@ -102,7 +99,6 @@ struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
 
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; };
-
 };
 
 static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
@@ -128,7 +124,8 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     Ort::UnownedSessionOptions session_options(options);
     session_options.Add(domain);
     AddOrtCustomOpDomainToContainer(std::move(domain));
-  } ORT_CATCH (const std::exception& e) {
+  }
+  ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
       Ort::Status status{e};
       result = status.release();

@@ -447,9 +447,9 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   int batch_size = narrow<int>(X_shape[1]);
   int input_size = narrow<int>(X_shape[2]);
 
-//#ifdef _DEBUG
-//  std::cout << "GRU: seq_len: " << seq_length << " batch_size: " << batch_size << " input_size: " << input_size << std::endl;
-//#endif
+  // #ifdef _DEBUG
+  //   std::cout << "GRU: seq_len: " << seq_length << " batch_size: " << batch_size << " input_size: " << input_size << std::endl;
+  // #endif
 
   const auto& W_shape = (W != nullptr) ? W->Shape() : pre_packed_input_weights_.shape_;
   const auto& R_shape = (R != nullptr) ? R->Shape() : pre_packed_recurrent_ZR_.shape_;  // original shape saved
