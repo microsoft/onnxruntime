@@ -41,7 +41,7 @@ Status LaunchGroupNormKernel(
   GroupNormNHWCParams<T> params(tuning_ctx, stream, output, reinterpret_cast<float*>(workspace), input, gamma, beta,
                                 batch_size, height, width, num_channels, num_groups, epsilon, use_swish_activation);
 
-  if (tuning_ctx != nullptr && tuning_ctx->IsTunableOpEnabled()) {
+  if (tuning_ctx->IsTunableOpEnabled()) {
     static GroupNormNHWCTunableOp<T> op;
     return op(&params);
   }
