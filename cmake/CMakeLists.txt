@@ -2,7 +2,11 @@
 # Licensed under the MIT License.
 
 # Minimum CMake required
-cmake_minimum_required(VERSION 3.24)
+if(WIN32)
+  cmake_minimum_required(VERSION 3.25)
+else()
+  cmake_minimum_required(VERSION 3.24)
+endif()
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
@@ -338,7 +342,7 @@ function(set_msvc_c_cpp_compiler_warning_level warning_level)
 endfunction()
 
 
-if(MSVC_Z7_OVERRIDE)
+if(MSVC_Z7_OVERRIDE AND ${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.26.0")
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
 endif(MSVC_Z7_OVERRIDE)
 
