@@ -121,7 +121,6 @@ void GradientOpTester::Run(
     };
     bool has_run = false;
 
-
     if (execution_providers) {
       for (auto& entry : *execution_providers) {
         if (entry->Type() == kDmlExecutionProvider) {
@@ -188,7 +187,7 @@ void GradientOpTester::Run(
           if (node.OpType() == kConstant)
             continue;
 
-          //if node is not registered for the provider, skip
+          // if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
 
           // provider types that don't use the KernelRegistry
@@ -238,7 +237,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, O
                                                int output_index_to_use_as_loss,
                                                int data_index_of_output) {
   OpTester::FillFeedsAndOutputNames(feeds, output_names);
-  output_names.clear();  //ignore output names
+  output_names.clear();  // ignore output names
 
   // add gradients as output instead
   for (size_t i = 0; i < input_data_.size(); ++i) {
@@ -257,7 +256,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, O
     auto shape = output_data_[i].data_.Get<Tensor>().Shape();
     std::vector<float> values(shape.Size(), 0.0);
     if (output_index_to_use_as_loss == static_cast<int>(i)) {
-      values[data_index_of_output] = 1.0;  //set only one value to one to construct jacobian matrix
+      values[data_index_of_output] = 1.0;  // set only one value to one to construct jacobian matrix
     }
     AddData<float>(gradient_data, (output_data_[i].def_.Name() + "_grad").c_str(), shape.AsShapeVector(), values.data(), values.size(), true);
   }

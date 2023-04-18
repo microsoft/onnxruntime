@@ -62,10 +62,10 @@ __device__ inline void Softmax(const int all_sequence_length,
     if (i >= valid_start) {
       const int index = offset + i;
       float input_at_idx = no_rpb
-                           ? float(input[index])
-                           : float(input[index] + (broadcast_rel_pos_bias
-                                                   ? rel_pos_bias[index % size_per_batch]
-                                                   : rel_pos_bias[index]));
+                               ? float(input[index])
+                               : float(input[index] + (broadcast_rel_pos_bias
+                                                           ? rel_pos_bias[index % size_per_batch]
+                                                           : rel_pos_bias[index]));
       if (thread_data_max < input_at_idx) {
         thread_data_max = input_at_idx;
       }
@@ -148,10 +148,10 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
   const bool no_rpb = (rel_pos_bias == nullptr);
   const int size_per_batch = gridDim.x * all_sequence_length;
   float input_data = no_rpb
-                     ? float(input[index])
-                     : float(input[index] + (broadcast_rel_pos_bias
-                                            ? rel_pos_bias[index % size_per_batch]
-                                            : rel_pos_bias[index]));
+                         ? float(input[index])
+                         : float(input[index] + (broadcast_rel_pos_bias
+                                                     ? rel_pos_bias[index % size_per_batch]
+                                                     : rel_pos_bias[index]));
   float thread_data_max = is_valid ? input_data : float(-CUDART_INF_F);
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
 
@@ -229,12 +229,12 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
     // a math transform as below is leveraged to get a stable softmax:
     // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
     float input_data = is_valid
-                       ? (rel_pos_bias
-                          ? float(input[index] + (broadcast_rel_pos_bias
-                                                  ? rel_pos_bias[index % size_per_batch]
-                                                  : rel_pos_bias[index]))
-                          : float(input[index]))
-                       : float(-CUDART_INF_F);
+                           ? (rel_pos_bias
+                                  ? float(input[index] + (broadcast_rel_pos_bias
+                                                              ? rel_pos_bias[index % size_per_batch]
+                                                              : rel_pos_bias[index]))
+                                  : float(input[index]))
+                           : float(-CUDART_INF_F);
     cached_data[seq_idx] = input_data;
     thread_data_max = max(thread_data_max, input_data);
   }
@@ -300,8 +300,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
     if (rel_pos_bias == nullptr) {
       thread_data = float(input[index]) * rsqrt_head_size;
     } else {
-      T rel_pos_bias_value = broadcast_rel_pos_bias ?
-                             rel_pos_bias[index % size_per_batch] : rel_pos_bias[index];
+      T rel_pos_bias_value = broadcast_rel_pos_bias ? rel_pos_bias[index % size_per_batch] : rel_pos_bias[index];
       thread_data = float(input[index] + rel_pos_bias_value) * rsqrt_head_size;
     }
 
@@ -433,8 +432,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     }
 
     if (rel_pos_bias != nullptr) {
-      float rel_pos_bias_value = broadcast_rel_pos_bias ?
-                                 float(rel_pos_bias[index % size_per_batch]) : float(rel_pos_bias[index]);
+      float rel_pos_bias_value = broadcast_rel_pos_bias ? float(rel_pos_bias[index % size_per_batch]) : float(rel_pos_bias[index]);
       thread_data += rel_pos_bias_value;
     }
   }
@@ -590,10 +588,10 @@ __device__ inline void SoftmaxSmallPacked(const int sequence_length,
   const bool no_rpb = (rel_pos_bias == nullptr);
   const int size_per_batch = gridDim.x * sequence_length;
   float input_data = no_rpb
-                     ? float(input[index])
-                     : float(input[index] + (broadcast_rel_pos_bias
-                                            ? rel_pos_bias[index % size_per_batch]
-                                            : rel_pos_bias[index]));
+                         ? float(input[index])
+                         : float(input[index] + (broadcast_rel_pos_bias
+                                                     ? rel_pos_bias[index % size_per_batch]
+                                                     : rel_pos_bias[index]));
 
   float thread_data_max = is_valid ? input_data : float(-CUDART_INF_F);
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
@@ -761,17 +759,17 @@ Status ComputeSoftmaxWithCumSeqLength(
 
 template <typename T>
 Status ComputeSoftmaxWithMask1D(cudaStream_t stream,
-                              const int all_sequence_length,
-                              const int sequence_length,
-                              const int batch_size,
-                              const int num_heads,
-                              const int* mask_index,
-                              const int* mask_start,
-                              const T* rel_pos_bias,
-                              const bool broadcast_rel_pos_bias,
-                              const T* input,
-                              T* output,
-                              const bool is_unidirectional) {
+                                const int all_sequence_length,
+                                const int sequence_length,
+                                const int batch_size,
+                                const int num_heads,
+                                const int* mask_index,
+                                const int* mask_start,
+                                const T* rel_pos_bias,
+                                const bool broadcast_rel_pos_bias,
+                                const T* input,
+                                T* output,
+                                const bool is_unidirectional) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
   if (all_sequence_length <= 32) {

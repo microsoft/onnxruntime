@@ -386,8 +386,8 @@ void AssignOpaqueDomainName(const char* domain, const char* name,
 
 }  // namespace data_types_internal
 
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
-//However, we do not allocate this type on heap.
+// The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// However, we do not allocate this type on heap.
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -614,7 +614,7 @@ class OptionalType :
 #if !defined(DISABLE_OPTIONAL_TYPE)
   OptionalType()
 #else
-  OptionalType() : DisabledTypeBase { DataTypeImpl::GeneralType::kOptional, 0 }
+  OptionalType() : DisabledTypeBase{DataTypeImpl::GeneralType::kOptional, 0}
 #endif
   {
     using namespace data_types_internal;

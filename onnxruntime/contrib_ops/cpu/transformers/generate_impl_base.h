@@ -124,17 +124,16 @@ class GenerateBase {
                          const Tensor* attention_mask,
                          const Tensor* presence_mask) const {
     const auto& dims = input_ids->Shape().GetDims();
-    if (parameters->model_type == IGenerationParameters::kModelTypeWhisper){
-      if (dims.size() != 3){
+    if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
+      if (dims.size() != 3) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'input_features' is expected to have 3 dimensions, got ", dims.size());
+                               "Input 'input_features' is expected to have 3 dimensions, got ", dims.size());
       }
 
-    }
-    else if (dims.size() != 2) {
+    } else if (dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
-     }
+    }
 
     if (vocab_mask != nullptr) {  // vocab_mask is optional
       const auto& vocab_mask_dims = vocab_mask->Shape().GetDims();
@@ -184,10 +183,9 @@ class GenerateBase {
       if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
         if (dims_attn.size() != 3) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'attention_mask' is expected to have 3 dimensions, got ", dims_attn.size());
+                                 "Input 'attention_mask' is expected to have 3 dimensions, got ", dims_attn.size());
         }
-      }
-      else if (dims_attn.size() != 2) {
+      } else if (dims_attn.size() != 2) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'attention_mask' is expected to have 2 dimensions, got ", dims_attn.size());
       }

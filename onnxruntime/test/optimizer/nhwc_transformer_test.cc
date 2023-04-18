@@ -240,8 +240,8 @@ TEST(NhwcTransformerTests, ConvAveragePool) {
                                         conv2_weight_arg, .015f, 129,
                                         conv2_output_arg, .37f, 131);
     Node& avgpool_node2 = builder.AddQLinearActivationNode("QLinearAveragePool",
-                                                         conv2_output_arg, .37f, 131,
-                                                         avgpool2_output_arg, .37f, 131);
+                                                           conv2_output_arg, .37f, 131,
+                                                           avgpool2_output_arg, .37f, 131);
     avgpool_node2.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
     avgpool_node2.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 

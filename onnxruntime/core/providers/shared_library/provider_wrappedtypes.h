@@ -1062,7 +1062,7 @@ struct SparseTensor final {
 
 // TensorSeq
 class TensorSeq final {
-public:
+ public:
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }
   size_t Size() const noexcept { return g_host->TensorSeq__Size(this); }

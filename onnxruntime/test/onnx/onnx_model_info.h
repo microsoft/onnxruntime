@@ -33,7 +33,7 @@ class OnnxModelInfo : public TestModelInfo {
   }
 
   const PATH_CHAR_TYPE* GetModelUrl() const override { return model_url_.c_str(); }
-  std::string GetNominalOpsetVersion() const override { return onnx_nominal_opset_vesion_;  }
+  std::string GetNominalOpsetVersion() const override { return onnx_nominal_opset_vesion_; }
 
   const std::string& GetNodeName() const override { return node_name_; }
 

@@ -541,7 +541,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
 }
 
 void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters, const logging::Logger& logger) {
-
   // Then check whether a subgraph should fallback to CPU
   // 1. Check whether a subgraph contains a RNN operator
   std::unordered_set<std::string> rnn_names = {"RNN", "GRU", "LSTM"};
@@ -1171,14 +1170,14 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         // lock to avoid race condition
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
 
-        #ifdef MIGRAPHX_STREAM_SYNC
+#ifdef MIGRAPHX_STREAM_SYNC
         void* rocm_stream;
         Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
         auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
-        #else
+#else
         auto prog_outputs = prog.eval(m);
         HIP_CALL_THROW(hipDeviceSynchronize());
-        #endif
+#endif
         // In case of input parameters are reused as output parameter call hipMemcpy
         auto output_num = prog_outputs.size();
         if (prog_output_indices.size() < output_num) {
@@ -1206,7 +1205,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
 void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   auto allocator = GetAllocator(OrtMemTypeCPU);
-  RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false/*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
+  RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
 }
 
 #ifdef MIGRAPHX_STREAM_SYNC
@@ -1221,8 +1220,7 @@ Status MIGraphXExecutionProvider::Sync() const {
   return Status::OK();
 }
 
-Status MIGraphXExecutionProvider::OnRunStart()
-{
+Status MIGraphXExecutionProvider::OnRunStart() {
   return Status::OK();
 }
 

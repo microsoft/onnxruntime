@@ -53,10 +53,10 @@ TwoDArray OpFunctionTester::RunFunctionBodyGraphOnCPU() {
   run_options.run_tag = op_;
   run_options.run_log_verbosity_level = 1;
 
-  #ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING
   // Remove when training::TrainingSession class is removed.
   run_options.training_mode = true;
-  #endif
+#endif
 
   std::vector<OrtValue> cpu_fetches;
   status = cpu_session_object.Run(run_options, feeds, output_names, &cpu_fetches);
