@@ -123,8 +123,17 @@ export interface ComputeContext {
    * stores the pointer to OpKernelContext
    */
   readonly opKernelContext: number;
+
+  /**
+   * a list of inputs, each input is an instance of TensorView
+   */
   readonly inputs: readonly TensorView[];
+
+  /**
+   * a custom data object that can be used to store any data that is needed by the kernel
+   */
   readonly customData: {[key: string]: unknown};
+
   compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
       TensorView[];
   output(index: number, dims: readonly number[]): number;
