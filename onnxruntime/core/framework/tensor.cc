@@ -94,6 +94,13 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
   Init(p_type, std::make_unique<Storage>(std::move(buffer)), shape, strides);
 }
 
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::unique_ptr<Storage>&& storage,
+               const OrtMemoryInfo& alloc, gsl::span<const int64_t> strides)
+    : alloc_info_(alloc) {
+  ORT_ENFORCE(p_type != nullptr);
+  Init(p_type, std::move(storage), shape, strides);
+}
+
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>>&& allocators,
                gsl::span<const int64_t> strides)
     : Tensor(!shape.shardInfo().has_value()? Tensor(p_type, shape, allocators[0], strides) : Tensor()) {
@@ -119,6 +126,13 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::sha
     }
     Init(p_type, std::make_unique<Storage>(std::move(buffers), std::make_optional(shardDims)), shape, {});
   }
+}
+
+void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::unique_ptr<Storage>&& storage,
+                          const OrtMemoryInfo& alloc, OrtValue& ort_value, gsl::span<const int64_t> strides) {
+  auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(storage), alloc, strides);
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 }
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>>&& allocators,

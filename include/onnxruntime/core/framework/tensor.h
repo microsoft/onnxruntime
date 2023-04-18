@@ -61,6 +61,12 @@ class Tensor final {
   Tensor(MLDataType p_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>>&& allocators,
                gsl::span<const int64_t> strides={});
 
+  Tensor(MLDataType p_type, const TensorShape& shape, std::unique_ptr<Storage>&& storage, const OrtMemoryInfo& alloc,
+               gsl::span<const int64_t> strides={});
+
+  static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::unique_ptr<Storage>&& storage, const OrtMemoryInfo& alloc,
+                          OrtValue& ort_value, gsl::span<const int64_t> strides={});
+
   static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::vector<std::shared_ptr<IAllocator>>&& allocators,
                           OrtValue& ort_value, gsl::span<const int64_t> strides={});
   /// <summary>
@@ -251,51 +257,51 @@ class Tensor final {
 
   /** Accessors for shards */
   template <typename T>
-  T* MutableData(size_t offset) {
+  T* MutableData(uint32_t index) {
     // Type check
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
-    return reinterpret_cast<T*>(storage_->Data(offset));
+    return reinterpret_cast<T*>(storage_->Data(index));
   }
 
   template <typename T>
-  gsl::span<T> MutableDataAsSpan(size_t offset) {
-    T* data = MutableData<T>(offset);
-    auto numElems = static_cast<size_t>(storage_->Size(offset) / dtype_->Size());
+  gsl::span<T> MutableDataAsSpan(uint32_t index) {
+    T* data = MutableData<T>(index);
+    auto numElems = static_cast<size_t>(storage_->Size(index) / dtype_->Size());
     return gsl::make_span(data, static_cast<size_t>(numElems));
   }
 
   template <typename T>
-  const T* Data(size_t offset) const {
+  const T* Data(uint32_t index) const {
     // Type check
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
-    return reinterpret_cast<const T*>(storage_->Data(offset));
+    return reinterpret_cast<const T*>(storage_->Data(index));
   }
 
   template <typename T>
-  gsl::span<const T> DataAsSpan(size_t offset) const {
+  gsl::span<const T> DataAsSpan(uint32_t index) const {
     // Type check
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     const T* data = reinterpret_cast<const T*>(storage_->Data(0));
     using TSize = typename gsl::span<T>::size_type;
-    auto numElems = static_cast<TSize>(storage_->Size(offset) / dtype_->Size());
+    auto numElems = static_cast<TSize>(storage_->Size(index) / dtype_->Size());
     return gsl::make_span(data, numElems);
   }
 
-  void* MutableDataRaw(MLDataType type, size_t offset) {
+  void* MutableDataRaw(MLDataType type, uint32_t index) {
     ORT_ENFORCE(type == dtype_, "Tensor type mismatch.", type, "!=", dtype_);
-    return storage_->Data(offset);
+    return storage_->Data(index);
   }
 
-  const void* DataRaw(MLDataType type, size_t offset) const {
+  const void* DataRaw(MLDataType type, uint32_t index) const {
     ORT_ENFORCE(type == dtype_, "Tensor type mismatch.", type, "!=", dtype_);
-    return storage_->Data(offset);
+    return storage_->Data(index);
   }
 
-  void* MutableDataRaw(size_t index) noexcept { return storage_->Data(index); }
-  const void* DataRaw(size_t index) const noexcept { return storage_->Data(index); }
+  void* MutableDataRaw(uint32_t index) noexcept { return storage_->Data(index); }
+  const void* DataRaw(uint32_t index) const noexcept { return storage_->Data(index); }
   /** End of accessors for shards */
 
   //

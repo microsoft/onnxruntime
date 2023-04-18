@@ -33,14 +33,14 @@ struct Buffer {
     }
     void* Data() const { return p_data_; }
     MemoryLocation Location() const { return memoryLocation_; }
-    size_t Offset() const { return byte_offset_; }
+    ptrdiff_t Offset() const { return byte_offset_; }
     void SetOffset(ptrdiff_t byte_offset) { byte_offset_ = byte_offset; }
     size_t Size() const { return sizeInBytes_; }
     bool OwnBuffer() const { return deleter_ != nullptr; }
 protected:
-    size_t sizeInBytes_{0};
+    uint32_t sizeInBytes_{0};
     MemoryLocation memoryLocation_{MemoryLocation::Uniform};
-    size_t byte_offset_{0};
+    ptrdiff_t byte_offset_{0};
     void *p_data_{nullptr};
 
     /**
@@ -56,7 +56,7 @@ struct ShardAccessor {
 
     void* Data() const { return buffer_.Data(); }
     MemoryLocation Location() const { return buffer_.Location(); }
-    size_t Offset() const { return buffer_.Offset(); }
+    ptrdiff_t Offset() const { return buffer_.Offset(); }
     void SetOffset(ptrdiff_t byte_offset) { buffer_.SetOffset(byte_offset); }
     size_t Size() const { return buffer_.Size(); }
     bool OwnBuffer() const { return buffer_.OwnBuffer(); }
@@ -130,12 +130,12 @@ struct Storage {
         buffers.emplace_back(std::move(buffer));
         return buffers;
     }
-    void* Data(size_t index=0) const  { return buffers_.at(index).Data(); }
-    MemoryLocation Location(size_t index=0) const  { return buffers_.at(index).Location(); }
-    size_t Offset(size_t index=0) const  { return buffers_.at(index).Offset(); }
-    void SetOffset(ptrdiff_t byte_offset, size_t index=0) { buffers_.at(index).SetOffset(byte_offset); }
-    size_t Size(size_t index=0) const  { return buffers_.at(index).Size(); }
-    ShardAccessor Shard(size_t index=0) { return ShardAccessor{ buffers_.at(index), shardDims_, static_cast<uint32_t>(index) }; }
+    void* Data(uint32_t index=0) const  { return buffers_.at(index).Data(); }
+    MemoryLocation Location(uint32_t index=0) const  { return buffers_.at(index).Location(); }
+    ptrdiff_t Offset(uint32_t index=0) const  { return buffers_.at(index).Offset(); }
+    void SetOffset(ptrdiff_t byte_offset, uint32_t index=0) { buffers_.at(index).SetOffset(byte_offset); }
+    size_t Size(uint32_t index=0) const  { return buffers_.at(index).Size(); }
+    ShardAccessor Shard(uint32_t index=0) { return ShardAccessor{ buffers_.at(index), shardDims_, static_cast<uint32_t>(index) }; }
     void Apply(std::function<void(Buffer&)> fn) { std::for_each(buffers_.begin(), buffers_.end(), fn); }
     std::optional<ShardDim> ShardDims() const { return std::make_optional(shardDims_); }
     bool OwnsBuffer() const { return buffers_[0].OwnBuffer(); }

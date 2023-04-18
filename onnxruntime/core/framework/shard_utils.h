@@ -35,7 +35,7 @@ struct ShardUtils {
         const auto lastShardDim = shardSize.NumDimensions() - 1;
         ShardOffsetType offset;
 
-        for (auto idx=0u; idx<=lastShardDim; idx++)
+        for (size_t idx=0; idx<=lastShardDim; idx++)
         {
             offset[idx] = static_cast<std::int64_t>(rank / stride[idx]) * shardSize[idx];
             rank = rank % stride[idx];
