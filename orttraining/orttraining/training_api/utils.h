@@ -25,7 +25,7 @@ bool GetParamNameFromSuffix(const std::string& name, const std::string& suffix, 
 bool GetParamNameFromGradient(const std::string& grad_name, std::string& param_name);
 
 // Allocate OrtValue like the input ortvalue on the same device
-Status OrtValueZeroLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val);
+Status CreateOrtValueLikeAndFillWithZero(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val);
 
 // Create OrtValue from a single value of type T
 template <typename T>

@@ -258,7 +258,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
       // TODO: don't pre-allocate the gradient buffer.
       // Gradient usually stays on the same device of its parameter.
       OrtValue param_grad;
-      ORT_THROW_IF_ERROR(utils::OrtValueZeroLike(train_sess_state, param_data, param_grad));
+      ORT_THROW_IF_ERROR(utils::CreateOrtValueLikeAndFillWithZero(train_sess_state, param_data, param_grad));
       ORT_THROW_IF_ERROR(params_iter->second->SetGrad(param_grad_name, param_grad));
       gradients_[grad_input_index] = params_iter->second->Gradient();
     }

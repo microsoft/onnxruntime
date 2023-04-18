@@ -80,7 +80,7 @@ struct OptimizerAlorithmFactory {
  *   >> If the device of momentums in 'optimizer_checkpoint_states' is not
  *     matching its parameter device, a copy will be done during the 'LoadStateDict',
  *     but reserving using the original OrtValue with the copied data buffer;
- *   >> If no Otherwise, it owns the optimizer state initialized as all zeros.
+ *   >> Otherwise, it generates the optimizer state initialized as all zeros and own them.
  * > If 'optimizer_checkpoint_states' is not provided in the constructor, it owns the optimizer
  *   state initialized as all zeros.
  *

@@ -62,8 +62,8 @@ struct ModuleCheckpointState {
  * target device and update the Parameter's data in place. The 'target device'
  * is extracted from node placement.
  *
- * Currently, we only support load checkpoints from constructor;
- * no public API to load checkpoint.
+ * Currently, we only support load checkpoints from the constructor;
+ * no public API to load state dict after Module instance is created.
  */
 struct Module {
  public:
