@@ -40,7 +40,7 @@ onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_src
 if (onnxruntime_USE_AZURE)
 
   add_dependencies(onnxruntime_framework triton)
-  target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include)
+  target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include ${TRITON_THIRD_PARTY}/curl/include)
   link_directories(${TRITON_BIN}/lib ${TRITON_BIN}/lib64 ${TRITON_THIRD_PARTY}/curl/lib ${TRITON_THIRD_PARTY}/curl/lib64)
 
   if (WIN32)

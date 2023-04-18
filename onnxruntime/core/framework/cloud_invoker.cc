@@ -3,6 +3,8 @@
 
 #ifdef USE_AZURE
 #include "http_client.h"
+#include "curl/curl.h"
+#include "nlohmann/json.hpp"
 #include "core/common/common.h"
 #include "core/framework/cloud_invoker.h"
 #include "core/framework/ort_value.h"
@@ -25,6 +27,8 @@ const char* kAzureVerbose = "azure.verbose";
 const char* kAzureEndpointType = "azure.endpoint_type";
 const char* kAzureAuthKey = "azure.auth_key";
 const char* kAzureTriton = "triton";
+const char* kAzureOpenAI = "openai";
+const char* kAzureAudioFile = "azure.audio_file";
 
 CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
                                            const AllocatorPtr& allocator) : config_(config), allocator_(allocator) {
@@ -32,6 +36,133 @@ CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
     ORT_THROW("Cannot create invoker on invalid allocator");
   }
 }
+
+class OpenAIInvoker : public CloudEndPointInvoker {
+ public:
+  OpenAIInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
+  onnxruntime::Status Send(const CloudEndPointConfig& run_options,
+                           const InlinedVector<std::string>& input_names,
+                           gsl::span<const OrtValue> ort_inputs,
+                           const InlinedVector<std::string>& output_names,
+                           std::vector<OrtValue>& ort_outputs) const override;
+
+ private:
+  std::string uri_;
+  std::string model_name_;
+};
+
+OpenAIInvoker::OpenAIInvoker(const CloudEndPointConfig& config,
+                             const AllocatorPtr& allocator) : CloudEndPointInvoker(config, allocator) {
+  ReadConfig(kAzureUri, uri_);
+  ReadConfig(kAzureModelName, model_name_);
+}
+
+struct MemoryStruct {
+  char* memory;
+  size_t size;
+};
+
+static size_t
+WriteMemoryCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+  size_t realsize = size * nmemb;
+  struct MemoryStruct* mem = (struct MemoryStruct*)userp;
+
+  char* ptr = (char*)realloc(mem->memory, mem->size + realsize + 1);
+  ORT_ENFORCE(ptr, "not enough memory (realloc returned NULL)");
+
+  mem->memory = ptr;
+  memcpy(&(mem->memory[mem->size]), contents, realsize);
+  mem->size += realsize;
+  mem->memory[mem->size] = 0;
+
+  return realsize;
+}
+
+onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
+                                        const InlinedVector<std::string>& /*input_names*/,
+                                        gsl::span<const OrtValue> /*ort_inputs*/,
+                                        const InlinedVector<std::string>& /*output_names*/,
+                                        std::vector<OrtValue>& ort_outputs) const {
+
+  const auto auth_key_iter = run_options.find(kAzureAuthKey);
+  if (run_options.end() == auth_key_iter || auth_key_iter->second.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "auth key must be specified for openai client");
+  }
+
+  const auto audio_file_iter = run_options.find(kAzureAudioFile);
+  if (run_options.end() == audio_file_iter || audio_file_iter->second.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "audio file must be specified for openai client");
+  }
+ 
+  CURLcode ret;
+  CURL* hnd;
+  curl_mime* mime1;
+  curl_mimepart* part1;
+  struct curl_slist* slist1;
+
+  struct MemoryStruct chunk;
+  chunk.memory = (char*)malloc(1); /* will be grown as needed by the realloc above */
+  chunk.size = 0;
+
+  mime1 = NULL;
+  slist1 = NULL;
+  std::string full_auth = std::string{"Authorization: Bearer "} + auth_key_iter->second;
+  slist1 = curl_slist_append(slist1, full_auth.c_str());
+  slist1 = curl_slist_append(slist1, "Content-Type: multipart/form-data");
+
+  hnd = curl_easy_init();
+  curl_easy_setopt(hnd, CURLOPT_BUFFERSIZE, 102400L);
+  curl_easy_setopt(hnd, CURLOPT_URL, uri_.c_str());
+  curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 1L);
+  mime1 = curl_mime_init(hnd);
+  
+  part1 = curl_mime_addpart(mime1);
+  curl_mime_filedata(part1, audio_file_iter->second.c_str());
+  curl_mime_name(part1, "file");
+
+  part1 = curl_mime_addpart(mime1);
+  curl_mime_data(part1, model_name_.c_str(), CURL_ZERO_TERMINATED);
+  curl_mime_name(part1, "model");
+  curl_easy_setopt(hnd, CURLOPT_MIMEPOST, mime1);
+  curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, slist1);
+  curl_easy_setopt(hnd, CURLOPT_USERAGENT, "curl/7.83.1");
+  curl_easy_setopt(hnd, CURLOPT_MAXREDIRS, 50L);
+  curl_easy_setopt(hnd, CURLOPT_FTP_SKIP_PASV_IP, 1L);
+  curl_easy_setopt(hnd, CURLOPT_TCP_KEEPALIVE, 1L);
+
+  curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+  curl_easy_setopt(hnd, CURLOPT_WRITEDATA, (void*)&chunk);
+
+  ret = curl_easy_perform(hnd);
+  if (ret != CURLE_OK) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, curl_easy_strerror(ret));
+  }
+
+  curl_easy_cleanup(hnd);
+  hnd = NULL;
+  curl_mime_free(mime1);
+  mime1 = NULL;
+  curl_slist_free_all(slist1);
+  slist1 = NULL;
+
+  auto output_tensor = std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<std::string>(), TensorShape{1}, allocator_);
+  if (!output_tensor) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor");
+  }
+
+  nlohmann::json json_config = nlohmann::json::parse(chunk.memory);
+  auto* output_string = output_tensor->MutableData<std::string>();
+  output_string->append(json_config["text"]);
+  free(chunk.memory);
+  ort_outputs.resize(1);
+  auto tensor_type = DataTypeImpl::GetType<Tensor>();
+  ort_outputs[0].Init(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
+  return Status::OK();
+}
+
+//////////////////////////////////////////////////////////
 
 class AzureTritonInvoker : public CloudEndPointInvoker {
  public:
@@ -286,6 +417,9 @@ Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
     if (config.end() != iter) {
       if (iter->second == kAzureTriton) {
         invoker = std::make_unique<AzureTritonInvoker>(config, allocator);
+        return status;
+      } else if (iter->second == kAzureOpenAI) {
+        invoker = std::make_unique<OpenAIInvoker>(config, allocator);
         return status;
       } // else other endpoint types ...
     }
