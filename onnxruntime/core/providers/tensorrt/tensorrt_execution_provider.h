@@ -134,6 +134,7 @@ struct TensorrtFuncState {
   int auxiliary_streams = -1;
   bool filter_tactic_sources = false;
   nvinfer1::TacticSources tactic_sources;
+  size_t* nb_bindings_per_profile_ptr = nullptr;
 };
 
 // Logical device representation.
@@ -218,6 +219,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
+  std::unordered_map<std::string, size_t> nb_bindings_per_profile_;
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;

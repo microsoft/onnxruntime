@@ -2008,6 +2008,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
       }
+
+      //size_t const nb_profiles = trt_engine->getNbOptimizationProfiles();
+      //nb_bindings_ = trt_engine->getNbBindings();
+      //size_t const bindings_per_profile = nb_opt_profiles > 0 ? nb_bindings_/ nb_profiles : 0;
+      //end_binding_index_ = bindings_per_profile ? bindings_per_profile : nb_bindings_;
     }
 
     // Create input to index map
@@ -2043,6 +2048,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     output_info_[fused_node.Name()].push_back(output_types);
     input_shape_ranges_[fused_node.Name()] = input_shape_ranges;
     profiles_.emplace(fused_node.Name(), std::move(trt_profiles));
+    nb_bindings_per_profile_.emplace(fused_node.Name(), -1); // Initialize number of bindings to -1 so that it can be updated 
 
     // Create function state
     // TODO: remove default capture
@@ -2062,7 +2068,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             runtime_.get(), profiles_[context->node_name], allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
             force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
-            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics};
+            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics, &(nb_bindings_per_profile_[context->node_name])};
       *state = p.release();
       return 0;
     };
@@ -2353,6 +2359,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // Get input and output binding names
       int total_bindings = trt_engine->getNbBindings();
+      // If engine is built with multiple profiles, need to get number of bindings per profile
+      // Note: From TRT doc, number of profiles is always at least 1
+      if (trt_engine->getNbOptimizationProfiles() > 1) {
+        if (*(trt_state->nb_bindings_per_profile_ptr) > 0) {
+          total_bindings = *(trt_state->nb_bindings_per_profile_ptr);
+        } else {
+          total_bindings = trt_engine->getNbBindings() / trt_engine->getNbOptimizationProfiles(); 
+          *(trt_state->nb_bindings_per_profile_ptr) = total_bindings;
+        }
+      }
       std::vector<void*> buffers(total_bindings);
       std::vector<std::string> input_binding_names, output_binding_names;
       for (int i = 0, end = total_bindings; i < end; ++i) {
