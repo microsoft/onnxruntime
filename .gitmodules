@@ -14,4 +14,4 @@
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
 	url = https://github.com/onnx/onnx.git
-	branch = main
+	branch = rel-1.14.0
