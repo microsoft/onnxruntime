@@ -448,8 +448,8 @@ def _assert_allclose_with_detailed_error_message(
     if not allclose:
         raise RuntimeError(
             "ONNX output doesn't match baseline output with "
-            + f"actual rtol={real_rtol} and actual atol={real_atol} "
-            + f"but expected rtol={rtol} and expected atol={atol}."
+            f"actual rtol={real_rtol} and actual atol={real_atol} "
+            f"but expected rtol={rtol} and expected atol={atol}."
         )
 
 

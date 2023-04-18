@@ -19,7 +19,9 @@
     <!-- end -->
 
     <!-- Training build property.
-    Should be set to true when training is enabled in onnxruntime native binary -->
+    Should be set to true when training is enabled in onnxruntime native binary
+    Note: This property should be set when building the csharp solution independently.
+    When building using the build.py script, setting the necessary properties is handled by the script. -->
     <TrainingEnabledNativeBuild Condition="'$(TrainingEnabledNativeBuild)' == ''">false</TrainingEnabledNativeBuild>
   </PropertyGroup>
 

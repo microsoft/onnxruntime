@@ -33,7 +33,7 @@ def rename_folder(root):
 
 def replace_files(root, renamed):
     subs = {r[1]: r[2] for r in renamed}
-    reg = re.compile('(\\"[a-zA-Z0-9\\.\\/\\?\\:@\\-_=#]+\\.([a-zA-Z]){2,6}' '([a-zA-Z0-9\\.\\&\\/\\?\\:@\\-_=#])*\\")')
+    reg = re.compile('(\\"[a-zA-Z0-9\\.\\/\\?\\:@\\-_=#]+\\.([a-zA-Z]){2,6}([a-zA-Z0-9\\.\\&\\/\\?\\:@\\-_=#])*\\")')
 
     for r, _dirs, files in os.walk(root):
         for name in files:

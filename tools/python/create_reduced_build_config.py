@@ -111,7 +111,7 @@ def main():
     argparser.add_argument(
         "model_path_or_dir",
         type=pathlib.Path,
-        help="Path to a single model, or a directory that will be recursively searched " "for models to process.",
+        help="Path to a single model, or a directory that will be recursively searched for models to process.",
     )
 
     argparser.add_argument(

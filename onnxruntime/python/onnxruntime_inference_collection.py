@@ -359,11 +359,8 @@ class InferenceSession(Session):
         """
         super().__init__()
 
-        if isinstance(path_or_bytes, str):
-            self._model_path = path_or_bytes
-            self._model_bytes = None
-        elif isinstance(path_or_bytes, os.PathLike):
-            self._model_path = str(path_or_bytes)
+        if isinstance(path_or_bytes, (str, os.PathLike)):
+            self._model_path = os.fspath(path_or_bytes)
             self._model_bytes = None
         elif isinstance(path_or_bytes, bytes):
             self._model_path = None
@@ -410,13 +407,13 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(
             providers, provider_options, available_providers
         )
-        if providers == [] and len(available_providers) > 1:
+        if not providers and len(available_providers) > 1:
             self.disable_fallback()
             raise ValueError(
                 f"This ORT build has {available_providers} enabled. "
-                + "Since ORT 1.9, you are required to explicitly set "
-                + "the providers parameter when instantiating InferenceSession. For example, "
-                "onnxruntime.InferenceSession(..., providers={}, ...)".format(available_providers)
+                "Since ORT 1.9, you are required to explicitly set "
+                "the providers parameter when instantiating InferenceSession. For example, "
+                f"onnxruntime.InferenceSession(..., providers={available_providers}, ...)"
             )
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
@@ -613,7 +610,7 @@ class OrtValue:
         else:
             # An end user won't hit this error
             raise ValueError(
-                "`Provided ortvalue` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`"
+                "`Provided ortvalue` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`"
             )
 
     def _get_c_value(self):
@@ -771,7 +768,7 @@ class OrtDevice:
             self._ort_device = c_ort_device
         else:
             raise ValueError(
-                "`Provided object` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
+                "`Provided object` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
             )
 
     def _get_c_device(self):
@@ -814,7 +811,7 @@ class SparseTensor:
         else:
             # An end user won't hit this error
             raise ValueError(
-                "`Provided object` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`"
+                "`Provided object` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`"
             )
 
     def _get_c_tensor(self):

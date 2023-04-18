@@ -60,7 +60,7 @@ init_command = [
     'run',
     'pip_init',
     '--dry-run={{DRYRUN}}',
-    'ruff==0.0.252',
+    'ruff==0.0.261',
 ]
 
 [[linter]]
@@ -90,7 +90,7 @@ init_command = [
     'run',
     'pip_init',
     '--dry-run={{DRYRUN}}',
-    'ruff==0.0.252',
+    'ruff==0.0.261',
 ]
 is_formatter = true
 
