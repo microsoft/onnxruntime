@@ -109,7 +109,8 @@ class Stream {
 };
 
 namespace synchronize {
-// an object which record the status of the stream, and can be wait on from another stream.
+// An abstraction used for synchronization between streams. See its concrete subclass (CudaNotification, etc.) how the activate
+// and wait works for a specific stream
 class Notification {
  public:
   explicit Notification(Stream& s) : stream_(s) {}

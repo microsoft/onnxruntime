@@ -349,6 +349,30 @@ bool InstanceNormalizationNodeGroupSelector::Check(const GraphViewer& graph_view
          (dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
 }
 
+bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                                   const Node& node,
+                                                   const std::vector<const Node*>& dq_nodes,
+                                                   const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+    return false;
+  }
+
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_scale = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if (!int8_allowed_ || dt_scale != dt_input) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 }  // namespace QDQ
 }  // namespace onnxruntime
 

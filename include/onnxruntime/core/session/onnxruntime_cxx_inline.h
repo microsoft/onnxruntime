@@ -1074,9 +1074,6 @@ inline std::vector<int64_t> TensorTypeAndShapeInfoImpl<T>::GetShape() const {
   return out;
 }
 
-}  // namespace detail
-
-namespace detail {
 template <typename T>
 inline ConstTensorTypeAndShapeInfo TypeInfoImpl<T>::GetTensorTypeAndShapeInfo() const {
   const OrtTensorTypeAndShapeInfo* out;
@@ -1105,9 +1102,6 @@ inline ONNXType TypeInfoImpl<T>::GetONNXType() const {
   return out;
 }
 
-}  // namespace detail
-
-namespace detail {
 template <typename T>
 inline TypeInfo SequenceTypeInfoImpl<T>::GetSequenceElementType() const {
   OrtTypeInfo* output;
@@ -1115,9 +1109,13 @@ inline TypeInfo SequenceTypeInfoImpl<T>::GetSequenceElementType() const {
   return TypeInfo{output};
 }
 
-}  // namespace detail
+template <typename T>
+inline TypeInfo OptionalTypeInfoImpl<T>::GetOptionalElementType() const {
+  OrtTypeInfo* info;
+  ThrowOnError(GetApi().GetOptionalContainedTypeInfo(this->p_, &info));
+  return TypeInfo{info};
+}
 
-namespace detail {
 template <typename T>
 inline ONNXTensorElementDataType MapTypeInfoImpl<T>::GetMapKeyType() const {
   ONNXTensorElementDataType out;
@@ -1131,6 +1129,14 @@ inline TypeInfo MapTypeInfoImpl<T>::GetMapValueType() const {
   ThrowOnError(GetApi().GetMapValueType(this->p_, &output));
   return TypeInfo{output};
 }
+
+template <typename T>
+inline ConstOptionalTypeInfo TypeInfoImpl<T>::GetOptionalTypeInfo() const {
+  const OrtOptionalTypeInfo* info;
+  ThrowOnError(GetApi().CastTypeInfoToOptionalTypeInfo(this->p_, &info));
+  return ConstOptionalTypeInfo{info};
+}
+
 }  // namespace detail
 
 namespace detail {

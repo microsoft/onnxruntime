@@ -236,7 +236,10 @@ if (NOT WIN32)
   #nsync tests failed on Mac Build
   set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
   onnxruntime_fetchcontent_makeavailable(google_nsync)
-  set(nsync_SOURCE_DIR ${google_nsync_SOURCE_DIR})
+  if (google_nsync_SOURCE_DIR)
+    add_library(nsync::nsync_cpp ALIAS nsync_cpp)
+    target_include_directories(nsync_cpp PUBLIC ${google_nsync_SOURCE_DIR}/public)
+  endif()
 endif()
 
 if(onnxruntime_USE_CUDA)
@@ -360,6 +363,12 @@ FetchContent_Declare(
 
 if (CPUINFO_SUPPORTED)
   onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
+  if (pytorch_cpuinfo_SOURCE_DIR)
+    # shouldn't need to define these aliases after we use a version of cpuinfo with this commit:
+    # https://github.com/pytorch/cpuinfo/commit/082deffc80ce517f81dc2f3aebe6ba671fcd09c9
+    add_library(cpuinfo::cpuinfo ALIAS cpuinfo)
+    add_library(cpuinfo::clog ALIAS clog)
+  endif()
 endif()
 
 

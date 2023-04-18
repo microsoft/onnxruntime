@@ -48,7 +48,7 @@ class ModelBuilder {
   std::unordered_set<std::string> int64_outputs_;
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
 
-  std::unordered_set<std::string> skipped_initializers_;
+  std::unordered_map<std::string, int> initializer_usage_;
   std::unordered_set<std::string> skipped_inputs_;
 
   uint32_t name_token_{0};
