@@ -6,7 +6,7 @@
 #include <vector>
 
 #include <inference_engine.hpp>
-#if defined (OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3) || (OPENVINO_2023_0)
+#if defined(OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3) || (OPENVINO_2023_0)
 #define OV_API_20
 #include "openvino/openvino.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
@@ -72,6 +72,7 @@ class OVInferRequest {
   OVTensorPtr GetTensor(const std::string& name);
   void SetTensor(const std::string& name, OVTensorPtr& blob);
   void StartAsync();
+  void Infer();
   void WaitRequest();
   void QueryStatus();
   explicit OVInferRequest(ov::InferRequest obj) { ovInfReq = obj; }
