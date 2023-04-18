@@ -253,8 +253,8 @@ TEST(CudaKernelTest, InvertibleLayerNormGrad_LargeSizeTensor) {
   TestInvertibleLayerNormGrad(X_dims, -1, 5e-3);
 }
 
-TEST(CudaKernelTest, DISABLED_InvertibleLayerNormGrad_SmallSizeTensor_FP16) { // Failed to find kernel for Cast(19) (node InsertedCast_Y_grad). Op with name (InsertedCast_Y_grad) and type (Cast) kernel is not supported in CPUExecutionProvider. Encountered following errors: (Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 6 kernel_end_version: 12
-                                                                              // Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 13 kernel_end_version:
+TEST(CudaKernelTest, DISABLED_InvertibleLayerNormGrad_SmallSizeTensor_FP16) {  // Failed to find kernel for Cast(19) (node InsertedCast_Y_grad). Op with name (InsertedCast_Y_grad) and type (Cast) kernel is not supported in CPUExecutionProvider. Encountered following errors: (Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 6 kernel_end_version: 12
+                                                                               // Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 13 kernel_end_version:
   const std::vector<int64_t> X_dims{4, 20, 128};
   TestInvertibleLayerNormGrad(X_dims, -1, 2e-3, true);
 }
@@ -266,14 +266,14 @@ TEST(CudaKernelTest, DISABLED_InvertibleLayerNormGrad_SmallSizeTensor_Intermedia
   TestInvertibleLayerNormGrad(X_dims, axis, 2e-3, true);
 }
 
-TEST(CudaKernelTest, DISABLED_InvertibleLayerNormGrad_MidSizeTensor_FP16) { // Failed to find kernel for Cast(19) (node InsertedCast_Y_grad). Op with name (InsertedCast_Y_grad) and type (Cast) kernel is not supported in CPUExecutionProvider. Encountered following errors: (Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 6 kernel_end_version: 12
-                                                                            // Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 13 kernel_end_version
+TEST(CudaKernelTest, DISABLED_InvertibleLayerNormGrad_MidSizeTensor_FP16) {  // Failed to find kernel for Cast(19) (node InsertedCast_Y_grad). Op with name (InsertedCast_Y_grad) and type (Cast) kernel is not supported in CPUExecutionProvider. Encountered following errors: (Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 6 kernel_end_version: 12
+                                                                             // Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 13 kernel_end_version
   const std::vector<int64_t> X_dims{8, 80, 768};
   TestInvertibleLayerNormGrad(X_dims, -1, 2e-3, true);
 }
 
-TEST(CudaKernelTest, DISABLED_InvertibleLayerNormGrad_LargeSizeTensor_FP16) { // Failed to find kernel for Cast(19) (node InsertedCast_Y_grad). Op with name (InsertedCast_Y_grad) and type (Cast) kernel is not supported in CPUExecutionProvider. Encountered following errors: (Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 6 kernel_end_version: 12
-                                                                              // Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 13 kernel_end_version:
+TEST(CudaKernelTest, DISABLED_InvertibleLayerNormGrad_LargeSizeTensor_FP16) {  // Failed to find kernel for Cast(19) (node InsertedCast_Y_grad). Op with name (InsertedCast_Y_grad) and type (Cast) kernel is not supported in CPUExecutionProvider. Encountered following errors: (Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 6 kernel_end_version: 12
+                                                                               // Op with name (InsertedCast_Y_grad) and type (Cast) Version mismatch. node_version: 19 kernel start version: 13 kernel_end_version:
   const std::vector<int64_t> X_dims{16, 512, 1024};
   TestInvertibleLayerNormGrad(X_dims, -1, 2e-3, true);
 }

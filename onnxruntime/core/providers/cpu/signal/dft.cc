@@ -194,10 +194,9 @@ T next_power_of_2(T in) {
 
 template <typename T, typename U>
 static Status dft_bluestein_z_chirp(
-  OpKernelContext* ctx, const Tensor* X, Tensor* Y, Tensor& b_fft, Tensor& chirp, size_t X_offset, size_t X_stride, size_t Y_offset, size_t Y_stride,
-  int64_t axis, size_t dft_length, const Tensor* window, bool inverse, InlinedVector<std::complex<T>>& V,
-  InlinedVector<std::complex<T>>& temp_output) {
-
+    OpKernelContext* ctx, const Tensor* X, Tensor* Y, Tensor& b_fft, Tensor& chirp, size_t X_offset, size_t X_stride, size_t Y_offset, size_t Y_stride,
+    int64_t axis, size_t dft_length, const Tensor* window, bool inverse, InlinedVector<std::complex<T>>& V,
+    InlinedVector<std::complex<T>>& temp_output) {
   static constexpr T pi = static_cast<T>(3.14159265);
 
   AllocatorPtr alloc;
@@ -300,7 +299,7 @@ static Status dft_bluestein_z_chirp(
       // The inverse fft is computed using the same cached vandermonde matrix (V) created by the
       // forward fft. This reversal causes the output to be reversed as well.
       // Therefore we undo the reversal when writing the output back out.
-      c_i = *(a_data + M - i); 
+      c_i = *(a_data + M - i);
     }
     out = c_i * chirp_i * scale;
   }
