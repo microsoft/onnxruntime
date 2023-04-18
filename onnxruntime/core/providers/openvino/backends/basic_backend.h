@@ -50,9 +50,9 @@ class BasicBackend : public IBackend {
   OVExeNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
-  #if defined IO_BUFFER_ENABLED
+#if defined IO_BUFFER_ENABLED
   OVRemoteContextPtr remote_context_;
-  #endif
+#endif
 };
 
 class InferRequestsQueue {

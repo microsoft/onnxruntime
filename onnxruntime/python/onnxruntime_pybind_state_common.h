@@ -233,13 +233,13 @@ using PySessionOptions = OrtSessionOptions;
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
   PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so)
-  : env_(std::move(env)) {
+      : env_(std::move(env)) {
     sess_ = std::make_unique<InferenceSession>(so.value, *env_);
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) 
-  : env_(std::move(env)) {
+  PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name)
+      : env_(std::move(env)) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
       sess_ = std::make_unique<InferenceSession>(so.value, *env_, arg);
@@ -256,8 +256,8 @@ struct PyInferenceSession {
   virtual ~PyInferenceSession() = default;
 
  protected:
-  PyInferenceSession(std::shared_ptr<Environment> env, std::unique_ptr<InferenceSession> sess) 
-  : env_(std::move(env)), sess_(std::move(sess)) {
+  PyInferenceSession(std::shared_ptr<Environment> env, std::unique_ptr<InferenceSession> sess)
+      : env_(std::move(env)), sess_(std::move(sess)) {
   }
 
  private:

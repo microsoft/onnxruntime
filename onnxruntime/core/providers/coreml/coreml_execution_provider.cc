@@ -236,7 +236,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 }
 #else
 common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
+                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     ORT_UNUSED_PARAMETER(fused_node_and_graph);
     NodeComputeInfo compute_info;
@@ -250,6 +250,6 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
   }
   return Status::OK();
 }
-#endif //__APPLE__
+#endif  //__APPLE__
 
 }  // namespace onnxruntime

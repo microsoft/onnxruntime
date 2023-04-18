@@ -75,8 +75,8 @@ OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
 
   //: Though we don't need to give 'ret' an initial value, GCC would generate a warning if we don't do that
   //"error: 'ret' may be used uninitialized in this function"
-  //This warning only exists in Release build.
-  //I believe it's a false alarm.
+  // This warning only exists in Release build.
+  // I believe it's a false alarm.
 
   OrtValue* p_ml_value = nullptr;
   Status status = execution_frame_->GetOrCreateNodeOutputMLValue(index, GetOutputArgIndex(index), &shape, p_ml_value, kernel_->Node());

@@ -76,7 +76,7 @@ void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   dnnl::memory::desc dx_md(dx_dims, node.Input(IN_DY).Type(), dnnl::memory::format_tag::any);
   dnnl::memory::desc fwd_dx_md(dx_dims, node.Input(IN_DY).Type(), sp.GetDnnlFormat(dx_dims.size()));
 
-  //Read the attributes
+  // Read the attributes
   auto kernel_shape = GetKernelShape(node);
   PoolShape shape = static_cast<PoolShape>(kernel_shape.size());
   auto strides = GetStrides(node, shape);
@@ -95,9 +95,8 @@ void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // Dilatation of 1
   auto dilatation = dnnl::memory::dims(kernel_shape.size(), 1);
 
-
   dnnl::pooling_forward::primitive_desc pool_forward_pd(dnnl_engine, dnnl::prop_kind::forward, algo, fwd_dx_md, dy_md,
-                                                       strides, kernel_shape, dilatation, padding_left, padding_right);
+                                                        strides, kernel_shape, dilatation, padding_left, padding_right);
 
   dnnl::pooling_backward::primitive_desc pool_backward_pd(dnnl_engine, algo, dx_md, dy_md, strides, kernel_shape,
                                                           dilatation, padding_left, padding_right, pool_forward_pd);

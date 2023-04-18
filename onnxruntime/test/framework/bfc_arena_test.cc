@@ -290,7 +290,7 @@ TEST(BFCArenaTest, TestShrink) {
   AllocatorStats stats;
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, ArenaExtendStrategy::kSameAsRequested);
   void* p1k = a.Alloc(1024);
-  /* void* p10M =*/ a.Alloc(10 * 1024 * 1024);
+  /* void* p10M =*/a.Alloc(10 * 1024 * 1024);
   a.GetStats(&stats);
   EXPECT_EQ(stats.num_arena_extensions, 2) << "Expect 2 regions but got " << stats.num_arena_extensions << " region";
   a.Free(p1k);
@@ -399,8 +399,8 @@ TEST(StreamAwareArenaTest, TestSecureTheChunk) {
   a.Free(p1);
 
   bool waitFunctionInvoked = false;
-  void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2, 
-      [&waitFunctionInvoked](Stream&, synchronize::Notification&) { waitFunctionInvoked = true; });
+  void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2,
+                             [&waitFunctionInvoked](Stream&, synchronize::Notification&) { waitFunctionInvoked = true; });
 
   std::unordered_map<Stream*, uint64_t> syncTable;
   stream2.CloneCurrentStreamSyncTable(syncTable);

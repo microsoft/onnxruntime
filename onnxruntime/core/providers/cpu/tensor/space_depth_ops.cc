@@ -108,17 +108,17 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
 
   if (input.IsDataType<float>()) {
     SpaceDepthOpCpuImpl<float>(input, output, permutation,
-                              onnxruntime::narrow<ptrdiff_t>(batch),
-                              onnxruntime::narrow<std::ptrdiff_t>(input_depth),
-                              onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
-                              onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                              onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_),
-                              onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                              onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                              onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                              onnxruntime::narrow<std::ptrdiff_t>(input_depth),
-                              onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
-                              onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
+                               onnxruntime::narrow<ptrdiff_t>(batch),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_depth),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
+                               onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_),
+                               onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                               onnxruntime::narrow<ptrdiff_t>(blocksize_),
+                               onnxruntime::narrow<ptrdiff_t>(blocksize_),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_depth),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
+                               onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
   } else if (input.IsDataType<double>()) {
     SpaceDepthOpCpuImpl<double>(input, output, permutation,
                                 onnxruntime::narrow<ptrdiff_t>(batch),

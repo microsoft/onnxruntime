@@ -31,7 +31,7 @@ namespace cuda {
 #define UNARY_ELEMENTWISE_IMPL_DECLARATION(name) \
   template <typename T>                          \
   void Impl_##name(                              \
-      cudaStream_t stream,                 \
+      cudaStream_t stream,                       \
       const T* input_data,                       \
       T* output_data,                            \
       size_t count)

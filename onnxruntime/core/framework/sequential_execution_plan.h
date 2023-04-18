@@ -118,7 +118,8 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
                            bool& continue_flag) = 0;
     virtual std::string ToString() const = 0;
     inline NodeIndex GetNodeIndex() { return node_index_; }
-  protected:
+
+   protected:
     NodeIndex node_index_;
   };
   // LogicStream is a sequence of execution steps that can be executed independetly.
@@ -126,6 +127,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
     const OrtDevice& device_;
+
    public:
     LogicStream(const OrtDevice& device) : device_(device) {}
   };

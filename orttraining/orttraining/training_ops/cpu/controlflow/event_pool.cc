@@ -8,10 +8,10 @@ namespace contrib {
 
 void OrtEventPool::CheckRange(const int64_t id) const {
   ORT_ENFORCE(
-    id >= 0 && id < MaxNumItems,
-    "Got id ", id,
-    ". It should be in a range from 0 to ",
-    MaxNumItems, ".");
+      id >= 0 && id < MaxNumItems,
+      "Got id ", id,
+      ". It should be in a range from 0 to ",
+      MaxNumItems, ".");
 }
 
 void OrtEventPool::SignalEvent(int64_t id) {

@@ -210,7 +210,7 @@ TEST(QnnCPUBackendTests, DISABLED_TestResize2xLinearAlignCorners) {
 // See: https://github.com/microsoft/onnxruntime/pull/15477
 //
 // Error: [W:onnxruntime:QnnEP.TestQDQModel, graph.cc:108 MergeShapeInfo]
-// Error merging shape info for output. 'node_token_5' source:{1,8,3,8} target:{1,8,8,3}. 
+// Error merging shape info for output. 'node_token_5' source:{1,8,3,8} target:{1,8,8,3}.
 // Falling back to lenient merge.
 TEST_F(QnnHTPBackendTests, DISABLED_TestQDQU8Resize2xLinearPytorchHalfPixel) {
   RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 8, 8}, "linear", "pytorch_half_pixel", "",
