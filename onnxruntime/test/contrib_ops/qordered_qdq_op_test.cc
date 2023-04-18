@@ -73,7 +73,6 @@ static void RunQOrdered_Quantize_Test(
     std::vector<int64_t> const& shape,
     OrderCublasLt order_q,
     float scale) {
-
   int cuda_runtime_version = 0;
   // Need 11.4 or higher cuda runtime
   if ((cudaRuntimeGetVersion(&cuda_runtime_version) != cudaSuccess) || (cuda_runtime_version < 11040)) {
@@ -207,7 +206,6 @@ TEST(QOrderedTest, FP16_Dequantize_ROW) {
 }  // namespace test
 }  // namespace onnxruntime
 
-
-#endif // CUDA_VERSION
+#endif  // CUDA_VERSION
 
 #endif  // USE_CUDA

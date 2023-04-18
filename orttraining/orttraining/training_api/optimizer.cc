@@ -133,8 +133,7 @@ Status Optimizer::ConstructInputs() {
 
       auto tensor_seq = std::make_unique<TensorSeq>(tensors.front().DataType());
       tensor_seq->Reserve(tensors.size());
-      for (auto& tensor : tensors)
-      {
+      for (auto& tensor : tensors) {
         tensor_seq->Add(std::move(tensor));
       }
       inputs->emplace_back(

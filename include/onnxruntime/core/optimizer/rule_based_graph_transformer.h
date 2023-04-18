@@ -13,12 +13,12 @@ namespace onnxruntime {
 /**
 @class RuleBasedGraphTransformer
 
-Rule-based graph transformer that provides an API to register rewrite rules 
+Rule-based graph transformer that provides an API to register rewrite rules
 and an API to apply all applicable rules to a Graph.
 
 Represents an IGraphTransformer determined by a set of rewrite rules.
 The transformer will apply all the rewrite rules iteratively as determined by the underlying rewriting strategy.
-Several rewriting-strategies are possible when traversing the graph and applying rewrite rules, 
+Several rewriting-strategies are possible when traversing the graph and applying rewrite rules,
 each with different trade offs. At the moment, we define one that performs top-down traversal of nodes.
 
 @TODO: Is a bottom-up traversal more efficient?
@@ -36,7 +36,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   /** Registers a rewrite rule in this transformer. */
   Status Register(std::unique_ptr<RewriteRule> rule);
 
-  /** Gets the list of registered rewrite rules that will be triggered on nodes with the given op type 
+  /** Gets the list of registered rewrite rules that will be triggered on nodes with the given op type
       by this rule-based transformer.
       @returns a pointer to the vector containing all the registered rewrite rules. */
   const InlinedVector<std::reference_wrapper<const RewriteRule>>* GetRewriteRulesForOpType(const std::string& op_type) const {

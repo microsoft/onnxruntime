@@ -14,7 +14,6 @@ Abstract:
 
 --*/
 
-
 #include "test_halfgemm.h"
 
 //
@@ -76,10 +75,10 @@ class HalfGemmShortExecuteTest : public MlasTestFixture<MlasHalfGemmTest<AType, 
       }
     }
     test_registered += RegisterSingleTest(43, 500, 401, 1, true);
-//    test_registered += RegisterSingleTest(1001, 1027, 1031, 1, false);
+    //    test_registered += RegisterSingleTest(1001, 1027, 1031, 1, false);
     if (!Packed) {
       test_registered += RegisterSingleTest(43, 500, 401, 5, true);
-//      test_registered += RegisterSingleTest(1000, 1029, 1030, 3, false);
+      //      test_registered += RegisterSingleTest(1000, 1029, 1030, 3, false);
     }
 
     return test_registered;
@@ -89,7 +88,6 @@ class HalfGemmShortExecuteTest : public MlasTestFixture<MlasHalfGemmTest<AType, 
   size_t M_, N_, K_, Batch_;
   bool hasBias_;
 };
-
 
 template <>
 MlasHalfGemmTest<float, MLFp16, false, false>* MlasTestFixture<MlasHalfGemmTest<float, MLFp16, false, false>>::mlas_tester(nullptr);

@@ -66,7 +66,7 @@ TEST(SamplingTest, Gpt2Sampling_GPU) {
     return;
   }
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
-#else // USE_ROCM
+#else  // USE_ROCM
   OrtROCMProviderOptions rocm_options;
   // TODO - verify the default settings
   session_options.AppendExecutionProvider_ROCM(rocm_options);

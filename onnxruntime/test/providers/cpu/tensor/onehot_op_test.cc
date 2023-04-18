@@ -519,8 +519,8 @@ TEST(OneHotOpTest, DefaultAxis_int64_MLFloat16_int64 /*indices, output, depth*/)
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<MLFloat16>("values", {2}, fp16_values);
   test.AddOutput<MLFloat16>("output", {2, 3, 10}, fp16_output);
-  
-   // exclude CPU Execution Provider as MLFloat16 is not supported in CPU
+
+  // exclude CPU Execution Provider as MLFloat16 is not supported in CPU
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
 
@@ -569,8 +569,8 @@ TEST(OneHotOpTest, DefaultAxis_int64_MLFloat16_int64_NonZeroOffValue /*indices, 
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<MLFloat16>("values", {2}, fp16_values);
   test.AddOutput<MLFloat16>("output", {2, 3, 10}, fp16_output);
-  
-   // exclude CPU Execution Provider as MLFloat16 is not supported in CPU
+
+  // exclude CPU Execution Provider as MLFloat16 is not supported in CPU
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
 

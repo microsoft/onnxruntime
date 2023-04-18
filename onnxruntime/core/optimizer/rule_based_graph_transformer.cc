@@ -53,7 +53,7 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     // Initialize the effect of rules on this node to denote that the graph has not yet been modified
     // by the rule application on the current node.
     auto rule_effect = RuleEffect::kNone;
- 
+
     if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders())) {
       continue;
     }

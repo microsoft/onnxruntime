@@ -408,9 +408,9 @@ class Node {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   /**
-  * Clears removable attributes. These are no longer needed after the initialization
-  * of the session. The function returns the number of removed attributes.
-  */
+   * Clears removable attributes. These are no longer needed after the initialization
+   * of the session. The function returns the number of removed attributes.
+   */
   int PruneRemovableAttributes(gsl::span<const std::string> removable_attributes);
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -659,7 +659,7 @@ class Node {
   std::vector<std::unique_ptr<Graph>> subgraphs_;
 
   // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
-  bool can_be_saved_;  
+  bool can_be_saved_;
 };
 
 /**

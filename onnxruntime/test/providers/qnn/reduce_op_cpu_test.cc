@@ -201,7 +201,6 @@ TEST(QnnCPUBackendTests, TestReduceMinOpset13) {
   RunReduceOpCpuTest<float>("ReduceMin", 13, "TestReduceMinOpset18");
 }
 
-
 //
 // ReduceMean
 //

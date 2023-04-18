@@ -91,7 +91,6 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
     }
   }
 
-
   int64_t task_count = input->Shape().SizeToDimension(input_dims_size - 1);
 
   const T* input_data = input->Data<T>();
