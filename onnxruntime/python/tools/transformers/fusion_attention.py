@@ -631,12 +631,12 @@ class FusionAttention(Fusion):
         mha_inputs.append(bias_name)
 
         # Add optional inputs for MHA
-        if past_k != "" and past_v != "" and past_k in graph_input_names and past_v in graph_input_names:
+        if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
             mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
 
         # Add outputs for MHA
         mha_outputs = [output]
-        if present_k != "" and present_v != "" and present_k in graph_output_names and present_v in graph_output_names:
+        if present_k and present_v and present_k in graph_output_names and present_v in graph_output_names:
             mha_outputs.extend([present_k, present_v])
 
         mha_node = helper.make_node(
@@ -840,7 +840,7 @@ class FusionAttention(Fusion):
             else:
                 attention_inputs.append("")
 
-            past_exists = past_k != "" and past_v != ""
+            past_exists = past_k and past_v
             if past_exists:
                 past_kv = self.concat_kv(past_k, past_v)
                 attention_inputs.append(past_kv)
@@ -867,7 +867,7 @@ class FusionAttention(Fusion):
                 attention_inputs.append(mask_output_name)
 
             attention_outputs = [output]
-            if present_k != "" and present_v != "":
+            if present_k and present_v:
                 present_kv = present_k.replace(".key", "").replace("_key", "").replace(".", "_")
                 attention_outputs.append(present_kv)
                 self.split_kv(present_k, present_v, present_kv)

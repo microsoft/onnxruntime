@@ -120,7 +120,7 @@ class FusionBartAttention(FusionAttention):
         if skip_layernorm.op_type == "Add":
             skip_layernorm = self.model.get_children(skip_layernorm)[0]
         for output in skip_layernorm.output:
-            if output == "":
+            if not output:
                 continue
             children = input_name_to_nodes[output]
             children_types = [child.op_type for child in children]
@@ -265,7 +265,7 @@ class FusionBartAttention(FusionAttention):
             add_name = self.model.create_node_name("Add")
             add_k = helper.make_node("Add", [empty_bias_name, matmul_k.output[0]], [reshape_k_1.name], add_name)
 
-        if past_k == "" and not self.check_runtime_shape_path(
+        if not past_k and not self.check_runtime_shape_path(
             reshape_qkv_2,
             reshape_qkv_1,
             reshape_q_2,
@@ -275,7 +275,7 @@ class FusionBartAttention(FusionAttention):
         ):
             return
 
-        three_root_inputs = past_k != "" and past_v != "" and matmul_k is None and "matmul_v" not in locals()
+        three_root_inputs = past_k and past_v and matmul_k is None and "matmul_v" not in locals()
         one_root_input = (
             not three_root_inputs
             and matmul_k.input[0] == root_input
@@ -297,7 +297,7 @@ class FusionBartAttention(FusionAttention):
         # 5) Decoder cross attention with past with three_root_inputs=True and qk_nodes=qk_nodes_1
         encoder_attention = one_root_input and qk_nodes == qk_nodes_1
         decoder_attention = one_root_input and qk_nodes == qk_nodes_2
-        decoder_attention_with_past = encoder_attention and past_k != "" and past_v != ""
+        decoder_attention_with_past = encoder_attention and past_k and past_v
         decoder_cross_attention = two_root_inputs and qk_nodes == qk_nodes_1
         decoder_cross_attention_with_past = three_root_inputs and qk_nodes == qk_nodes_1
 
