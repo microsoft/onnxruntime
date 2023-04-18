@@ -197,8 +197,8 @@ calling thread will not be put to sleep on blocked,
 which reduces cpu usage on context switching.
 */
 struct OrtSpinLock {
-  typedef enum { Locked = 0,
-                 Unlocked } LockState;
+  using LockState = enum { Locked = 0,
+                           Unlocked };
 
   void lock() noexcept {
     LockState state = Unlocked;
