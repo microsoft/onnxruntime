@@ -359,11 +359,8 @@ class InferenceSession(Session):
         """
         super().__init__()
 
-        if isinstance(path_or_bytes, str):
-            self._model_path = path_or_bytes
-            self._model_bytes = None
-        elif isinstance(path_or_bytes, os.PathLike):
-            self._model_path = str(path_or_bytes)
+        if isinstance(path_or_bytes, (str, os.PathLike)):
+            self._model_path = os.fspath(path_or_bytes)
             self._model_bytes = None
         elif isinstance(path_or_bytes, bytes):
             self._model_path = None
