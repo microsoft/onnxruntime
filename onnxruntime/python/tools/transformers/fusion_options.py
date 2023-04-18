@@ -228,7 +228,7 @@ class FusionOptions:
             required=False,
             action="store_true",
             help="Use MultiHeadAttention instead of Attention operator for testing purpose. "
-            "Note that MultiHeadAttention might be slower than Attention since MatMul of input projection is excluded. ",
+            "Note that MultiHeadAttention might be slower than Attention when qkv are not packed. ",
         )
         parser.set_defaults(use_multi_head_attention=False)
 

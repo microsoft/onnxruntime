@@ -24,9 +24,11 @@ class AttentionCPUBase : public AttentionBase {
                         const T* V,                           // V value with size BxNxLxH_v
                         const Tensor* mask_index,             // mask index. nullptr if no mask or its size is B
                         const Tensor* past,                   // past state
+                        const Tensor* past_key,               // past K input tensor (if not using past state)
+                        const Tensor* past_value,             // past V input tensor (if not using past state)
                         Tensor* output,                       // output tensor
-                        Tensor* present_k,                    // present K output tensor (if separating present KV)
-                        Tensor* present_v,                    // present V output tensor (if separating present KV)
+                        Tensor* present_key,                  // present K output tensor (if separating present KV)
+                        Tensor* present_value,                // present V output tensor (if separating present KV)
                         int batch_size,                       // batch size (B)
                         int sequence_length,                  // sequence length of Q (S)
                         int kv_sequence_length,               // sequence length of K or V (L)
@@ -42,25 +44,12 @@ class AttentionCPUBase : public AttentionBase {
     auto* tp = context->GetOperatorThreadPool();
 
     int past_sequence_length = 0;
-    OrtValue present_kv;
     Tensor* present = nullptr;
-    bool separate_present_kv = present_k != nullptr && present_v != nullptr;
-    if (separate_present_kv) {
-      auto element_type = DataTypeImpl::GetType<T>();
-      past_sequence_length = (nullptr != past) ? static_cast<int>(past->Shape().GetDims()[3]) : 0;
-      TensorShape present_shape({2, batch_size, num_heads_, static_cast<int64_t>(kv_sequence_length) + static_cast<int64_t>(past_sequence_length), v_head_size});
-
-      // Use present_kv to store present KV instead of output
-      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-      Tensor::InitOrtValue(element_type, present_shape, allocator, present_kv);
-      present = present_kv.GetMutable<Tensor>();
-
-      if (nullptr != past && nullptr == present) {
-        ORT_THROW("Expect to have present state output when past state input is given");
-      }
-    }
-    else {
+    if (present_key == nullptr && present_value == nullptr) {
       present = GetPresent(context, past, batch_size, v_head_size, kv_sequence_length, past_sequence_length);
+    }
+    else if (past_key != nullptr && past_value != nullptr) {
+      past_sequence_length = static_cast<int>(past_key->Shape().GetDims()[2]);
     }
 
     // Total sequence length including that of past state: T = P + L
@@ -87,6 +76,10 @@ class AttentionCPUBase : public AttentionBase {
                                                    : gsl::span<const int64_t>{};
     const T* past_data = past != nullptr ? past->Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->MutableData<T>() : nullptr;
+    const T* past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
+    T* present_key_data = present_key != nullptr ? present_key->MutableData<T>() : nullptr;
+    const T* past_value_data = past_value != nullptr ? past_value->Data<T>() : nullptr;
+    T* present_value_data = present_value != nullptr ? present_value->MutableData<T>() : nullptr;
 
     const T* relative_position_bias_data = nullptr;
     if (relative_position_bias != nullptr) {
@@ -96,8 +89,8 @@ class AttentionCPUBase : public AttentionBase {
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
                              mask_index_data, mask_index_dims, static_cast<T*>(mask_data), has_unidirectional,
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
-                             qk_head_size == 0 ? v_head_size : qk_head_size,
-                             past_data, present_data, tp, relative_position_bias_data);
+                             qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data,
+                             present_data, present_key_data, tp, relative_position_bias_data);
 
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     auto out_tmp_data =
@@ -107,13 +100,8 @@ class AttentionCPUBase : public AttentionBase {
     ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data),
                             static_cast<T*>(attention_probs), V,
                             batch_size, sequence_length, kv_sequence_length, past_sequence_length,
-                            v_head_size, v_hidden_size,
-                            past_data, present_data, tp);
-
-    if (separate_present_kv) {
-      SeparatePresentKV(present_data, present_k->MutableData<T>(), present_v->MutableData<T>(), 
-                        batch_size, total_sequence_length, qk_head_size, v_head_size);
-    }
+                            v_head_size, v_hidden_size, past_data, past_value_data,
+                            present_data, present_value_data, tp);
 
     return Status::OK();
   }
@@ -137,7 +125,9 @@ class AttentionCPUBase : public AttentionBase {
                              int past_sequence_length,                  // sequence length of past state
                              int head_size,                             // head size of self-attention
                              const T* past,                             // past state
+                             const T* past_key,                         // past key only (if not using past state)
                              T* present,                                // present state
+                             T* present_key,                            // present key only (if not using present state)
                              ThreadPool* tp,                            // thread pool
                              const T* relative_position_bias_data       // bias addition matrix with shape BxNxSxT
   ) const {
@@ -192,6 +182,9 @@ class AttentionCPUBase : public AttentionBase {
             // Concatenate past_K and K : (BxNx)PxH, (BxNx)LxH -> (BxNx)TxH
             k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, i);
           }
+          else if (nullptr != present_key) {
+            k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, i);
+          }
 
           // Compute Q*K' + AttentionMask
           //                     original                 transposed             each iteration
@@ -241,7 +234,9 @@ class AttentionCPUBase : public AttentionBase {
                                int v_head_size,           // head size of V (H_v)
                                int v_hidden_size,         // hidden size of V (D_v)
                                const T* past,             // past state
+                               const T* past_value,       // past value only (if not using past state)
                                T* present,                // present state
+                               T* present_value,          // present value only (if not using present state)
                                ThreadPool* tp) const {
     const int total_sequence_length = past_sequence_length + kv_sequence_length;                     // T = P + L
     const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;      // P x H_v
@@ -267,6 +262,9 @@ class AttentionCPUBase : public AttentionBase {
           // Concatenate past_V and V: (BxNx)PxH_v, (BxNx)LxH_v -> (BxNx)TxH_v
           v = ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, i);
         }
+        else if (nullptr != present_value) {
+          v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, i);
+        }
 
         T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
@@ -288,21 +286,6 @@ class AttentionCPUBase : public AttentionBase {
         }
       }
     });
-  }
-
-  template <typename T>
-  void SeparatePresentKV(T* present_kv,                // concatenated present K and present V data with size 2xBxNxLxH
-                         T* present_k,                 // present K output tensor
-                         T* present_v,                 // present V output tensor
-                         int batch_size,               // batch size
-                         int total_kv_sequence_length, // total sequence length (kv_sequence_length + past_kv_sequence_length)
-                         int qk_head_size,             // head size of Q or K (H)
-                         int v_head_size) const {      // head size of V (H_v)
-
-    const int num_k_elements = batch_size * num_heads_ * total_kv_sequence_length * qk_head_size;
-    const int num_v_elements = batch_size * num_heads_ * total_kv_sequence_length * v_head_size;
-    memcpy(present_k, present_kv, num_k_elements * sizeof(T));
-    memcpy(present_v, present_kv + num_k_elements, num_v_elements * sizeof(T));
   }
 
 };

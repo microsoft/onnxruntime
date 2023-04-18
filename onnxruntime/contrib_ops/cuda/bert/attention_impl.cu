@@ -384,6 +384,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     }
 #if USE_FLASH_ATTENTION
+    // When past_key/past_value are inputted directly as key/value and there is no present_key/present_value
     else if (use_memory_efficient_attention && data.past_key != nullptr && data.past_value != nullptr && parameters.pass_past_in_kv) {
       // Transpose past_key and past_value to use memory efficient attention
 
@@ -408,6 +409,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       data.past_key = nullptr;
       data.past_value = nullptr;
     }
+    // When there is no past_key/past_value and there is present_key/present_value (e.g. get initial kv to use as past_kv in the next iteration)
     else if (use_memory_efficient_attention && data.present_key != nullptr && data.present_value != nullptr) {
       // Use memory efficient attention kernel
       LaunchAddBias(stream, max_threads_per_block,
@@ -424,8 +426,8 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                           max_threads_per_block, false, data.temp_v_workspace, data.present_value));
 
       DUMP_TENSOR_D("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
-      DUMP_TENSOR_D("k(BSNH)", data.present_key, batch_size * kv_sequence_length, num_heads, qk_head_size);
-      DUMP_TENSOR_D("v(BSNH)", data.present_value, batch_size * kv_sequence_length, num_heads, v_head_size);
+      DUMP_TENSOR_D("k(BSNH)", data.temp_k_workspace, batch_size * kv_sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("v(BSNH)", data.temp_v_workspace, batch_size * kv_sequence_length, num_heads, v_head_size);
       qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
     }
 #endif
