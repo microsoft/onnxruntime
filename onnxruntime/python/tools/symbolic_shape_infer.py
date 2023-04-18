@@ -2254,7 +2254,7 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], word_embedding_dtype, output_shape))
 
-        if node.input[7]:
+        if len(node.input) > 7 and node.input[7]:
             mask_index_shape = [input_ids_shape[0]]
             vi = self.known_vi_[node.output[1]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT32, mask_index_shape))
