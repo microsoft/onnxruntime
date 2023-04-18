@@ -136,7 +136,7 @@ AllToAll::AllToAll(const OpKernelInfo& info) : NcclKernel(info) {
 Status AllToAll::ComputeInternal(OpKernelContext* context) const {
   const ncclComm_t comm = nccl_->Comm();
   auto input_tensor = context->Input<Tensor>(0);
-  const char* input_data = static_cast<const char *>(input_tensor->DataRaw());
+  const char* input_data = static_cast<const char*>(input_tensor->DataRaw());
   const auto in_shape = input_tensor->Shape();
   const int64_t input_count = in_shape.Size();
   auto out_shape = in_shape;
@@ -144,7 +144,7 @@ Status AllToAll::ComputeInternal(OpKernelContext* context) const {
   const int64_t rank_stride = input_count / group_size_;
   const ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
 
-  char* output_data = static_cast<char *>(context->Output(0, out_shape)->MutableDataRaw());
+  char* output_data = static_cast<char*>(context->Output(0, out_shape)->MutableDataRaw());
 
 #ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclGroupStart());

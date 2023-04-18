@@ -28,7 +28,6 @@ template <typename InputType>
 static GetTestModelFn BuildCastTestCase(const std::vector<int64_t>& shape,
                                         ONNX_NAMESPACE::TensorProto_DataType dst_type) {
   return [shape, dst_type](ModelTestBuilder& builder) {
-
     // Random input data
     auto input = builder.MakeInput<InputType>(shape, static_cast<InputType>(0), static_cast<InputType>(20));
 

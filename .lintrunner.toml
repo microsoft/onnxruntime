@@ -14,7 +14,7 @@
 # To lint local changes:
 #
 # ```bash
-# lintrunner -m main
+# lintrunner
 # ```
 #
 # To lint all files:
@@ -32,6 +32,8 @@
 # To read more about lintrunner, see [wiki](https://github.com/pytorch/pytorch/wiki/lintrunner).
 # To update an existing linting rule or create a new one, modify this file or create a
 # new adapter following examples in https://github.com/justinchuby/lintrunner-adapters.
+
+merge_base_with = 'origin/main'
 
 [[linter]]
 code = 'RUFF'
@@ -166,5 +168,46 @@ command = [
     '--config-path=rust/rustfmt.toml',
     '--',
     '@{{PATHSFILE}}'
+]
+is_formatter = true
+
+[[linter]]
+code = 'CLANGFORMAT'
+include_patterns = [
+    '**/*.h',
+    '**/*.cc',
+    '**/*.hpp',
+    '**/*.cpp',
+    '**/*.m',
+    '**/*.mm',
+]
+exclude_patterns = [
+    'java/**', # FIXME: Enable clang-format for java
+    'js/**',
+    'onnxruntime/contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/**', # Contains data chunks
+    'onnxruntime/core/flatbuffers/schema/ort.fbs.h', # Generated code
+    'onnxruntime/core/graph/contrib_ops/quantization_defs.cc',
+    'onnxruntime/core/mlas/**', # Contains assembly code
+    'winml/**', # FIXME: Enable clang-format for winml
+]
+command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'clangformat_linter',
+    '--binary=clang-format',
+    '--fallback',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'pip_init',
+    '--dry-run={{DRYRUN}}',
+    'clang-format==16.0.1',
 ]
 is_formatter = true

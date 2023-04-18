@@ -23,7 +23,6 @@ inline std::vector<T> random(std::vector<int64_t> shape) {
   return generator.Uniform<T>(shape, 0.0f, 1.0f);
 }
 
-
 template <>
 inline std::vector<int64_t> random<int64_t>(std::vector<int64_t> shape) {
   int64_t size = 1;

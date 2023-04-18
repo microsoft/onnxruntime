@@ -361,8 +361,8 @@ void setup_training_params(GPT2Parameters& params) {
 #ifdef USE_CUDA
   {
     OrtCUDAProviderOptions info;
-    info.device_id=gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
-    info.do_copy_in_default_stream=true;
+    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream = true;
     params.providers.emplace(kCudaExecutionProvider, CudaProviderFactoryCreator::Create(&info));
     params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
   }
@@ -371,8 +371,8 @@ void setup_training_params(GPT2Parameters& params) {
 #ifdef USE_ROCM
   {
     OrtROCMProviderOptions info;
-    info.device_id=gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
-    info.do_copy_in_default_stream=true;
+    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream = true;
     params.providers.emplace(kRocmExecutionProvider, RocmProviderFactoryCreator::Create(&info));
     params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
   }
