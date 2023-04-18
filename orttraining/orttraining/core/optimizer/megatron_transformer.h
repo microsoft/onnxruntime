@@ -16,7 +16,7 @@ class MegatronTransformer : public GraphTransformer {
                       std::unordered_set<std::string>& weights_to_train,
                       std::unordered_map<std::string, training::TrainingSession::PartitionInfo>& weight_partition_info,
                       training::TrainingSession::OptimizerState& initial_optimizer_states,
-                      const IExecutionProvider& cpu_execution_provider , // Required to get allocator for optimizer partitioning by Col                   
+                      const IExecutionProvider& cpu_execution_provider,  // Required to get allocator for optimizer partitioning by Col
                       const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("MegatronTransformer", compatible_execution_providers),
         horizontal_parallel_rank_(horizontal_parallel_rank),
@@ -25,7 +25,7 @@ class MegatronTransformer : public GraphTransformer {
         weights_to_train_(weights_to_train),
         weight_partition_info_(weight_partition_info),
         initial_optimizer_states_(initial_optimizer_states),
-        cpu_execution_provider_ (cpu_execution_provider ) {}
+        cpu_execution_provider_(cpu_execution_provider) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level,
                    const logging::Logger& logger) const override;
@@ -88,7 +88,7 @@ class MegatronTransformer : public GraphTransformer {
   std::unordered_set<std::string>& weights_to_train_;
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo>& weight_partition_info_;
   training::TrainingSession::OptimizerState& initial_optimizer_states_;
-  const IExecutionProvider& cpu_execution_provider_ ;
+  const IExecutionProvider& cpu_execution_provider_;
 };
 
 }  // namespace onnxruntime

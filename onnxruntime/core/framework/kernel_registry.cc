@@ -132,7 +132,7 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
       kernel_start_version == node_version ||
       // allow match if the kernel def has an end version. if it does not, all we know is that the kernel supported
       // the start version when it was created, and not whether a new version of the operator was added since then
-	  // that the kernel doesn't support.
+      // that the kernel doesn't support.
       (kernel_end_version != INT_MAX &&
        kernel_start_version <= node_version && kernel_end_version >= node_version);
 

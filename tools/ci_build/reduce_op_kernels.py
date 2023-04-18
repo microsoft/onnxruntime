@@ -330,7 +330,7 @@ if __name__ == "__main__":
         "--cmake_build_dir",
         type=str,
         required=True,
-        help="Path to the build directory. " "The op reduction files will be generated under the build directory.",
+        help="Path to the build directory. The op reduction files will be generated under the build directory.",
     )
 
     parser.add_argument(

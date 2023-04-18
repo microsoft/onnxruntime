@@ -1995,7 +1995,7 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allo
   if (opset == std::nullopt || *opset > kMaxSupportedOpset || *opset < kMinSupportedOpset) {
     // if the model doesn't have an ONNX opset that's fine as there are no ops we'd move around
     if (opset.has_value()) {
-      error_msg = "Unsupported ONNX opset";
+      error_msg = "Unsupported ONNX opset: " + std::to_string(*opset);
     }
 
     return std::nullopt;

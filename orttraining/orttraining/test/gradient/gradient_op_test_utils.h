@@ -7,9 +7,9 @@
 
 namespace onnxruntime {
 namespace test {
-using TestDataVector = std::tuple<std::vector<std::vector<TensorInfo>>, // Input data
-                                  std::vector<std::vector<TensorInfo>>, // output data
-                                  std::vector<std::vector<onnx::AttributeProto>>>; //attribute
+using TestDataVector = std::tuple<std::vector<std::vector<TensorInfo>>,             // Input data
+                                  std::vector<std::vector<TensorInfo>>,             // output data
+                                  std::vector<std::vector<onnx::AttributeProto>>>;  // attribute
 
 class GradientOpTester : public OpTester {
  public:
@@ -42,4 +42,3 @@ class GradientOpTester : public OpTester {
 };
 }  // namespace test
 }  // namespace onnxruntime
-

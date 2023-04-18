@@ -452,7 +452,6 @@ typedef struct OrtCUDAProviderOptions {
    */
   int tunable_op_tuning_enable;
 
-
 } OrtCUDAProviderOptions;
 
 /** \brief ROCM Provider Options

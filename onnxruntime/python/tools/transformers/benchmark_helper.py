@@ -276,7 +276,7 @@ def output_summary(results, csv_filename, args):
                                             assert row[k] == headers[k]
                                     b = result["batch_size"]
                                     s = result["sequence_length"]
-                                    if s != "":
+                                    if s:
                                         row[f"b{b}_s{s}"] = result["average_latency_ms"]
                                     else:
                                         row[f"b{b}"] = result["average_latency_ms"]

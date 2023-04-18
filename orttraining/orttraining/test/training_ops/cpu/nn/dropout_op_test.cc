@@ -207,20 +207,20 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
 
 TEST(DropoutGradTest, Basic) {
   // N % 4 != 0
-  //Ratio 0.3, 2D
+  // Ratio 0.3, 2D
   RunDropoutGradTest(0.3f, {5, 6}, false);
 
   // N %4 == 0
-  //Ratio 0.2, 1D
+  // Ratio 0.2, 1D
   RunDropoutGradTest(0.2f, {16}, false);
 
-  //Ratio 0.3, 2D
+  // Ratio 0.3, 2D
   RunDropoutGradTest(0.3f, {8, 2}, false);
 
-  //Ratio 0.4, 3D
+  // Ratio 0.4, 3D
   RunDropoutGradTest(0.4f, {2, 4, 2}, false);
 
-  //default Ratio, 3D
+  // default Ratio, 3D
   RunDropoutGradTest(0.5f, {2, 4, 2});
 }
 TEST(DropoutGradTest, RatioLimit) {

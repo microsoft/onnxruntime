@@ -123,7 +123,7 @@ class LoadBalancingDistributedSampler:
                 raise RuntimeError("Requires distributed package to be available")
             rank = dist.get_rank()
         if rank >= world_size or rank < 0:
-            raise ValueError("Invalid rank {}, rank should be in the interval" " [0, {}]".format(rank, world_size - 1))
+            raise ValueError(f"Invalid rank {rank}, rank should be in the interval [0, {world_size - 1}]")
         self.dataset = dataset
         self.world_size = world_size
         self.rank = rank

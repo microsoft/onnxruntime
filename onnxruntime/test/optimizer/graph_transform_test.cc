@@ -1221,9 +1221,6 @@ TEST_F(GraphTransformationTests, FuseCpuConvAdd) {
 
 #if !defined(DISABLE_CONTRIB_OPS)
 TEST_F(GraphTransformationTests, FuseConvActivation) {
-#ifdef USE_CUDA
-  std::unordered_map<PathString, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"}};
-#else
   std::unordered_map<PathString, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
                                                                {ORT_TSTR("fusion/conv_relu_opset12.onnx"), "Relu"},
                                                                {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
@@ -1231,7 +1228,6 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
                                                                {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},
                                                                {ORT_TSTR("fusion/conv_leakyrelu.onnx"), "LeakyRelu"},
                                                                {ORT_TSTR("fusion/conv_hardsigmoid.onnx"), "HardSigmoid"}};
-#endif
   for (const auto& model : model_to_op_name) {
     PathString model_uri = PathString(MODEL_FOLDER) + model.first;
     SCOPED_TRACE(ORT_TSTR("model file: ") + model_uri);
@@ -1242,17 +1238,30 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
     for (auto& node : p_model->MainGraph().Nodes()) {
       node.SetExecutionProviderType(kCudaExecutionProvider);
     }
+#elif defined(USE_ROCM)
+    for (auto& node : p_model->MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+    }
 #endif
-    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-    ASSERT_TRUE(op_to_count[model.second] >= 1);
+    std::map<std::string, int> op_to_count_before_fusion = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count_before_fusion[model.second] >= 1);
 
     // Apply transformer
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
-    op_to_count = CountOpsInGraph(graph);
-    ASSERT_TRUE(op_to_count[model.second] == 0);
+    std::map<std::string, int> op_to_count_after_fusion = CountOpsInGraph(graph);
+#if defined(USE_CUDA) || defined(USE_ROCM)
+    std::set<std::string> cuda_rocm_supported = {"Relu"};
+    if (cuda_rocm_supported.find(model.second) == cuda_rocm_supported.end()) {
+      ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
+    } else {
+      ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
+    }
+#else
+    ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
+#endif
   }
 }
 

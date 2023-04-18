@@ -918,7 +918,7 @@ class OnnxModel:
                     continue
                 failed = False
                 for input_name in node.input:
-                    if input_name != "" and input_name not in deps_set:
+                    if input_name and input_name not in deps_set:
                         failed = True
                         last_node_name = node.name
                 if not failed:

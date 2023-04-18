@@ -55,7 +55,6 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
   return Status::OK();
 }
 
-
 /**
 Provide check for Reshape Fusion for DistilBert. The following are subgraphs that
 match the pattern for DistilBert
@@ -88,8 +87,8 @@ static bool Match_Linear_Subgraph_1(Graph& graph, const Node& concat, const Node
   const Node& reshape = *reshape_itr;
 
   std::vector<graph_utils::EdgeEndToMatch> linear_path{
-    {0, 0, "Add", {7}, kOnnxDomain},
-    {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
+      {0, 0, "Add", {7}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(reshape, true, linear_path, edges, logger)) {
     return false;
@@ -219,7 +218,7 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const Node
     if (slice.GetInputEdgesCount() >= 3) {
       optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[1]), starts_values, true);
       optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[2]), ends_values, true);
-    } else { // Support older version of Slice node
+    } else {  // Support older version of Slice node
       graph_utils::GetRepeatedNodeAttributeValues<int64_t>(slice, "starts", starts_values);
       graph_utils::GetRepeatedNodeAttributeValues<int64_t>(slice, "ends", ends_values);
     }

@@ -12,7 +12,7 @@ namespace onnxruntime {
 using CaptureId_t = unsigned long long;
 
 struct CUDAGraph {
-  CUDAGraph() {};
+  CUDAGraph(){};
   CUDAGraph(cudaStream_t stream);
   ~CUDAGraph();
 
@@ -22,7 +22,7 @@ struct CUDAGraph {
   Status Replay();
   void Reset();
 
-private:
+ private:
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   cudaGraph_t graph_ = NULL;
   cudaGraphExec_t graph_exec_ = NULL;
@@ -31,7 +31,7 @@ private:
   bool has_graph_ = false;
   bool has_graph_exec_ = false;
 
-  cudaStream_t stream_ = nullptr; // Does not own the stream
+  cudaStream_t stream_ = nullptr;  // Does not own the stream
 };
 
-} // namespace onnxruntime
+}  // namespace onnxruntime

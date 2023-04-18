@@ -288,8 +288,8 @@ Status LpPoolV18<T>::Compute(OpKernelContext* context) const {
       const int64_t dilation_h = pool_attrs_.dilations[0];
 
       RunLoop<LpPool1DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
-                                {X_data, Y_data, x_step, y_step, dilation_h, pooled_height, stride_h(),
-                                 height, kernel_shape, pads, p_});
+                               {X_data, Y_data, x_step, y_step, dilation_h, pooled_height, stride_h(),
+                                height, kernel_shape, pads, p_});
       break;
     }
 
@@ -311,9 +311,9 @@ Status LpPoolV18<T>::Compute(OpKernelContext* context) const {
       const int64_t dilation_w = pool_attrs_.dilations[1];
       const int64_t dilation_d = pool_attrs_.dilations[2];
       RunLoop<LpPool3DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
-                                {X_data, Y_data, x_step, y_step,
-                                 dilation_h, dilation_w, dilation_d, pooled_height, pooled_width,
-                                 pooled_depth, stride_h(), stride_w(), stride_d(), height,
+                               {X_data, Y_data, x_step, y_step,
+                                dilation_h, dilation_w, dilation_d, pooled_height, pooled_width,
+                                pooled_depth, stride_h(), stride_w(), stride_d(), height,
                                 width, depth, kernel_shape, pads, p_});
       break;
     }
@@ -365,9 +365,9 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LpPool, 11, 17,
 
 ONNX_CPU_OPERATOR_KERNEL(LpPool, 18,
                          KernelDefBuilder()
-                            .TypeConstraint(
-                                "T", 
-                                DataTypeImpl::GetTensorType<float>()),
+                             .TypeConstraint(
+                                 "T",
+                                 DataTypeImpl::GetTensorType<float>()),
                          LpPoolV18<float>);
 
 ONNX_CPU_OPERATOR_KERNEL(GlobalLpPool, 2, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
