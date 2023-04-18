@@ -174,7 +174,7 @@ namespace Microsoft.ML.OnnxRuntime
                         var length = (i == offsets.Length - 1)
                             ? strLen.ToUInt64() - offsets[i].ToUInt64()
                             : offsets[i + 1].ToUInt64() - offsets[i].ToUInt64();
-                        // Onnx specifies strings always in UTF-8, no trailing null, no leading BOM
+                        // ORT API specifies strings always in UTF-8, no trailing null, no leading BOM
                         _dataBufferAsString[i] = Encoding.UTF8.GetString(dataBuffer, (int)offsets[i], (int)length);
                     }
                 }
