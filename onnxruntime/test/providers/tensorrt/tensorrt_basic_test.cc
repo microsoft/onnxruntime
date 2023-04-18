@@ -691,7 +691,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 }
 
-TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
+TEST(TensorrtExecutionProviderTest, DISABLED_NodeIndexMappingTest) {  //  [W:onnxruntime:TensorrtExecutionProviderTest.NodeIndexMappingTest, model_load_utils.h:58 ValidateOpsetForDomain] ONNX Runtime only *guarantees* support for models stamped with official released onnx opset versions. Opset 19 is under development and support for this is limited. The operator schemas and or other functionality could possibly change before next ONNX release and in this case ONNX Runtime will not guarantee backward compatibility. Current official support for domain ai.onnx is till opset 18.
   onnxruntime::Model model("nodeindexmappingtest", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
