@@ -149,7 +149,7 @@ jobs:
         - task: Cache@2
           inputs:
             key: '"$(TODAY)" | ${{ parameters.buildArch }} | ${{ parameters.BuildConfig }} | $(Build.SourcesDirectory)/cmake/deps.txt, $(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1, $(Build.SourcesDirectory)/tools/ci_build/github/windows/helpers.ps1'
-            path: $(DEPS_CACHE_DIR_CACHE_DIR)
+            path: $(DEPS_CACHE_DIR)
             restoreKeys: |
               "$(TODAY)" | ${{ parameters.buildArch }} | ${{ parameters.BuildConfig }}
           displayName: Cache Task
