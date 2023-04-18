@@ -102,7 +102,7 @@ Status Optimizer::GenerateMomentumNamedStates() {
       ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
       for (auto& state_name : optimizer_algo_shared_ptr_->momentum_keys) {
         OrtValue param_state;
-        ORT_ENFORCE(utils::CreateOrtValueLikeAndFillWithZero(optim_sess_state, pair.second->Data(), param_state).IsOK(),
+        ORT_ENFORCE(utils::CreateZeroValuedOrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(),
                     "Error generating moment state for ", pair.first);
         cur_param_optimizer_states.momentum_named_states.insert({state_name, std::move(param_state)});
       }
