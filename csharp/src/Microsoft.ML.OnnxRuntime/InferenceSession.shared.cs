@@ -53,12 +53,12 @@ namespace Microsoft.ML.OnnxRuntime
         private Dictionary<string, NodeMetadata> _overridableInitializerMetadata;
 
         /// <summary>
-        /// This list holds memory handles for pinned input/output names.
+        /// This list holds Utf-8 converted input/output names allocated from a native heap
+        /// and as such do not require pinning. It must be disposed of (freed).
+        /// 
         /// Introduced to reduce the GC burden as the names are used in every Run() call.
-        /// being converted to UTF8, pinned and passed to native code.
-        /// This creates a repeated bured even though the names are the same and a few in number.
         /// </summary>
-        private DisposableList<MemoryHandle> _namesMemoryHandles;
+        private List<IntPtr> _namesMemoryPtrs;
 
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
@@ -731,10 +731,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 var name = nameExtractor(values.ElementAt(i));
                 NodeMetadata meta = metaLookup(name);
-                unsafe
-                {
-                    result[i] = (IntPtr)meta.ZeroTerminatedNameHandle.Pointer;
-                }
+                result[i] = meta.ZeroTerminatedName;
             }
             return result;
         }
@@ -918,6 +915,18 @@ namespace Microsoft.ML.OnnxRuntime
             InitWithSessionHandle(session, options);
         }
 
+        private void CreateNativelyAllocatedUtf8(NodeMetadata meta, byte[] utf8)
+        {
+            var nameAlloc = Marshal.AllocHGlobal(utf8.Length);
+            _namesMemoryPtrs.Add(nameAlloc);
+            meta.ZeroTerminatedName = nameAlloc;
+            unsafe
+            {
+                Span<byte> destination = new Span<byte>(nameAlloc.ToPointer(), utf8.Length);
+                utf8.AsSpan(0, utf8.Length).CopyTo(destination);
+            }
+        }
+
         /// <summary>
         /// Initializes the session object with a native session handle
         /// </summary>
@@ -939,7 +948,7 @@ namespace Microsoft.ML.OnnxRuntime
                     out UIntPtr initilaizerCount));
 
                 int totalNameCount = (int)inputCount + (int)outputCount + (int)initilaizerCount;
-                _namesMemoryHandles = new DisposableList<MemoryHandle>(totalNameCount);
+                _namesMemoryPtrs = new List<IntPtr>(totalNameCount);
 
                 // get all the input names and metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>((int)inputCount);
@@ -950,9 +959,7 @@ namespace Microsoft.ML.OnnxRuntime
                     var inputMeta = GetInputMetadata(i);
                     var iname = GetInputName(i, out byte[] utf8);
                     _inputNames.Add(iname);
-                    var namePin = new Memory<byte>(utf8).Pin();
-                    _namesMemoryHandles.Add(namePin);
-                    inputMeta.ZeroTerminatedNameHandle = namePin;
+                    CreateNativelyAllocatedUtf8(inputMeta, utf8);
                     _inputMetadata[iname] = inputMeta;
                 }
 
@@ -965,9 +972,7 @@ namespace Microsoft.ML.OnnxRuntime
                     var outputMeta = GetOutputMetadata(i);
                     var oname = GetOutputName(i, out byte[] utf8);
                     _outputNames.Add(oname);
-                    var namePin = new Memory<byte>(utf8).Pin();
-                    _namesMemoryHandles.Add(namePin);
-                    outputMeta.ZeroTerminatedNameHandle = namePin;
+                    CreateNativelyAllocatedUtf8(outputMeta, utf8);
                     _outputMetadata[oname] = outputMeta;
                 }
 
@@ -977,9 +982,7 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     var meta = GetOverridableInitializerMetadata(i);
                     var iname = GetOverridableInitializerName(i, out byte[] utf8);
-                    var namePin = new Memory<byte>(utf8).Pin();
-                    _namesMemoryHandles.Add(namePin);
-                    meta.ZeroTerminatedNameHandle = namePin;
+                    CreateNativelyAllocatedUtf8(meta, utf8);
                     _overridableInitializerMetadata[iname] = meta;
                 }
                 // set profiling's start time
@@ -989,8 +992,14 @@ namespace Microsoft.ML.OnnxRuntime
             }
             catch (Exception)
             {
-                _namesMemoryHandles?.Dispose();
-                _namesMemoryHandles = null;
+                if (_inputNames != null)
+                {
+                    foreach (var ptr in _namesMemoryPtrs)
+                    {
+                        Marshal.FreeHGlobal(ptr);
+                    }
+                    _inputNames = null;
+                }
 
                 if (_nativeHandle != IntPtr.Zero)
                 {
@@ -1203,7 +1212,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             // Fetch tensor type and shape from the TypeInfo
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToTensorInfo(typeInfo, out IntPtr tensorInfo)); //(IntPtr)(int)(uint)
-            // Casts API are broken. Always return success, but may return null for the result.
+                                                                                                                       // Casts API are broken. Always return success, but may return null for the result.
             if (tensorInfo == IntPtr.Zero)
             {
                 throw new OnnxRuntimeException(ErrorCode.Fail, "TypeInfo cast to TensorTypeInfo failed. The object does not represent a tensor");
@@ -1285,10 +1294,12 @@ namespace Microsoft.ML.OnnxRuntime
 
             if (disposing)
             {
-                if (_namesMemoryHandles != null)
+                if (_namesMemoryPtrs != null)
                 {
-                    _namesMemoryHandles.Dispose();
-                    _namesMemoryHandles = null;
+                    foreach (var ptr in _namesMemoryPtrs)
+                        Marshal.FreeHGlobal(ptr);
+
+                    _namesMemoryPtrs = null;
                 }
 
                 // cleanup managed resources
@@ -1534,16 +1545,17 @@ namespace Microsoft.ML.OnnxRuntime
         public OnnxValueType OnnxValueType { get; }
 
         /// <summary>
-        /// Pinned zero terminated UTF-8 name of input/output
+        /// Node name in the natively allocated memory.
+        /// 
         /// Present only on the top-level instance
         /// metadata dictionary entries.
         /// 
         /// Avoid repeated conversion and pinning
         /// 
-        /// This memory handle is owned and disposed by the InferenceSession
+        /// This memory chunk is owned and freed by the InferenceSession
         /// object.
         /// </summary>
-        internal MemoryHandle ZeroTerminatedNameHandle { get; set; }
+        internal IntPtr ZeroTerminatedName { get; set; }
 
         /// <summary>
         /// Tensor shape valid only if this is a Tensor.
