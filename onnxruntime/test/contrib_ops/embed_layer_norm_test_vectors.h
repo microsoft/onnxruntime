@@ -35,25 +35,7 @@ class OpData {
       bool has_segment = true,
       const std::vector<float>& embedding_sum_data = {},
       const std::vector<int32_t>& position_ids_data = {})
-      : batch_size(batch_size)
-      , sequence_size(sequence_size)
-      , hidden_size(hidden_size)
-      , input_ids_data(input_ids_data)
-      , segment_ids_data(segment_ids_data)
-      , mask_data(mask_data)
-      , word_embedding_data(word_embedding_data)
-      , position_embedding_data(position_embedding_data)
-      , segment_embedding_data(segment_embedding_data)
-      , gamma_data(gamma_data)
-      , beta_data(beta_data)
-      , output_data(output_data)
-      , mask_index_data(mask_index_data)
-      , epsilon(epsilon)
-      , has_mask(has_mask)
-      , has_segment(has_segment)
-      , embedding_sum_data(embedding_sum_data)
-      , position_ids_data(position_ids_data)
-  {}
+      : batch_size(batch_size), sequence_size(sequence_size), hidden_size(hidden_size), input_ids_data(input_ids_data), segment_ids_data(segment_ids_data), mask_data(mask_data), word_embedding_data(word_embedding_data), position_embedding_data(position_embedding_data), segment_embedding_data(segment_embedding_data), gamma_data(gamma_data), beta_data(beta_data), output_data(output_data), mask_index_data(mask_index_data), epsilon(epsilon), has_mask(has_mask), has_segment(has_segment), embedding_sum_data(embedding_sum_data), position_ids_data(position_ids_data) {}
 
   const int batch_size;
   const int sequence_size;
@@ -124,7 +106,7 @@ inline OpData EmbedLayerNormBatch1() {
                 gamma_data, beta_data, output_data, mask_index_data);
 }
 
-inline OpData EmbedLayerNormBatch2(bool has_mask=true) {
+inline OpData EmbedLayerNormBatch2(bool has_mask = true) {
   int batch_size = 3;
   int sequence_size = 2;
   int hidden_size = 4;
@@ -295,7 +277,7 @@ inline OpData EmbedLayerNormBatch_Distill() {
       0.25f, 0.15f, 0.45f, -0.66f};
 
   std::vector<float> beta_data = {
-    0.6f, 0.2f, 0.5f, -0.6f};
+      0.6f, 0.2f, 0.5f, -0.6f};
 
   std::vector<float> output_data = {
       0.39587587118148804, 0.03670068085193634, 0.7449488639831543, -1.4981462955474854,

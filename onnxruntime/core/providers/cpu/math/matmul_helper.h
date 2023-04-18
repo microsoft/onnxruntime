@@ -339,7 +339,7 @@ class MatMulComputeHelper {
   }
 
   int Ldb(bool is_trans) const {
-    return (is_trans ? static_cast<int>(K_) : static_cast<int>(N_)) * right_ld_factor_; 
+    return (is_trans ? static_cast<int>(K_) : static_cast<int>(N_)) * right_ld_factor_;
   }
 
   int Ldc() const {

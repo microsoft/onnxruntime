@@ -30,9 +30,7 @@ typedef std::shared_ptr<pyxir::graph::XGraph> XGraphHolder;
 typedef std::shared_ptr<pyxir::graph::XLayer> XLayerHolder;
 
 VitisAIExecutionProvider::VitisAIExecutionProvider(const VitisAIExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, backend_type_(info.backend_type),
-      device_id_(info.device_id), export_runtime_module_(info.export_runtime_module),
-      load_runtime_module_(info.load_runtime_module) {
+    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, backend_type_(info.backend_type), device_id_(info.device_id), export_runtime_module_(info.export_runtime_module), load_runtime_module_(info.load_runtime_module) {
   AllocatorCreationInfo default_memory_info{
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(VITISAI, OrtAllocatorType::OrtDeviceAllocator));
@@ -79,7 +77,7 @@ GetSupportedNodeClusters(const XGraphHolder& xg, const std::string& backend_type
         is_node_supported = true;
         int found_cluster_id = cluster_idx[supported_tensors[(*it)->Name()]];
         if (cluster_id != -1 && found_cluster_id != cluster_id) {
-          //Output tensors belong to different clusters
+          // Output tensors belong to different clusters
           LOGS_DEFAULT(FATAL) << "VITIS-AI EP: Found node which belongs to "
                               << "multiple clusters. This is an invalid case";
         }
@@ -157,7 +155,7 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     }
   }
 
-  //Extract initializers used by this_cluster.
+  // Extract initializers used by this_cluster.
   std::unordered_set<std::string> original_graph_inputs;
   for (const auto& node_arg : graph_viewer.GetInputsIncludingInitializers()) {
     original_graph_inputs.insert(node_arg->Name());

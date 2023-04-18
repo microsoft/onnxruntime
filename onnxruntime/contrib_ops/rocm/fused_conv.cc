@@ -88,12 +88,12 @@ struct FNVHash {
     std::vector<int> dilations{kMaxSpatialDim};
     miopenConvolutionMode_t mode;
     bool spatial_dim_guessed = false;
-    for (int i=0; i<kMaxSpatialDim; i++) {
+    for (int i = 0; i < kMaxSpatialDim; i++) {
       if (miopenStatusSuccess == miopenGetConvolutionNdDescriptor(
-        cdesc, i, &spatial_dim, pads.data(), strides.data(), dilations.data(), &mode)) {
-          spatial_dim_guessed = true;
-          break;
-        }
+                                     cdesc, i, &spatial_dim, pads.data(), strides.data(), dilations.data(), &mode)) {
+        spatial_dim_guessed = true;
+        break;
+      }
     }
     ORT_ENFORCE(spatial_dim_guessed, "Failed to guess the actual spatial dimension");
     // Remove the extra dimension
@@ -381,7 +381,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     auto status = miopenCreateOpConvForward(fusion.plan, &fusion.conv_op, Base::s_.conv_desc, Base::s_.w_desc);
     if (status == miopenStatusUnsupportedOp) {
       auto msg = MakeString("MIOpen does not support the conv fusion for node \"",
-                             node_name, "\", fallback to unfused implementation.");
+                            node_name, "\", fallback to unfused implementation.");
       LOGS_DEFAULT(WARNING) << msg;
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, msg);
     }

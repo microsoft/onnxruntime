@@ -165,7 +165,7 @@ TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero) {
 #if defined(USE_DNNL)
 TEST(TensorOpTest, Reshape_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -186,7 +186,7 @@ TEST(TensorOpTest, Reshape_bfloat16) {
 
 TEST(TensorOpTest, ReshapeWithEmptyDim_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -207,7 +207,7 @@ TEST(TensorOpTest, ReshapeWithEmptyDim_bfloat16) {
 
 TEST(TensorOpTest, ReshapeWithEmptyInput_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -226,7 +226,7 @@ TEST(TensorOpTest, ReshapeWithEmptyInput_bfloat16) {
 
 TEST(TensorOpTest, Reshape_WithOutAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -248,7 +248,7 @@ TEST(TensorOpTest, Reshape_WithOutAllowZero_bfloat16) {
 
 TEST(TensorOpTest, Reshape_WithAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -261,7 +261,7 @@ TEST(TensorOpTest, Reshape_WithAllowZero_bfloat16) {
   test.AddOutput<BFloat16>("reshaped", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
   // TensorRT doesn't support dynamic shape tensor for now
   // Nuphar only supports reshape shape from initializer
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif  //  USE_DNNL
@@ -271,7 +271,7 @@ TEST(TensorOpTest, Reshape_WithAllowZero_bfloat16) {
 
 TEST(TensorOpTest, ReshapeWithInitializer_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -290,7 +290,7 @@ TEST(TensorOpTest, ReshapeWithInitializer_bfloat16) {
 
 TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -325,7 +325,7 @@ TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape_bfloat16) {
 
 TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -347,7 +347,7 @@ TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero_bfloat16) {
 
 TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -370,7 +370,7 @@ TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero_bfloat16) {
 
 TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -389,7 +389,7 @@ TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero_bfloat16) {
 
 TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }

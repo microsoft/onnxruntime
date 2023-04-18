@@ -225,7 +225,7 @@ Status AddZeroGradientNodes(const NodeArgNameGeneratorFn& nodearg_name_generator
                             const std::vector<ArgDef>& control_signals,
                             std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
                             GraphAugmenter::GraphDefs& graph_defs) {
-  //assert(gradient_argdefs.size() == control_signals.size());
+  // assert(gradient_argdefs.size() == control_signals.size());
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
     gradient_argdefs[i] = BuildZeroGradientNode(nodearg_name_generator, control_signals[i], gradient_argdefs[i], graph_defs);
   }
@@ -441,8 +441,8 @@ Status OptimizerGraphBuilder::Build(
     optimizer_graph_outputs[OptimizerOutputKey::GradientAccumulation] = group_accumulate_gradient_output.name;
   }
 
-  //gradient norm for bfloat16 is not ready yet. skip it to unblock the testing
-  //will add it back when it is ready
+  // gradient norm for bfloat16 is not ready yet. skip it to unblock the testing
+  // will add it back when it is ready
   bool should_add_gradient_norm =
       opt_graph_config_.enable_grad_norm_clip ||
       (opt_graph_config_.use_mixed_precision && opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16);

@@ -3,7 +3,6 @@
 
 #pragma once
 
-
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
 #include "core/platform/ort_mutex.h"
@@ -50,7 +49,7 @@ class CUDAExternalAllocator : public CUDAAllocator {
   InlinedHashSet<void*> reserved_;
 };
 
-//TODO: add a default constructor
+// TODO: add a default constructor
 class CUDAPinnedAllocator : public IAllocator {
  public:
   CUDAPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)

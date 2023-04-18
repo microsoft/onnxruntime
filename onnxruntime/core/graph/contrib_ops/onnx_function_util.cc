@@ -36,7 +36,7 @@ static uint16_t floatToHalf(float ff) {
 
   if (floatbits >= f16max) {                            // result is Inf or NaN (all exponent bits set)
     result = (floatbits > f32infty) ? 0x7e00 : 0x7c00;  // NaN->qNaN and Inf->Inf
-  } else {                                        // (De)normalized number or zero
+  } else {                                              // (De)normalized number or zero
     if (floatbits < (113 << 23)) {                      // resulting FP16 is subnormal or zero
       // use a magic value to align our 10 mantissa bits at the bottom of
       // the float. as long as FP addition is round-to-nearest-even this

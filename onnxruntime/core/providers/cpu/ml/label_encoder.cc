@@ -168,7 +168,6 @@ void LabelEncoder_2<float, float>::InitializeSomeFields(const OpKernelInfo& info
   info.GetAttrOrDefault<float>("default_float", &_default_value, -0.0f);
 };
 
-
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder,
     2,

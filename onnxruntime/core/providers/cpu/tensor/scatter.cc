@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
+// https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
 #include <type_traits>
 #include <core/common/safeint.h>
 
@@ -121,25 +121,25 @@ struct Func_Add {
   }
 };
 
-template<>
+template <>
 struct Func_Add<bool> {
   void operator()(bool* a, const bool* b) const {
     (*a) |= (*b);
   }
 };
 
-template<>
+template <>
 struct Func_Add<MLFloat16> {
   void operator()(MLFloat16*, const MLFloat16*) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'add'.");
-    }
+  }
 };
 
-template<>
+template <>
 struct Func_Add<BFloat16> {
   void operator()(BFloat16*, const BFloat16*) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'add'.");
-    }
+  }
 };
 
 template <class T>
@@ -149,32 +149,32 @@ struct Func_Mul {
   }
 };
 
-template<>
+template <>
 struct Func_Mul<bool> {
   void operator()(bool* a, const bool* b) const {
     (*a) &= (*b);
   }
 };
 
-template<>
+template <>
 struct Func_Mul<std::string> {
   void operator()(std::string*, const std::string*) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
   }
 };
 
-template<>
+template <>
 struct Func_Mul<MLFloat16> {
   void operator()(MLFloat16*, const MLFloat16*) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
-    }
+  }
 };
 
-template<>
+template <>
 struct Func_Mul<BFloat16> {
   void operator()(BFloat16*, const BFloat16*) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
-    }
+  }
 };
 
 template <class T>
@@ -391,11 +391,11 @@ Status ScatterData(
 template <typename TData>
 struct ScatterDataDispatchTarget {
   Status operator()(const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
-                    const std::string &reduction, Tensor* data_output) const {
-    if(reduction == "add")
+                    const std::string& reduction, Tensor* data_output) const {
+    if (reduction == "add")
       return ScatterData<TData>(
           Func_Add<TData>(), data_input, indices_data, updates_input, axis, data_output);
-    else if(reduction == "mul")
+    else if (reduction == "mul")
       return ScatterData<TData>(
           Func_Mul<TData>(), data_input, indices_data, updates_input, axis, data_output);
     else if (reduction == "min")
@@ -500,15 +500,15 @@ Status GatherElementsGradImpl(const Tensor* indices_input, const Tensor* updates
   return ScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, data_output);
 }
 
-#define GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(Tin, Tdata)         \
-  template Status GatherElementsGradImpl<Tin, Tdata>(             \
-      const Tensor* indices_input,                                \
-      const Tensor* updates_input,                                \
-      const int64_t axis,                                         \
+#define GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(Tin, Tdata) \
+  template Status GatherElementsGradImpl<Tin, Tdata>(     \
+      const Tensor* indices_input,                        \
+      const Tensor* updates_input,                        \
+      const int64_t axis,                                 \
       Tensor* data_output)
 
-#define GATHER_ELEMENTS_GRAD_IMPL_TDATA_SPECIALIZED(Tdata)  \
-  GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(int32_t, Tdata);    \
+#define GATHER_ELEMENTS_GRAD_IMPL_TDATA_SPECIALIZED(Tdata) \
+  GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(int32_t, Tdata);   \
   GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(int64_t, Tdata);
 
 GATHER_ELEMENTS_GRAD_IMPL_TDATA_SPECIALIZED(float)

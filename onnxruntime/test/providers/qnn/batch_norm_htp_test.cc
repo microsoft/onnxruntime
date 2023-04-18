@@ -75,7 +75,7 @@ GetQDQTestCaseFn BuildQDQBatchNormTestCase(const std::vector<int64_t>& input_sha
  * \param num_modes_in_graph The number of expected nodes in the graph.
  */
 static void RunBatchNormQDQTest(const std::vector<int64_t>& input_shape, const char* test_description,
-                                   ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph) {
+                                ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";

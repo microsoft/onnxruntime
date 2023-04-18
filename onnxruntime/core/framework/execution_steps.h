@@ -20,6 +20,7 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
                  bool& continue_flag) override;
 
   std::string ToString() const override;
+
  private:
   size_t barrier_id_{0};
 };
