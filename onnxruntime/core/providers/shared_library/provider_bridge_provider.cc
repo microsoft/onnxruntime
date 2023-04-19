@@ -713,9 +713,19 @@ void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
   return g_host->MurmurHash3__x86_128(key, len, seed, out);
 }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+Status LoadDynamicLibrary(onnxruntime::PathString library_name) {
+  return g_host->LoadDynamicLibrary(library_name);
+}
+#endif
+
 #ifdef _WIN32
 std::string ToUTF8String(const std::wstring& s) {
   return g_host->ToUTF8String(s);
+}
+
+std::wstring ToWideString(const std::string& s) {
+  return g_host->ToWideString(s);
 }
 #endif
 }  // namespace onnxruntime
