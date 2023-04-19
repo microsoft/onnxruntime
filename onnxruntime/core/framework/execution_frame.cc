@@ -339,12 +339,16 @@ bool IExecutionFrame::IsOutput(int ort_value_idx) const {
 ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
                                gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               const SessionState& session_state,
-                               gsl::span<Stream*> device_streams)
+#ifdef ORT_ENABLE_STREAM
+                               const DeviceStreamCollection* device_streams,
+#endif
+                               const SessionState& session_state)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
+#ifdef ORT_ENABLE_STREAM
+      device_streams_(device_streams),
+#endif
       session_state_(session_state),
-      mem_patterns_(nullptr),
-      device_streams_(device_streams) {
+      mem_patterns_(nullptr) {
   Init(
       feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(),
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -427,8 +431,20 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
 #endif
               // the memory pattern buffer will leave in the whole execution.
-              // alloc it with default stream
+#ifdef ORT_ENABLE_STREAM
+              StreamAwareArena* stream_aware_alloc = AsStreamBasedAllocator(alloc);
+              if (stream_aware_alloc && device_streams_) {
+                Stream* mem_pattern_stream = device_streams_->GetRootStream();
+                buffer = stream_aware_alloc->AllocOnStream(peak_size, mem_pattern_stream, nullptr);
+                for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
+                  stream_aware_alloc->SecureTheChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);
+                }
+              } else {
+                buffer = alloc->Alloc(peak_size);
+              }
+#else
               buffer = alloc->Alloc(peak_size);
+#endif
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
                 // INFO level as this may fire on every run and there may not be much a user can do
@@ -484,11 +500,15 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, i
 }
 
 Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const {
+#ifdef ORT_ENABLE_STREAM
   const auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetExecutionPlan()->GetValueToStreamMap();
   auto it = value_to_stream_map.find(ort_value_idx);
-  if (it != value_to_stream_map.end() && it->second < device_streams_.size()) {
-    return device_streams_[it->second];
+  if (it != value_to_stream_map.end() && device_streams_ != nullptr && it->second < device_streams_->NumStreams()) {
+    return device_streams_->GetStream(it->second);
   }
+#else
+  ORT_UNUSED_PARAMETER(ort_value_idx);
+#endif
   return nullptr;
 }
 

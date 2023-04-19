@@ -26,7 +26,7 @@ void DnnlSum::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 
   auto dst_dims = srcs_pd[0].get_dims();
-  auto dst_md =  dnnl::memory::desc({dst_dims}, node.Input(IN_DATA_0).Type(), dnnl::memory::format_tag::any);
+  auto dst_md = dnnl::memory::desc({dst_dims}, node.Input(IN_DATA_0).Type(), dnnl::memory::format_tag::any);
 
   auto sum_pd = dnnl::sum::primitive_desc(dnnl_engine, dst_md, scales, srcs_pd);
 
@@ -34,9 +34,9 @@ void DnnlSum::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     src_mems[i] = sp.GetMemoryAndReshape(node.Input(static_cast<int>(IN_DATA_0 + i)), sum_pd.src_desc(), dnnl_engine);
   }
   auto sum_dst_mem = dnnl::memory(sum_pd.dst_desc(), dnnl_engine);
-  
+
   auto sum_op = dnnl::sum(sum_pd);
-  
+
   std::unordered_map<int, dnnl::memory> sum_args;
   sum_args.insert({DNNL_ARG_DST, sum_dst_mem});
   for (int i = 0; i < static_cast<int>(src_mems.size()); ++i) {

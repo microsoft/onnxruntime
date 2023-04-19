@@ -740,7 +740,7 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
         if len(embed_node.input) == 7:
             embed_node.input.append(mask_int32)
             logger.debug("append mask to %s", embed_node.name)
-        elif len(embed_node.input) > 7 and embed_node.input[7] == "":
+        elif len(embed_node.input) > 7 and not embed_node.input[7]:
             embed_node.input[7] = mask_int32
             logger.debug("replace mask in %s", embed_node.name)
         else:

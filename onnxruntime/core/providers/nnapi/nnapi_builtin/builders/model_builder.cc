@@ -31,9 +31,7 @@ namespace nnapi {
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
                            gsl::span<const DeviceWrapper> nnapi_target_devices,
                            TargetDeviceOption target_device_option)
-    : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)},
-      shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices), target_device_option_(target_device_option),
-      nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
+    : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)}, shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices), target_device_option_(target_device_option), nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
   nnapi_model_->nnapi_effective_feature_level_ = nnapi_effective_feature_level_;
 }
 
@@ -550,9 +548,9 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       // TODO, add some logic to not fail for some cases
       // Such as, if there are some acceptable fall back to CPU (nnapi-reference)
       // and CPU is not in the target devices list
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "The model cannot run using the current set of target devices, ",
-                               GetDevicesDescription(nnapi_target_devices_));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "The model cannot run using the current set of target devices, ",
+                             GetDevicesDescription(nnapi_target_devices_));
     }
     // Workaround bugs in NNAPI drives on some phones
     // where ops are passed checking by 'ANeuralNetworksModel_getSupportedOperationsForDevices'
@@ -572,7 +570,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
             static_cast<uint32_t>(device_handles.size() - 1), supported_ops.data()),
         "on getSupportedOperationsForDevices");
 
-    ORT_ENFORCE(num_nnapi_ops_==operations_recorder_.size(), "num_nnapi_ops_!=operations_recorder_.size()");
+    ORT_ENFORCE(num_nnapi_ops_ == operations_recorder_.size(), "num_nnapi_ops_!=operations_recorder_.size()");
     std::unordered_map<std::string, std::pair<int32_t, int32_t>> optype_support_status;
     for (size_t idx = 0; idx < operations_recorder_.size(); idx++) {
       auto [onnx_node_idx, nnapi_idx] = operations_recorder_[idx];

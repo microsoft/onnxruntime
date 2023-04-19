@@ -216,6 +216,439 @@ class FusionAttention(Fusion):
 
         return add_qk.input[1]
 
+    def concat_kv(self, past_k: str, past_v: str) -> str:
+        """Concatenate past_k and past_v inputs to create past_kv input.
+
+        Args:
+            past_k (str): name of past K value
+            past_v (str): name of past V value
+
+        Returns:
+            kv_output_name (str): name of past KV value
+        """
+        # Unsqueeze K and V nodes from (B,N,P,H) to (1,B,N,P,H)
+        # B = batch size, N = num heads, P = past sequence length, H = head size
+        unsqueeze_k_name = self.model.create_node_name("Unsqueeze")
+        unsqueeze_v_name = self.model.create_node_name("Unsqueeze")
+        k_5d_name = (past_k + "_5d").replace(".", "_")
+        v_5d_name = (past_v + "_5d").replace(".", "_")
+
+        k_5d = helper.make_node(
+            "Unsqueeze",
+            inputs=[past_k],
+            outputs=[k_5d_name],
+            name=unsqueeze_k_name,
+            axes=[0],
+        )
+        v_5d = helper.make_node(
+            "Unsqueeze",
+            inputs=[past_v],
+            outputs=[v_5d_name],
+            name=unsqueeze_v_name,
+            axes=[0],
+        )
+
+        # Add unsqueeze nodes to graph
+        self.nodes_to_add.append(k_5d)
+        self.nodes_to_add.append(v_5d)
+        self.node_name_to_graph_name[unsqueeze_k_name] = self.this_graph_name
+        self.node_name_to_graph_name[unsqueeze_v_name] = self.this_graph_name
+
+        # Concat K and V to get one node of size (2,B,N,P,H)
+        concat_node_name = self.model.create_node_name("Concat")
+        kv_output_name = past_v.replace(".value", ".kv").replace(".", "_").replace("_value", "_kv")
+        concat_kv = helper.make_node(
+            "Concat",
+            inputs=[k_5d_name, v_5d_name],
+            outputs=[kv_output_name],
+            name=concat_node_name,
+            axis=0,
+        )
+
+        # Add concat node to graph
+        self.nodes_to_add.append(concat_kv)
+        self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
+
+        return kv_output_name
+
+    def reshape_kv(self, past_k: str, past_v: str) -> (str, str):
+        """Reshape past_k and past_v from 4D to 3D to use as inputs for multihead attention node.
+
+        Args:
+            past_k (str): name of past K value of shape 4D
+            past_v (str): name of past V value of shape 4D
+
+        Returns:
+            k_3d (str): name of past K value of shape 3D
+            v_3d (str): name of past V value of shape 3D
+        """
+        # Reshape past_k and past_v from (B,N,P,H) to (B,P,N*H)
+        # B = batch size, N = num heads, P = past seq len, H = head size
+
+        # Create initializer for reshaping past_k and past_v
+        new_dims_name = "kv_4d_to_3d"
+        new_dims = self.model.get_initializer(new_dims_name)
+        if new_dims is None:
+            new_dims = numpy_helper.from_array(
+                np.array([0, -1, self.model.hidden_size], dtype="int64"), name=new_dims_name
+            )
+            self.model.add_initializer(new_dims, self.this_graph_name)
+
+        reshape_k_name = self.model.create_node_name("Reshape")
+        reshape_v_name = self.model.create_node_name("Reshape")
+        k_3d_name = (past_k + "_3d").replace(".", "_")
+        v_3d_name = (past_v + "_3d").replace(".", "_")
+
+        k_3d = helper.make_node(
+            "Reshape",
+            inputs=[past_k, new_dims_name],
+            outputs=[k_3d_name],
+            name=reshape_k_name,
+        )
+        v_3d = helper.make_node(
+            "Reshape",
+            inputs=[past_v, new_dims_name],
+            outputs=[v_3d_name],
+            name=reshape_v_name,
+        )
+
+        # Add reshape nodes to graph
+        self.nodes_to_add.append(k_3d)
+        self.nodes_to_add.append(v_3d)
+        self.node_name_to_graph_name[reshape_k_name] = self.this_graph_name
+        self.node_name_to_graph_name[reshape_v_name] = self.this_graph_name
+
+        return k_3d_name, v_3d_name
+
+    def split_kv(self, present_k_name: str, present_v_name: str, kv_node: str):
+        """Split kv_node containing present KV values into separate present K and present V values.
+
+        Args:
+            present_k_name (str): name of output to store present K value in
+            present_v_name (str): name of output to store present V value in
+            kv_node (str): name of present KV values
+        """
+        # Split kv_node into present_k and present_v nodes
+
+        # Create initializers for indexing kv_node, whose shape is (2,B,N,P,H)
+        k_index, v_index = "index_0", "index_1"
+        k_dim = self.model.get_initializer(k_index)
+        v_dim = self.model.get_initializer(v_index)
+        if k_dim is None:
+            k_dim = numpy_helper.from_array(np.array(0, dtype="int64"), name=k_index)
+            self.model.add_initializer(k_dim, self.this_graph_name)
+        if v_dim is None:
+            v_dim = numpy_helper.from_array(np.array(1, dtype="int64"), name=v_index)
+            self.model.add_initializer(v_dim, self.this_graph_name)
+
+        # Create nodes to index kv_node
+        gather_k_name = self.model.create_node_name("Gather")
+        gather_v_name = self.model.create_node_name("Gather")
+        present_k = helper.make_node(
+            "Gather",
+            inputs=[kv_node, k_index],
+            outputs=[present_k_name],
+            name=gather_k_name,
+            axis=0,
+        )
+        present_v = helper.make_node(
+            "Gather",
+            inputs=[kv_node, v_index],
+            outputs=[present_v_name],
+            name=gather_v_name,
+            axis=0,
+        )
+
+        # Add gather nodes to graph
+        self.nodes_to_add.append(present_k)
+        self.nodes_to_add.append(present_v)
+        self.node_name_to_graph_name[gather_k_name] = self.this_graph_name
+        self.node_name_to_graph_name[gather_v_name] = self.this_graph_name
+
+    def transpose_kv(self, past_k: str, past_v: str):
+        """Transpose past_k and past_v from (B,N,P,H) to (B,P,N,H)
+
+        Args:
+            past_k (str): name of past K value of shape (B,N,P,H)
+            past_v (str): name of past V value of shape (B,N,P,H)
+
+        Returns:
+            past_k_transpose (str): name of past K value of shape (B,P,N,H)
+            past_v_transpose (str): name of past V value of shape (B,P,N,H)
+        """
+        past_k_transpose = (past_k + "_transposed").replace(".", "_")
+        past_v_transpose = (past_v + "_transposed").replace(".", "_")
+        transpose_k_name = self.model.create_node_name("Transpose")
+        transpose_v_name = self.model.create_node_name("Transpose")
+
+        transpose_k = helper.make_node(
+            "Transpose",
+            inputs=[past_k],
+            outputs=[past_k_transpose],
+            name=transpose_k_name,
+            perm=[0, 2, 1, 3],
+        )
+        transpose_v = helper.make_node(
+            "Transpose",
+            inputs=[past_v],
+            outputs=[past_v_transpose],
+            name=transpose_v_name,
+            perm=[0, 2, 1, 3],
+        )
+
+        # Add reshape nodes to graph
+        self.nodes_to_add.append(transpose_k)
+        self.nodes_to_add.append(transpose_v)
+        self.node_name_to_graph_name[transpose_k_name] = self.this_graph_name
+        self.node_name_to_graph_name[transpose_v_name] = self.this_graph_name
+
+        return past_k_transpose, past_v_transpose
+
+    def create_packed_qkv_matmul_node(
+        self,
+        q_matmul: NodeProto,
+        k_matmul: NodeProto,
+        v_matmul: NodeProto,
+        q_add: NodeProto,
+        k_add: Union[NodeProto, None],
+        v_add: Union[NodeProto, None],
+        num_heads: int,
+    ) -> Union[NodeProto, None]:
+        """Create packed QKV MatMul node before MultiHeadAttention node.
+           This is for the scenario where an Attention node should be created but cannot be created
+           because past_key and past_value are separate inputs and not one concatenated input.
+
+        Args:
+            q_matmul (NodeProto): name of MatMul from Q path - (batch_size, sequence_length, hidden_size)
+            k_matmul (NodeProto): name of MatMul from K path - (batch_size, sequence_length, hidden_size)
+            v_matmul (NodeProto): name of MatMul from V path - (batch_size, sequence_length, hidden_size)
+            q_add (NodeProto): name of Add from Q path
+            k_add (NodeProto): name of Add from K path
+            v_add (NodeProto): name of Add from V path
+            num_heads (int): number of heads
+
+        Returns:
+            Union[NodeProto, None]: the node created or None if failed.
+        """
+        matmul_node_name = self.model.create_node_name("MatMul")
+
+        # Check that input for Q, K, V is the same
+        assert q_matmul.input[0] == k_matmul.input[0] and k_matmul.input[0] == v_matmul.input[0]
+
+        # Created packed QKV weight
+        q_weight = self.model.get_initializer(q_matmul.input[1])
+        k_weight = self.model.get_initializer(k_matmul.input[1])
+        v_weight = self.model.get_initializer(v_matmul.input[1])
+
+        qw = NumpyHelper.to_array(q_weight)
+        kw = NumpyHelper.to_array(k_weight)
+        vw = NumpyHelper.to_array(v_weight)
+
+        assert qw.shape == kw.shape and kw.shape == vw.shape
+        d = qw.shape[0]
+
+        qkv_weight = np.stack((qw, kw, vw), axis=1).reshape((d, 3 * d))
+        qkv_weight_name = matmul_node_name + "_qkv_weight"
+        weight = helper.make_tensor(
+            name=qkv_weight_name,
+            data_type=TensorProto.FLOAT,
+            dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
+            vals=qkv_weight.flatten().tolist(),
+        )
+        self.model.add_initializer(weight, self.this_graph_name)
+
+        # Created packed QKV MatMul with output (B, S, 3*D)
+        # Output is of the form:
+        #
+        # [[[Q Q ... Q Q K K ... K K V V ... V V]]]
+        #   [Q Q ... Q Q K K ... K K V V ... V V]
+        #                     .
+        #                     .
+        #                     .
+        #  [[Q Q ... Q Q K K ... K K V V ... V V]
+        #   [Q Q ... Q Q K K ... K K V V ... V V]]]
+        qkv_matmul_output = matmul_node_name + "_qkv_out"
+        qkv_matmul = helper.make_node(
+            "MatMul",
+            inputs=[q_matmul.input[0], qkv_weight_name],
+            outputs=[qkv_matmul_output],
+            name=matmul_node_name,
+        )
+        self.node_name_to_graph_name[matmul_node_name] = self.this_graph_name
+
+        # Create Slice nodes to access Q, K, V
+        q_slice_name = matmul_node_name + "_q_start_index"
+        q_start_tensor = helper.make_tensor(name=q_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[0])
+        k_slice_name = matmul_node_name + "_k_start_index"
+        k_start_tensor = helper.make_tensor(name=k_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[d])
+        v_slice_name = matmul_node_name + "_v_start_index"
+        v_start_tensor = helper.make_tensor(name=v_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[2 * d])
+        end_of_qkv_name = matmul_node_name + "_end_of_qkv_index"
+        end_of_qkv_tensor = helper.make_tensor(
+            name=end_of_qkv_name, data_type=TensorProto.INT64, dims=[1], vals=[3 * d]
+        )
+        qkv_last_axis_name = matmul_node_name + "_qkv_last_axis"
+        qkv_axis_tensor = helper.make_tensor(name=qkv_last_axis_name, data_type=TensorProto.INT64, dims=[1], vals=[-1])
+
+        self.model.add_initializer(q_start_tensor, self.this_graph_name)
+        self.model.add_initializer(k_start_tensor, self.this_graph_name)
+        self.model.add_initializer(v_start_tensor, self.this_graph_name)
+        self.model.add_initializer(end_of_qkv_tensor, self.this_graph_name)
+        self.model.add_initializer(qkv_axis_tensor, self.this_graph_name)
+
+        q_slice_output = matmul_node_name + "_q_out"
+        q_slice = helper.make_node(
+            "Slice",
+            inputs=[qkv_matmul_output, q_slice_name, k_slice_name, qkv_last_axis_name],
+            outputs=[q_slice_output],
+            name=self.model.create_node_name("Slice"),
+        )
+        self.node_name_to_graph_name[q_slice.name] = self.this_graph_name
+        k_slice_output = matmul_node_name + "_k_out"
+        k_slice = helper.make_node(
+            "Slice",
+            inputs=[qkv_matmul_output, k_slice_name, v_slice_name, qkv_last_axis_name],
+            outputs=[k_slice_output],
+            name=self.model.create_node_name("Slice"),
+        )
+        self.node_name_to_graph_name[k_slice.name] = self.this_graph_name
+        v_slice_output = matmul_node_name + "_v_out"
+        v_slice = helper.make_node(
+            "Slice",
+            inputs=[qkv_matmul_output, v_slice_name, end_of_qkv_name, qkv_last_axis_name],
+            outputs=[v_slice_output],
+            name=self.model.create_node_name("Slice"),
+        )
+        self.node_name_to_graph_name[v_slice.name] = self.this_graph_name
+
+        # Add nodes to graph
+        self.nodes_to_add.extend([qkv_matmul, q_slice, k_slice, v_slice])
+        return q_slice, k_slice, v_slice
+
+    def create_multihead_attention_node(
+        self,
+        q_matmul: NodeProto,
+        k_matmul: Union[NodeProto, str, None],
+        v_matmul: Union[NodeProto, str, None],
+        q_add: NodeProto,
+        k_add: Union[NodeProto, None],
+        v_add: Union[NodeProto, None],
+        num_heads: int,
+        hidden_size: int,
+        output: str,
+        key_padding_mask: str = "",
+        add_qk: str = "",
+        past_k: str = "",
+        past_v: str = "",
+        present_k: str = "",
+        present_v: str = "",
+        packed_qkv: bool = False,
+    ) -> Union[NodeProto, None]:
+        """Create a MultiHeadAttention node.
+
+        Args:
+            q_matmul (NodeProto): name of MatMul from Q path - (batch_size, sequence_length, hidden_size)
+            k_matmul (NodeProto): name of MatMul from K path - (batch_size, sequence_length, hidden_size) or (batch_size, num_heads, past_sequence_length, head_size)
+            v_matmul (NodeProto): name of MatMul from V path - (batch_size, sequence_length, hidden_size) or (batch_size, num_heads, past_sequence_length, head_size)
+            q_add (NodeProto): name of Add from Q path
+            k_add (NodeProto): name of Add from K path
+            v_add (NodeProto): name of Add from V path
+            num_heads (int): number of attention heads. If a model is pruned, it is the number of heads after pruning.
+            hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
+            output (str): output name of MHA
+            key_padding_mask (str): name of key padding mask
+            add_qk (str): name of add after Q x K'
+            past_k (str): name of past K value - (batch_size, num_heads, past_sequence_length, head_size)
+            past_v (str): name of past V value - (batch_size, num_heads, past_sequence_length, head_size)
+            present_k (str): name of present K value - (batch_size, num_heads, sequence_length, head_size)
+            present_v (str): name of present V value - (batch_size, num_heads, sequence_length, head_size)
+            packed_qkv (bool): whether to combine MatMuls from Q, K, V paths
+                               Note: This is for the scenario where an Attention node should be created but cannot be created
+                               because past_key and past_value are separate inputs and not one concatenated input.
+
+        Returns:
+            Union[NodeProto, None]: the node created or None if failed.
+        """
+        # B = batch size, N = num heads, P = past seq len, H = head size
+        assert num_heads > 0
+
+        if hidden_size > 0 and (hidden_size % num_heads) != 0:
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            return None
+
+        graph_input_names = set([node.name for node in self.model.graph().input])
+        graph_output_names = set([node.name for node in self.model.graph().output])
+        mha_node_name = self.model.create_node_name("Attention")
+
+        # Add initial Q/K/V inputs for MHA
+        mha_inputs = []
+        if packed_qkv:
+            q_slice, k_slice, v_slice = self.create_packed_qkv_matmul_node(
+                q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, num_heads
+            )
+            mha_inputs.extend([q_slice.output[0], k_slice.output[0], v_slice.output[0]])
+        elif type(k_matmul) == NodeProto and type(v_matmul) == NodeProto:
+            mha_inputs.extend([q_matmul.output[0], k_matmul.output[0], v_matmul.output[0]])
+        elif (
+            type(k_matmul) == str
+            and type(v_matmul) == str
+            and k_matmul in graph_input_names
+            and v_matmul in graph_input_names
+        ):
+            mha_inputs.extend([q_matmul.output[0], k_matmul, v_matmul])
+        else:
+            return None
+
+        # Create combined Q/K/V bias
+        q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
+        qb = NumpyHelper.to_array(q_bias)
+        kb = np.zeros_like(qb)
+        vb = np.zeros_like(qb)
+        if k_add is not None:
+            k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
+            kb = NumpyHelper.to_array(k_bias)
+        if v_add is not None:
+            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
+            vb = NumpyHelper.to_array(v_bias)
+
+        qkv_bias = np.stack((qb, kb, vb), axis=0)
+        qkv_bias_dim = 3 * np.prod(qb.shape)
+
+        bias_name = mha_node_name + "_qkv_bias"
+        bias = helper.make_tensor(
+            name=bias_name,
+            data_type=TensorProto.FLOAT,
+            dims=[qkv_bias_dim],
+            vals=qkv_bias.flatten().tolist(),
+        )
+
+        # Convert bias to FP16 if model is using FP16
+        if q_bias.data_type == 10:
+            bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
+        self.model.add_initializer(bias, self.this_graph_name)
+
+        # Add bias to inputs for MHA
+        mha_inputs.append(bias_name)
+
+        # Add optional inputs for MHA
+        if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
+            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
+
+        # Add outputs for MHA
+        mha_outputs = [output]
+        if present_k and present_v and present_k in graph_output_names and present_v in graph_output_names:
+            mha_outputs.extend([present_k, present_v])
+
+        mha_node = helper.make_node(
+            "MultiHeadAttention",
+            inputs=mha_inputs,
+            outputs=mha_outputs,
+            name=mha_node_name,
+        )
+        mha_node.domain = "com.microsoft"
+        mha_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+        return mha_node
+
     def create_attention_node(
         self,
         mask_index: str,
@@ -229,7 +662,11 @@ class FusionAttention(Fusion):
         hidden_size: int,
         input: str,
         output: str,
-        add_qk_str: str,
+        add_qk_str: str = "",
+        past_k: str = "",
+        past_v: str = "",
+        present_k: str = "",
+        present_v: str = "",
         scale: Optional[float] = None,
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
@@ -237,8 +674,8 @@ class FusionAttention(Fusion):
         Args:
             mask_index (str): mask input
             q_matmul (NodeProto): MatMul node in fully connection for Q
-            k_matmul (NodeProto): MatMul node in fully connection for  K
-            v_matmul (NodeProto): MatMul node in fully connection for  V
+            k_matmul (NodeProto): MatMul node in fully connection for K
+            v_matmul (NodeProto): MatMul node in fully connection for V
             q_add (NodeProto): Add bias node in fully connection for Q
             k_add (NodeProto): Add bias node in fully connection for K
             v_add (NodeProto): Add bias node in fully connection for V
@@ -246,6 +683,11 @@ class FusionAttention(Fusion):
             hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
             input (str): input name
             output (str): output name
+            add_qk_str (str): name of Add node after Q x K'
+            past_k (str): name of input for past K value
+            past_v (str): name of input for past V value
+            present_k (str): name of output to store present K value
+            present_v (str): name of output to store present V value
 
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
@@ -303,7 +745,7 @@ class FusionAttention(Fusion):
         if qw.shape != vw.shape:
             is_qkv_diff_dims = True
 
-        # All the matrices can have the same shape or q, k matrics can have the same shape with v being different
+        # All the matrices can have the same shape or q, k matrices can have the same shape with v being different
         # For 2d weights, the shapes would be [in_size, out_size].
         # For 3d weights, shape would be [in_size, a, b] where a*b = out_size
         qw_out_size = np.prod(qw.shape[1:])
@@ -377,6 +819,7 @@ class FusionAttention(Fusion):
                 v_matmul.output[0],
                 attention_node_name + "_qkv_bias",
             ]
+
             if mask_index is not None:
                 attention_inputs.append(mask_index)
 
@@ -397,16 +840,45 @@ class FusionAttention(Fusion):
             else:
                 attention_inputs.append("")
 
+            past_exists = past_k and past_v
+            if past_exists:
+                past_kv = self.concat_kv(past_k, past_v)
+                attention_inputs.append(past_kv)
+
             if add_qk_str is not None:
-                attention_inputs.append("")  # no past
-                attention_inputs.append(add_qk_str)
+                # Convert 4d mask from (B,1,M,M) to (B,N,M,M)
+                # B = batch size, M = max sequence length, N = num heads
+                concat_node_name = self.model.create_node_name("Concat")
+                mask_output_name = add_qk_str + "_mask"
+                concat_add_qk_fp32 = helper.make_node(
+                    "Concat",
+                    inputs=[add_qk_str for _ in range(num_heads)],
+                    outputs=[mask_output_name],
+                    name=concat_node_name,
+                    axis=1,
+                )
+                # Add new nodes to graph
+                self.nodes_to_add.append(concat_add_qk_fp32)
+                self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
+
+                # Add attention mask to attention node
+                if not past_exists:
+                    attention_inputs.append("")
+                attention_inputs.append(mask_output_name)
+
+            attention_outputs = [output]
+            if present_k and present_v:
+                present_kv = present_k.replace(".key", "").replace("_key", "").replace(".", "_")
+                attention_outputs.append(present_kv)
+                self.split_kv(present_k, present_v, present_kv)
 
             attention_node = helper.make_node(
                 "Attention",
                 inputs=attention_inputs,
-                outputs=[output],
+                outputs=attention_outputs,
                 name=attention_node_name,
             )
+
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
 

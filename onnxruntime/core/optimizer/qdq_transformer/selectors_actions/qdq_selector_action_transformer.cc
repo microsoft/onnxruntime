@@ -206,7 +206,7 @@ void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 #endif
 }
 
-void WhereQDQRules (SelectorActionRegistry& qdq_selector_action_registry) {
+void WhereQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 nodes.  2 x DQ for inputs and 1X Q for output
   // Compare to other BinaryOperators (Add, Mul), Where also have a special case that it has boolean input
   // Where Replace with QLinearWhere

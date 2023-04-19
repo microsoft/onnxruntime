@@ -12,7 +12,7 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearLeakyRelu_Int8) {
   OpTester test("QLinearLeakyRelu", 1, onnxruntime::kMSDomain);
   test.AddAttribute<float>("alpha", 0.1f);
   float X_scale = 0.25f;
-  //int8_t X_zero_point = 0;
+  // int8_t X_zero_point = 0;
   float Y_scale = 0.1f;
   int8_t Y_zero_point = -100;
 
@@ -58,7 +58,7 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_Int8) {
 
   OpTester test("QLinearSigmoid", 1, onnxruntime::kMSDomain);
   float X_scale = 0.025f;
-  //int8_t X_zero_point = 0;
+  // int8_t X_zero_point = 0;
   float Y_scale = 1.0f / 256.0f;
   int8_t Y_zero_point = -120;
 

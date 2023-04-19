@@ -219,7 +219,7 @@ MHARunner* PackedAttention<T>::TryGettingFusedRunner(const PackedAttentionParame
                           !parameters.has_relative_position_bias &&
                           parameters.hidden_size == parameters.v_hidden_size;
 
-  if(!use_fused_runner) {
+  if (!use_fused_runner) {
     return fused_runner;
   }
 
@@ -232,7 +232,7 @@ MHARunner* PackedAttention<T>::TryGettingFusedRunner(const PackedAttentionParame
                                                               enable_trt_flash_attention_,
                                                               false);
 
-  if(!is_fMHA_supported) {
+  if (!is_fMHA_supported) {
     return fused_runner;
   }
 

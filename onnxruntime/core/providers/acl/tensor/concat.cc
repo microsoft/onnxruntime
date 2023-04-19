@@ -17,7 +17,7 @@ namespace acl {
 
 template <typename T>
 Status Concat<T>::Compute(OpKernelContext* ctx) const {
-  if(axis_ > 3) {
+  if (axis_ > 3) {
     LOGS_DEFAULT(WARNING) << "ArmNN does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
     return onnxruntime::Concat::Compute(ctx);
   }
@@ -45,7 +45,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     }
 
     output_dims[axis_] = concat_axis_size;
-  } else { // 'Stack' mode
+  } else {  // 'Stack' mode
     // While stacking, the rank of the output is one more than the input rank(s).
     // Stacking may be thought of as adding an unit dimension (of value 1) in the input tensors,
     // and concatenating them on thie new axis.
@@ -53,7 +53,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     output_dims.insert(output_dims.begin() + axis_, static_cast<int64_t>(input_count));
   }
 
-  if(output_dims.size() > 4 || axis_ > 3) {
+  if (output_dims.size() > 4 || axis_ > 3) {
     LOGS_DEFAULT(WARNING) << "ArmNN does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
     return onnxruntime::Concat::Compute(ctx);
   }
@@ -85,7 +85,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     const T* x_data = X->Data<T>();
     arm_compute::Tensor* in = static_cast<arm_compute::Tensor*>(inputs_vector[i]);
 
-    if (X->Shape().Size() != 0 && in->info()->has_padding() ){
+    if (X->Shape().Size() != 0 && in->info()->has_padding()) {
       in->allocator()->allocate();
       importDataToTensor<T>(in, x_data);
     } else {
@@ -95,7 +95,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 
   T* y_data = Y->MutableData<T>();
 
-  if(Y->Shape().Size() != 0 && output.info()->has_padding() ){
+  if (Y->Shape().Size() != 0 && output.info()->has_padding()) {
     output.allocator()->allocate();
   } else {
     ACLImportMemory(output.allocator(), (void*)y_data, Y->Shape().Size() * 4);
@@ -103,7 +103,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 
   layer.run();
 
-  if (Y->Shape().Size() != 0 && output.info()->has_padding() ){
+  if (Y->Shape().Size() != 0 && output.info()->has_padding()) {
     importDataFromTensor<T>(&output, y_data);
   }
 

@@ -55,7 +55,7 @@ bool IsFusable(const torch::jit::Node* node) {
         input->type()->isSubtypeOf(*c10::IntType::get()) &&
         input->node()->kind() != torch::jit::prim::Constant) {
       continue;
-    } else{
+    } else {
       if (input->node()->kind() == torch::jit::prim::Constant) {
         continue;
       }

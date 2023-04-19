@@ -30,12 +30,12 @@ struct MemoryEfficientAttentionParams {
   int32_t* seqstart_k_ptr;
   int32_t* seqlen_k_ptr;
 
-  const void* query;        // [B, S, N, H]
-  const void* key;          // [B, L, N, H], where L is kv_sequence_length
-  const void* value;        // [B, L, N, H_v]
-  const void* attn_bias;    // [N, S, S*] or null
-  void* output;             // [B, S, N, H_v]
-  void* workspace;          // [B, S, N, H_v] when kNeedsOutputAccumulatorBuffer, nullptr otherwise
+  const void* query;      // [B, S, N, H]
+  const void* key;        // [B, L, N, H], where L is kv_sequence_length
+  const void* value;      // [B, L, N, H_v]
+  const void* attn_bias;  // [N, S, S*] or null
+  void* output;           // [B, S, N, H_v]
+  void* workspace;        // [B, S, N, H_v] when kNeedsOutputAccumulatorBuffer, nullptr otherwise
   cudaStream_t stream;
 
   static bool need_workspace(size_t v_head_size, bool is_float) {

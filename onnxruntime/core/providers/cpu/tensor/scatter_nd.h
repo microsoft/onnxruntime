@@ -44,6 +44,7 @@ class ScatterND final : public OpKernel {
   static Status ValidateShapes(const TensorShape& input_shape,
                                const TensorShape& indice_shape,
                                const TensorShape& update_shape);
+
  private:
   Reduction reduction_{Reduction::None};
 };

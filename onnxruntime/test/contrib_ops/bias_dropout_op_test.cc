@@ -36,7 +36,9 @@ using onnxruntime::cuda::kNumBitsPerBitmaskElement;
 #endif
 using namespace onnxruntime::test;
 
-enum TrainingMode { TrainingFalse, TrainingTrue, NoTraining };
+enum TrainingMode { TrainingFalse,
+                    TrainingTrue,
+                    NoTraining };
 
 namespace {
 

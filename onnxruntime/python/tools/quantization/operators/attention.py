@@ -53,7 +53,7 @@ class AttentionQuant(QuantOperatorBase):
         if quantized_input_names is None:
             return super().quantize()
 
-        qattention_name = "" if node.name == "" else node.name + "_quant"
+        qattention_name = "" if not node.name else node.name + "_quant"
 
         inputs = []
         inputs.extend(quantized_input_names)
