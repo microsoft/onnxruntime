@@ -620,22 +620,6 @@ JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_OrtTrainingSession_getLearningRate
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
- * Method:    getState
- * Signature: (JJJZ)J
- */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_getState
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jboolean saveOptimizer) {
-  (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*)apiHandle;
-  const OrtTrainingApi* trainApi = (const OrtTrainingApi*)trainApiHandle;
-  OrtTrainingSession* trainSession = (OrtTrainingSession*)nativeHandle;
-  OrtCheckpointState* checkpoint = NULL;
-  checkOrtStatus(jniEnv, api, trainApi->GetState(trainSession, saveOptimizer, &checkpoint));
-  return (jlong) checkpoint;
-}
-
-/*
- * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    optimizerStep
  * Signature: (JJJJ)V
  */

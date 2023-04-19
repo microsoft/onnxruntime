@@ -48,10 +48,10 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpoin
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    saveCheckpoint
- * Signature: (JJJLjava/lang/String;)V
+ * Signature: (JJJLjava/lang/String;Z)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpointState_saveCheckpoint
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainingApiHandle, jlong nativeHandle, jstring outputPath) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainingApiHandle, jlong nativeHandle, jstring outputPath, jboolean saveOptimizer) {
   (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*) trainingApiHandle;
@@ -69,14 +69,14 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_00024OrtCheckpoint
   } else {
     wcsncpy_s(newString, stringLength + 1, (const wchar_t*)cPath, stringLength);
     checkOrtStatus(jniEnv, api,
-                   trainApi->SaveCheckpoint(checkpointState, newString));
+                   trainApi->SaveCheckpoint(checkpointState, newString, saveOptimizer));
     free(newString);
     (*jniEnv)->ReleaseStringChars(jniEnv, outputPath, cPath);
   }
 #else
   // GetStringUTFChars is null terminated, so can be used directly
   const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, outputPath, NULL);
-  checkOrtStatus(jniEnv, api, trainApi->SaveCheckpoint(checkpointState, cPath));
+  checkOrtStatus(jniEnv, api, trainApi->SaveCheckpoint(checkpointState, cPath, saveOptimizer));
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, outputPath, cPath);
 #endif
 }
