@@ -18,6 +18,8 @@
 
 #pragma once
 
+#ifndef USE_ROCM
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/utils.cuh"
@@ -26,8 +28,6 @@ using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace cuda {
-
-#ifndef USE_ROCM
 
 inline __device__ float2 rotary_embedding_coefficient(const int zid, const int rot_embed_dim, const float t_step) {
   const float inv_freq = t_step / pow(10000.0f, zid / (float)rot_embed_dim);
@@ -398,7 +398,7 @@ __device__ __inline__ void write_smem_transpose(const float2& vec, float* smem, 
   smem[smem_pitch + transpose_idx] = vec.y;
 }
 
-#endif
-
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif
