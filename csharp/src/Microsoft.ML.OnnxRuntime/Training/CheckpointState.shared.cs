@@ -28,7 +28,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (NativeTrainingMethods.TrainingEnabled())
             {
-                var envHandle = OrtEnv.Handle; // just so it is initialized
+                var envHandle = OrtEnv.Instance().Handle; // just so it is initialized
                 LoadCheckpoint(checkpointPath);
             }
             else
