@@ -40,7 +40,7 @@ Status CheckBatchDimensionsMatch(
 
 template <typename TIndex>
 Status GatherNDBase::PrepareCompute(
-    cudaStream_t stream,
+    onnxruntime::Stream* stream,
     const int64_t batch_dims,
     const TensorShape& input_shape,
     const TensorShape& indices_shape,
@@ -54,6 +54,7 @@ Status GatherNDBase::PrepareCompute(
   const auto num_batches = input_shape.SizeToDimension(batch_dims);
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims);
   const auto num_slices_per_batch = num_slices / num_batches;
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   const TIndex* const indices_data = indices_tensor->Data<TIndex>();
 
@@ -66,19 +67,19 @@ Status GatherNDBase::PrepareCompute(
     }
   }
 
-  auto sizes_from_slice_dims_buffer = GetScratchBuffer<int64_t>(sizes_from_slice_dims.size());
+  auto sizes_from_slice_dims_buffer = GetScratchBuffer<int64_t>(sizes_from_slice_dims.size(), stream);
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
       sizes_from_slice_dims_buffer.get(),
       sizes_from_slice_dims.data(),
       sizes_from_slice_dims.size() * sizeof(int64_t),
-      cudaMemcpyHostToDevice, stream));
+      cudaMemcpyHostToDevice, cuda_stream));
 
-  input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices);
+  input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices, stream);
 
   TArray<int64_t> input_dims(input_shape.GetDims());
 
   ComputeSliceOffsetsImpl(
-      stream,
+      cuda_stream,
       batch_dims,
       input_dims,
       num_slices,
@@ -179,14 +180,14 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   int64_t num_slices;
   int64_t slice_size;
   IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
-  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(Stream(),
+  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(context->GetComputeStream(),
                                              batch_dims_, input_shape, indices_shape, indices_tensor,
                                              num_slices, slice_size, input_slice_offsets_buffer));
 
   const void* const kernel_input_data = input_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
   utils::MLTypeCallDispatcher<float, MLFloat16, double, int64_t, BFloat16, bool> t_disp(input_tensor->GetElementType());
-  t_disp.Invoke<GatherNDComputeImpl>(Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data,
+  t_disp.Invoke<GatherNDComputeImpl>(Stream(context), num_slices, slice_size, kernel_input_data, kernel_output_data,
                                      input_slice_offsets_buffer.get());
 
   return Status::OK();

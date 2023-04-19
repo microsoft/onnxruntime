@@ -380,7 +380,46 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_sequence_map_add_2_sequences", "sequence type is not supported in test infra." },
                 { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." },
                 { "BERT-Squad-int8", "training domain"},
-                { "YOLOv3-12-int8", "training_domain"}
+                { "YOLOv3-12-int8", "training_domain"},
+                // opset 18 models. these should be supported by ORT 1.14 when released
+                { "test_bitwise_and_i16_3d", "pending opset 18 support"},
+                { "test_bitwise_and_i32_2d", "pending opset 18 support"},
+                { "test_bitwise_and_ui64_bcast_3v1d", "pending opset 18 support"},
+                { "test_bitwise_and_ui8_bcast_4v3d", "pending opset 18 support"},
+                { "test_bitwise_not_2d", "pending opset 18 support"},
+                { "test_bitwise_not_3d", "pending opset 18 support"},
+                { "test_bitwise_not_4d", "pending opset 18 support"},
+                { "test_bitwise_or_i16_4d", "pending opset 18 support"},
+                { "test_bitwise_or_i32_2d", "pending opset 18 support"},
+                { "test_bitwise_or_ui64_bcast_3v1d", "pending opset 18 support"},
+                { "test_bitwise_or_ui8_bcast_4v3d", "pending opset 18 support"},
+                { "test_bitwise_xor_i16_3d", "pending opset 18 support"},
+                { "test_bitwise_xor_i32_2d", "pending opset 18 support"},
+                { "test_bitwise_xor_ui8_bcast_4v3d", "pending opset 18 support"},
+                { "test_bitwise_xor_ui64_bcast_3v1d", "pending opset 18 support"},
+                { "test_col2im", "pending opset 18 support"},
+                { "test_col2im_5d", "pending opset 18 support"},
+                { "test_col2im_dilations", "pending opset 18 support"},
+                { "test_col2im_pads", "pending opset 18 support"},
+                { "test_col2im_strides", "pending opset 18 support"},
+                { "test_scatter_elements_with_axis", "pending opset 18 support"},
+                { "test_scatter_elements_without_axis", "pending opset 18 support"},
+                { "test_scatter_elements_with_duplicate_indices", "pending opset 18 support"},
+                { "test_scatter_elements_with_negative_indices", "pending opset 18 support"},
+                { "test_scatter_elements_with_reduction_max", "pending opset 18 support"},
+                { "test_scatter_elements_with_reduction_min", "pending opset 18 support"},
+                { "test_scatternd", "pending opset 18 support"},
+                { "test_scatternd_add", "pending opset 18 support"},
+                { "test_scatternd_max", "pending opset 18 support"},
+                { "test_scatternd_min", "pending opset 18 support"},
+                { "test_scatternd_multiply", "pending opset 18 support"},
+                { "test_softplus_example_expanded", "pending opset 18 support"},
+                { "test_softplus_expanded", "pending opset 18 support"},
+                { "test_optional_get_element_optional_sequence", "pending opset 18 support"},
+                { "test_optional_get_element_optional_tensor", "pending opset 18 support"},
+                { "test_optional_has_element_empty_optional_input", "pending opset 18 support"},
+                { "test_optional_has_element_optional_input", "pending opset 18 support"},
+                { "test_optional_has_element_tensor_input", "pending opset 18 support"},
             };
 
             // The following models fails on nocontribops win CI
@@ -451,13 +490,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
-#if USE_CUDA
-                    if (!skipModels.ContainsKey(modelDir.Name))
-#else
-                    if (!(skipModels.ContainsKey(modelDir.Name) || 
+                    if (!(skipModels.ContainsKey(modelDir.Name) ||
                           modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
                           modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase)))
-#endif
                     {
                         yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
                     }
@@ -475,13 +510,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
-#if USE_CUDA
-                    if (skipModels.ContainsKey(modelDir.Name))
-#else
                     if (skipModels.ContainsKey(modelDir.Name) ||
                         modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
                         modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase))
-#endif
                     {
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
                         yield return new object[] { modelDir.Parent.FullName, modelDir.Name };

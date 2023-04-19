@@ -26,8 +26,9 @@ const OrtMemoryInfo& OpKernel::Allocator(int id, OrtMemType mem_type) const {
 }
 
 OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
+                                 _In_ Stream* stream,
                                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
-    : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger) {
+    : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger), stream_(stream) {
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 
@@ -37,7 +38,8 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
 }
 
 OpKernelContext::OpKernelContext(concurrency::ThreadPool* threadpool,
-                                 const logging::Logger& logger) : threadpool_(threadpool), logger_(&logger) {}
+                                 const logging::Logger& logger,
+                                 Stream* stream) : threadpool_(threadpool), logger_(&logger), stream_(stream) {}
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);
@@ -119,33 +121,6 @@ MLDataType OpKernelContext::OutputType(int index) const {
   auto output_arg_index = GetOutputArgIndex(index);
   const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(output_arg_index);
   return p_ml_value ? p_ml_value->Type() : nullptr;
-}
-
-Fence_t OpKernelContext::InputFence(int index) const {
-  if (index >= InputCount())
-    return nullptr;
-
-  int input_index = GetInputArgIndex(index);
-  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_index);
-  return p_ml_value ? p_ml_value->Fence() : nullptr;
-}
-
-Fence_t OpKernelContext::ImplicitInputFence(int index) const {
-  if (index >= ImplicitInputCount())
-    return nullptr;
-
-  int input_index = GetImplicitInputArgIndex(index);
-  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_index);
-  return p_ml_value ? p_ml_value->Fence() : nullptr;
-}
-
-Fence_t OpKernelContext::OutputFence(int index) const {
-  if (index >= OutputCount())
-    return nullptr;
-
-  auto output_arg_index = GetOutputArgIndex(index);
-  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(output_arg_index);
-  return p_ml_value ? p_ml_value->Fence() : nullptr;
 }
 
 OrtValue* OpKernelContext::GetOrCreateOutputMLValue(int index) {

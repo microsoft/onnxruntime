@@ -69,10 +69,6 @@ void RunQLinearGlobalAveragePool(
 
   auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     const OrtValue& ort_value = fetches[0];
-    if (ort_value.Fence()) {
-      ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
-    }
-
     auto y_shape = TensorShape(y_dims);
     const Tensor& output_tensor = ort_value.Get<Tensor>();
     ORT_ENFORCE(y_shape == output_tensor.Shape(),

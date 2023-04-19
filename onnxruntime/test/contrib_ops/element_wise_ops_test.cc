@@ -113,7 +113,7 @@ TEST(BiasGeluTest, Two_One_Dim) {
   RunBiasGeluTest(input_a_data, input_b_data, {2, 4}, {4});
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 TEST(BiasGeluTest, Two_One_Dim_fp16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -187,6 +187,8 @@ TEST(BiasGeluTest, Two_One_Dim_bfloat16) {
   execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_DNNL
   execution_providers.push_back(DefaultDnnlExecutionProvider());
+#elif USE_DML
+  execution_providers.push_back(DefaultDmlExecutionProvider());
 #endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }

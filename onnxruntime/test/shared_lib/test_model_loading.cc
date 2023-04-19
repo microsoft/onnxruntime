@@ -55,6 +55,22 @@ TEST(CApiTest, model_from_array) {
   create_session(so);
 #endif
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+TEST(CApiTest, session_options_empty_affinity_string) {
+  Ort::SessionOptions options;
+  options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, "");
+  constexpr auto model_path = ORT_TSTR("testdata/matmul_1.onnx");
+
+  try {
+    Ort::Session session(*ort_env.get(), model_path, options);
+    ASSERT_TRUE(false) << "Creation of session should have thrown exception";
+  } catch (const std::exception& ex) {
+    ASSERT_THAT(ex.what(), testing::HasSubstr("Affinity string must not be empty"));
+  }
+}
+#endif
+
 #endif
 
 #ifdef DISABLE_EXTERNAL_INITIALIZERS

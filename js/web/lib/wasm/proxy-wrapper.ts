@@ -3,7 +3,7 @@
 
 import {env, InferenceSession} from 'onnxruntime-common';
 
-import {OrtWasmMessage, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
+import {OrtWasmMessage, SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import * as core from './wasm-core-impl';
 import {initializeWebAssembly} from './wasm-factory';
 
@@ -18,6 +18,8 @@ type PromiseCallbacks<T = void> = [(result: T) => void, (reason: unknown) => voi
 
 let initWasmCallbacks: PromiseCallbacks;
 let initOrtCallbacks: PromiseCallbacks;
+const createSessionAllocateCallbacks: Array<PromiseCallbacks<SerializableModeldata>> = [];
+const createSessionFinalizeCallbacks: Array<PromiseCallbacks<SerializableSessionMetadata>> = [];
 const createSessionCallbacks: Array<PromiseCallbacks<SerializableSessionMetadata>> = [];
 const releaseSessionCallbacks: Array<PromiseCallbacks<void>> = [];
 const runCallbacks: Array<PromiseCallbacks<SerializableTensor[]>> = [];
@@ -46,6 +48,20 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         initOrtCallbacks[1](ev.data.err);
       } else {
         initOrtCallbacks[0]();
+      }
+      break;
+    case 'create_allocate':
+      if (ev.data.err) {
+        createSessionAllocateCallbacks.shift()![1](ev.data.err);
+      } else {
+        createSessionAllocateCallbacks.shift()![0](ev.data.out!);
+      }
+      break;
+    case 'create_finalize':
+      if (ev.data.err) {
+        createSessionFinalizeCallbacks.shift()![1](ev.data.err);
+      } else {
+        createSessionFinalizeCallbacks.shift()![0](ev.data.out!);
       }
       break;
     case 'create':
@@ -99,7 +115,7 @@ export const initWasm = async(): Promise<void> => {
     // overwrite wasm filepaths
     if (env.wasm.wasmPaths === undefined) {
       if (scriptSrc && scriptSrc.indexOf('blob:') !== 0) {
-        env.wasm.wasmPaths = scriptSrc.substr(0, (scriptSrc as string).lastIndexOf('/') + 1);
+        env.wasm.wasmPaths = scriptSrc.substr(0, +(scriptSrc).lastIndexOf('/') + 1);
       }
     }
 
@@ -130,6 +146,33 @@ export const initOrt = async(numThreads: number, loggingLevel: number): Promise<
     core.initOrt(numThreads, loggingLevel);
   }
 };
+
+export const createSessionAllocate = async(model: Uint8Array): Promise<SerializableModeldata> => {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
+    ensureWorker();
+    return new Promise<SerializableModeldata>((resolve, reject) => {
+      createSessionAllocateCallbacks.push([resolve, reject]);
+      const message: OrtWasmMessage = {type: 'create_allocate', in : {model}};
+      proxyWorker!.postMessage(message, [model.buffer]);
+    });
+  } else {
+    return core.createSessionAllocate(model);
+  }
+};
+
+export const createSessionFinalize = async(modeldata: SerializableModeldata, options?: InferenceSession.SessionOptions):
+    Promise<SerializableSessionMetadata> => {
+      if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
+        ensureWorker();
+        return new Promise<SerializableSessionMetadata>((resolve, reject) => {
+          createSessionFinalizeCallbacks.push([resolve, reject]);
+          const message: OrtWasmMessage = {type: 'create_finalize', in : {modeldata, options}};
+          proxyWorker!.postMessage(message);
+        });
+      } else {
+        return core.createSessionFinalize(modeldata, options);
+      }
+    };
 
 export const createSession =
     async(model: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SerializableSessionMetadata> => {

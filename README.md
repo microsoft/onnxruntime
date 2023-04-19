@@ -7,15 +7,19 @@
 **ONNX Runtime training** can accelerate the model training time on multi-node NVIDIA GPUs for transformer models with a one-line addition for existing PyTorch training scripts. [Learn more &rarr;](https://www.onnxruntime.ai/docs/#onnx-runtime-for-training)
 
 
-## Get Started
+## Get Started & Resources
 
-**General Information**: [onnxruntime.ai](https://onnxruntime.ai)
+* **General Information**: [onnxruntime.ai](https://onnxruntime.ai)
 
-**Usage documention and tutorials**: [onnxruntime.ai/docs](https://onnxruntime.ai/docs)
+* **Usage documention and tutorials**: [onnxruntime.ai/docs](https://onnxruntime.ai/docs)
 
-**Companion sample repositories**: 
-- ONNX Runtime Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)
-- ONNX Runtime Training: [microsoft/onnxruntime-training-examples](https://github.com/microsoft/onnxruntime-training-examples)
+* **YouTube video tutorials**: [youtube.com/@ONNXRuntime](https://www.youtube.com/@ONNXRuntime)
+
+* [**Upcoming Release Roadmap**](https://github.com/microsoft/onnxruntime/wiki/Upcoming-Release-Roadmap)
+
+* **Companion sample repositories**: 
+  - ONNX Runtime Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)
+  - ONNX Runtime Training: [microsoft/onnxruntime-training-examples](https://github.com/microsoft/onnxruntime-training-examples)
 
 
 ## Build Pipeline Status

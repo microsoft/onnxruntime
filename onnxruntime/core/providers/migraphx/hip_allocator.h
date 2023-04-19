@@ -19,7 +19,6 @@ class HIPAllocator : public IAllocator {
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
-  virtual FencePtr CreateFence(const SessionState* session_state) override;
 
  private:
   void CheckDevice() const;
@@ -61,7 +60,6 @@ class HIPPinnedAllocator : public IAllocator {
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
-  virtual FencePtr CreateFence(const SessionState* session_state) override;
 };
 
 }  // namespace onnxruntime

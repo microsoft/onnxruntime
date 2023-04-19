@@ -10,8 +10,8 @@
 namespace onnxruntime {
 
 struct XnnpackProviderFactory : IExecutionProviderFactory {
-  XnnpackProviderFactory(const ProviderOptions& provider_options)
-      : info_{provider_options} {
+  XnnpackProviderFactory(const ProviderOptions& provider_options, const SessionOptions* session_options)
+      : info_{provider_options, session_options}{
   }
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
@@ -23,8 +23,8 @@ struct XnnpackProviderFactory : IExecutionProviderFactory {
 };
 
 std::shared_ptr<IExecutionProviderFactory> XnnpackProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options) {
-  return std::make_shared<XnnpackProviderFactory>(provider_options);
+    const ProviderOptions& provider_options, const SessionOptions* session_options) {
+  return std::make_shared<XnnpackProviderFactory>(provider_options, session_options);
 }
 
 }  // namespace onnxruntime

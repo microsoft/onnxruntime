@@ -20,12 +20,14 @@ from transformers import is_tf_available
 
 if find_transformers_source():
     from benchmark_helper import ConfigModifier, OptimizerInfo, Precision
+    from fusion_options import FusionOptions
     from huggingface_models import MODELS
     from onnx_exporter import export_onnx_model_from_pt, export_onnx_model_from_tf
     from onnx_model import OnnxModel
     from optimizer import optimize_model
 else:
     from onnxruntime.transformers.benchmark_helper import ConfigModifier, OptimizerInfo, Precision
+    from onnxruntime.transformers.fusion_options import FusionOptions
     from onnxruntime.transformers.huggingface_models import MODELS
     from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt, export_onnx_model_from_tf
     from onnxruntime.transformers.onnx_model import OnnxModel
@@ -65,7 +67,7 @@ class TestModelOptimization(unittest.TestCase):
 
                 self.assertEqual(len(onnx_model.get_nodes_by_op_type(op_type)), count)
 
-    # add test function for huggingface pytorch model
+    # test huggingface pytorch model
     def _test_optimizer_on_huggingface_model(
         self,
         model_name,
@@ -73,9 +75,11 @@ class TestModelOptimization(unittest.TestCase):
         inputs_count=1,
         validate_model=True,
     ):
-        # Remove cached model so that CI machine will have space
-        shutil.rmtree("./cache_models", ignore_errors=True)
+        # Remove cached model so that CI machine has enough space. Do not remove cache models in dev machine.
+        if not find_transformers_source():
+            shutil.rmtree("./cache_models", ignore_errors=True)
         shutil.rmtree("./onnx_models", ignore_errors=True)
+
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
@@ -106,27 +110,53 @@ class TestModelOptimization(unittest.TestCase):
                 fusion_options,
             )
 
-        onnx_model = list(model_fusion_statistics.keys())[0]
-        fusion_result_list = list(model_fusion_statistics[onnx_model].values())
-
         if validate_model:
             self.assertEqual(is_valid_onnx_model, True)
-        self.assertEqual(fusion_result_list, expected_fusion_result_list)
-
-    def test_gpt2_past(self):
-        input = _get_test_model_path("gpt2_past")
-        model = optimize_model(input, "gpt2", num_heads=2, hidden_size=4)
 
         expected_node_count = {
-            "EmbedLayerNormalization": 0,
-            "Attention": 12,
-            "Gelu": 0,
-            "FastGelu": 12,
-            "BiasGelu": 0,
-            "LayerNormalization": 25,
-            "SkipLayerNormalization": 0,
+            "EmbedLayerNormalization": expected_fusion_result_list[0],
+            "Attention": expected_fusion_result_list[1],
+            "Gelu": expected_fusion_result_list[2],
+            "FastGelu": expected_fusion_result_list[3],
+            "BiasGelu": expected_fusion_result_list[4],
+            "LayerNormalization": expected_fusion_result_list[5],
+            "SkipLayerNormalization": expected_fusion_result_list[6],
         }
-        self.verify_node_count(model, expected_node_count, "test_gpt2_past")
+
+        for _onnx_path, value in model_fusion_statistics.items():
+            actual_node_count = value
+
+        for op_type, count in expected_node_count.items():
+            if op_type not in actual_node_count or actual_node_count[op_type] != count:
+                print(f"expected: {expected_node_count} got {actual_node_count}")
+                self.assertTrue(False)
+
+    def test_gpt2_past(self):
+        for enable_skip_layer_norm_fusion in [False, True]:
+            input_path = _get_test_model_path("gpt2_past")
+
+            options = FusionOptions("gpt2")
+            options.enable_skip_layer_norm = enable_skip_layer_norm_fusion
+
+            model = optimize_model(
+                input_path,
+                "gpt2",
+                num_heads=2,
+                hidden_size=4,
+                optimization_options=options,
+            )
+
+            expected_node_count = {
+                "EmbedLayerNormalization": 0,
+                "Attention": 12,
+                "Gelu": 0,
+                "FastGelu": 12,
+                "BiasGelu": 0,
+                # First LayerNorm is never fused to SkipLayerNorm as it doesn't meet the requirements
+                "LayerNormalization": 25 if not enable_skip_layer_norm_fusion else 1,
+                "SkipLayerNormalization": 0 if not enable_skip_layer_norm_fusion else 24,
+            }
+            self.verify_node_count(model, expected_node_count, "test_gpt2_past")
 
     def test_gpt2_past_fp16(self):
         input_model_path = _get_test_model_path("gpt2_past")
@@ -138,18 +168,30 @@ class TestModelOptimization(unittest.TestCase):
             self.assertEqual(output.type.tensor_type.elem_type, TensorProto.FLOAT16)
 
     def test_gpt2_past_mask(self):
-        input = _get_test_model_path("gpt2_past_mask")
-        model = optimize_model(input, "gpt2", num_heads=2, hidden_size=4)
-        expected_node_count = {
-            "EmbedLayerNormalization": 1,
-            "Attention": 1,
-            "Gelu": 0,
-            "FastGelu": 1,
-            "BiasGelu": 0,
-            "LayerNormalization": 1,
-            "SkipLayerNormalization": 0,
-        }
-        self.verify_node_count(model, expected_node_count, "test_gpt2_past_mask")
+        for enable_skip_layer_norm_fusion in [False, True]:
+            input_path = _get_test_model_path("gpt2_past_mask")
+
+            options = FusionOptions("gpt2")
+            options.enable_skip_layer_norm = enable_skip_layer_norm_fusion
+
+            model = optimize_model(
+                input_path,
+                "gpt2",
+                num_heads=2,
+                hidden_size=4,
+                optimization_options=options,
+            )
+
+            expected_node_count = {
+                "EmbedLayerNormalization": 1,
+                "Attention": 1,
+                "Gelu": 0,
+                "FastGelu": 1,
+                "BiasGelu": 0,
+                "LayerNormalization": 1 if not enable_skip_layer_norm_fusion else 0,
+                "SkipLayerNormalization": 0 if not enable_skip_layer_norm_fusion else 1,
+            }
+            self.verify_node_count(model, expected_node_count, "test_gpt2_past_mask")
 
     def test_multiple_embed(self):
         input_model_path = _get_test_model_path("multiple_embed")
@@ -173,9 +215,12 @@ class TestModelOptimization(unittest.TestCase):
         onnx_files.append("embed_layer_norm_format3_no_cast.onnx")
         onnx_files.append("embed_layer_norm_format3_no_cast_opset13.onnx")
 
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(False)
+
         for file in onnx_files:
             input_model_path = get_fusion_test_model(file)
-            model = optimize_model(input_model_path, "bert")
+            model = optimize_model(input_model_path, "bert", optimization_options=options)
             expected_node_count = {
                 "EmbedLayerNormalization": 1,
                 "Attention": 1,
@@ -197,7 +242,7 @@ class TestModelOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_openaigpt_fusion(self):
-        self._test_optimizer_on_huggingface_model("openai-gpt", [0, 12, 0, 12, 0, 24, 0])
+        self._test_optimizer_on_huggingface_model("openai-gpt", [0, 12, 0, 12, 0, 0, 24])
 
     @pytest.mark.slow
     @unittest.skip("skip failed fusion test of gpt-2 on PyTorch 1.12 and transformers 4.18. TODO: fix it")
@@ -270,8 +315,9 @@ class TestTensorflowModelOptimization(unittest.TestCase):
             self.skipTest("skip TestBertOptimizationTF since tf2onnx not installed")
 
     def _test_optimizer_on_tf_model(self, model_name, expected_fusion_result_list, inputs_count, validate_model=True):
-        # Remove cached model so that CI machine will have space
-        shutil.rmtree("./cache_models", ignore_errors=True)
+        # Remove cached model so that CI machine has enough space. Do not remove cache models in dev machine.
+        if not find_transformers_source():
+            shutil.rmtree("./cache_models", ignore_errors=True)
         shutil.rmtree("./onnx_models", ignore_errors=True)
 
         # expect fusion result list have the following keys

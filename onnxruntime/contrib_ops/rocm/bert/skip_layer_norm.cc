@@ -31,8 +31,6 @@ template <typename T>
 SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
-  const TransformerOptions* options = TransformerOptions::GetInstance();
-  tuning_ = options->IsTuningEnabled();
 }
 
 template <typename T>
@@ -100,7 +98,8 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
   return LaunchSkipLayerNormKernel<HipT>(
-      Stream(),
+      IsTunableOpEnabled(),
+      Stream(ctx),
       reinterpret_cast<HipT*>(output->MutableData<T>()),
       reinterpret_cast<const HipT*>(input->Data<T>()),
       reinterpret_cast<const HipT*>(skip->Data<T>()),
@@ -109,8 +108,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
       (bias != nullptr) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
       epsilon_,
       hidden_size,
-      static_cast<int>(element_count),
-      tuning_);
+      static_cast<int>(element_count));
 }
 
 }  // namespace rocm

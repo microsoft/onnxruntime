@@ -119,6 +119,24 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private bool _terminate = false; //value set to default value of the C++ RunOptions
 
+        /// <summary>
+        /// Set a single run configuration entry as a pair of strings
+        /// If a configuration with same key exists, this will overwrite the configuration with the given configValue.
+        /// </summary>
+        /// <param name="configKey">config key name</param>
+        /// <param name="configValue">config key value</param>
+        public void AddRunConfigEntry(string configKey, string configValue)
+        {
+            using (var pinnedConfigKeyName = new PinnedGCHandle(
+                GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey), GCHandleType.Pinned)))
+            using (var pinnedConfigValueName = new PinnedGCHandle(
+                GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue), GCHandleType.Pinned)))
+            {
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtAddRunConfigEntry(handle,
+                                                       pinnedConfigKeyName.Pointer, pinnedConfigValueName.Pointer));
+            }
+        }
 
         #region SafeHandle
         /// <summary>

@@ -218,10 +218,10 @@ IEngineBuilder : IUnknown {
   (int enabled) PURE;
 
   STDMETHOD(GetD3D12Device)
-  (ID3D12Device **device) PURE;
+  (_Outptr_ ID3D12Device * *device) PURE;
 
   STDMETHOD(GetID3D12CommandQueue)
-  (ID3D12CommandQueue **queue) PURE;
+  (_Outptr_ ID3D12CommandQueue * *queue) PURE;
 
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override) PURE;
@@ -239,7 +239,7 @@ IEngineBuilder : IUnknown {
   (IThreading* thread_pool) PURE;
 
   STDMETHOD(CreateEngine)
-  (IEngine **out) PURE;
+  (_Outptr_ IEngine * *out) PURE;
 };
 
 

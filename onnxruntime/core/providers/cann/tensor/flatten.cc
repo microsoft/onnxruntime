@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace cann {
 
 template <typename T>
-Status Flatten<T>::Prepare(OpKernelContext* ctx, CannPreparation& prepare) const {
+Status Flatten<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
 
@@ -27,42 +27,37 @@ Status Flatten<T>::Prepare(OpKernelContext* ctx, CannPreparation& prepare) const
     const aclDataType aclType = getACLType<T>();
     aclFormat format = ACL_FORMAT_ND;
 
+    CannPreparation prepare;
+
     CANN_RETURN_IF_ERROR(aclopSetAttrInt(prepare.opAttr_, "axis", axis_));
 
     ORT_TRY {
       CANN_PREPARE_INPUTDESC(prepare, aclType, X->Shape().NumDimensions(), X->Shape().GetDims().data(), format);
       CANN_PREPARE_OUTPUTDESC(prepare, aclType, Y->Shape().NumDimensions(), Y->Shape().GetDims().data(), format);
 
-      CANN_PREPARE_INPUTBUFFER(prepare, const_cast<T*>(X->template Data<T>()), X->SizeInBytes());
-      CANN_PREPARE_OUTPUTBUFFER(prepare, Y->template MutableData<T>(), Y->SizeInBytes());
+      CANN_PREPARE_INPUTBUFFER(prepare, const_cast<void*>(X->DataRaw()), X->SizeInBytes());
+      CANN_PREPARE_OUTPUTBUFFER(prepare, Y->MutableDataRaw(), Y->SizeInBytes());
     }
     ORT_CATCH(const std::exception& e) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
     }
+
+    CANN_RETURN_IF_ERROR(aclopCompileAndExecute("Flatten",
+                                                prepare.inputDesc_.size(),
+                                                prepare.inputDesc_.data(),
+                                                prepare.inputBuffers_.data(),
+                                                prepare.outputDesc_.size(),
+                                                prepare.outputDesc_.data(),
+                                                prepare.outputBuffers_.data(),
+                                                prepare.opAttr_,
+                                                ACL_ENGINE_SYS,
+                                                ACL_COMPILE_SYS,
+                                                NULL,
+                                                Stream()));
   }
 
   return Status::OK();
 }
-
-#define REGISTER_FLATTEN_TYPED_COMPUTE(T)                                      \
-  template <>                                                                  \
-  Status Flatten<T>::ComputeInternal(OpKernelContext* context) const {         \
-    CannPreparation prepare;                                                   \
-    ORT_RETURN_IF_ERROR(Prepare(context, prepare));                            \
-    CANN_RETURN_IF_ERROR(aclopCompileAndExecute("Flatten",                     \
-                                                prepare.inputDesc_.size(),     \
-                                                prepare.inputDesc_.data(),     \
-                                                prepare.inputBuffers_.data(),  \
-                                                prepare.outputDesc_.size(),    \
-                                                prepare.outputDesc_.data(),    \
-                                                prepare.outputBuffers_.data(), \
-                                                prepare.opAttr_,               \
-                                                ACL_ENGINE_SYS,                \
-                                                ACL_COMPILE_SYS,               \
-                                                NULL,                          \
-                                                Stream()));                    \
-    return Status::OK();                                                       \
-  }
 
 #define REGISTER_FLATTEN_TYPED_KERNEL(ver, T)                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
@@ -85,13 +80,6 @@ Status Flatten<T>::Prepare(OpKernelContext* ctx, CannPreparation& prepare) const
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Flatten<T>);
 
-#define REGISTER_FLATTEN_VERSIONED_TYPED(startver, endver, T) \
-  REGISTER_FLATTEN_VERSIONED_TYPED_KERNEL(startver, endver, T)
-
-#define REGISTER_FLATTEN_TYPED(ver, T)  \
-  REGISTER_FLATTEN_TYPED_KERNEL(ver, T) \
-  REGISTER_FLATTEN_TYPED_COMPUTE(T)
-
 #define REGISTER_FLATTEN_VERSIONED_HF(startver, endver)                \
   REGISTER_FLATTEN_VERSIONED_TYPED_KERNEL(startver, endver, MLFloat16) \
   REGISTER_FLATTEN_VERSIONED_TYPED_KERNEL(startver, endver, float)
@@ -108,17 +96,17 @@ Status Flatten<T>::Prepare(OpKernelContext* ctx, CannPreparation& prepare) const
   REGISTER_FLATTEN_VERSIONED_TYPED_KERNEL(startver, endver, MLFloat16) \
   REGISTER_FLATTEN_VERSIONED_TYPED_KERNEL(startver, endver, float)
 
-#define REGISTER_FLATTEN_BWUZCSILHF(ver) \
-  REGISTER_FLATTEN_TYPED(ver, uint8_t)   \
-  REGISTER_FLATTEN_TYPED(ver, uint16_t)  \
-  REGISTER_FLATTEN_TYPED(ver, uint32_t)  \
-  REGISTER_FLATTEN_TYPED(ver, uint64_t)  \
-  REGISTER_FLATTEN_TYPED(ver, int8_t)    \
-  REGISTER_FLATTEN_TYPED(ver, int16_t)   \
-  REGISTER_FLATTEN_TYPED(ver, int32_t)   \
-  REGISTER_FLATTEN_TYPED(ver, int64_t)   \
-  REGISTER_FLATTEN_TYPED(ver, MLFloat16) \
-  REGISTER_FLATTEN_TYPED(ver, float)
+#define REGISTER_FLATTEN_BWUZCSILHF(ver)        \
+  REGISTER_FLATTEN_TYPED_KERNEL(ver, uint8_t)   \
+  REGISTER_FLATTEN_TYPED_KERNEL(ver, uint16_t)  \
+  REGISTER_FLATTEN_TYPED_KERNEL(ver, uint32_t)  \
+  REGISTER_FLATTEN_TYPED_KERNEL(ver, uint64_t)  \
+  REGISTER_FLATTEN_TYPED_KERNEL(ver, int8_t)    \
+  REGISTER_FLATTEN_TYPED_KERNEL(ver, int16_t)   \
+  REGISTER_FLATTEN_TYPED_KERNEL(ver, int32_t)   \
+  REGISTER_FLATTEN_TYPED_KERNEL(ver, int64_t)   \
+  REGISTER_FLATTEN_TYPED_KERNEL(ver, MLFloat16) \
+  REGISTER_FLATTEN_TYPED_KERNEL(ver, float)
 
 REGISTER_FLATTEN_VERSIONED_HF(1, 8)
 REGISTER_FLATTEN_VERSIONED_BWUZCSILHF(9, 10)

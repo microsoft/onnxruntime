@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-
+#include <core/common/safeint.h>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
@@ -45,18 +45,18 @@ class MeanVarianceNormalization_0 : public OpKernel {
     mean.setZero();
     var.setZero();
 
-    ConstEigenArrayMap<T> X_arr(Xdata, sample_size, N * C);
+    ConstEigenArrayMap<T> X_arr(Xdata, onnxruntime::narrow<std::ptrdiff_t>(sample_size), SafeInt<ptrdiff_t>(N) * C);
     for (int nc = 0; nc < N * C; ++nc) {
       mean(nc % C) += X_arr.col(nc).sum();
     }
     mean /= gsl::narrow_cast<T>(N * sample_size);
     for (int64_t nc = 0; nc < N * C; ++nc) {
-      var(nc % C) += (X_arr.col(nc) - mean(nc % C)).matrix().squaredNorm();
+      var(onnxruntime::narrow<std::ptrdiff_t>(nc % C)) += (X_arr.col(onnxruntime::narrow<std::ptrdiff_t>(nc)) - mean(onnxruntime::narrow<std::ptrdiff_t>(nc % C))).matrix().squaredNorm();
     }
     var /= gsl::narrow_cast<T>(N * sample_size);
 
     Eigen::Array<T, Eigen::Dynamic, 1> inv_std;
-    EigenArrayMap<T> Y_arr(Ydata, sample_size, N * C);
+    EigenArrayMap<T> Y_arr(Ydata, onnxruntime::narrow<std::ptrdiff_t>(sample_size), SafeInt<ptrdiff_t>(N) * C);
 
     if (across_channels_) {
       // m_c = sum(m_i) / n
@@ -79,13 +79,13 @@ class MeanVarianceNormalization_0 : public OpKernel {
         // inv_std = 1
         for (int64_t nc = 0; nc < N * C; ++nc) {
           // y = (x - mean)
-          Y_arr.col(nc) = (X_arr.col(nc) - mean(nc % C));
+          Y_arr.col(onnxruntime::narrow<std::ptrdiff_t>(nc)) = (X_arr.col(onnxruntime::narrow<std::ptrdiff_t>(nc)) - mean(onnxruntime::narrow<std::ptrdiff_t>(nc % C)));
         }
       } else {
         inv_std = var.sqrt().inverse();
         for (int64_t nc = 0; nc < N * C; ++nc) {
           // y = (x - mean) * (inv_std)
-          Y_arr.col(nc) = (X_arr.col(nc) - mean(nc % C)) * inv_std(nc % C);
+          Y_arr.col(onnxruntime::narrow<std::ptrdiff_t>(nc)) = (X_arr.col(onnxruntime::narrow<std::ptrdiff_t>(nc)) - mean(onnxruntime::narrow<std::ptrdiff_t>(nc % C))) * inv_std(onnxruntime::narrow<std::ptrdiff_t>(nc % C));
         }
       }
     }

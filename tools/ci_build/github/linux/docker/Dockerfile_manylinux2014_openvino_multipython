@@ -4,13 +4,14 @@ ENV PATH /usr/local/gradle/bin:/opt/rh/devtoolset-10/root/usr/bin:/usr/local/sbi
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
-ARG PYTHON_VER_PATH="cp36-cp36m"
-ARG PYTHON_VERSION="3.6"
+ARG PYTHON_VER_PATH="cp38-cp38"
+ARG PYTHON_VERSION="3.8"
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 ARG OV_DEVICE_PRECISION="CPU_FP32"
 ARG ENABLE_TRAINING=true
-ARG ORT_BRANCH="main"
+ARG ORT_BRANCH="rel-1.13.1"
+ARG OV_VERSION="2022.2.0"
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 ENV PYTHON_EXE="/opt/python/$PYTHON_VER_PATH/bin/python$PYTHON_VERSION"
@@ -36,15 +37,15 @@ RUN ${PYTHON_EXE} -m pip install onnx numpy wheel
 USER $BUILD_USER
 RUN cd $WORKDIR && git clone https://github.com/openvinotoolkit/openvino.git && \
     cd openvino && \
-    git checkout 2022.1.0 && \
+    git checkout $OV_VERSION && \
     git submodule init && \
     git submodule update --recursive
 
 RUN cd $WORKDIR && cd openvino && mkdir build && cd build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-D_GLIBCXX_USE_CXX11_ABI=0 -DCMAKE_INSTALL_PREFIX=/home/onnxruntimedev/openvino_2022.1.0 && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-D_GLIBCXX_USE_CXX11_ABI=0 -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=$PYTHON_EXE -DCMAKE_INSTALL_PREFIX=/home/onnxruntimedev/openvino_$OV_VERSION && \
     make -j8 && make install
 
-ENV INTEL_OPENVINO_DIR /home/onnxruntimedev/openvino_2022.1.0
+ENV INTEL_OPENVINO_DIR /home/onnxruntimedev/openvino_$OV_VERSION
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64:$INTEL_OPENVINO_DIR/runtime/3rdparty/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 ENV TBB_LIBS $INTEL_OPENVINO_DIR/runtime/3rdparty/tbb/lib
 ENV InferenceEngine_DIR $INTEL_OPENVINO_DIR/runtime/cmake

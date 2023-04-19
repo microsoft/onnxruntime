@@ -170,6 +170,13 @@ Memory_LeakCheck::Memory_LeakCheck() noexcept {
   g_heap = HeapCreate(0, 0, 0);
 }
 
+// print message to debug output and stdout
+// no trailing newline will be added
+static void DebugPrint(const char* message) {
+  OutputDebugStringA(message);
+  std::cout << "memleakdbg: " << message;
+}
+
 Memory_LeakCheck::~Memory_LeakCheck() {
   SymbolHelper symbols;
 
@@ -219,17 +226,17 @@ Memory_LeakCheck::~Memory_LeakCheck() {
         string.find("testing::internal::ThreadLocalRegistryImpl::GetThreadLocalsMapLocked") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetValueOnCurrentThread") == std::string::npos) {
       if (leaked_bytes == 0)
-        OutputDebugStringA("\n-----Starting Heap Trace-----\n\n");
+        DebugPrint("\n-----Starting Heap Trace-----\n\n");
 
       leak_count++;
       leaked_bytes += entry.cbData - sizeof(MemoryBlock);
-      OutputDebugStringA(string.c_str());
-      OutputDebugStringA("\n");
+      DebugPrint(string.c_str());
+      DebugPrint("\n");
     }
   }
 
   if (leaked_bytes) {
-    OutputDebugStringA("-----Ending Heap Trace-----\n\n");
+    DebugPrint("-----Ending Heap Trace-----\n\n");
 
     std::string string;
     char buffer[1024];
@@ -242,7 +249,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     }
 
   } else {
-    OutputDebugStringA("\n----- No memory leaks detected -----\n\n");
+    DebugPrint("\n----- No memory leaks detected -----\n\n");
   }
 
   HeapDestroy(heap);

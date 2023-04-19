@@ -17,10 +17,11 @@ class FusionGptAttentionPastBase(Fusion):
     """Base class for GPT Attention Fusion with past state"""
 
     def __init__(self, model: OnnxModel, num_heads: int):
-        super().__init__(model, "Attention", "LayerNormalization", "with past")
+        super().__init__(model, "Attention", ["LayerNormalization", "SkipLayerNormalization"], "with past")
         self.num_heads = num_heads
         self.utils = FusionUtils(model)
         self.casted_attention_mask = {}  # map from name of attention mask to the name that casted to int32
+        self.mask_filter_value = None
 
     def match_past_pattern_1(self, concat_k, concat_v, output_name_to_node):
         # Pattern 1:
@@ -202,6 +203,9 @@ class FusionGptAttention(FusionGptAttentionPastBase):
             ]
         )
 
+        if self.mask_filter_value is not None:
+            attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
+
         matmul_node = helper.make_node(
             "MatMul",
             inputs=[attention_node_name + "_output", gemm_qkv.input[1]],
@@ -224,26 +228,52 @@ class FusionGptAttention(FusionGptAttentionPastBase):
         past = None
         present = None
         return_indice = []
-        qkv_nodes = self.model.match_parent_path(
-            normalize_node,
-            ["Add", "Reshape", "Gemm", "Reshape", "Reshape", "Transpose", "MatMul"],
-            [0, None, 0, 0, 0, 0, 0],
-            output_name_to_node=output_name_to_node,
-            return_indice=return_indice,
-        )  # yapf: disable
+
+        is_normalize_node_skiplayernorm = normalize_node.op_type == "SkipLayerNormalization"
+        qkv_nodes = None
+
+        if not is_normalize_node_skiplayernorm:
+            qkv_nodes = self.model.match_parent_path(
+                normalize_node,
+                ["Add", "Reshape", "Gemm", "Reshape", "Reshape", "Transpose", "MatMul"],
+                [0, None, 0, 0, 0, 0, 0],
+                output_name_to_node=output_name_to_node,
+                return_indice=return_indice,
+            )  # yapf: disable
+        else:
+            qkv_nodes = self.model.match_parent_path(
+                normalize_node,
+                ["Reshape", "Gemm", "Reshape", "Reshape", "Transpose", "MatMul"],
+                [None, 0, 0, 0, 0, 0],
+                output_name_to_node=output_name_to_node,
+                return_indice=return_indice,
+            )  # yapf: disable
+
         if qkv_nodes is None:
             return
-        (
-            add_qkv,
-            reshape_qkv,
-            gemm_qkv,
-            reshape_1,
-            reshape_2,
-            transpose_qkv,
-            matmul_qkv,
-        ) = qkv_nodes
 
-        another_input = add_qkv.input[1 - return_indice[0]]
+        another_input = None
+        if not is_normalize_node_skiplayernorm:
+            (
+                add_qkv,
+                reshape_qkv,
+                gemm_qkv,
+                reshape_1,
+                reshape_2,
+                transpose_qkv,
+                matmul_qkv,
+            ) = qkv_nodes
+
+            another_input = add_qkv.input[1 - return_indice[0]]
+        else:
+            (
+                reshape_qkv,
+                gemm_qkv,
+                reshape_1,
+                reshape_2,
+                transpose_qkv,
+                matmul_qkv,
+            ) = qkv_nodes
 
         v_nodes = self.model.match_parent_path(matmul_qkv, ["Concat", "Transpose", "Reshape", "Split"], [1, 1, 0, 0])
         if v_nodes is None:
@@ -251,22 +281,46 @@ class FusionGptAttention(FusionGptAttentionPastBase):
             return
         (concat_v, transpose_v, reshape_v, split_fc) = v_nodes
 
+        # Try match pattern using Gemm + LayerNormalization
         fc_nodes = self.model.match_parent_path(
             split_fc,
             ["Reshape", "Gemm", "Reshape", "LayerNormalization"],
             [0, 0, 0, 0],
             output_name_to_node,
         )
+
+        # Try match pattern using Gemm + SkipLayerNormalization
         if fc_nodes is None:
+            fc_nodes = self.model.match_parent_path(
+                split_fc,
+                ["Reshape", "Gemm", "Reshape", "SkipLayerNormalization"],
+                [0, 0, 0, 0],
+                output_name_to_node,
+            )
+
+        # Try match pattern using MatMul
+        if fc_nodes is None:
+            # LayerNormalization
             fc_nodes = self.model.match_parent_path(
                 split_fc,
                 ["Add", "MatMul", "LayerNormalization"],
                 [0, None, 0],
                 output_name_to_node,
             )
+
+            # SkipLayerNormalization
+            if fc_nodes is None:
+                fc_nodes = self.model.match_parent_path(
+                    split_fc,
+                    ["Add", "MatMul", "SkipLayerNormalization"],
+                    [0, None, 0],
+                    output_name_to_node,
+                )
+
             if fc_nodes is None:
                 logger.debug("fuse_attention: failed to match fc path")
                 return
+
             fc_weight = fc_nodes[1].input[1]
             i, _ = self.model.get_constant_input(fc_nodes[0])
             fc_bias = fc_nodes[0].input[i]
@@ -276,8 +330,13 @@ class FusionGptAttention(FusionGptAttentionPastBase):
 
         layernorm_before_attention = fc_nodes[-1]
 
-        if not another_input in layernorm_before_attention.input:
-            logger.debug("Add and LayerNormalization shall have one same input")
+        # `another_input` will be non-None only if
+        # (1) SkipLayerNorm fusion wasn't turned ON
+        # (2) SkipLayerNorm fusion was turned ON but upstream layer's LayerNorm + Add was not
+        # fused into a SkipLayerNorm. This can happen if the shapes to the Add node are different.
+        # So, keep the following check if SkipLayerNorm fusion is turned ON or OFF.
+        if another_input is not None and not another_input in layernorm_before_attention.input:
+            logger.debug("Upstream Add and (Skip)LayerNormalization shall have one same input")
             return
 
         is_unidirectional = True
@@ -312,6 +371,12 @@ class FusionGptAttention(FusionGptAttentionPastBase):
             if div_qk != div_mask:
                 logger.debug("fuse_attention: skip since div_qk != div_mask")
                 return
+
+            if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
+                _, mul_val = self.model.get_constant_input(mask_nodes[0])
+                if mul_val != -10000:
+                    self.mask_filter_value = -mul_val
+
         else:
             # New pattern for gpt2 from PyTorch 1.5.0 and Transformers 2.9.0.
             i, qk_nodes, _ = self.model.match_parent_paths(
@@ -353,6 +418,10 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 if input_mask_nodes is None:
                     logger.debug("fuse_attention: failed to match input attention mask path")
                     return
+                if len(input_mask_nodes) > 1 and input_mask_nodes[0].op_type == "Mul":
+                    _, mul_val = self.model.get_constant_input(input_mask_nodes[0])
+                    if mul_val != -10000:
+                        self.mask_filter_value = mul_val
 
             mask_nodes = self.model.match_parent_path(
                 where_qk,

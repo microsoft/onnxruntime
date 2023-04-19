@@ -1,0 +1,22 @@
+# It's used to replace clean-agent-build-directory-step.yml
+# mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3 should be
+# set as the first step of the job in case there's conflict with other task which
+# defines Post-Job.
+
+steps:
+- task: PublishTestResults@2
+  displayName: 'Publish unit test results'
+  inputs:
+    testResultsFiles: '**/*.results.xml'
+    searchFolder: '$(Build.BinariesDirectory)'
+    testRunTitle: 'Unit Test Run'
+  condition: succeededOrFailed()
+
+- template: component-governance-component-detection-steps.yml
+  parameters :
+    condition : 'succeeded'
+
+- script: docker image prune -f
+  displayName: Clean docker images
+  condition: eq(variables['Agent.OS'], 'Linux')
+  continueOnError: true

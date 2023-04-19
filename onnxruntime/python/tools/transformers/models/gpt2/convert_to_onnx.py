@@ -23,15 +23,20 @@ from pathlib import Path
 
 import numpy
 import torch
-from gpt2_beamsearch_helper import MODEL_CLASSES, Gpt2HelperFactory
-from gpt2_beamsearch_tester import Gpt2TesterFactory
-from gpt2_helper import DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
+from gpt2_helper import DEFAULT_TOLERANCE, MODEL_CLASSES, PRETRAINED_GPT2_MODELS, Gpt2Helper
+from gpt2_tester import Gpt2Tester
 from packaging import version
 from transformers import AutoConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
+from benchmark_helper import (
+    Precision,
+    create_onnxruntime_session,
+    get_ort_environment_variables,
+    prepare_environment,
+    setup_logger,
+)
 from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger("")
@@ -84,6 +89,14 @@ def parse_arguments(argv=None):
 
     parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
+
+    parser.add_argument(
+        "--provider",
+        required=False,
+        default=None,
+        choices=["dml", "rocm", "migraphx", "cuda", "tensorrt"],
+        help="use dml, rocm, cuda, tensorrt or migraphx for respective backend",
+    )
 
     parser.add_argument(
         "--tolerance",
@@ -139,67 +152,26 @@ def parse_arguments(argv=None):
     parser.set_defaults(overwrite=False)
 
     parser.add_argument(
-        "--use_int32_inputs",
+        "--use_int64_inputs",
         required=False,
         action="store_true",
         help="Use int32 instead of int64 for input_ids, position_ids and attention_mask.",
     )
-    parser.set_defaults(use_int32_inputs=False)
+    parser.set_defaults(use_int64_inputs=False)
 
     parser.add_argument(
-        "--beam_size",
+        "-s",
+        "--stage",
         type=int,
-        default=4,
-        help="Beam size if greedy/top-p/top-k sampling is needed",
-    )
-
-    search_option_group = parser.add_argument_group("configurable one step search options")
-
-    search_option_group.add_argument(
-        "--ignore_eos",
-        type=bool,
-        default=False,
-        help="If ignore end of sentence token in model inference.",
-    )
-    search_option_group.add_argument(
-        "--repetition_penalty",
-        type=float,
-        default=1,
-        help="Positive. >1 to penalize and <1 to encourage.",
-    )
-    search_option_group.add_argument(
-        "--temperature",
-        type=float,
-        default=1,
-        help="Softmax temperature for output logits.",
-    )
-    search_option_group.add_argument(
-        "--excluded_token_ids",
+        default=0,
         required=False,
-        nargs="+",
-        type=float,
-        help="A list of token ids to be excluded in inference.",
+        choices=[0, 1, 2],
+        help="Stage in generation: 1 (initial decoder), 2 (decoder), 0 (both). "
+        "1 - decode the first token when past_sequence_length is zero; "
+        "2 - decode the remaining tokens when past_sequence_length is not zero; "
+        "0 - one onnx model for both stages 1 and 2. "
+        "Note that we will optimize 1 and 2 differently for best performance.",
     )
-    search_option_group.add_argument(
-        "--length_penalty",
-        type=float,
-        default=1,
-        help="Positive. >1 to penalize and <1 to encourage short sentence.",
-    )
-
-    sampling_option_group = parser.add_argument_group("one step sampling options")
-    sampling_option_group.add_argument(
-        "--do_sample",
-        action="store_true",
-        help="If to do sampling instead of beam search or greedy.",
-    )
-    sampling_option_group.add_argument(
-        "--do_sample_top_p",
-        type=float,
-        default=0.95,
-        help="Nuclear/top-p sampling accumulation probability.",
-    )
-    sampling_option_group.add_argument("--do_sample_top_k", type=int, default=0, help="Use top-k if non-zero.")
 
     fp16_option_group = parser.add_argument_group(
         'float to float16 conversion parameters that works when "--precision fp16" is specified'
@@ -233,7 +205,8 @@ def parse_arguments(argv=None):
         "--op_block_list",
         nargs="+",
         default=[],
-        help="List of operators (like Attention Gather Add LayerNormalization FastGelu MatMul) to compute in float32 instead of float16.",
+        help="List of operators (like Add LayerNormalization SkipLayerNormalization EmbedLayerNormalization FastGelu) "
+        "to compute in float32 instead of float16.",
     )
 
     fp16_option_group.add_argument(
@@ -263,11 +236,11 @@ def get_onnx_model_size(onnx_path: str, use_external_data_format: bool):
         return sum([f.stat().st_size for f in Path(onnx_path).parent.rglob("*")])
 
 
-def get_latency_name():
-    return "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
+def get_latency_name(batch_size, sequence_length, past_sequence_length):
+    return f"average_latency(batch_size={batch_size},sequence_length={sequence_length},past_sequence_length={past_sequence_length})"
 
 
-def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_results.csv"):
+def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: str = "gpt2_parity_results.csv"):
     result = {}
     from transformers import __version__ as transformers_version
 
@@ -305,48 +278,15 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
     model_class = MODEL_CLASSES[args.model_class][0]
     use_padding = MODEL_CLASSES[args.model_class][2]
 
-    if args.model_class == "GPT2LMHeadModel_BeamSearchStep":
-        model_type = "beam_search_step"
-    elif args.model_class == "GPT2LMHeadModel_ConfigurableOneStepSearch":
-        model_type = "configurable_one_step_search"
-    else:
-        model_type = "default"
-
-    gpt2helper = Gpt2HelperFactory.create_helper(model_type)
-    gpt2tester = Gpt2TesterFactory.create_tester(model_type)
+    gpt2helper = Gpt2Helper
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
-    if model_type == "beam_search_step":
-        model = model_class.from_pretrained(
-            args.model_name_or_path,
-            config=config,
-            batch_size=1,
-            beam_size=args.beam_size,
-            cache_dir=cache_dir,
-        )
-    elif model_type == "configurable_one_step_search":
-        model = model_class.from_pretrained(
-            args.model_name_or_path,
-            config=config,
-            batch_size=1,
-            beam_size=args.beam_size,
-            ignore_eos=args.ignore_eos,
-            temperature=args.temperature,
-            repetition_penalty=args.repetition_penalty,
-            excluded_token_ids=args.excluded_token_ids,
-            length_penalty=args.length_penalty,
-            do_sample=args.do_sample,
-            do_sample_top_p=args.do_sample_top_p,
-            do_sample_top_k=args.do_sample_top_k,
-            cache_dir=cache_dir,
-        )
-    else:
-        model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
+    model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.eval().to(device)
 
     if (not args.use_external_data_format) and (config.n_layer > 24):
-        logger.info(f"Try --use_external_data_format when model size > 2GB")
+        logger.info("Try --use_external_data_format when model size > 2GB")
 
     onnx_model_paths = gpt2helper.get_onnx_paths(
         output_dir,
@@ -357,6 +297,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
     )  # Do not remove raw model to save time in parity test
 
     raw_onnx_model = onnx_model_paths["raw"]
+
+    int_data_type = torch.int64 if args.use_int64_inputs else torch.int32
 
     if os.path.exists(raw_onnx_model) and not args.overwrite:
         logger.warning(f"Skip exporting ONNX model since it existed: {raw_onnx_model}")
@@ -370,9 +312,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             args.use_external_data_format,
             has_position_ids=use_padding,
             has_attention_mask=use_padding,
-            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            input_ids_dtype=int_data_type,
+            position_ids_dtype=int_data_type,
+            attention_mask_dtype=int_data_type,
         )
 
     fp16_params = {"keep_io_types": args.keep_io_types}
@@ -387,11 +329,13 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
     is_io_float16 = args.precision == Precision.FLOAT16 and not args.keep_io_types
 
+    optimized_ops = ""
+    all_ops = ""
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else "fp32"]
 
         logger.info(f"Optimizing model to {output_path}")
-        gpt2helper.optimize_onnx(
+        m = gpt2helper.optimize_onnx(
             raw_onnx_model,
             output_path,
             args.precision == Precision.FLOAT16,
@@ -399,8 +343,18 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             model.config.hidden_size,
             args.use_external_data_format,
             auto_mixed_precision=args.auto_mixed_precision,
+            stage=args.stage,
             **fp16_params,
         )
+
+        nodes = m.nodes()
+        op_list = set([node.op_type for node in nodes])
+        all_ops = ",".join(op_list)
+
+        # print optimized operators
+        optimized_op_counter = m.get_fused_operator_statistics()
+        if optimized_op_counter:
+            optimized_ops = ",".join([key for key in optimized_op_counter if optimized_op_counter[key] > 0])
     else:
         output_path = raw_onnx_model
 
@@ -420,7 +374,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
     logger.info(f"Output path: {output_path}")
     model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)
 
-    session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
+    session = create_onnxruntime_session(
+        output_path, args.use_gpu, args.provider, enable_all_optimization=True, verbose=args.verbose
+    )
     if args.model_class == "GPT2LMHeadModel" and session is not None:
         parity_result = gpt2helper.test_parity(
             session,
@@ -432,13 +388,19 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             model_class=args.model_class,
             has_position_ids=use_padding,
             has_attention_mask=use_padding,
-            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            input_ids_dtype=int_data_type,
+            position_ids_dtype=int_data_type,
+            attention_mask_dtype=int_data_type,
             test_cases_per_run=args.test_cases,
             total_runs=args.test_runs,
+            stage=args.stage,
             verbose=args.verbose,
         )
+
+        # An example configuration for testing performance
+        batch_size = 8
+        sequence_length = 32 if args.stage == 1 else 1
+        past_sequence_length = 0 if args.stage == 1 else 32
 
         latency = gpt2helper.test_performance(
             session,
@@ -450,12 +412,12 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             model_class=args.model_class,
             has_position_ids=use_padding,
             has_attention_mask=use_padding,
-            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-            batch_size=8,
-            sequence_length=1,
-            past_sequence_length=32,
+            input_ids_dtype=int_data_type,
+            position_ids_dtype=int_data_type,
+            attention_mask_dtype=int_data_type,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            past_sequence_length=past_sequence_length,
         )
 
         if args.precision == Precision.FLOAT16:
@@ -466,7 +428,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
         from onnxruntime import __version__ as ort_version
 
-        latency_name = get_latency_name()
+        latency_name = get_latency_name(batch_size, sequence_length, past_sequence_length)
         csv_file_existed = os.path.exists(csv_filename)
         with open(csv_filename, mode="a", newline="") as csv_file:
             column_names = [
@@ -474,6 +436,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "run_id",
                 "model_name",
                 "model_class",
+                "stage",
                 "gpu",
                 "precision",
                 "optimizer",
@@ -485,8 +448,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "node_block_list",
                 "force_fp16_initializers",
                 "auto_mixed_precision",
-                "ORT_TRANSFORMER_OPTIONS",
-                "ORT_CUDA_GEMM_OPTIONS",
+                "optimized_operators",
+                "operators",
+                "environment_variables",
                 "onnxruntime",
                 latency_name,
                 "top1_match_rate",
@@ -507,6 +471,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "run_id": run_id,
                 "model_name": args.model_name_or_path,
                 "model_class": args.model_class,
+                "stage": args.stage,
                 "gpu": args.use_gpu,
                 "precision": args.precision,
                 "optimizer": args.optimize_onnx,
@@ -518,8 +483,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "node_block_list": args.node_block_list,
                 "force_fp16_initializers": args.force_fp16_initializers,
                 "auto_mixed_precision": args.auto_mixed_precision,
-                "ORT_TRANSFORMER_OPTIONS": os.getenv("ORT_TRANSFORMER_OPTIONS"),
-                "ORT_CUDA_GEMM_OPTIONS": os.getenv("ORT_CUDA_GEMM_OPTIONS"),
+                "optimized_operators": optimized_ops,
+                "operators": all_ops,
+                "environment_variables": get_ort_environment_variables(),
                 "onnxruntime": ort_version,
                 latency_name: f"{latency:.2f}",
                 "diff_50_percentile": parity_result["max_diff_percentile_50"],
@@ -566,29 +532,16 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                         position_ids.masked_fill_(position_ids < 0, 0)
 
                     inputs = {
-                        "input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids,
-                        "position_ids": position_ids.to(torch.int32) if args.use_int32_inputs else position_ids,
-                        "attention_mask": attention_mask.to(torch.int32) if args.use_int32_inputs else attention_mask,
+                        "input_ids": input_ids.to(int_data_type),
+                        "position_ids": position_ids.to(int_data_type),
+                        "attention_mask": attention_mask.to(int_data_type),
                     }
                 else:
-                    inputs = {"input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids}
-
-                if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
-                    beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()
-
-                    input_log_probs = torch.zeros([input_ids.shape[0], 1])
-                    input_unfinished_sents = torch.ones([input_ids.shape[0], 1], dtype=torch.bool)
-                    inputs.update(
-                        {
-                            "beam_select_idx": beam_select_idx,
-                            "input_log_probs": input_log_probs,
-                            "input_unfinished_sents": input_unfinished_sents,
-                        }
-                    )
+                    inputs = {"input_ids": input_ids.to(int_data_type)}
 
                 test_inputs.append(inputs)
 
-        gpt2tester.test_generation(
+        Gpt2Tester.test_generation(
             session,
             model,
             device,

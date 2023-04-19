@@ -101,7 +101,7 @@ void ClearMissingFrames(T* Y_buffer_data, const Tensor* sequence_lens,
               seq * num_directions * batch_size * hidden_size +
               direction * batch_size * hidden_size +
               batch * hidden_size;
-          math::Set<T, CPUMathUtil>(hidden_size, 0, Y_buffer_data + offset, &CPUMathUtil::Instance());
+          math::Set<T, CPUMathUtil>(onnxruntime::narrow<size_t>(hidden_size), 0, Y_buffer_data + offset, &CPUMathUtil::Instance());
         }
       }
     }
@@ -169,11 +169,11 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
     bool isReverse = direction_ == "reverse" || direction == 1;
 
     if (B != nullptr) {
-      EigenMatrixMapRowMajor<float>(x_matmul_w_buffer_data, seq_length * batch_size, hidden_size_).rowwise() =
-          ConstEigenVectorMap<float>(B->Data<float>() + direction * 2 * hidden_size_, hidden_size_).transpose() +
-          ConstEigenVectorMap<float>(B->Data<float>() + direction * 2 * hidden_size_ + hidden_size_, hidden_size_).transpose();
+      EigenMatrixMapRowMajor<float>(x_matmul_w_buffer_data, seq_length * SafeInt<size_t>(batch_size), onnxruntime::narrow<size_t>(hidden_size_)).rowwise() =
+          ConstEigenVectorMap<float>(B->Data<float>() + direction * 2 * hidden_size_, onnxruntime::narrow<size_t>(hidden_size_)).transpose() +
+          ConstEigenVectorMap<float>(B->Data<float>() + direction * 2 * hidden_size_ + hidden_size_, onnxruntime::narrow<size_t>(hidden_size_)).transpose();
     } else {
-      math::Set<float, CPUMathUtil>(seq_length * batch_size * hidden_size_, 0, x_matmul_w_buffer_data, &CPUMathUtil::Instance());
+      math::Set<float, CPUMathUtil>(seq_length * batch_size * SafeInt<size_t>(hidden_size_), 0, x_matmul_w_buffer_data, &CPUMathUtil::Instance());
     }
 
     // X * W[direction]^t + B
@@ -194,7 +194,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
       int64_t time_step = isReverse ? (seq_length - t - 1) : t;
       int64_t Y_frame_offset = (time_step * num_directions + direction) * Y_frame_size;
       float* Y_buffer_data_current_frame = Y_buffer_data + Y_frame_offset;
-      auto y_frame_mat = EigenMatrixMapRowMajor<float>(Y_buffer_data_current_frame, batch_size, hidden_size_);
+      auto y_frame_mat = EigenMatrixMapRowMajor<float>(Y_buffer_data_current_frame, onnxruntime::narrow<size_t>(batch_size), onnxruntime::narrow<size_t>(hidden_size_));
 
       const float* h_prev = nullptr;
       if (t == 0) {
@@ -226,11 +226,11 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
             Y_buffer_data_current_frame,
             tp);
       } else {
-        math::Set<float, CPUMathUtil>(batch_size * hidden_size_, 0, Y_buffer_data_current_frame, &CPUMathUtil::Instance());
+        math::Set<float, CPUMathUtil>(batch_size * SafeInt<size_t>(hidden_size_), 0, Y_buffer_data_current_frame, &CPUMathUtil::Instance());
       }
 
       // X[time_step] * W^t + H_t_1 * R^t
-      y_frame_mat += EigenMatrixMapRowMajor<float>(&x_matmul_w_buffer_data[time_step * Y_frame_size], batch_size, hidden_size_);
+      y_frame_mat += EigenMatrixMapRowMajor<float>(&x_matmul_w_buffer_data[time_step * Y_frame_size], onnxruntime::narrow<size_t>(batch_size), onnxruntime::narrow<size_t>(hidden_size_));
 
       // apply activation
       ApplyActivationToBatches<float>(sequence_lens, h_prev, Y_buffer_data_current_frame,

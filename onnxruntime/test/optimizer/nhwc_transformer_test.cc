@@ -278,6 +278,9 @@ TEST(NhwcTransformerTests, ConvSplit) {
                                                             conv_output_arg, .37f, 131);
       conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
       Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
+      if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+        split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
+      }
       split_node.AddAttribute("axis", static_cast<int64_t>(axis));
       builder.AddQLinearBinaryNode("QLinearAdd",
                                    split_output1_arg, .37f, 131,
@@ -302,6 +305,11 @@ TEST(NhwcTransformerTests, ConvSplit) {
                       check_nhwc_graph,
                       TransformerLevel::Level2,
                       TransformerLevel::Level3);
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3,
+                      18);
   }
 }
 
@@ -323,6 +331,9 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
       conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
       Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
+      if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+        split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
+      }
       split_node.AddAttribute("axis", static_cast<int64_t>(axis));
 
       Node& qlconcat_node = builder.AddQLinearConcatLike(
@@ -346,6 +357,11 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
                       check_nhwc_graph,
                       TransformerLevel::Level2,
                       TransformerLevel::Level3);
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3,
+                      18);
   }
 }
 

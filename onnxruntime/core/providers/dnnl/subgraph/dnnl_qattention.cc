@@ -2,9 +2,6 @@
 // Licensed under the MIT License
 
 #include "dnnl_qattention.h"
-#include "dnnl_subgraph.h"
-#include "dnnl_subgraph_primitive.h"
-#include <cmath>
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -105,6 +102,7 @@ limitations
 */
 void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto eng = sp.GetEngine();
+  auto isBF16Acc = dnnl_util::IsBF16Supported();
 
   dnnl::memory QKV_mem;
   {
@@ -146,7 +144,11 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
       auto QKV_dims = input_md.dims();
       QKV_dims[2] = weights_md.dims()[2];
       //use format any for optimization
-      QKV_md = dnnl::memory::desc(QKV_dims, dnnl::memory::data_type::f32, dnnl::memory::format_tag::any);
+      if (isBF16Acc) {
+        QKV_md = dnnl::memory::desc(QKV_dims, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::any);
+      } else {
+        QKV_md = dnnl::memory::desc(QKV_dims, dnnl::memory::data_type::f32, dnnl::memory::format_tag::any);
+      }
     }
 
     auto matmul_d = dnnl::matmul::desc(input_md, weights_md, QKV_md);
@@ -223,10 +225,15 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
   auto hidden_size = QKV_mem.get_desc().dims()[2] / 3;
   auto head_size = hidden_size / num_heads;
 
-  //slice QKV into submemories
-  auto Q_md = QKV_mem.get_desc().submemory_desc({batch_size, sequence_length, hidden_size}, {0, 0, 0});
-  auto K_md = QKV_mem.get_desc().submemory_desc({batch_size, sequence_length, hidden_size}, {0, 0, hidden_size});
-  auto V_md = QKV_mem.get_desc().submemory_desc({batch_size, sequence_length, hidden_size}, {0, 0, hidden_size * 2});
+  // Slice QKV into submemories
+  auto Q_mem = CopySubMemory(sp, QKV_mem, {batch_size, sequence_length, hidden_size}, {0, 0, 0});
+  auto K_mem = CopySubMemory(sp, QKV_mem, {batch_size, sequence_length, hidden_size}, {0, 0, hidden_size});
+  auto V_mem = CopySubMemory(sp, QKV_mem, {batch_size, sequence_length, hidden_size}, {0, 0, hidden_size * 2});
+
+  // Get memory descriptors
+  auto Q_md = Q_mem.get_desc();
+  auto K_md = K_mem.get_desc();
+  auto V_md = V_mem.get_desc();
 
   //split QKV last dim to num_heads, hidden_dim
   Q_md = Q_md.reshape({batch_size, sequence_length, num_heads, head_size});
@@ -256,40 +263,42 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
 
     auto mask_index_ori_mem = sp.GetMemoryAndReshape(node.Input(MASK_INDEX), linear_pd.src_desc(), eng);
     assert(linear_pd.dst_desc().data_type() == dnnl::memory::data_type::s32);
-    auto mask_index_mem_unbroadcasted = dnnl::memory(linear_pd.dst_desc(), eng);
+    auto mask_index_mem_unbroadcasted_src = dnnl::memory(linear_pd.dst_desc(), eng);
 
     auto linear_prim = dnnl::eltwise_forward(linear_pd);
     //mask = 10000*mask-10000
-    sp.AddPrimitive(linear_prim, {{DNNL_ARG_SRC, mask_index_ori_mem}, {DNNL_ARG_DST, mask_index_mem_unbroadcasted}});
+    sp.AddPrimitive(linear_prim, {{DNNL_ARG_SRC, mask_index_ori_mem}, {DNNL_ARG_DST, mask_index_mem_unbroadcasted_src}});
 
-    dnnl::memory mask_index_mem_unbroadcasted_f32;
+    dnnl::memory mask_index_mem_unbroadcasted_dst;
     {
-      auto md = mask_index_mem_unbroadcasted.get_desc();
-      auto dims = md.dims();
-      auto strides = md.data.format_desc.blocking.strides;
+      auto mask_index_md_unbroadcasted = mask_index_mem_unbroadcasted_src.get_desc();
+      auto dims = mask_index_md_unbroadcasted.dims();
+      auto strides = mask_index_md_unbroadcasted.data.format_desc.blocking.strides;
       dnnl::memory::dims strides_vec;
       for (size_t i = 0; i < dims.size(); i++) {
         strides_vec.push_back(strides[i]);
       }
-      auto mask_index_md_unbroadcasted_f32 = dnnl::memory::desc(dims, dnnl::memory::data_type::f32, strides_vec);
-      mask_index_mem_unbroadcasted_f32 = dnnl::memory(mask_index_md_unbroadcasted_f32, eng);
-      sp.AddPrimitive(dnnl::reorder(mask_index_mem_unbroadcasted, mask_index_mem_unbroadcasted_f32),
-                                    {{DNNL_ARG_FROM, mask_index_mem_unbroadcasted},
-                                     {DNNL_ARG_TO, mask_index_mem_unbroadcasted_f32}});
+      if (isBF16Acc) {
+        auto mask_index_mem_unbroadcasted_f32 = CastAndTransformMemory(sp, mask_index_mem_unbroadcasted_src, dnnl::memory::data_type::f32, strides_vec);
+        mask_index_mem_unbroadcasted_dst = CastMemory(sp, mask_index_mem_unbroadcasted_f32, dnnl::memory::data_type::bf16);
+      } else {
+        mask_index_mem_unbroadcasted_dst = CastAndTransformMemory(sp, mask_index_mem_unbroadcasted_src, dnnl::memory::data_type::f32, strides_vec);
+      }
     }
 
+
     //unsqueeze the mem for broadcasting
-    auto mask_index_dims = mask_index_mem_unbroadcasted_f32.get_desc().dims();
+    auto mask_index_dims = mask_index_mem_unbroadcasted_dst.get_desc().dims();
     //not symetric, simply broadcasting
     //eg 8,512 -> 8,1,1,512
     //eg 8,1,1,512 -> 8,12,512,512
     mask_index_dims.insert(mask_index_dims.begin() + 1, 1);
     mask_index_dims.insert(mask_index_dims.begin() + 2, 1);
-    auto mask_index_broadcasted_md = mask_index_mem_unbroadcasted_f32.get_desc().reshape(mask_index_dims);
+    auto mask_index_broadcasted_md = mask_index_mem_unbroadcasted_dst.get_desc().reshape(mask_index_dims);
     //set mask_index_mem
     mask_index_mem = dnnl::memory(mask_index_broadcasted_md, eng, nullptr);
     dnnl::stream s(eng);
-    mask_index_mem.set_data_handle(mask_index_mem_unbroadcasted_f32.get_data_handle(), s);
+    mask_index_mem.set_data_handle(mask_index_mem_unbroadcasted_dst.get_data_handle(), s);
     s.wait();
   }
 
@@ -309,7 +318,14 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
       }
     }
 
-    auto QK_md = dnnl::memory::desc({batch_size, num_heads, sequence_length, sequence_length}, dnnl::memory::data_type::f32, dnnl::memory::format_tag::any);
+    dnnl::memory::desc QK_md;
+    {
+      if (isBF16Acc) {
+        QK_md = dnnl::memory::desc({batch_size, num_heads, sequence_length, sequence_length}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::any);
+      } else {
+        QK_md = dnnl::memory::desc({batch_size, num_heads, sequence_length, sequence_length}, dnnl::memory::data_type::f32, dnnl::memory::format_tag::any);
+      }
+    }
     auto QK_d = dnnl::matmul::desc(Q_md, K_md, QK_md);
     auto QK_pd = dnnl::matmul::primitive_desc(QK_d, QK_attr, eng);
     auto QK_prim = dnnl::matmul(QK_pd);
@@ -317,8 +333,8 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
     QK_mem = dnnl::memory(QK_pd.dst_desc(), eng);
     {
       //QKV_mem is used as both input and weight but since matmul is defined on submemory, computation will be applied to correct submemory
-      std::unordered_map<int, dnnl::memory> QK_mem_map({{DNNL_ARG_SRC, QKV_mem},
-                                                        {DNNL_ARG_WEIGHTS, QKV_mem},
+      std::unordered_map<int, dnnl::memory> QK_mem_map({{DNNL_ARG_SRC, Q_mem},
+                                                        {DNNL_ARG_WEIGHTS, K_mem},
                                                         {DNNL_ARG_DST, QK_mem}});
       if (mask_index_mem) {
         QK_mem_map[DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1] = mask_index_mem;
@@ -341,7 +357,15 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
   dnnl::memory QAttention_dst_mem;
   {
     //format acbd in order to work with subsequent permute and merge to produce ort format memory
-    auto QAttention_dst_md = dnnl::memory::desc({batch_size, num_heads, sequence_length, head_size}, dnnl::memory::data_type::f32, dnnl::memory::format_tag::acbd);
+
+    dnnl::memory::desc QAttention_dst_md;
+    {
+      if (isBF16Acc) {
+        QAttention_dst_md = dnnl::memory::desc({batch_size, num_heads, sequence_length, head_size}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::acbd);
+      } else {
+        QAttention_dst_md = dnnl::memory::desc({batch_size, num_heads, sequence_length, head_size}, dnnl::memory::data_type::f32, dnnl::memory::format_tag::acbd);
+      }
+    }
 
     auto Prob_V_d = dnnl::matmul::desc(QK_mem.get_desc(), V_md, QAttention_dst_md);
     auto Prob_V_pd = dnnl::matmul::primitive_desc(Prob_V_d, eng);
@@ -349,26 +373,34 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
 
     QAttention_dst_mem = dnnl::memory(Prob_V_pd.dst_desc(), eng);
     std::unordered_map<int, dnnl::memory> Prob_V_mem_map({{DNNL_ARG_SRC, QK_mem},
-                                                          {DNNL_ARG_WEIGHTS, QKV_mem},
+                                                          {DNNL_ARG_WEIGHTS, V_mem},
                                                           {DNNL_ARG_DST, QAttention_dst_mem}});
     //prob * V
     sp.AddPrimitive(Prob_V_prim, Prob_V_mem_map);
   }
 
   //permute and merge axes through reshape
+  dnnl::memory QAttention_dst_mem_correct_shape;
   {
     auto QAttention_dst_md_BNSH = QAttention_dst_mem.get_desc();
     //swap axes
     auto QAttention_dst_md_BSNH = QAttention_dst_md_BNSH.permute_axes({0, 2, 1, 3});
     //merge axes
     auto QAttention_dst_md_BSH = QAttention_dst_md_BSNH.reshape({batch_size, sequence_length, hidden_size});
-    auto QAttention_dst_mem_correct_shape = dnnl::memory(QAttention_dst_md_BSH, eng, nullptr);
+    QAttention_dst_mem_correct_shape = dnnl::memory(QAttention_dst_md_BSH, eng, nullptr);
     sp.AddReshape(QAttention_dst_mem, QAttention_dst_mem_correct_shape);
+  }
+
+  if (isBF16Acc) {
+    // Reorder QAttention Output to f32
+    dnnl::memory QAttention_output = CastMemory(sp, QAttention_dst_mem_correct_shape, dnnl::memory::data_type::f32);
+    //needs to copy if it outputs for subgraph
+    sp.SetMemory(node.Output(OUTPUT), QAttention_output, true);
+  } else {
     //needs to copy if it outputs for subgraph
     sp.SetMemory(node.Output(OUTPUT), QAttention_dst_mem_correct_shape, true);
   }
 }
-
 
 //obtain the number of heads for qattention node
 dnnl::memory::dim DnnlQAttention::GetNumHeads(DnnlNode& node) {
@@ -381,6 +413,72 @@ dnnl::memory::dim DnnlQAttention::GetNumHeads(DnnlNode& node) {
   }
 }
 
+/*
+  This function get the sub-memory from the source memory using the dimension and
+  the offset of the sub-memory. It uses reorder primitive for the task.
+*/
+dnnl::memory DnnlQAttention::CopySubMemory(DnnlSubgraphPrimitive& sp, dnnl::memory& src_mem, dnnl::memory::dims sub_mem_dims, dnnl::memory::dims sub_mem_offset) {
+  dnnl::memory dst_mem;
+  {
+    auto eng = sp.GetEngine();
+
+    // Make destination memory object from source descriptor given sub memory dimension and offset
+    auto src_md = src_mem.get_desc().submemory_desc(sub_mem_dims, sub_mem_offset);
+    dnnl::memory::desc dst_md = dnnl::memory::desc(src_md.dims(), src_md.data_type(), sp.GetDnnlFormat(src_md.dims().size()));
+    dst_mem = dnnl::memory(dst_md, eng);
+
+    // Copy submemory from source to destination given dimensions and offset
+    auto reorder_pd = dnnl::reorder::primitive_desc(eng, src_md, eng, dst_md);
+    auto reorder = dnnl::reorder(reorder_pd);
+    std::unordered_map<int, dnnl::memory> reorder_mem_map({{DNNL_ARG_FROM, src_mem}, {DNNL_ARG_TO, dst_mem}});
+    sp.AddPrimitive(reorder, reorder_mem_map);
+  }
+  return dst_mem;
+}
+
+/*
+  This function reorders the source memory w.r.t destination datatype
+*/
+dnnl::memory DnnlQAttention::CastMemory(DnnlSubgraphPrimitive& sp, dnnl::memory& src_mem, dnnl::memory::data_type dst_datatype) {
+  dnnl::memory dst_mem;
+  {
+    auto eng = sp.GetEngine();
+
+    // Make a new memory descriptor based on the source descriptor and given destination datatype
+    auto src_md = src_mem.get_desc();
+    dnnl::memory::desc dst_md = dnnl::memory::desc(src_md.dims(), dst_datatype, sp.GetDnnlFormat(src_md.dims().size()));
+    dst_mem = dnnl::memory(dst_md, eng);
+
+    // Reorder source memory to destination memory as per the given datatype
+    auto reorder_pd = dnnl::reorder::primitive_desc(eng, src_md, eng, dst_md);
+    auto reorder = dnnl::reorder(reorder_pd);
+    std::unordered_map<int, dnnl::memory> reorder_mem_map({{DNNL_ARG_FROM, src_mem}, {DNNL_ARG_TO, dst_mem}});
+    sp.AddPrimitive(reorder, reorder_mem_map);
+  }
+  return dst_mem;
+}
+
+/*
+  This function reorders the source memory w.r.t destination datatype and strides provided.
+*/
+dnnl::memory DnnlQAttention::CastAndTransformMemory(DnnlSubgraphPrimitive& sp, dnnl::memory& src_mem, dnnl::memory::data_type dst_datatype, dnnl::memory::dims dst_strides) {
+  dnnl::memory dst_mem;
+  {
+    auto eng = sp.GetEngine();
+
+    // Make a new memory descriptor based on the source descriptor and given destination dataype and strides
+    auto src_md = src_mem.get_desc();
+    dnnl::memory::desc dst_md = dnnl::memory::desc(src_md.dims(), dst_datatype, dst_strides);
+    dst_mem = dnnl::memory(dst_md, eng);
+
+    // Reorder source memory to destination memory as per the given dataype and strides
+    auto reorder_pd = dnnl::reorder::primitive_desc(eng, src_md, eng, dst_md);
+    auto reorder = dnnl::reorder(reorder_pd);
+    std::unordered_map<int, dnnl::memory> reorder_mem_map({{DNNL_ARG_FROM, src_mem}, {DNNL_ARG_TO, dst_mem}});
+    sp.AddPrimitive(reorder, reorder_mem_map);
+  }
+  return dst_mem;
+}
 
 }  // namespace ort_dnnl
 }  // namespace onnxruntime

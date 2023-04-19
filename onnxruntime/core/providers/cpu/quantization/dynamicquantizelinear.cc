@@ -44,7 +44,7 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   // quantize the data
   auto* output = y.MutableData<T>();
-  ParQuantizeLinear(x_data, output, num_of_elements, scale, zero_point, ctx->GetOperatorThreadPool());
+  ParQuantizeLinear(x_data, output, onnxruntime::narrow<size_t>(num_of_elements), scale, zero_point, ctx->GetOperatorThreadPool());
 
   return Status::OK();
 }

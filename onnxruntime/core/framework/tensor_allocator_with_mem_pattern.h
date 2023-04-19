@@ -47,7 +47,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       } else {
         buffer = alloc->Alloc(peak_size);
       }
-      weights_buffers_.push_back(BufferUniquePtr(buffer, alloc));
+      weights_buffers_.push_back(BufferUniquePtr(buffer, BufferDeleter(alloc)));
       auto kvp = buffers_.insert(std::make_pair(location, buffer));
       if (!kvp.second) {
         alloc->Free(buffer);

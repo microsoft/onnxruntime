@@ -212,12 +212,20 @@ gsl::span<const uint32_t> TensorDesc::GetStrides() const
 
 void TensorDesc::SetStrides(gsl::span<const uint32_t> strides)
 {
+    m_bufferTensorDesc.Strides = strides.empty() ? nullptr : strides.data();
+
     if (!strides.empty())
     {
         ML_CHECK_VALID_ARGUMENT(strides.size() <= std::size(m_strides));
-        m_bufferTensorDesc.Strides = strides.data();
+        ML_CHECK_VALID_ARGUMENT(strides.size() == m_bufferTensorDesc.DimensionCount);
         std::copy(strides.begin(), strides.end(), m_strides);
     }
+
+    m_bufferTensorDesc.TotalTensorSizeInBytes = DMLCalcBufferTensorSize(
+        m_bufferTensorDesc.DataType,
+        m_bufferTensorDesc.DimensionCount,
+        m_sizes,
+        strides.empty() ? nullptr : m_strides);
 }
 
 DML_TENSOR_DESC TensorDesc::GetDmlDesc()

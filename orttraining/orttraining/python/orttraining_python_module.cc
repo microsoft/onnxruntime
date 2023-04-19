@@ -6,6 +6,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/common/path_string.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/provider_bridge_ort.h"
 
@@ -49,7 +50,8 @@ bool GetDyanmicExecutionProviderHash(
     size_t& hash,
     const std::string& entry_symbol_name = "ProviderHashFunc") {
   void* handle;
-  auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, false, &handle);
+  const auto path_str = ToPathString(ep_shared_lib_path);
+  auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
   if (!error.IsOK()) {
     throw std::runtime_error(error.ErrorMessage());
   }
@@ -87,7 +89,8 @@ bool GetProviderInstanceHash(const std::string& type,
              (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
              (static_cast<size_t>(info.cudnn_conv_algo_search) << 18) ^
              (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
-             (static_cast<size_t>(info.has_user_compute_stream) << 22);
+             (static_cast<size_t>(info.has_user_compute_stream) << 22) ^
+             std::hash<cuda::TunableOpInfo>{}(info.tunable_op);
       return true;
     }
 #endif

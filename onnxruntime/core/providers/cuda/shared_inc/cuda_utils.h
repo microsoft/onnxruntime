@@ -6,11 +6,13 @@
 
 #pragma once
 
+#include <cuda_fp16.h>
 #include <memory>
 #include <type_traits>
 #include <vector>
-#include "core/common/gsl.h"
 
+#include "core/common/gsl.h"
+#include "core/framework/float16.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
 namespace onnxruntime {
@@ -50,7 +52,6 @@ void Fill(cudaStream_t stream, T* output, T value, int64_t count);
 */
 template <typename T, int32_t capacity = 8>
 struct TArray {
-
 #if defined(USE_ROCM)
 #define TARRAY_CONSTRUCTOR_SPECIFIERS __host__ __device__
 #else
@@ -116,6 +117,56 @@ struct TArray {
 // Bitmask tensor is uint_32 type.
 using BitmaskElementType = uint32_t;
 constexpr int kNumBitsPerBitmaskElement = std::numeric_limits<BitmaskElementType>::digits;
+
+template <typename T>
+struct NumericLimits {
+  __inline__ __host__ __device__ static T Min() {
+    return std::numeric_limits<T>::lowest();
+  }
+  __inline__ __host__ __device__ static T Max() {
+    return std::numeric_limits<T>::max();
+  }
+};
+
+template <>
+struct NumericLimits<MLFloat16> {
+  __inline__ __host__ __device__ static half Min() {
+    return -65504.0;
+  }
+  __inline__ __host__ __device__ static half Max() {
+    return 65504.0;
+  }
+};
+
+template <>
+struct NumericLimits<half> {
+  __inline__ __host__ __device__ static half Min() {
+    return -65504.0;
+  }
+  __inline__ __host__ __device__ static half Max() {
+    return 65504.0;
+  }
+};
+
+template <>
+struct NumericLimits<float> {
+  __inline__ __host__ __device__ static float Min() {
+    return -INFINITY;
+  }
+  __inline__ __host__ __device__ static float Max() {
+    return INFINITY;
+  }
+};
+
+template <>
+struct NumericLimits<double> {
+  __inline__ __host__ __device__ static double Min() {
+    return -HUGE_VAL;
+  }
+  __inline__ __host__ __device__ static double Max() {
+    return HUGE_VAL;
+  }
+};
 
 }  // namespace cuda
 }  // namespace onnxruntime

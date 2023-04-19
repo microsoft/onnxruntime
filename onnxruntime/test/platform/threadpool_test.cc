@@ -4,6 +4,11 @@
 #include "core/platform/threadpool.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
+#include "core/util/thread_utils.h"
+#ifdef _WIN32
+#include "test/platform/windows/env.h"
+#include <Windows.h>
+#endif
 
 #include "gtest/gtest.h"
 #include <algorithm>
@@ -536,6 +541,134 @@ TEST(ThreadPoolTest, TestStackSize) {
     ASSERT_EQ(high_limit - low_limit, to.stack_size);
 }
 #pragma warning(pop)
+#endif
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
+  OrtThreadPoolParams tp_params;
+  tp_params.thread_pool_size = 3;
+  const char* wrong_formats[] = {
+      ",",     //1st and 2nd processor id are empty strings
+      "1,",    //2nd processor id is an empty string
+      ";",     //affinity settings for both threads are empty
+      ";1",    //missing the affinity setting for the 1st thread
+      "a",     //invalid char, must be digit
+      "a;b",   //invalid char, must be digit
+      "1;a",   //invalid char, must be digit
+      "0;1",   //processor string must start from 1
+      "-;2",   //invalid char, must be digit
+      "--",    //invalid char, must be digit
+      "2-1;3", //invalid interval, "from" must be equal to or smaller than "to"
+      "5;3a"   //invalid processor id containing non-digit as suffix
+  };
+  for (const auto* wrong_format : wrong_formats) {
+    tp_params.affinity_str = wrong_format;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+  const char* less_than_expected_vec[] = {"1", "1,2", "1-2"};
+  for (const auto* less_than_expected : less_than_expected_vec) {
+    tp_params.affinity_str = less_than_expected;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+  const char* more_than_expected_vec[] = {"1;2;3", "1-2;2-2;3-4", "1;2;3;4;5"};
+  for (const auto* more_than_expected : more_than_expected_vec) {
+    tp_params.affinity_str = more_than_expected;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+}
+#endif
+
+TEST(ThreadPoolTest, TestAffinityStringWellShaped) {
+  OrtThreadPoolParams tp_params;
+  auto default_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                  tp_params,
+                                                  concurrency::ThreadPoolType::INTRA_OP);
+  if (concurrency::ThreadPool::DegreeOfParallelism(default_tp.get()) < 3) {
+    return;
+  }
+  tp_params.thread_pool_size = 3;
+  const char* good_formats[] = {"1;1",
+                                "2;2",
+                                "1-1;2-2",
+                                "1-2;1-2"};
+  for (const auto* good_format : good_formats) {
+    tp_params.affinity_str = good_format;
+    auto non_default_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                        tp_params,
+                                                        concurrency::ThreadPoolType::INTRA_OP);
+    auto DOP = concurrency::ThreadPool::DegreeOfParallelism(non_default_tp.get());
+    ASSERT_TRUE(DOP >= 3 && DOP % 3 == 0); // for hybrid cpu, dop is a multiple of 3
+  }
+}
+
+#ifdef _WIN32
+TEST(ThreadPoolTest, TestDefaultAffinity) {
+  test::CpuGroup cpu_group = {{0, 1},
+                              {2, 3},
+                              {4, 5},
+                              {6, 7}};
+  // 2 logical processors per core, single group
+  test::CpuInfo cpu_info_single = {cpu_group};
+  test::WindowsEnvTester win_env;
+  win_env.SetCpuInfo(cpu_info_single);
+  auto default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 4);
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 2);
+    for (int j = 0; j < 2; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
+    }
+  }
+  // 2 logical processors per core, two groups
+  test::CpuInfo cpu_info_double = {cpu_group, cpu_group};
+  win_env.SetCpuInfo(cpu_info_double);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 8);
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 2);
+    for (int j = 0; j < 2; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
+    }
+  }
+  // 4 logical processors per core, single group
+  cpu_group = {{0, 1, 2, 3},
+               {4, 5, 6, 7},
+               {8, 9, 10, 11},
+               {12, 13, 14, 15}};
+  cpu_info_single = {cpu_group};
+  win_env.SetCpuInfo(cpu_info_single);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 4);
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 4);
+    for (int j = 0; j < 4; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 4 + j);
+    }
+  }
+  // 4 logical processors per core, two groups
+  cpu_info_double = {cpu_group, cpu_group};
+  win_env.SetCpuInfo(cpu_info_double);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 8);
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 4);
+    for (int j = 0; j < 4; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 4 + j);
+    }
+  }
+}
 #endif
 #endif
 

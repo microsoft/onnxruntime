@@ -19,7 +19,6 @@ class CUDAAllocator : public IAllocator {
                           device_id, OrtMemTypeDefault)) {}
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  FencePtr CreateFence(const SessionState* session_state) override;
 
  private:
   void CheckDevice(bool throw_when_fail) const;
@@ -62,6 +61,5 @@ class CUDAPinnedAllocator : public IAllocator {
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  FencePtr CreateFence(const SessionState* session_state) override;
 };
 }  // namespace onnxruntime

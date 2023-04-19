@@ -1,7 +1,7 @@
 import io
 import os
 import warnings
-from distutils.version import LooseVersion
+from packaging.version import Version as LooseVersion
 
 import numpy as np
 import onnx
@@ -233,7 +233,7 @@ def dtype_torch_to_numpy(torch_dtype):
     elif torch_dtype == torch.int16 or torch_dtype == torch.short:
         return np.int16
     elif torch_dtype == torch.bool:
-        return np.bool
+        return bool
     else:
         raise Exception("Torch type to numpy type mapping unavailable for: " + str(torch_dtype))
 

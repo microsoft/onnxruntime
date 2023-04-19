@@ -27,6 +27,7 @@ size_t GetAttentionWorkspaceSize(
 
 Status LaunchAttentionKernel(
     const hipDeviceProp_t& prop,               // Device Properties
+    bool tuning,                               // Whether to enable tuning
     hipStream_t stream,                        // Hip stream
     rocblas_handle& rocblas,                   // Rocblas handle
     const size_t element_size,                 // Element size of input tensor
@@ -39,8 +40,9 @@ Status LaunchAttentionKernel(
     const void* input,                         // Input tensor
     const int* mask_index,                     // Attention mask raw data or index. NULL means no mask.
     gsl::span<const int64_t> mask_index_dims,  // Mask index shape
+    const float mask_filter_value,             // Mask value for filtered out positions
     const void* past,                          // Past state input
-    const void* extra_add_qk,                  // Additional Add
+    const void* relative_position_bias,                  // Additional Add
     void* workspace,                           // Temporary buffer
     void* output,                              // Output tensor
     void* present                              // Present state output
@@ -48,6 +50,7 @@ Status LaunchAttentionKernel(
 
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,      // Device Properties
+    bool tuning,                      // Whether to enable tuning
     hipStream_t stream,               // Hip stream
     rocblas_handle& rocblas,          // Rocblas handle
     const size_t element_size,        // Element size of input tensor
@@ -60,6 +63,7 @@ Status LaunchDecoderAttentionKernel(
     const bool use_past,              // Whether use cache or not
     const bool has_layer_state,       // Whether output cache or not
     const bool has_key_padding_mask,  // Whether use key_padding_mask or not
+    const float mask_filter_value,    // Mask filter value
     const void* gemm_query_buffer,    // Query buffer
     const void* gemm_kv_buffer,       // Key and value buffer
     const bool* key_padding_mask,     // Key padding mask
@@ -82,11 +86,13 @@ Status LaunchTransCtx(hipStream_t stream,
 
 Status LaunchTransQkv(hipStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
+                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output,
+                      int total_matrix_count = -1);
 
 Status LaunchTransQkv(hipStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
+                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output,
+                      int total_matrix_count = -1);
 
 Status LaunchConcatTensorToTensor(hipStream_t stream,
                                   const int all_sequence_length,

@@ -66,7 +66,7 @@ where_shape_initializer = numpy_helper.from_array(
 dropout_np_vals = np.asarray([0.1], dtype=np.float32).reshape(())
 dropout_initializer = numpy_helper.from_array(dropout_np_vals, "ratio")
 
-dropout_mode_np_vals = np.array([False], dtype=np.bool).reshape(())
+dropout_mode_np_vals = np.array([False], dtype=bool).reshape(())
 dropout_mode_initializer = numpy_helper.from_array(dropout_mode_np_vals, "mode")
 
 shape_initializer3 = numpy_helper.from_array(

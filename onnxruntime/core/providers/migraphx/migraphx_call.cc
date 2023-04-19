@@ -4,6 +4,8 @@
 #include "core/providers/shared_library/provider_api.h"
 #include <unistd.h>
 #include <string.h>
+#include <miopen/miopen.h>
+#include <rocblas/rocblas.h>
 #include "migraphx_call.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
@@ -66,5 +68,9 @@ std::conditional_t<THRW, void, Status> RocmCall(
 
 template Status RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
 template void RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
+template Status RocmCall<rocblas_status, false>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
+template void RocmCall<rocblas_status, true>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
+template Status RocmCall<miopenStatus_t, false>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
+template void RocmCall<miopenStatus_t, true>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
 
 }  // namespace onnxruntime

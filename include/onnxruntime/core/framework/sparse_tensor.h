@@ -492,14 +492,14 @@ class SparseTensor final {
   /// <param name="exec_q_id"></param>
   /// <param name="dst_tensor"></param>
   /// <returns></returns>
-  Status Copy(const DataTransferManager& data_transfer_manager, int exec_q_id, SparseTensor& dst_tensor) const;
+  Status Copy(const DataTransferManager& data_transfer_manager, SparseTensor& dst_tensor) const;
 
   /// <summary>
   /// X-device copy. Destination tensor must have allocator set.
   /// </summary>
   /// <param name="dst_tensor"></param>
   /// <returns></returns>
-  Status Copy(const IDataTransfer& data_transfer, SparseTensor& dst_tensor, int exec_q_id) const;
+  Status Copy(const IDataTransfer& data_transfer, SparseTensor& dst_tensor) const;
 
  private:
   Status AllocateBuffer(int64_t buffer_size, size_t num_values);

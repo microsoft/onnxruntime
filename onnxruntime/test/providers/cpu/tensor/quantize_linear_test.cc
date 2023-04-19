@@ -228,7 +228,7 @@ TEST(QuantizeLinearOpTest, Uint8) {
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
   test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 // quantize with scalar zero point and scale
@@ -296,7 +296,7 @@ TEST(QuantizeLinearOpTest, 2D) {
                           {0, 0, 1, 250,
                            0, 0, 1, 250,
                            0, 0, 1, 250});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 // quantize with scalar data
@@ -306,7 +306,7 @@ TEST(QuantizeLinearOpTest, Scalar) {
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
   test.AddOutput<uint8_t>("y", {}, {130});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 // quantize with scalar data
@@ -315,7 +315,7 @@ TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_Without_Zero_Point) {
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddOutput<uint8_t>("y", {}, {2});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 TEST(QuantizeLinearOpTest, Per_Channel_Axis_Default) {
@@ -331,7 +331,7 @@ TEST(QuantizeLinearOpTest, Per_Channel_Axis_Default) {
                           {64, 101, 127, 177,
                            65, 100, 128, 182,
                            66, 102, 128, 187});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 TEST(QuantizeLinearOpTest, Per_Channel_Axis_0) {
@@ -348,7 +348,7 @@ TEST(QuantizeLinearOpTest, Per_Channel_Axis_0) {
                           {0, 2, 3, 255,
                            0, 1, 2, 255,
                            0, 0, 1, 250});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 // quantize with per-channel and negative axis (-2 resolves to axis 0)
@@ -366,7 +366,7 @@ TEST(QuantizeLinearOpTest, Per_Channel_Axis_neg) {
                           {0, 2, 3, 255,
                            0, 1, 2, 255,
                            0, 0, 1, 250});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT doesn't support support UINT8 for quantization
 }
 
 }  // namespace test

@@ -84,8 +84,8 @@ struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
     return std::make_unique<ROCMPinnedAllocator>(device_id, name);
   }
 
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
-    return std::make_unique<GPUDataTransfer>(static_cast<hipStream_t>(stream));
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
+    return std::make_unique<GPUDataTransfer>();
   }
 
   void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override {

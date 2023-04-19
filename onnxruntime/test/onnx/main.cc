@@ -66,7 +66,7 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino)
   std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
       ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
   if (!overrides_ifstream.good()) {
-    const double absolute = 1e-3;
+    constexpr double absolute = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
     const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
@@ -75,7 +75,12 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino)
   }
   const auto overrides_json = nlohmann::json::parse(
       overrides_ifstream,
-      /*cb=*/nullptr, /*allow_exceptions=*/true, /*ignore_comments=*/true);
+      /*cb=*/nullptr, /*allow_exceptions=*/true
+      // Comment support is added in 3.9.0 with breaking change to default behavior.
+      #if NLOHMANN_JSON_VERSION_MAJOR * 1000 + NLOHMANN_JSON_VERSION_MINOR >= 3009
+      , /*ignore_comments=*/true
+      #endif
+    );
   overrides_json["atol_overrides"].get_to(absolute_overrides);
   overrides_json["rtol_overrides"].get_to(relative_overrides);
   return TestTolerances(
@@ -591,7 +596,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv test_env(env, sf, TestEnv::GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    auto tp = TestEnv::CreateThreadPool(Env::Default());
+    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat);
     Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
@@ -679,6 +685,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_scatternd_add", "Opset 16 not supported yet."},
     {"test_scatternd_multiply", "Opset 16 not supported yet."},
     {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
+    {"col2im_pads", "onnx 18 test data error."},
 
 #if defined(DISABLE_OPTIONAL_TYPE)
     {"test_optional_get_element", "Optional type not supported in this build flavor."},
@@ -689,6 +696,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_loop16_seq_none", "Optional type not supported in this build flavor."},
     {"test_identity_opt", "Optional type not supported in this build flavor."},
 #endif
+
 
   };
 
@@ -960,6 +968,21 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded", "DML does not support 5D+ tensors"});
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "DML does not support 5D+ tensors"});
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded", "DML does not support 5D+ tensors"});
+
+    // TODO: Remove identity tests when fixed #42638109
+    broken_tests.insert({"identity_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_2_sequences_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_extract_shapes_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_extract_shapes_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_2_sequences_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
   }
 
 #if defined(_WIN32) && !defined(_WIN64)

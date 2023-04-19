@@ -179,7 +179,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
     if (first_input_tensor.DataRaw() != output_tensor.DataRaw()) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
           output_tensor.MutableDataRaw(), first_input_tensor.DataRaw(), first_input_tensor.SizeInBytes(),
-          cudaMemcpyDeviceToDevice, Stream()));
+          cudaMemcpyDeviceToDevice, Stream(context)));
     }
 
     return Status::OK();
@@ -197,11 +197,11 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
     // special case for no broadcasting and 2 inputs
     if (input_count == 2) {
-      return dispatcher.template InvokeRet<Status, BinaryImplDispatchTarget>(Stream(), input_tensors[0],
+      return dispatcher.template InvokeRet<Status, BinaryImplDispatchTarget>(Stream(context), input_tensors[0],
                                                                              input_tensors[1], output_tensor);
     }
 
-    return dispatcher.template InvokeRet<Status, NoBroadcastBatchImplDispatchTarget>(Stream(), input_tensors,
+    return dispatcher.template InvokeRet<Status, NoBroadcastBatchImplDispatchTarget>(Stream(context), input_tensors,
                                                                                      output_tensor);
   }
 
@@ -218,12 +218,12 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   // special case for 2 inputs
   if (input_count == 2) {
     return dispatcher.template InvokeRet<Status, BinaryImplDispatchTarget>(
-        Stream(), input_tensors[0], input_tensors[1], output_tensor);
+        Stream(context), input_tensors[0], input_tensors[1], output_tensor);
   }
 
   // general case for more than 2 inputs
   return dispatcher.template InvokeRet<Status, GeneralImplDispatchTarget>(
-      Stream(), input_tensors, output_tensor);
+      Stream(context), input_tensors, output_tensor);
 }
 
 namespace {

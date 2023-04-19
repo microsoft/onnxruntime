@@ -70,13 +70,13 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto output_tensor = context->Output(0, input_shape);
 
   // TODO this memset can be expensive, a sparse tensor representation would help here
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output_tensor->MutableDataRaw(), 0, output_tensor->SizeInBytes(), Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output_tensor->MutableDataRaw(), 0, output_tensor->SizeInBytes(), Stream(context)));
 
   // Compute
   int64_t num_slices;
   int64_t slice_size;
   IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
-  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(Stream(),
+  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(context->GetComputeStream(),
                                              batch_dims_, input_shape, indices_shape, indices_tensor,
                                              num_slices, slice_size, input_slice_offsets_buffer));
 
@@ -84,7 +84,7 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
   void* const kernel_output_data = output_tensor->MutableDataRaw();
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(update_tensor->GetElementType());
   t_disp.Invoke<GatherNDGradComputeImpl>(
-      Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
+      Stream(context), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
 
   return Status::OK();
 }

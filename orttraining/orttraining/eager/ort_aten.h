@@ -94,6 +94,17 @@ OrtValue create_ort_value(
   return create_ort_value(invoker, values_vector);
 }
 
+template<typename T>
+OrtValue create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
+  const at::OptionalArrayRef<T> values) {
+  std::vector<T> values_vector;
+  if (values.has_value()) {
+    values_vector.assign(values.value().begin(), values.value().end());
+  }
+  return create_ort_value(invoker, values_vector);
+}
+
 onnx::AttributeProto create_ort_attribute(
   const char* name,
   at::Scalar value,
@@ -112,7 +123,9 @@ bool IsSupportedType(at::Scalar scalar, const std::vector<at::ScalarType>& valid
 
 bool IsSupportedType(at::Tensor tensor, const std::vector<at::ScalarType>& valid_types);
 
-bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& valid_types);
+bool IsSupportedType(at::IntArrayRef array, const std::vector<at::ScalarType>& valid_types);
+
+bool IsSupportedType(at::OptionalIntArrayRef array, const std::vector<at::ScalarType>& valid_types);
 
 bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types);
 

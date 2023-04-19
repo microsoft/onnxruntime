@@ -61,8 +61,10 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
 
+  const bool broadcast_position_ids = (nullptr != position_ids && position_ids->Shape()[0] == 1);
+
   return LaunchEmbedLayerNormKernel(
-          Stream(),
+      Stream(context),
           output->MutableData<T>(),
           mask_index->MutableData<int32_t>(),
           input_ids->Data<int32_t>(),
@@ -79,7 +81,8 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           sequence_length,
           element_size,
           embedding_sum == nullptr ? nullptr : embedding_sum->MutableData<T>(),
-          position_ids == nullptr ? nullptr : position_ids->Data<int32_t>());
+          position_ids == nullptr ? nullptr : position_ids->Data<int32_t>(),
+          broadcast_position_ids);
 }
 
 }  // namespace cuda

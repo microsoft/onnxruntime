@@ -10,8 +10,8 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 
-using onnxruntime::concurrency::ThreadPool;
 using onnxruntime::narrow;
+using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
@@ -59,7 +59,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     Attention<float>);
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, false, true) {
+Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, false) {
 }
 
 template <typename T>
@@ -198,22 +198,17 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* extra_add_qk = context->Input<Tensor>(5);
-
-  const Tensor* key = context->Input<Tensor>(6);
-  const Tensor* value = context->Input<Tensor>(7);
+  const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
 
   AttentionParameters parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  (nullptr != weights || is_prepack_) ? &weights_shape : nullptr,
+                                  weights_shape,
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  extra_add_qk,
-                                  key,
-                                  value,
+                                  relative_position_bias,
                                   &parameters));
 
   const int batch_size = parameters.batch_size;
@@ -336,7 +331,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   return ApplyAttention(Q, K, V, mask_index, past, output,
                         batch_size, sequence_length,
                         parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
-                        extra_add_qk, context);
+                        relative_position_bias, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

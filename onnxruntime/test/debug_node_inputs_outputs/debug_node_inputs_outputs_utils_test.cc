@@ -29,7 +29,7 @@ void VerifyTensorProtoFileData(const PathString& tensor_proto_path, gsl::span<co
   actual_data.resize(expected_data.size());
   ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, Path{}, actual_data.data(), actual_data.size()));
 
-  ASSERT_EQ(gsl::make_span(actual_data), expected_data);
+  ASSERT_EQ(gsl::span<const T>(actual_data), expected_data);
 }
 }  // namespace
 

@@ -32,7 +32,7 @@ class TypeHelper:
             "tensor(int32)": numpy.intc,
             "tensor(float)": numpy.float32,
             "tensor(float16)": numpy.float16,
-            "tensor(bool)": numpy.bool,
+            "tensor(bool)": bool,
         }
         if ort_type not in ort_type_to_numpy_type_map:
             raise ValueError(f"{ort_type} not found in map")
@@ -61,7 +61,7 @@ class TypeHelper:
             numpy.int32: torch.int32,
             numpy.float32: torch.float32,
             numpy.float16: torch.float16,
-            numpy.bool: torch.bool,
+            bool: torch.bool,
         }
         if numpy_type not in numpy_type_to_torch_type_map:
             raise ValueError(f"{numpy_type} not found in map")
@@ -75,7 +75,7 @@ class TypeHelper:
             torch.int32: numpy.intc,
             torch.float32: numpy.float32,
             torch.float16: numpy.float16,
-            torch.bool: numpy.bool,
+            torch.bool: bool,
         }
         if torch_type not in torch_type_to_numpy_type_map:
             raise ValueError(f"{torch_type} not found in map")

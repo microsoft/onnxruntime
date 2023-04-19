@@ -21,9 +21,20 @@
 #include "core/framework/memory_info.h"
 #endif
 
+#include "core/framework/bfc_arena.h"
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+#ifdef ORT_ENABLE_STREAM
+static StreamAwareArena* AsStreamBasedAllocator(AllocatorPtr allocator) {
+  if (allocator->Info().alloc_type == OrtArenaAllocator) {
+    BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
+    return StreamAwareArena::FromBFCArena(*arena_ptr);
+  }
+  return nullptr;
+}
+#endif
 
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const NodeIndexInfo& node_index_info,
@@ -197,13 +208,6 @@ Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
-  // If fence is available, check whether async read has completed or not.
-  Fence_t fence = GetMLValue(ort_value_idx).Fence();
-  if (fence && !fence->CanRelease()) {
-    // Async data reading is not done yet, defer mem release until Session.run() end.
-    return Status::OK();
-  }
-
   all_values_[ort_value_idx] = OrtValue();
   return Status::OK();
 }
@@ -335,10 +339,12 @@ bool IExecutionFrame::IsOutput(int ort_value_idx) const {
 ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
                                gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               const SessionState& session_state)
+                               const SessionState& session_state,
+                               gsl::span<Stream*> device_streams)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
-      mem_patterns_(nullptr) {
+      mem_patterns_(nullptr),
+      device_streams_(device_streams) {
   Init(
       feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(),
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -420,6 +426,8 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
               // Memory dynamically allocated when executing kernels is not recorded using this field.
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
 #endif
+              // the memory pattern buffer will leave in the whole execution.
+              // alloc it with default stream
               buffer = alloc->Alloc(peak_size);
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
@@ -436,7 +444,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
             }
 
             if (buffer != nullptr) {
-              buffers_[location] = BufferUniquePtr(buffer, alloc);
+              buffers_[location] = BufferUniquePtr(buffer, BufferDeleter(alloc));
             }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
             // Record activation memory pattern
@@ -471,15 +479,23 @@ const DataTransferManager& ExecutionFrame::GetDataTransferManager() const {
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index,
                                                           MLDataType element_type, const OrtMemoryInfo& location,
-                                                          const TensorShape& shape, bool create_fence) {
-  return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape,
-                                                  create_fence);
+                                                          const TensorShape& shape) {
+  return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape);
+}
+
+Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const {
+  const auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetExecutionPlan()->GetValueToStreamMap();
+  auto it = value_to_stream_map.find(ort_value_idx);
+  if (it != value_to_stream_map.end() && it->second < device_streams_.size()) {
+    return device_streams_[it->second];
+  }
+  return nullptr;
 }
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index,
                                                                 MLDataType element_type,
                                                                 const OrtMemoryInfo& location,
-                                                                const TensorShape& shape, bool create_fence) {
+                                                                const TensorShape& shape) {
   if (ort_value_index == NodeIndexInfo::kInvalidEntry) {
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
   }
@@ -498,16 +514,6 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
   // Lazily get the allocator only if needed.
   AllocatorPtr alloc = nullptr;
-
-  // create fence if needed
-  if (create_fence) {
-    ORT_ENFORCE(ort_value.Fence() == nullptr);
-    alloc = GetAllocator(location);
-    FencePtr f = alloc->CreateFence(&session_state_);
-    // it is OK to have fence been nullptr if the execution provider has no async execution,
-    // and allocator::CreateFence returns nullptr
-    ort_value.SetFence(f);
-  }
 
   // if we have pre-calculated memory pattern, and the ort_value is not output mlvalue
   // try to allocated on pre-allocated big chunk.
@@ -547,7 +553,26 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
   // no memory pattern, or the pattern is not correct.
   if (!alloc) alloc = GetAllocator(location);
-  Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
+  Stream* current_stream = GetValueStream(ort_value_index);
+  if (current_stream) {
+#ifdef ORT_ENABLE_STREAM
+    auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
+    if (stream_aware_alloc) {
+      size_t buffer_size = Tensor::CalculateTensorStorageSize(element_type, shape);
+      // the reused memory must from same EP
+      auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
+          current_stream->GetDevice().Type(), current_stream->GetDevice().Type());
+      void* p_data = stream_aware_alloc->AllocOnStream(buffer_size, current_stream, wait_handle);
+      Tensor::InitOrtValue(element_type, shape, p_data, std::move(alloc), ort_value);
+    } else {
+      Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
+    }
+#else
+    ORT_THROW("Ort value is associated with a Stream but Stream is not enabled in the build.");
+#endif
+  } else {
+    Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
+  }
 
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need
@@ -572,7 +597,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
 Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse,
                                                               MLDataType element_type, const OrtMemoryInfo& location,
-                                                              const TensorShape& shape, bool create_fence,
+                                                              const TensorShape& shape,
                                                               bool is_strided_tensor) {
   OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
 
@@ -580,9 +605,9 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
   // Training starts to support strided tensor that the shape size may be larger (like Expand), smaller (like Split) or
   // equal (like Transpose) to the shared tensor's shape size, so below check is no longer valid.
-#ifndef ENABLE_TRAINING
+#ifndef ENABLE_STRIDED_TENSORS
   ORT_ENFORCE(!is_strided_tensor);
-#endif  // ENABLE_TRAINING
+#endif  // ENABLE_STRIDED_TENSORS
   if (!is_strided_tensor) {
     auto buffer_num_elements = reuse_tensor->Shape().Size();
     auto required_num_elements = shape.Size();
@@ -611,15 +636,6 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
   void* reuse_buffer = reuse_tensor->MutableDataRaw();
 
-  // create fence on reused ort_value if needed
-  // TODO: differentiate reuse and alias, by add AllocKind::kAlias?
-  if (create_fence && ort_value_reuse.Fence() == nullptr) {
-    FencePtr f = GetAllocator(location)->CreateFence(&session_state_);
-    ort_value_reuse.SetFence(f);
-  }
-
-  // reused OrtValue share the same fence
-  ort_value.ShareFenceWith(ort_value_reuse);
   return AllocateTensorWithPreAllocateBufferHelper(ort_value, reuse_buffer, element_type, location, shape);
 }
 
@@ -647,17 +663,10 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
-                                   const TensorShape& shape, bool create_fence,
-                                   const SessionState& session_state) {
+                                   const TensorShape& shape,
+                                   const SessionState& /*session_state*/) {
   auto element_type = ml_type.AsSparseTensorType()->GetElementType();
   SparseTensor::InitOrtValue(element_type, shape, std::move(allocator), mlvalue);
-
-  // create fence if needed
-  if (create_fence) {
-    ORT_ENFORCE(mlvalue.Fence() == nullptr);
-    FencePtr f = allocator->CreateFence(&session_state);
-    mlvalue.SetFence(f);
-  }
 
   return Status::OK();
 }
@@ -677,8 +686,7 @@ Status ExecutionFrame::AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlva
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
-  const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
-  const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
+  const auto& alloc_plan = session_state_.GetPerValueAllocPlan();
   ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < alloc_plan.size());
   const auto& per_alloc_plan = alloc_plan[ort_value_index];
 
@@ -724,7 +732,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       case AllocKind::kAllocateOutput:
       case AllocKind::kAllocate: {
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
-                                                               *shape, per_alloc_plan.create_fence_if_async));
+                                                               *shape));
         break;
       }
       case AllocKind::kReuse: {
@@ -733,12 +741,11 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
         ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
 
         bool is_strided_tensor = false;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
         is_strided_tensor = per_alloc_plan.is_strided_tensor;
-#endif  // ENABLE_TRAINING
-        ORT_RETURN_IF_ERROR(
-            AllocateMLValueTensorPreAllocateBuffer(ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape,
-                                                   per_alloc_plan.create_fence_if_async, is_strided_tensor));
+#endif  // ENABLE_STRIDED_TENSORS
+        ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
+            ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, is_strided_tensor));
         break;
       }
       case AllocKind::kShare: {
@@ -763,7 +770,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   } else if (ml_type->IsSparseTensorType()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
-                                *shape, per_alloc_plan.create_fence_if_async, session_state_);
+                                *shape, session_state_);
 #else
     // Model load should have failed so this should be unreachable
     ORT_THROW("SparseTensor is not supported in this build.");
@@ -831,6 +838,7 @@ void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const
   }
 }
 
+// do not call this in ParallExecutionPlan
 Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
   ORT_RETURN_IF_ERROR(IExecutionFrame::ReleaseMLValueImpl(ort_value_idx));
   TraceFree(ort_value_idx);
@@ -838,10 +846,7 @@ Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
 }
 
 const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
-  const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
-  const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
-  return alloc_plan[ort_value_idx];
+  return session_state_.GetPerValueAllocPlan()[ort_value_idx];
 }
 
 void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
@@ -860,6 +865,7 @@ void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
   }
 }
 
+// do not call this in ParallExecutionPlan
 void ExecutionFrame::TraceFree(int ort_value_idx) {
   // don't trace free on output tensors.
   if (planner_.has_value() && !IsOutput(ort_value_idx)) {

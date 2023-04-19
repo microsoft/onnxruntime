@@ -5,7 +5,11 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/nhwc_inference_context.h"
 #include "core/graph/contrib_ops/quantization_defs.h"
-
+// Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
+// ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
+#if defined(_WIN32) && !defined(NDEBUG)
+#pragma warning(disable : 26426)
+#endif
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(InferenceContext& ctx, bool use_dilation, bool require_kernel_shape, int input1Idx,
                             int input2Idx);
@@ -207,10 +211,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
 
           // validate scale and zero points
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), true);
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), true);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
 
           if (getAttribute(ctx, "channels_last", 0) == 0) {
             ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 5);

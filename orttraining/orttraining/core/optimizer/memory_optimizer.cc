@@ -39,7 +39,7 @@ int ParseIntValueFromString(std::string_view str) {
   return int_value;
 }
 
-bool IsForwardPassOperator(int64_t op_order_in_topological_sort, int64_t boundary_op_order_in_topological_sort) {
+constexpr bool IsForwardPassOperator(ptrdiff_t op_order_in_topological_sort, ptrdiff_t boundary_op_order_in_topological_sort) {
   return op_order_in_topological_sort <= boundary_op_order_in_topological_sort;
 }
 
@@ -117,7 +117,7 @@ int64_t MemoryOptimizer::PrepareForTransformation(const Graph& graph,
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
   // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
-  int64_t yield_op_order_in_topological_sort = -1;
+  ptrdiff_t yield_op_order_in_topological_sort = -1;
   for (size_t i = 0; i < node_ids.size(); ++i) {
     const Node* p_node = graph.GetNode(node_ids[i]);
     if (p_node == nullptr) { /* skip removed nodes*/
@@ -125,7 +125,7 @@ int64_t MemoryOptimizer::PrepareForTransformation(const Graph& graph,
     }
 
     if (p_node->OpType() == "YieldOp") {
-      yield_op_order_in_topological_sort = static_cast<int64_t>(i);
+      yield_op_order_in_topological_sort = static_cast<ptrdiff_t>(i);
     }
 
     node_index_to_its_order_in_topological_sort_map[p_node->Index()] = i;
@@ -140,7 +140,7 @@ int64_t MemoryOptimizer::PrepareForTransformation(const Graph& graph,
       }
 
       const Node& node = *p_node;
-      bool is_forward_op = IsForwardPassOperator(static_cast<int64_t>(i), yield_op_order_in_topological_sort);
+      bool is_forward_op = IsForwardPassOperator(static_cast<ptrdiff_t>(i), yield_op_order_in_topological_sort);
       if (!is_forward_op) {
         continue;
       }
@@ -149,9 +149,9 @@ int64_t MemoryOptimizer::PrepareForTransformation(const Graph& graph,
         bool used_in_fw = false;
         bool used_in_bw = false;
         for (auto& consumer_node : graph.GetConsumerNodes(output_arg->Name())) {
-          auto consumer_node_index_in_topological_order =
+          size_t consumer_node_index_in_topological_order =
               node_index_to_its_order_in_topological_sort_map.at(consumer_node->Index());
-          if (IsForwardPassOperator(static_cast<int64_t>(consumer_node_index_in_topological_order),
+          if (IsForwardPassOperator(static_cast<ptrdiff_t>(consumer_node_index_in_topological_order),
                                     yield_op_order_in_topological_sort)) {
             used_in_fw = true;
           } else {

@@ -73,7 +73,7 @@ struct ConvAttributes {
 
   ~ConvAttributes() = default;
 
-  Status ComputeKernelShape(const TensorShape& weight_shape, TensorShapeVector& kernel_shape) const {
+  Status ComputeKernelShape(const TensorShape& weight_shape, TensorShapeVector& kernel_shape, bool weight_channels_last = false) const {
     if (kernel_shape_specified) {
       kernel_shape = kernel_shape_;
       if (kernel_shape.size() + 2 != weight_shape.NumDimensions()) {
@@ -82,15 +82,20 @@ struct ConvAttributes {
                                " W: ", weight_shape.ToString().c_str());
       }
       for (size_t i = 0; i < kernel_shape.size(); ++i) {
-        if (kernel_shape[i] != weight_shape[i + 2]) {
+        if (kernel_shape[i] != weight_shape[i + (weight_channels_last ? 1 : 2)]) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
                                  " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                 " W: ", weight_shape.ToString().c_str());
+                                 " W: ", weight_shape.ToString().c_str(),
+                                 " channels_last: ", weight_channels_last);
         }
       }
     } else {
       auto weight_dims = weight_shape.GetDims();
-      kernel_shape.assign(weight_dims.begin() + 2, weight_dims.end());
+      if (weight_channels_last) {
+        kernel_shape.assign(weight_dims.begin() + 1, weight_dims.end() - 1);
+      } else {
+        kernel_shape.assign(weight_dims.begin() + 2, weight_dims.end());
+      }
     }
 
     return Status::OK();
@@ -98,7 +103,8 @@ struct ConvAttributes {
 
   Status ValidateInputShape(const TensorShape& input_shape,
                             const TensorShape& weight_shape,
-                            bool channels_last = false) const {
+                            bool input_channels_last = false,
+                            bool weight_channels_last = false) const {
     if (input_shape.NumDimensions() != weight_shape.NumDimensions()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
                              " X: ", input_shape.ToString().c_str(),
@@ -106,9 +112,9 @@ struct ConvAttributes {
     }
 
     const int64_t M = weight_shape[0];
-    const int64_t C = channels_last ? input_shape.GetDims().back() : input_shape[1];
+    const int64_t C = input_channels_last ? input_shape.GetDims().back() : input_shape[1];
 
-    if (C != weight_shape[1] * group) {
+    if (C != (weight_channels_last ? weight_shape.GetDims().back() : weight_shape[1]) * group) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
                              " C: ", C,
                              " kernel channels: ", weight_shape[1],

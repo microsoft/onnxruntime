@@ -50,7 +50,7 @@ Status RandomNormalBase::ComputeNormal(const CudaKernel& cuda_kernel, OpKernelCo
   const int64_t N = shape.Size();
   PhiloxGenerator& generator = GetPhiloxGenerator();
   utils::MLTypeCallDispatcher<float, MLFloat16, double> t_disp(dtype);
-  t_disp.Invoke<RandomNormalComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(), N, scale_, mean_, generator, Y);
+  t_disp.Invoke<RandomNormalComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(&ctx), N, scale_, mean_, generator, Y);
   return Status::OK();
 }
 
@@ -80,7 +80,7 @@ Status RandomUniformBase::ComputeUniform(const CudaKernel& cuda_kernel, OpKernel
   const int64_t N = shape.Size();
   PhiloxGenerator& generator = GetPhiloxGenerator();
   utils::MLTypeCallDispatcher<float, MLFloat16, double> t_disp(dtype);
-  t_disp.Invoke<RandomUniformComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(), N, range_, from_, generator, Y);
+  t_disp.Invoke<RandomUniformComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(&ctx), N, range_, from_, generator, Y);
   return Status::OK();
 }
 

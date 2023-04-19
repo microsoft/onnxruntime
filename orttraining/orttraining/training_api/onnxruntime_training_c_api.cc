@@ -2,14 +2,15 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_api/include/onnxruntime_training_c_api.h"
+#include "core/common/string_helper.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/random_seed.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
-#include "core/session/abi_session_options_impl.h"
-#include "orttraining/training_api/include/checkpoint.h"
-#include "orttraining/training_api/include/training_session.h"
-#include "orttraining/training_api/include/ort_training_apis.h"
-#include "core/common/string_helper.h"
+#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/ort_training_apis.h"
+#include "orttraining/training_api/training_session.h"
 
 namespace {
 
@@ -80,7 +81,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputCount, _In
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelOutputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelOutputName, _In_ const OrtTrainingSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
@@ -90,7 +91,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelOutputName, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputName, _In_ const OrtTrainingSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
@@ -100,30 +101,26 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputName, _In_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::ResetGrad, _Inout_ OrtTrainingSession* session) {
+ORT_API_STATUS_IMPL(OrtTrainingApis::LazyResetGrad, _Inout_ OrtTrainingSession* session) {
   API_IMPL_BEGIN
   auto train_session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(session);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(train_session->ResetGrad());
+  ORT_API_RETURN_IF_STATUS_NOT_OK(train_session->LazyResetGrad());
 
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess,
-                    _In_opt_ const OrtRunOptions* run_options, size_t inputs_len,
-                    _In_reads_(inputs_len) const OrtValue* const* inputs, size_t outputs_len,
+                    _In_opt_ const OrtRunOptions* run_options, _In_ size_t inputs_len,
+                    _In_reads_(inputs_len) const OrtValue* const* inputs, _In_ size_t outputs_len,
                     _Inout_updates_all_(outputs_len) OrtValue** outputs) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  constexpr int queue_id = 0;
 
   std::vector<OrtValue> feeds(inputs_len);
 
   for (size_t i = 0; i != inputs_len; ++i) {
-    auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
-    if (ort_value.Fence()) {
-      ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
-    }
+    feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
   }
 
   // Create output feed
@@ -131,8 +128,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
   for (size_t i = 0; i != outputs_len; ++i) {
     if (outputs[i] != nullptr) {
       ::OrtValue& value = *(outputs[i]);
-      if (value.Fence())
-        value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
     }
   }
@@ -148,10 +143,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
     return onnxruntime::ToOrtStatus(status);
   for (size_t i = 0; i != outputs_len; ++i) {
     ::OrtValue& value = fetches[i];
-    if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (outputs[i] == nullptr) {
-      outputs[i] = new OrtValue(value);
+      outputs[i] = std::make_unique<OrtValue>(value).release();
     }
   }
   return nullptr;
@@ -159,19 +152,16 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* sess,
-                    _In_opt_ const OrtRunOptions* run_options, size_t inputs_len,
-                    _In_reads_(inputs_len) const OrtValue* const* inputs, size_t outputs_len,
+                    _In_opt_ const OrtRunOptions* run_options, _In_ size_t inputs_len,
+                    _In_reads_(inputs_len) const OrtValue* const* inputs, _In_ size_t outputs_len,
                     _Inout_updates_all_(outputs_len) OrtValue** outputs) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
-  constexpr int queue_id = 0;
 
   std::vector<OrtValue> feeds(inputs_len);
 
   for (size_t i = 0; i != inputs_len; ++i) {
-    auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
-
-    if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
+    feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
   }
 
   // Create output feed
@@ -179,8 +169,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
   for (size_t i = 0; i != outputs_len; ++i) {
     if (outputs[i] != nullptr) {
       ::OrtValue& value = *(outputs[i]);
-      if (value.Fence())
-        value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
     }
   }
@@ -196,10 +184,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
     return onnxruntime::ToOrtStatus(status);
   for (size_t i = 0; i != outputs_len; ++i) {
     ::OrtValue& value = fetches[i];
-    if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (outputs[i] == nullptr) {
-      outputs[i] = new OrtValue(value);
+      outputs[i] = std::make_unique<OrtValue>(value).release();
     }
   }
   return nullptr;
@@ -256,7 +242,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::RegisterLinearLRScheduler, _Inout_ OrtTrain
         return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
             optimizer, warmup_step_count, total_step_count);
       },
-                                 std::optional<float>(initial_lr)));
+                                 initial_lr));
 
   return status;
   API_IMPL_END
@@ -370,6 +356,53 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrain
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::SetSeed, _In_ const int64_t seed) {
+  API_IMPL_BEGIN
+
+  onnxruntime::utils::SetRandomSeed(seed);
+  return nullptr;
+
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelInputCount, _In_ const OrtTrainingSession* sess,
+                    _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  *out = session->GetTrainingModelInputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelInputCount, _In_ const OrtTrainingSession* sess,
+                    _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  *out = session->GetEvalModelInputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelInputName, _In_ const OrtTrainingSession* sess,
+                    size_t index, _In_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  std::string name = session->GetTrainingModelInputName(index);
+  *output = onnxruntime::StrDup(name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelInputName, _In_ const OrtTrainingSession* sess,
+                    size_t index, _In_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  std::string name = session->GetEvalModelInputName(index);
+  *output = onnxruntime::StrDup(name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtTrainingApi ort_training_api = {
     // NOTE: The C# bindings depend on the API order within this struct. Since Training APIs are not officially
     // released, it is OK to change the order here, however a corresponding matching change should also be done in the
@@ -381,7 +414,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::TrainingSessionGetEvalModelOutputCount,
     &OrtTrainingApis::TrainingSessionGetTrainingModelOutputName,
     &OrtTrainingApis::TrainingSessionGetEvalModelOutputName,
-    &OrtTrainingApis::ResetGrad,
+    &OrtTrainingApis::LazyResetGrad,
     &OrtTrainingApis::TrainStep,
     &OrtTrainingApis::EvalStep,
     &OrtTrainingApis::SetLearningRate,
@@ -395,6 +428,11 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::ReleaseTrainingSession,
     &OrtTrainingApis::ReleaseCheckpointState,
     &OrtTrainingApis::ExportModelForInferencing,
+    &OrtTrainingApis::SetSeed,
+    &OrtTrainingApis::TrainingSessionGetTrainingModelInputCount,
+    &OrtTrainingApis::TrainingSessionGetEvalModelInputCount,
+    &OrtTrainingApis::TrainingSessionGetTrainingModelInputName,
+    &OrtTrainingApis::TrainingSessionGetEvalModelInputName,
 };
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {

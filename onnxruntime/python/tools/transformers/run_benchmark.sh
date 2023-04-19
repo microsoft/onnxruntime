@@ -7,6 +7,7 @@
 # Please install PyTorch (see https://pytorch.org/) before running this benchmark. Like the following:
 # GPU:   conda install pytorch torchvision cudatoolkit=11.0 -c pytorch
 # CPU:   conda install pytorch torchvision cpuonly -c pytorch
+# To use torch2, please install the nightly PyTorch by replacing pytorch with pytorch-nightly.
 
 # When use_package=true, you need not copy other files to run benchmarks except this sh file.
 # Otherwise, it will use python script (*.py) files in this directory.
@@ -20,6 +21,7 @@ run_install=true
 run_ort=true
 run_ort_trt=false
 run_torch=false
+run_torch2=false
 run_torchscript=true
 run_tensorflow=false
 
@@ -61,7 +63,7 @@ models_to_test="bert-base-cased roberta-base distilbert-base-uncased"
 # export CUDA_VISIBLE_DEVICES=1
 
 # This script will generate a logs file with a list of commands used in tests.
-echo echo "ort=$run_ort torch=$run_torch torchscript=$run_torchscript tensorflow=$run_tensorflow gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test" >> benchmark.log
+echo echo "ort=$run_ort torch=$run_torch torch2=$run_torch2 torchscript=$run_torchscript tensorflow=$run_tensorflow gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test" >> benchmark.log
 
 # Set it to false to skip testing. You can use it to dry run this script with the log file.
 run_tests=true
@@ -150,6 +152,13 @@ run_one_test() {
       echo python $benchmark_script -e torch -m $1 $benchmark_options $2 $3 $4 >> benchmark.log
       if [ "$run_tests" = true ] ; then
         python $benchmark_script -e torch -m $1 $benchmark_options $2 $3 $4
+      fi
+    fi
+
+    if [ "$run_torch2" = true ] ; then
+      echo python $benchmark_script -e torch2 -m $1 $benchmark_options $2 $3 $4 >> benchmark.log
+      if [ "$run_tests" = true ] ; then
+        python $benchmark_script -e torch2 -m $1 $benchmark_options $2 $3 $4
       fi
     fi
 

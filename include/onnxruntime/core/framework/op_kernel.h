@@ -50,9 +50,14 @@ class OpKernel {
   const onnxruntime::Node& Node() const;
   const onnxruntime::KernelDef& KernelDef() const;
 
-  virtual Status Compute(_Inout_ OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
+  [[nodiscard]] virtual Status Compute(_Inout_ OpKernelContext* context) const = 0;
 
-  virtual Status ComputeAsync(_Inout_ OpKernelContext*, DoneCallback) const ORT_MUST_USE_RESULT {
+  [[nodiscard]] virtual bool IsAsync() const {
+    // by default all kernels are sync version.
+    return false;
+  }
+
+  [[nodiscard]] virtual Status ComputeAsync(_Inout_ OpKernelContext*, DoneCallback) const {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
@@ -194,20 +199,26 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
   ONNX_OPERATOR_KERNEL_EX(name, kMLDomain, ver, kCpuExecutionProvider, builder, __VA_ARGS__)
 
 #define ONNX_CPU_OPERATOR_MS_KERNEL(name, ver, builder, ...) \
-    ONNX_OPERATOR_KERNEL_EX(name, kMSDomain, ver, kCpuExecutionProvider, builder, __VA_ARGS__)
+  ONNX_OPERATOR_KERNEL_EX(name, kMSDomain, ver, kCpuExecutionProvider, builder, __VA_ARGS__)
 
-#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                                            \
-  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                                                 \
-  template <>                                                                                                         \
-  KernelCreateInfo                                                                                                    \
-  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {                             \
-    return KernelCreateInfo(                                                                                          \
-        builder.SetName(#name)                                                                                        \
-            .SetDomain(domain)                                                                                        \
-            .SinceVersion(ver)                                                                                        \
-            .Provider(provider)                                                                                       \
-            .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
+#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                \
+  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                     \
+  template <>                                                                             \
+  KernelCreateInfo                                                                        \
+  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() { \
+    return KernelCreateInfo(                                                              \
+        builder.SetName(#name)                                                            \
+            .SetDomain(domain)                                                            \
+            .SinceVersion(ver)                                                            \
+            .Provider(provider)                                                           \
+            .Build(),                                                                     \
+        static_cast<KernelCreatePtrFn>(                                                   \
+            [](FuncManager&,                                                              \
+               const OpKernelInfo& info,                                                  \
+               std::unique_ptr<OpKernel>& out) -> Status {                                \
+              out = std::make_unique<__VA_ARGS__>(info);                                  \
+              return Status::OK();                                                        \
+            }));                                                                          \
   }
 
 #define ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name) \
@@ -219,17 +230,17 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 #define ONNX_CPU_OPERATOR_VERSIONED_ML_KERNEL(name, startver, endver, builder, ...) \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, kMLDomain, startver, endver, kCpuExecutionProvider, builder, __VA_ARGS__)
 
-#define ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, endver, provider, builder, ...)                     \
-  class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name);                          \
-  template <>                                                                                                         \
-  KernelCreateInfo                                                                                                    \
-  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name)>() {      \
-    return KernelCreateInfo(                                                                                          \
-        builder.SetName(#name)                                                                                        \
-            .SetDomain(domain)                                                                                        \
-            .SinceVersion(startver, endver)                                                                           \
-            .Provider(provider)                                                                                       \
-            .Build(),                                                                                                 \
+#define ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, endver, provider, builder, ...)                                  \
+  class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name);                                       \
+  template <>                                                                                                                      \
+  KernelCreateInfo                                                                                                                 \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name)>() {                   \
+    return KernelCreateInfo(                                                                                                       \
+        builder.SetName(#name)                                                                                                     \
+            .SetDomain(domain)                                                                                                     \
+            .SinceVersion(startver, endver)                                                                                        \
+            .Provider(provider)                                                                                                    \
+            .Build(),                                                                                                              \
         static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
@@ -245,34 +256,34 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 #define ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(name, ver, type, builder, ...) \
   ONNX_OPERATOR_TYPED_KERNEL_EX(name, kMSDomain, ver, type, kCpuExecutionProvider, builder, __VA_ARGS__)
 
-#define ONNX_OPERATOR_TYPED_KERNEL_EX(name, domain, ver, type, provider, builder, ...)                                \
-  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name);                                     \
-  template <>                                                                                                         \
-  KernelCreateInfo                                                                                                    \
-  BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>() {                 \
-    return KernelCreateInfo(                                                                                          \
-        builder.SetName(#name)                                                                                        \
-            .SetDomain(domain)                                                                                        \
-            .SinceVersion(ver)                                                                                        \
-            .Provider(provider)                                                                                       \
-            .Build(),                                                                                                 \
+#define ONNX_OPERATOR_TYPED_KERNEL_EX(name, domain, ver, type, provider, builder, ...)                                             \
+  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name);                                                  \
+  template <>                                                                                                                      \
+  KernelCreateInfo                                                                                                                 \
+  BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>() {                              \
+    return KernelCreateInfo(                                                                                                       \
+        builder.SetName(#name)                                                                                                     \
+            .SetDomain(domain)                                                                                                     \
+            .SinceVersion(ver)                                                                                                     \
+            .Provider(provider)                                                                                                    \
+            .Build(),                                                                                                              \
         static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
 #define ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name) \
   provider##_##name##_##domain##_ver##ver##_##type1##_##type2
 
-#define ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(name, domain, ver, type1, type2, provider, builder, ...)                    \
-  class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name);                         \
-  template <>                                                                                                         \
-  KernelCreateInfo                                                                                                    \
-  BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name)>() {     \
-    return KernelCreateInfo(                                                                                          \
-        builder.SetName(#name)                                                                                        \
-            .SetDomain(domain)                                                                                        \
-            .SinceVersion(ver)                                                                                        \
-            .Provider(provider)                                                                                       \
-            .Build(),                                                                                                 \
+#define ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(name, domain, ver, type1, type2, provider, builder, ...)                                 \
+  class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name);                                      \
+  template <>                                                                                                                      \
+  KernelCreateInfo                                                                                                                 \
+  BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name)>() {                  \
+    return KernelCreateInfo(                                                                                                       \
+        builder.SetName(#name)                                                                                                     \
+            .SetDomain(domain)                                                                                                     \
+            .SinceVersion(ver)                                                                                                     \
+            .Provider(provider)                                                                                                    \
+            .Build(),                                                                                                              \
         static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
@@ -291,37 +302,37 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, kMSDomain, startver, endver, type, kCpuExecutionProvider, builder, \
                                           __VA_ARGS__)
 
-#define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, domain, startver, endver, type, provider, builder, ...)         \
-  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name);              \
-  template <>                                                                                                         \
-  KernelCreateInfo                                                                                                    \
-  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver,           \
-                                                                        type, name)>() {                              \
-    return KernelCreateInfo(                                                                                          \
-        builder.SetName(#name)                                                                                        \
-            .SetDomain(domain)                                                                                        \
-            .SinceVersion(startver, endver)                                                                           \
-            .Provider(provider)                                                                                       \
-            .Build(),                                                                                                 \
+#define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, domain, startver, endver, type, provider, builder, ...)                      \
+  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name);                           \
+  template <>                                                                                                                      \
+  KernelCreateInfo                                                                                                                 \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver,                        \
+                                                                        type, name)>() {                                           \
+    return KernelCreateInfo(                                                                                                       \
+        builder.SetName(#name)                                                                                                     \
+            .SetDomain(domain)                                                                                                     \
+            .SinceVersion(startver, endver)                                                                                        \
+            .Provider(provider)                                                                                                    \
+            .Build(),                                                                                                              \
         static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
 #define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name) \
   provider##_##name##_##domain##_ver##startver##_##endver##_##type1##_##type2
 
-#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(name, domain, startver, endver, type1, type2,                     \
-                                                    provider, builder, ...)                                           \
-  class ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name);  \
-  template <>                                                                                                         \
-  KernelCreateInfo                                                                                                    \
-  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver,       \
-                                                                            type1, type2, name)>() {                  \
-    return KernelCreateInfo(                                                                                          \
-        builder.SetName(#name)                                                                                        \
-            .SetDomain(domain)                                                                                        \
-            .SinceVersion(startver, endver)                                                                           \
-            .Provider(provider)                                                                                       \
-            .Build(),                                                                                                 \
+#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(name, domain, startver, endver, type1, type2,                                  \
+                                                    provider, builder, ...)                                                        \
+  class ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name);               \
+  template <>                                                                                                                      \
+  KernelCreateInfo                                                                                                                 \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver,                    \
+                                                                            type1, type2, name)>() {                               \
+    return KernelCreateInfo(                                                                                                       \
+        builder.SetName(#name)                                                                                                     \
+            .SetDomain(domain)                                                                                                     \
+            .SinceVersion(startver, endver)                                                                                        \
+            .Provider(provider)                                                                                                    \
+            .Build(),                                                                                                              \
         static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 

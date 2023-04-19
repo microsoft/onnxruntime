@@ -18,7 +18,7 @@ parameters:
 
 jobs:
 - job: Linux_Test_${{ parameters.device }}${{ parameters.extra_job_id }}_${{ parameters.arch }}
-  timeoutInMinutes: 240
+  timeoutInMinutes: 360
   variables:
     skipComponentGovernanceDetection: true
   workspace:
@@ -28,14 +28,14 @@ jobs:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact'
     inputs:
-      preferTriggeringPipeline: true      
+      preferTriggeringPipeline: true
       artifactName: 'drop-linux-${{ lower(parameters.device) }}-${{ parameters.arch }}'
       targetPath: '$(Build.BinariesDirectory)/Release'
       runVersion: 'latest'
       buildType: specific
       project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
       definition: 841
-    
+
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact'
     inputs:

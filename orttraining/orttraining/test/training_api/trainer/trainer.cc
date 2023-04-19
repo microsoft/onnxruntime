@@ -203,7 +203,7 @@ void InitSyntheticDataLoader(
       data_loader.AddSyntheticSampleBatch(std::move(sample));
     }
   } else {
-    std::runtime_error("unknown synthetic_input_type: " + params.synthetic_input_type);
+    throw std::runtime_error("unknown synthetic_input_type: " + params.synthetic_input_type);
   }
 }
 
@@ -254,7 +254,7 @@ int RunTraining(const TestRunnerParameters& params) {
   session.RegisterLinearLRScheduler(warmup_step_count, total_step_count, 0.001f);
 
   std::cout << "Initialization completed. Now starting training loop." << std::endl;
-  const int64_t stabilized_perf_start_step = 0;
+  constexpr int64_t stabilized_perf_start_step = 0;
   double stabilized_total_end_to_end_time{0};
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
 
@@ -301,12 +301,12 @@ int RunTraining(const TestRunnerParameters& params) {
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         onnxruntime::profile::NvtxRangeCreator resetgrad_range(
-            "ResetGrad",
+            "LazyResetGrad",
             onnxruntime::profile::Color::Red);
         resetgrad_range.Begin();
 #endif
 
-        session.ResetGrad();
+        session.LazyResetGrad();
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         resetgrad_range.End();

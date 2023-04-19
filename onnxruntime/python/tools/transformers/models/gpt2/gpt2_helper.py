@@ -187,6 +187,7 @@ class Gpt2Helper:
         input_ids_dtype: torch.dtype = torch.int32,
         position_ids_dtype: torch.dtype = torch.int32,
         attention_mask_dtype: torch.dtype = torch.int32,
+        left_side_padding: bool = True,
     ) -> Gpt2Inputs:
         """Create random inputs for GPT2 model.
         Returns torch tensors of input_ids, position_ids, attention_mask and a list of past state tensors.
@@ -217,9 +218,14 @@ class Gpt2Helper:
                 dtype=attention_mask_dtype,
                 device=device,
             )
+
             if total_sequence_length >= 2:
-                padding_position = random.randint(0, total_sequence_length - 1)  # test input with padding.
-                attention_mask[:, padding_position] = 0
+                for i in range(batch_size):
+                    padding_length = random.randint(0, total_sequence_length - 1)
+                    if left_side_padding:
+                        attention_mask[i, :padding_length] = 0
+                    else:  # right side padding
+                        attention_mask[i, total_sequence_length - padding_length :] = 0
 
         # Deduce position_ids from attention mask
         position_ids = None
@@ -507,6 +513,7 @@ class Gpt2Helper:
         hidden_size,
         use_external_data_format=False,
         auto_mixed_precision=False,
+        stage=0,
         **kwargs,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
@@ -514,9 +521,12 @@ class Gpt2Helper:
         from optimizer import optimize_model
 
         optimization_options = FusionOptions("gpt2")
-        # optimization_options.enable_gelu = False
-        # optimization_options.enable_layer_norm = False
-        # optimization_options.enable_attention = False
+
+        # TODO(hasesh): Investigate parity issue for GPT-2 fp16 when SkipLayerNormalization
+        # is enabled
+        if is_float16:
+            optimization_options.enable_skip_layer_norm = False
+
         m = optimize_model(
             onnx_model_path,
             model_type="gpt2",
@@ -536,17 +546,25 @@ class Gpt2Helper:
                 m.convert_float_to_float16(use_symbolic_shape_infer=True, **kwargs)
 
         m.save_model_to_file(optimized_model_path, use_external_data_format)
+        return m
 
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: List[str] = ["Add", "LayerNormalization", "FastGelu"],
+        op_block_list: List[str] = [
+            "Add",
+            "LayerNormalization",
+            "SkipLayerNormalization",
+            "FastGelu",
+            "EmbedLayerNormalization",
+        ],
     ):
         """Convert GPT-2 model to mixed precision.
-           It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
+           It detects whether original model has fp16 weights, and set parameters for float16 conversion automatically.
         Args:
             onnx_model (OnnxModel): optimized ONNX model
-            op_block_list (List[str], optional): . Defaults to ['Add', 'LayerNormalization', 'FastGelu']
+            op_block_list (List[str], optional): operators to compute in fp32. Defaults to ["Add", "LayerNormalization",
+                                                 "SkipLayerNormalization", "FastGelu", "EmbedLayerNormalization"]
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
@@ -770,6 +788,7 @@ class Gpt2Helper:
         input_ids_dtype=torch.int32,
         position_ids_dtype=torch.int32,
         attention_mask_dtype=torch.int32,
+        stage=0,
         verbose=False,
         enable_pickle_output=False,
     ):
@@ -801,7 +820,7 @@ class Gpt2Helper:
         for i in range(total_test_cases):
             run_id = int(i / test_cases_per_run)
             sequence_length = random.randint(1, max_seq_len)
-            past_sequence_length = random.randint(0, max_past_seq_len)
+            past_sequence_length = 0 if (stage == 1) else random.randint(0, max_past_seq_len)
             batch_size = random.randint(1, max_batch_size)
 
             logger.debug(
@@ -822,6 +841,7 @@ class Gpt2Helper:
                 input_ids_dtype=input_ids_dtype,
                 position_ids_dtype=position_ids_dtype,
                 attention_mask_dtype=attention_mask_dtype,
+                left_side_padding=True,
             )
             outputs = Gpt2Helper.pytorch_inference(model, dummy_inputs)
             if use_io_binding:
@@ -849,6 +869,7 @@ class Gpt2Helper:
                 max_abs_diff_list.append(max_abs_diff)
             if is_all_close:
                 passed_test_cases += 1
+
             if is_top1_matched:
                 top1_matched_cases += 1
                 top1_matched_cases_per_run[run_id] += 1

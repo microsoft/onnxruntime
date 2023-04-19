@@ -20,7 +20,7 @@ namespace cuda {
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T>);                                                                            \
+      Conv<T, false>);                                                                     \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       Conv,                                                                                \
       kOnnxDomain,                                                                         \
@@ -28,14 +28,14 @@ namespace cuda {
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T>);
+      Conv<T, false>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-template <typename T>
-const cudnnConvolutionFwdAlgo_t Conv<T>::kAllAlgos[] = {
+template <typename T, bool NHWC>
+const cudnnConvolutionFwdAlgo_t Conv<T, NHWC>::kAllAlgos[] = {
     CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_FFT,
     CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING,
@@ -46,14 +46,13 @@ const cudnnConvolutionFwdAlgo_t Conv<T>::kAllAlgos[] = {
     CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED,
 };
 
-cudnnStatus_t GetWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s, cudnnConvolutionFwdAlgo_t algo,
-                               size_t* sz) {
-  return cudnnGetConvolutionForwardWorkspaceSize(s.handle, s.x_tensor, s.w_desc, s.conv_desc, s.y_tensor, algo, sz);
+cudnnStatus_t GetWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s, cudnnConvolutionFwdAlgo_t algo, size_t* sz) {
+  return cudnnGetConvolutionForwardWorkspaceSize(handle, s.x_tensor, s.w_desc, s.conv_desc, s.y_tensor, algo, sz);
 }
 
-size_t GetMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
+size_t GetMaxWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
                            const cudnnConvolutionFwdAlgo_t* algo, int n_algo) {
-  // TODO: get maximum available size from memory areana
+  // TODO: get maximum available size from memory arena
   size_t free, total;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
   // Assuming 10% of fragmentation
@@ -62,7 +61,7 @@ size_t GetMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& 
   for (int i = 0; i < n_algo; i++) {
     cudnnStatus_t err;
     size_t sz;
-    err = GetWorkspaceSize(s, algo[i], &sz);
+    err = GetWorkspaceSize(handle, s, algo[i], &sz);
     if (CUDNN_STATUS_SUCCESS != err || sz == 0 || sz < max_ws_size || sz > free) continue;
     max_ws_size = sz;
   }
@@ -87,27 +86,34 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
   return SliceCuda::Impl(stream, input_data, input_dims, output_data, compute_metadata, element_size);
 }
 
-template <typename T>
-Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const {
+template <typename T, bool NHWC>
+Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) const {
   //set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   const auto x_dims = x_shape.AsShapeVector();
   s_.x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   s_.element_size = X->DataType()->Size();
-  //set W
+  // set W
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
   s_.w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
-  //set B
+
+  // Make sure input and weight are 4D for NHWC since we set 4D descriptor for NHWC.
+  constexpr bool channels_last = NHWC;
+  if (channels_last && (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+  }
+
+  // set B
   if (context->InputCount() >= 3) {
     const Tensor* B = context->Input<Tensor>(2);
     s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
   } else {
     s_.b_data = nullptr;
   }
-  //set Z
+  // set Z
   if (context->InputCount() >= 4) {
     const Tensor* Z = context->Input<Tensor>(3);
     ORT_RETURN_IF_ERROR(s_.z_tensor.Set(Z->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));
@@ -126,48 +132,60 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.cached_benchmark_results.clear();
     }
 
-    const int64_t N = X->Shape()[0];
-    const int64_t M = W->Shape()[0];
-
-    ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
+    ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last, channels_last));
 
     TensorShapeVector kernel_shape;
-    ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
-    auto rank = kernel_shape.size();
+    ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape, channels_last));
+
+    const size_t kernel_rank = kernel_shape.size();
+
     ConvPadVector pads(conv_attrs_.pads);
     if (pads.empty()) {
-      pads.resize(rank * 2, 0);
+      pads.resize(kernel_rank * 2, 0);
     }
     TensorShapeVector dilations(conv_attrs_.dilations);
     if (dilations.empty()) {
-      dilations.resize(rank, 1);
+      dilations.resize(kernel_rank, 1);
     }
     TensorShapeVector strides(conv_attrs_.strides);
     if (strides.empty()) {
-      strides.resize(rank, 1);
+      strides.resize(kernel_rank, 1);
     }
 
     TensorShapeVector y_dims;
-    y_dims.reserve(2 + rank);  // rank indicates number of feature dimensions - so add 2 to account for 'N' and 'C'
-    y_dims.insert(y_dims.begin(), {N, M});
+    y_dims.reserve(2 + kernel_rank);  // add 2 to account for 'N' and 'C'
 
-    TensorShapeVector y_dims_with_adjusted_pads;
-    y_dims_with_adjusted_pads.reserve(2 + rank);  // rank indicates number of feature dimensions - so add 2 to account for 'N' and 'C'
-    y_dims_with_adjusted_pads.insert(y_dims_with_adjusted_pads.begin(), {N, M});
+    const int64_t N = X->Shape()[0];
+    const int64_t M = W->Shape()[0];
+    if (channels_last) {
+      y_dims.push_back(N);
+    } else {
+      y_dims.insert(y_dims.begin(), {N, M});
+    }
 
     bool post_slicing_required = false;
     TensorShapeVector slice_starts;
-    slice_starts.reserve(rank);
+    slice_starts.reserve(kernel_rank);
 
     TensorShapeVector slice_ends;
-    slice_ends.reserve(rank);
+    slice_ends.reserve(kernel_rank);
 
     TensorShapeVector slice_axes;
-    slice_axes.reserve(rank);
+    slice_axes.reserve(kernel_rank);
 
-    ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(x_shape.Slice(2), kernel_shape,
+    const size_t spatial_dim_start = channels_last ? 1 : 2;
+    const size_t spatial_dim_end = spatial_dim_start + kernel_rank;
+    TensorShape spatial_shape = X->Shape().Slice(spatial_dim_start, spatial_dim_end);
+
+    TensorShapeVector y_dims_with_adjusted_pads(y_dims);
+    ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(spatial_shape, kernel_shape,
                                                                      strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
                                                                      post_slicing_required, slice_starts, slice_ends, slice_axes));
+    if (channels_last) {
+      y_dims.push_back(M);
+      y_dims_with_adjusted_pads.push_back(M);
+    }
+
     ORT_ENFORCE(y_dims.size() == y_dims_with_adjusted_pads.size());
     s_.y_dims = gsl::make_span(y_dims);
     s_.y_dims_with_adjusted_pads = y_dims_with_adjusted_pads;
@@ -179,7 +197,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     s_.Y = context->Output(0, TensorShape(s_.y_dims));
     if (post_slicing_required) {
       // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
-      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size);
+      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size, context->GetComputeStream());
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
       // No post slicing needed. Fill the output tensor's buffer directly.
@@ -191,7 +209,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
     TensorShapeVector x_dims_cudnn{x_dims.begin(), x_dims.end()};
     TensorShapeVector y_dims_cudnn = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
-    if (rank < 2) {
+    if (kernel_rank < 2) {
       // TODO: Explore padding the provided input shape [N, C, D] to [N, C, 1, D]
       // especially for EXHAUSTIVE algo search which may result in a better algo selection.
       // ORTModule uses different algo search options (HEURISTIC, and use max workspace size) compared to
@@ -204,7 +222,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
         x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
         y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
         w_dims.insert(w_dims.begin() + 2, 1);
-        pads.insert(pads.begin() + rank, 0);
+        pads.insert(pads.begin() + kernel_rank, 0);
         pads.insert(pads.begin(), 0);
         kernel_shape.insert(kernel_shape.begin(), 1);
         strides.insert(strides.begin(), 1);
@@ -213,7 +231,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
         x_dims_cudnn.push_back(1);
         y_dims_cudnn.push_back(1);
         w_dims.push_back(1);
-        pads.insert(pads.begin() + rank, 0);
+        pads.insert(pads.begin() + kernel_rank, 0);
         pads.insert(pads.end(), 0);
         kernel_shape.push_back(1);
         strides.push_back(1);
@@ -221,16 +239,43 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       }
     }
 
-    if (w_dims_changed)
-      ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+    if (w_dims_changed) {
+      if (!channels_last) {
+        ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+      } else {
+        ORT_RETURN_IF_ERROR(s_.w_desc.Set(CUDNN_TENSOR_NHWC,
+                                          CudnnTensor::GetDataType<CudaT>(),
+                                          static_cast<int>(w_dims[0]),
+                                          static_cast<int>(w_dims[3]),
+                                          static_cast<int>(w_dims[1]),
+                                          static_cast<int>(w_dims[2])));
+      }
+    }
 
     // We must delay returning early until here so that the weight dims have been cached properly
     if (s_.Y->Shape().Size() == 0) {
       return Status::OK();
     }
 
-    ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
-    ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+    if (channels_last) {
+      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(CUDNN_TENSOR_NHWC,
+                                          CudnnTensor::GetDataType<CudaT>(),
+                                          static_cast<int>(x_dims_cudnn[0]),
+                                          static_cast<int>(x_dims_cudnn[3]),
+                                          static_cast<int>(x_dims_cudnn[1]),
+                                          static_cast<int>(x_dims_cudnn[2])));
+
+      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(CUDNN_TENSOR_NHWC,
+                                          CudnnTensor::GetDataType<CudaT>(),
+                                          static_cast<int>(y_dims_cudnn[0]),
+                                          static_cast<int>(y_dims_cudnn[3]),
+                                          static_cast<int>(y_dims_cudnn[1]),
+                                          static_cast<int>(y_dims_cudnn[2])));
+    } else {
+      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+    }
+
     ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                          gsl::narrow_cast<int>(conv_attrs_.group),
                                          CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
@@ -253,12 +298,12 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
         s_.b_zero = nullptr;
       }
       CUDA_CALL_THROW(cudaMalloc(&s_.b_zero, malloc_size));
-      CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream()));
+      CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream(context)));
     }
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
       // set math type to tensor core before algorithm search
-      if constexpr(std::is_same<T, MLFloat16>::value)
+      if constexpr (std::is_same<T, MLFloat16>::value)
         CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
 
       cudnnConvolutionFwdAlgoPerf_t perf;
@@ -268,13 +313,13 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       switch (cudnn_conv_algo) {
         case 0: {
           static constexpr int num_algos = CUDNN_CONVOLUTION_FWD_ALGO_COUNT;
-          size_t max_ws_size = cuda_ep->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(s_, kAllAlgos, num_algos)
+          size_t max_ws_size = cuda_ep->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(GetCudnnHandle(context), s_, kAllAlgos, num_algos)
                                                                       : AlgoSearchWorkspaceSize;
           // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
           // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
           IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
           CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
-              s_.handle,
+              GetCudnnHandle(context),
               s_.x_tensor,
               s_.x_data,
               s_.w_desc,
@@ -291,7 +336,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
         }
         case 1:
           CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
-              s_.handle,
+              GetCudnnHandle(context),
               s_.x_tensor,
               s_.w_desc,
               s_.conv_desc,
@@ -303,7 +348,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
         default:
           perf.algo = kDefaultConvAlgo;
-          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf.algo, &perf.memory));
+          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(GetCudnnHandle(context), s_, perf.algo, &perf.memory));
           if (std::is_same<T, MLFloat16>::value) {
             perf.mathType = CUDNN_TENSOR_OP_MATH;
           } else {
@@ -317,13 +362,13 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     s_.algo = perf.algo;
     s_.workspace_bytes = perf.memory;
   } else {
-    //set Y
+    // set Y
     s_.Y = context->Output(0, s_.y_dims);
     if (s_.Y->Shape().Size() == 0) {
       return Status::OK();
     }
     if (s_.post_slicing_required) {
-      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size);
+      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size, context->GetComputeStream());
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
       s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
@@ -332,8 +377,8 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   return Status::OK();
 }
 
-template <typename T>
-Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
+template <typename T, bool NHWC>
+Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
   std::lock_guard<OrtMutex> lock(s_.mutex);
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
@@ -341,8 +386,9 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   }
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
-  IAllocatorUniquePtr<void> workspace = GetWorkSpace();
-  CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(s_.handle,
+  IAllocatorUniquePtr<void> workspace = GetWorkSpace(context->GetComputeStream());
+  auto cudnn_handle = GetCudnnHandle(context);
+  CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(cudnn_handle,
                                                 &alpha,
                                                 s_.x_tensor,
                                                 s_.x_data,
@@ -356,18 +402,18 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
                                                 s_.y_tensor,
                                                 s_.y_data));
   if (nullptr != s_.b_data) {
-    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(s_.handle, &alpha, s_.b_tensor, s_.b_data,
+    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, s_.b_tensor, s_.b_data,
                                          &alpha, s_.y_tensor, s_.y_data));
   }
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
   if (s_.post_slicing_required) {
-    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(), s_.y_data, gsl::make_span(s_.y_dims_with_adjusted_pads),
+    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, gsl::make_span(s_.y_dims_with_adjusted_pads),
                                                       s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts,
                                                       s_.slice_ends, s_.slice_axes, s_.element_size));
   }
   return Status::OK();
-}  // namespace cuda
+}
 
 CudnnConvolutionDescriptor::CudnnConvolutionDescriptor() : desc_(nullptr) {
 }
@@ -423,6 +469,12 @@ Status CudnnConvolutionDescriptor::Set(
 
   return Status::OK();
 }
+
+#ifndef DISABLE_CONTRIB_OPS
+// template instantiation for NhwcConv
+template class Conv<float, true>;
+template class Conv<MLFloat16, true>;
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

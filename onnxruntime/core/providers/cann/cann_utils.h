@@ -5,10 +5,14 @@
 #pragma once
 
 #include <vector>
+#include <utility>
 #include <iomanip>
-#include "core/providers/cann/cann_call.h"
+#include <string>
+#include <memory>
+
+#include "core/framework/murmurhash3.h"
+#include "core/providers/cann/cann_common.h"
 #include "core/providers/cann/cann_inc.h"
-#include "core/framework/float16.h"
 
 namespace onnxruntime {
 namespace cann {
@@ -16,6 +20,7 @@ namespace cann {
 struct CannPreparation {
   CannPreparation() {
     opAttr_ = aclopCreateAttr();
+    ORT_ENFORCE(opAttr_ != nullptr, "aclopCreateAttr run failed");
   }
 
   virtual ~CannPreparation() {
@@ -28,11 +33,11 @@ struct CannPreparation {
     }
 
     for (auto buf : inputBuffers_) {
-      aclDestroyDataBuffer(buf);
+      CANN_CALL_THROW(aclDestroyDataBuffer(buf));
     }
 
     for (auto buf : outputBuffers_) {
-      aclDestroyDataBuffer(buf);
+      CANN_CALL_THROW(aclDestroyDataBuffer(buf));
     }
 
     aclopDestroyAttr(opAttr_);
@@ -44,9 +49,6 @@ struct CannPreparation {
   std::vector<aclTensorDesc*> outputDesc_;
   aclopAttr* opAttr_;
 };
-
-template <typename T>
-aclDataType getACLType();
 
 #define CANN_PREPARE_INPUTDESC(var, ...)           \
   do {                                             \
@@ -84,10 +86,45 @@ aclDataType getACLType();
       var.outputBuffers_.push_back(_rPtr);         \
   } while (0)
 
-#define CANN_RETURN_IF_ERROR(expr)               \
-  ORT_RETURN_IF_ERROR(CANN_CALL(expr)            \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CANN error executing ", #expr))
+#define CANN_CONST_INPUTDESC(var, index, ...)                           \
+  do {                                                                  \
+    auto _rPtr = aclSetTensorConst(var.inputDesc_[index], __VA_ARGS__); \
+    if (_rPtr != ACL_SUCCESS)                                           \
+      ORT_THROW("aclSetTensorConst run failed");                        \
+  } while (0)
+
+template <typename T>
+aclDataType getACLType();
+
+template <typename T>
+Status Fill(Tensor* y, void* addr, aclrtStream stream);
+
+template <typename T>
+Status Broadcast(const Tensor* x, Tensor* y, void* addr, aclrtStream stream);
+
+Status aclrtblasGemmEx(aclTransType transA,
+                       aclTransType transB,
+                       aclTransType transC,
+                       int m,
+                       int n,
+                       int k,
+                       const void* alpha,
+                       const void* matrixA,
+                       int lda,
+                       aclDataType dataTypeA,
+                       const void* matrixB,
+                       int ldb,
+                       aclDataType dataTypeB,
+                       const void* beta,
+                       void* matrixC,
+                       int ldc,
+                       aclDataType dataTypeC,
+                       aclComputeType type,
+                       aclrtStream stream);
+
+bool FileExist(const std::string& file_name);
+void GenerateHashValue(const std::string string, HashValue& hash_value);
+std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
 
 }  // namespace cann
 }  // namespace onnxruntime

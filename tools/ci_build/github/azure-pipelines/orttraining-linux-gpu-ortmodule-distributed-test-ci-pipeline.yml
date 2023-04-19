@@ -20,7 +20,6 @@ jobs:
           --config RelWithDebInfo \
           --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
           --enable_training \
-          --enable_training_torch_interop \
           --update --build \
           --build_wheel \
           " \

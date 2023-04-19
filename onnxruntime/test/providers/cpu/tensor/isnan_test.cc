@@ -25,5 +25,13 @@ TEST(IsNaNOpTest, IsNaNFloat16) {
   test.Run();
 }
 
+TEST(IsNaNOpTest, IsNaNDouble) {
+  OpTester test("IsNaN", 9, kOnnxDomain);
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<double>("X", dims, {1.0, NAN, 2.0, NAN});
+  test.AddOutput<bool>("Y", dims, {false, true, false, true});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

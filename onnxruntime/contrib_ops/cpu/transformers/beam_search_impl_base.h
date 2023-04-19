@@ -32,6 +32,12 @@ struct BeamSearchState : public IBeamSearchState<T> {
 
     this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
+    this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size);
+
+    constexpr size_t max_parts_of_vocab = 128;
+    size_t topk_buffer_size = SafeInt<size_t>(batch_beam_size) * (max_parts_of_vocab + 1) * num_beams * 2 * 2;
+    this->topk_buffer = AllocateBuffer<float>(allocator, topk_temp_buffer_, topk_buffer_size);
+
     if (use_position) {
       this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_beam_size);
     }
@@ -50,9 +56,11 @@ struct BeamSearchState : public IBeamSearchState<T> {
   BufferUniquePtr next_token_scores_buffer_;
   BufferUniquePtr next_tokens_buffer_;
   BufferUniquePtr next_indices_buffer_;
+  BufferUniquePtr next_scores_buffer_;
   BufferUniquePtr next_positions_buffer_;
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr scores_buffer_;
+  BufferUniquePtr topk_temp_buffer_;
 };
 
 struct BeamSearchCpuState : public IBeamSearchCpuState {
@@ -121,7 +129,7 @@ class BeamSearchBase : public GenerateBase  {
   BeamSearchBase(OpKernelContextInternal& context,
                  const SessionState& decoder_session_state,
                  concurrency::ThreadPool* thread_pool,
-                 void* cuda_stream,
+                 Stream* ort_stream,
                  IConsoleDumper* cuda_dumper,
                  BeamSearchParameters& params,
                  const GenerationDeviceHelper::TopkFunc& topk_func,
@@ -131,7 +139,7 @@ class BeamSearchBase : public GenerateBase  {
       :  GenerateBase(context,
                       decoder_session_state,
                       thread_pool,
-                      cuda_stream,
+                      ort_stream,
                       cuda_dumper,
                       topk_func,
                       device_copy_func),
@@ -183,7 +191,8 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
                                             context.Input<Tensor>(0),     // input_ids
                                             context.Input<Tensor>(7),     // vocab_mask
                                             context.Input<Tensor>(8),     // prefix_vocab_mask
-                                            context.Input<Tensor>(10)));  // attention_mask
+                                            context.Input<Tensor>(9),    // attention_mask
+                                            nullptr));                    // presence_mask
 
   return Status::OK();
 }
@@ -224,7 +233,7 @@ Status BeamSearchBase<T>::ProcessLogits(
     int counter) {
   return process_logits_func_(logits, &beam_state, &cpu_state, &(cpu_state.sequences), allocator,
                               thread_pool_, &logits_processors_, beam_scorer_.get(),
-                              parameters_, counter, cuda_stream_, GetConsoleDumper());
+                              parameters_, counter, ort_stream_, GetConsoleDumper());
 }
 
 template <typename T>
@@ -244,7 +253,7 @@ Status BeamSearchBase<T>::GenerateNextToken(
   // Here we make a copy to reduce the coupling with little cost (the buffer size is small).
   ORT_RETURN_IF_ERROR(device_copy_func_(beam_state.beam_scores,
                                         beam_scores,
-                                        cuda_stream_,
+                                        ort_stream_,
                                         DeviceCopyDirection::hostToDevice));
 
   beam_next_tokens = beam_scorer_->GetNextTokens();

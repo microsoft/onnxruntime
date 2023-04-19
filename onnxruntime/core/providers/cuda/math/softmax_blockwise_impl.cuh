@@ -267,8 +267,7 @@ WriteFpropResults(
 template <int ILP, typename scalar_t, typename accscalar_t, typename outscalar_t,
   template <typename, typename, typename> class Epilogue>
 __global__ void
-softmax_block_forward(outscalar_t *output, scalar_t *input, int classes)
-{
+softmax_block_forward(outscalar_t* output, scalar_t* input, int classes, int input_stride, int output_stride) {
   extern __shared__ unsigned char smem[];
   auto sdata = reinterpret_cast<accscalar_t*>(smem);
 
@@ -277,8 +276,8 @@ softmax_block_forward(outscalar_t *output, scalar_t *input, int classes)
 
   // forward pointers to batch[blockIdx.x]
   // each block handles a sample in the mini-batch
-  input += blockIdx.x * classes;
-  output += blockIdx.x * classes;
+  input += blockIdx.x * input_stride;
+  output += blockIdx.x * output_stride;
 
   const int shift = ((uint64_t)input) % ALIGN_BYTES / sizeof(scalar_t);
   const int output_shift = ((uint64_t)output) % ALIGN_BYTES / sizeof(outscalar_t);

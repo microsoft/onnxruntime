@@ -218,5 +218,7 @@ void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
 
 INSTANTIATE_ADAMMTA_FUNCTOR(float, float, float);
 
+#undef INSTANTIATE_ADAMMTA_FUNCTOR
+
 }  // namespace cuda
 }  // namespace onnxruntime

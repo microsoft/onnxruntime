@@ -29,6 +29,7 @@ class Node;
 #include "core/framework/allocatormgr.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
+#include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
 
@@ -137,7 +138,7 @@ class IExecutionProvider {
   /**
      Get the device id of current execution provider
   */
-  virtual int GetDeviceId() const { return -1; };
+  virtual int GetDeviceId() const { return 0; };
 
   /**
      Get execution provider's configuration options.
@@ -208,9 +209,6 @@ class IExecutionProvider {
      clean up its temporary resources to reduce memory and ensure the first run is fast.
   */
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
-
-  virtual common::Status SetComputeStream(void*) { return Status::OK(); }
-  virtual void* GetComputeStream() const { return nullptr; }
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
@@ -295,6 +293,8 @@ class IExecutionProvider {
     // EPs which prefer a different layout should override to return their preferred layout.
     return DataLayout::NCHW;
   }
+
+  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/) const {}
 
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */

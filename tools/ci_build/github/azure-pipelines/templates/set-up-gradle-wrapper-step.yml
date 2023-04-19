@@ -1,0 +1,10 @@
+parameters:
+- name: GradleWrapperVersion
+  type: string
+  default: "6.8.3"
+
+steps:
+- script: |
+    gradle wrapper --gradle-version="${{ parameters.GradleWrapperVersion }}" --no-daemon --no-watch-fs
+  displayName: Set up gradle ${{ parameters.GradleWrapperVersion }} wrapper
+  workingDirectory: $(Build.SourcesDirectory)/java

@@ -70,8 +70,8 @@ class QPad(QuantOperatorBase):
                         quantized_input_value.scale_name,
                         quantized_input_value.zp_name,
                     )
-                    self.quantizer.new_nodes += [pad_value_qnodes]
-                    node.input[2] = pad_value_qnodes.output[0]
+                    self.quantizer.new_nodes.extend(pad_value_qnodes)
+                    node.input[2] = pad_value_qnodes[0].output[0]
             else:
                 node.input.extend([quantized_input_value.zp_name])  # pad zero_point for original zero
 

@@ -5,7 +5,7 @@
 
 #include <cassert>
 #include <vector>
-
+#include <core/common/safeint.h>
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
@@ -59,10 +59,10 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
   const auto& X_shape = X->Shape();
   assert(X_shape.Size() >= 0);
 
-  const Eigen::Index coordinate_size = X_shape.IsScalar() ? 1 : X_shape.NumDimensions();
+  const Eigen::Index coordinate_size = X_shape.IsScalar() ? 1 : onnxruntime::narrow<Eigen::Index>(X_shape.NumDimensions());
   std::vector<int64_t> non_zero_indices_buffer{};
   // reserve enough space for indices for every element of X
-  non_zero_indices_buffer.reserve(X_shape.Size() * coordinate_size);
+  non_zero_indices_buffer.reserve(SafeInt<size_t>(X_shape.Size()) * coordinate_size);
 
   const T* data = X->Data<T>();
 
@@ -87,7 +87,7 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
       }
     };
 
-    for (size_t i = 0, end = X_shape.Size(); i < end; ++i) {
+    for (size_t i = 0, end = onnxruntime::narrow<size_t>(X_shape.Size()); i < end; ++i) {
       const T& value = *data++;
       if (value != T{}) {
         non_zero_indices_buffer.insert(non_zero_indices_buffer.end(),
@@ -98,7 +98,7 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  const Eigen::Index num_non_zero_values = non_zero_indices_buffer.size() / coordinate_size;
+  const Eigen::Index num_non_zero_values = onnxruntime::narrow<Eigen::Index>(non_zero_indices_buffer.size()) / coordinate_size;
 
   // transpose result for output
   ConstEigenMatrixMapRowMajor<int64_t> non_zero_indices_matrix{

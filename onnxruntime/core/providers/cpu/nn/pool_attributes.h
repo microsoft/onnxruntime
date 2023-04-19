@@ -35,7 +35,9 @@ struct PoolAttributes {
                 "No kernel shape is set.");
 
     std::string auto_padding;
-    ORT_ENFORCE(info.GetAttr<std::string>("auto_pad", &auto_padding).IsOK());
+    if (op_name != "MaxUnpool") {
+      ORT_ENFORCE(info.GetAttr<std::string>("auto_pad", &auto_padding).IsOK());
+    }
     auto_pad = StringToAutoPadType(auto_padding);
 
     if (!info.GetAttrs("pads", pads).IsOK() || pads.empty()) {

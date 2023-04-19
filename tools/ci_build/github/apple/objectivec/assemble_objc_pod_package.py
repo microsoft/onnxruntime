@@ -27,7 +27,6 @@ license_file = "LICENSE"
 # include directories for compiling the pod itself
 include_dirs = [
     "objectivec",
-    "cmake/external/SafeInt",
 ]
 
 # pod source files
@@ -36,7 +35,6 @@ source_files = [
     "objectivec/src/*.h",
     "objectivec/src/*.m",
     "objectivec/src/*.mm",
-    "cmake/external/SafeInt/safeint/SafeInt.hpp",
 ]
 
 # pod public header files

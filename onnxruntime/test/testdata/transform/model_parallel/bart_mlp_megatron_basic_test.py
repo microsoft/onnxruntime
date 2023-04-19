@@ -21,7 +21,7 @@ a_bias_initializer = numpy_helper.from_array(a_bias_np_vals, "encoder.t5_stack.b
 dropout_np_vals = np.asarray([0.1], dtype=np.float32).reshape(())
 dropout_initializer = numpy_helper.from_array(dropout_np_vals, "ratio")
 
-dropout_mode_np_vals = np.array([False], dtype=np.bool).reshape(())
+dropout_mode_np_vals = np.array([False], dtype=bool).reshape(())
 dropout_mode_initializer = numpy_helper.from_array(dropout_mode_np_vals, "mode")
 
 b_weight_np_vals = (0.01 * np.arange(hidden_size * weight_dim_to_split, dtype=np.float32)).reshape(

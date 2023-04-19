@@ -65,7 +65,7 @@ Status CheckForSingularity(cudaStream_t stream, const IAllocatorUniquePtr<int>& 
 
 template <typename T>
 struct Inverse::ComputeImpl {
-  Status operator()(cudaStream_t stream, Inverse::CublasHandle cublas_h, const Inverse* inst, const Tensor& input, Tensor& output,
+  Status operator()(onnxruntime::Stream* ort_stream, Inverse::CublasHandle cublas_h, const Inverse* inst, const Tensor& input, Tensor& output,
                     const IAllocatorUniquePtr<int>& info, const IAllocatorUniquePtr<int>& pivots,
                     size_t num_batches, size_t rows) const {
     using namespace onnxruntime::cuda;
@@ -75,10 +75,11 @@ struct Inverse::ComputeImpl {
     auto info_cpu = std::make_unique<int[]>(num_batches);
     const auto dim = static_cast<int>(rows);
     const auto n_batches = static_cast<int>(num_batches);
+    cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
     // Make a copy of the input which will serve as a workspace as well.
     if (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value) {
-      IAllocatorUniquePtr<float> input_workspace = inst->GetScratchBuffer<float>(input_count);
+      IAllocatorUniquePtr<float> input_workspace = inst->GetScratchBuffer<float>(input_count, ort_stream);
       if (std::is_same<T, MLFloat16>::value) {
         // Convert from MLFloat16(half) to float
         Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.Data<MLFloat16>()), input_workspace.get(), input_count);
@@ -86,7 +87,7 @@ struct Inverse::ComputeImpl {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_workspace.get(), input.Data<float>(), sizeof(float) * input_count,
                                              cudaMemcpyDeviceToDevice, stream));
       }
-      IAllocatorUniquePtr<float*> matrix_ptrs = inst->GetScratchBuffer<float*>(n_batches);
+      IAllocatorUniquePtr<float*> matrix_ptrs = inst->GetScratchBuffer<float*>(n_batches, ort_stream);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<float>(stream, input_workspace.get(), num_batches, rows, matrix_ptrs));
       // Do LU factorization
       CUBLAS_RETURN_IF_ERROR(cublasSgetrfBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), info.get(), n_batches));
@@ -94,9 +95,9 @@ struct Inverse::ComputeImpl {
 
       // Need to compute ptrs for output buffers
       // Output for MLFloat
-      IAllocatorUniquePtr<float*> output_ptrs = inst->GetScratchBuffer<float*>(n_batches);
+      IAllocatorUniquePtr<float*> output_ptrs = inst->GetScratchBuffer<float*>(n_batches, ort_stream);
       if (std::is_same<T, MLFloat16>::value) {
-        IAllocatorUniquePtr<float> ml_float_output = inst->GetScratchBuffer<float>(input_count);
+        IAllocatorUniquePtr<float> ml_float_output = inst->GetScratchBuffer<float>(input_count, ort_stream);
         ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<float>(stream, ml_float_output.get(), num_batches, rows, output_ptrs));
         // Do the inverse
         CUBLAS_RETURN_IF_ERROR(cublasSgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches));
@@ -112,18 +113,18 @@ struct Inverse::ComputeImpl {
         // We are done here
       }
     } else if (std::is_same<T, double>::value) {
-      IAllocatorUniquePtr<double> input_workspace = inst->GetScratchBuffer<double>(static_cast<int>(input_count));
+      IAllocatorUniquePtr<double> input_workspace = inst->GetScratchBuffer<double>(static_cast<int>(input_count), ort_stream);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_workspace.get(), input.Data<double>(), sizeof(double) * input_count,
                                            cudaMemcpyDeviceToDevice, stream));
 
-      IAllocatorUniquePtr<double*> matrix_ptrs = inst->GetScratchBuffer<double*>(n_batches);
+      IAllocatorUniquePtr<double*> matrix_ptrs = inst->GetScratchBuffer<double*>(n_batches, ort_stream);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<double>(stream, input_workspace.get(), num_batches, rows, matrix_ptrs));
       // Do LU factorization
       CUBLAS_RETURN_IF_ERROR(cublasDgetrfBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), info.get(), n_batches));
       ORT_RETURN_IF_ERROR(CheckForSingularity(stream, info, info_cpu, num_batches));
 
       // Need to compute ptrs for output buffers
-      IAllocatorUniquePtr<double*> output_ptrs = inst->GetScratchBuffer<double*>(n_batches);
+      IAllocatorUniquePtr<double*> output_ptrs = inst->GetScratchBuffer<double*>(n_batches, ort_stream);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<double>(stream, output.MutableData<double>(), num_batches, rows, output_ptrs));
       CUBLAS_RETURN_IF_ERROR(cublasDgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches));
       ORT_RETURN_IF_ERROR(CheckForSingularity(stream, info, info_cpu, num_batches));
@@ -149,13 +150,13 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
     num_batches = static_cast<size_t>(input_shape.SizeToDimension(num_dim - 2));
   }
 
-  IAllocatorUniquePtr<int> info = GetScratchBuffer<int>(num_batches);
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(info.get(), 0, num_batches * sizeof(int), Stream()));
-  IAllocatorUniquePtr<int> pivots = GetScratchBuffer<int>(rows * num_batches);
+  IAllocatorUniquePtr<int> info = GetScratchBuffer<int>(num_batches, ctx->GetComputeStream());
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(info.get(), 0, num_batches * sizeof(int), Stream(ctx)));
+  IAllocatorUniquePtr<int> pivots = GetScratchBuffer<int>(rows * num_batches, ctx->GetComputeStream());
 
   utils::MLTypeCallDispatcher<float, double, MLFloat16> t_disp(input->GetElementType());
   return t_disp.InvokeRet<Status, ComputeImpl>(
-      Stream(), Base::CublasHandle(), this, *input, *output, info, pivots, num_batches, rows);
+      ctx->GetComputeStream(), GetCublasHandle(ctx), this, *input, *output, info, pivots, num_batches, rows);
 }
 
 }  // namespace cuda

@@ -9,10 +9,10 @@ jobs:
     RunDockerBuildArgs: >
       -o ubuntu20.04 -d gpu
       -t onnxruntime_orttraining_ortmodule_tests_image
+      -u
       -e
       -x "
       --enable_training
-      --enable_training_torch_interop
       --config $(buildConfig)
       --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6
       --build_wheel

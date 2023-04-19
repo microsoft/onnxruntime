@@ -17,4 +17,4 @@ DefineQOrderedAttentionInput(Scale_QK_Softmax, scale_QKT_softmax, 15),
 DefineQOrderedAttentionInput(Scale_Values_Gemm, scale_values_gemm, 16),
 DefineQOrderedAttentionInput(Mask_Index, mask_index, 17),
 DefineQOrderedAttentionInput(Past, past, 18),
-DefineQOrderedAttentionInput(Extra_Add, extra_add, 19)
+DefineQOrderedAttentionInput(relative_position_bias, relative_position_bias, 19)

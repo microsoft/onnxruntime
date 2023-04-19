@@ -50,7 +50,7 @@ stages:
     parameters:
       CommitOverride: true
       BuildConfig: 'Debug'
-      ExtraBuildArgs: '$(ExtraBuildArgs)'
+      ExtraBuildArgs: '--use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON $(ExtraBuildArgs)'
       PoolName: ${{ parameters.PoolName }}
 
 - stage: Build_web_Debug
@@ -71,7 +71,7 @@ stages:
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
-      ExtraBuildArgs: '--skip_tests --disable_wasm_exception_catching --disable_rtti $(ExtraBuildArgs)'
+      ExtraBuildArgs: '--skip_tests --enable_wasm_api_exception_catching --disable_rtti --use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON $(ExtraBuildArgs)'
       PoolName: ${{ parameters.PoolName }}
 
 - ${{ if eq(parameters.BuildStaticLib, 'true') }}:

@@ -14,10 +14,5 @@ for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   ${PYTHON_EXE} -m pip install -r requirements.txt
 done
-if [ -f "/tmp/protobuf_install_manifest.txt" ]; then
-  echo "Uninstalling protobuf..."
-  xargs rm -f < /tmp/protobuf_install_manifest.txt
-  rm /tmp/protobuf_install_manifest.txt
-fi
 
 

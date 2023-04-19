@@ -8,11 +8,12 @@ parameters:
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 8.4.1.5
+  default: 8.5.1.1
   values:
   - 8.2.1.8
   - 8.0.1.6
   - 8.4.1.5
+  - 8.5.1.1
   - BIN
 
 - name: ModelGroups

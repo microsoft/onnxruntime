@@ -25,11 +25,6 @@ TEST(Identity, StringType) {
 }
 
 TEST(Identity, SequenceType) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Failed to find args for kernel type string 'T'";
-  }
-
   OpTester test("Identity", 14, kOnnxDomain);
   SeqTensors<int64_t> input;
   input.AddTensor({3, 2}, {1, 2, 3, 4, 5, 6});

@@ -207,13 +207,13 @@ template <typename T, typename IndexType = int64_t>
 using EigenVector = Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor, IndexType>>;
 
 template <typename OutputType>
-static Status MultinomialCompute(OpKernelContext* ctx,
-                                 const Tensor& X,
-                                 const int64_t batch_size,
-                                 const int64_t num_classes,
-                                 const int64_t num_samples,
-                                 std::default_random_engine& generator,
-                                 Tensor& Y) {
+Status MultinomialComputeShared(AllocatorPtr& alloc,
+                                const Tensor& X,
+                                const int64_t batch_size,
+                                const int64_t num_classes,
+                                const int64_t num_samples,
+                                std::default_random_engine& generator,
+                                Tensor& Y) {
   if (!utils::HasType<EnabledMultinomialOutputTypes, OutputType>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output type not supported in this build.");
   }
@@ -227,8 +227,6 @@ static Status MultinomialCompute(OpKernelContext* ctx,
   Matrix<OutputType> output = Matrix<OutputType>(Y.MutableData<OutputType>(), Y_dims);
 
   // BEGIN create temporary tensor
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
   auto cdf_data = static_cast<double*>(alloc->Alloc(SafeInt<size_t>(sizeof(double)) * num_classes));
   BufferUniquePtr cdf_buffer(cdf_data, BufferDeleter(std::move(alloc)));
   Eigen::array<int64_t, 1> cdf_dims = {{num_classes}};
@@ -269,6 +267,20 @@ static Status MultinomialCompute(OpKernelContext* ctx,
   }
 
   return Status::OK();
+}
+
+template <typename OutputType>
+static Status MultinomialCompute(OpKernelContext* ctx,
+                                 const Tensor& X,
+                                 const int64_t batch_size,
+                                 const int64_t num_classes,
+                                 const int64_t num_samples,
+                                 std::default_random_engine& generator,
+                                 Tensor& Y) {
+  // BEGIN create temporary tensor
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+  return MultinomialComputeShared<OutputType>(alloc, X, batch_size, num_classes, num_samples, generator, Y);
 }
 
 Status Multinomial::Compute(OpKernelContext* ctx) const {
@@ -407,5 +419,13 @@ void GenerateData(std::default_random_engine& generator, TDistribution distribut
     ++out;
   }
 }
+
+template Status MultinomialComputeShared<int64_t>(AllocatorPtr& alloc,
+                                                  const Tensor& X,
+                                                  const int64_t batch_size,
+                                                  const int64_t num_classes,
+                                                  const int64_t num_samples,
+                                                  std::default_random_engine& generator,
+                                                  Tensor& Y);
 
 }  // namespace onnxruntime

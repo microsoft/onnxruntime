@@ -12,7 +12,12 @@ endif()
 
 #TODO: if protobuf is a shared lib and onnxruntime_USE_FULL_PROTOBUF is ON, then onnx_proto should be built as a shared lib instead of a static lib. Otherwise any code outside onnxruntime.dll can't use onnx protobuf definitions if they share the protobuf.dll with onnxruntime. For example, if protobuf is a shared lib and onnx_proto is a static lib then onnxruntime_perf_test won't work.
 
-set(ONNX_SOURCE_ROOT ${PROJECT_SOURCE_DIR}/external/onnx)
+
+
+FetchContent_Populate(onnx)
+set(ONNX_SOURCE_ROOT ${onnx_SOURCE_DIR})
+
+
 
 add_library(onnx_proto ${ONNX_SOURCE_ROOT}/onnx/onnx-ml.proto ${ONNX_SOURCE_ROOT}/onnx/onnx-operators-ml.proto ${ONNX_SOURCE_ROOT}/onnx/onnx-data.proto)
 

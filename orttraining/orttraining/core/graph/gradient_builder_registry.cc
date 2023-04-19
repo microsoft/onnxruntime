@@ -113,6 +113,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("ScatterND", GetScatterNDGradient);
   REGISTER_GRADIENT_BUILDER("ScatterElements", GetScatterElementsGradient);
   REGISTER_GRADIENT_BUILDER("Trilu", GetTriluGradient);
+  REGISTER_GRADIENT_BUILDER("FakeQuant", GetFakeQuantGradient);
 
   REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };

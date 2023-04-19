@@ -5,6 +5,7 @@ skl2onnx
 sphinx
 sphinx-gallery
 sphinxcontrib.imagesvg
+sphinxcontrib.googleanalytics
 sphinx_rtd_theme
 pyquickhelper
 pandas

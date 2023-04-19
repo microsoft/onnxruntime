@@ -97,7 +97,7 @@ const std::vector<MLFloat16> ConvertFloatToMLFloat16(const std::vector<float>& f
 
 TEST(MathOpTest, ShrinkInt8Type) {
   const auto& test_cases = GenerateSignedTestCases<int8_t>();
-  RunShrinkTest<int8_t>(test_cases);
+  RunShrinkTest<int8_t>(test_cases, {kTensorrtExecutionProvider}); // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
 }
 
 TEST(MathOpTest, ShrinkUint8Type) {

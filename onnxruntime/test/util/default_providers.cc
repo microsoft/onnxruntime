@@ -200,7 +200,7 @@ std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #ifdef USE_XNNPACK
-  return XnnpackProviderFactoryCreator::Create(ProviderOptions())->CreateProvider();
+  return XnnpackProviderFactoryCreator::Create(ProviderOptions(), nullptr)->CreateProvider();
 #else
   return nullptr;
 #endif

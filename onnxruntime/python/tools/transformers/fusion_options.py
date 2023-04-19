@@ -6,9 +6,16 @@ from argparse import ArgumentParser
 
 
 class AttentionMaskFormat:
+    # Build 1D mask indice (sequence length). It requires right side padding! Recommended for BERT model to get best performance.
     MaskIndexEnd = 0
+
+    # For experiment only. Do not use it in production.
     MaskIndexEndAndStart = 1
+
+    # Raw attention mask with 0 means padding (or no attention) and 1 otherwise.
     AttentionMask = 2
+
+    # No attention mask
     NoMask = 3
 
 
@@ -19,6 +26,14 @@ class FusionOptions:
         self.enable_gelu = True
         self.enable_layer_norm = True
         self.enable_attention = True
+
+        # Use MultiHeadAttention instead of Attention operator. The difference:
+        # (1) Attention has merged weights for Q/K/V projection, which might be faster in some cases since 3 MatMul is
+        #     merged into one.
+        # (2) Attention could only handle self attention; MultiHeadAttention could handle both self and cross attention.
+        # (3) MultiHeadAttention has only cuda implementation right now.
+        self.use_multi_head_attention = False
+
         self.enable_skip_layer_norm = True
         self.enable_embed_layer_norm = True
         self.enable_bias_skip_layer_norm = True
@@ -28,10 +43,17 @@ class FusionOptions:
 
         self.enable_shape_inference = True
         self.enable_gemm_fast_gelu = False
-        self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
-        if model_type == "gpt2":
-            self.enable_skip_layer_norm = False
+        # Set default to sequence length for BERT model to use fused attention to speed up.
+        # Note that embed layer normalization will convert 2D mask to 1D when mask type is MaskIndexEnd.
+        self.attention_mask_format = (
+            AttentionMaskFormat.MaskIndexEnd if model_type == "bert" else AttentionMaskFormat.AttentionMask
+        )
+
+        # options for stable diffusion
+        self.enable_group_norm = model_type == "unet"
+        self.enable_bias_splitgelu = model_type == "unet"
+        self.enable_packed_kv = model_type == "unet"
 
     def use_raw_attention_mask(self, use_raw_mask=True):
         if use_raw_mask:
@@ -51,6 +73,8 @@ class FusionOptions:
             options.enable_layer_norm = False
         if args.disable_attention:
             options.enable_attention = False
+        if args.use_multi_head_attention:
+            options.use_multi_head_attention = True
         if args.disable_skip_layer_norm:
             options.enable_skip_layer_norm = False
         if args.disable_embed_layer_norm:
@@ -67,8 +91,14 @@ class FusionOptions:
             options.enable_gemm_fast_gelu = True
         if args.use_mask_index:
             options.use_raw_attention_mask(False)
+        if args.use_raw_attention_mask:
+            options.use_raw_attention_mask(True)
         if args.no_attention_mask:
             options.disable_attention_mask()
+        if args.disable_group_norm:
+            options.enable_group_norm = False
+        if args.disable_packed_kv:
+            options.enable_packed_kv = False
         return options
 
     @staticmethod
@@ -157,9 +187,17 @@ class FusionOptions:
             "--use_mask_index",
             required=False,
             action="store_true",
-            help="use mask index instead of raw attention mask in attention operator",
+            help="use mask index to activate fused attention to speed up. It requires right-side padding!",
         )
         parser.set_defaults(use_mask_index=False)
+
+        parser.add_argument(
+            "--use_raw_attention_mask",
+            required=False,
+            action="store_true",
+            help="use raw attention mask. Use this option if your input is not right-side padding. This might deactivate fused attention and get worse performance.",
+        )
+        parser.set_defaults(use_raw_attention_mask=False)
 
         parser.add_argument(
             "--no_attention_mask",
@@ -168,3 +206,29 @@ class FusionOptions:
             help="no attention mask. Only works for model_type=bert",
         )
         parser.set_defaults(no_attention_mask=False)
+
+        parser.add_argument(
+            "--use_multi_head_attention",
+            required=False,
+            action="store_true",
+            help="Use MultiHeadAttention instead of Attention operator for testing purpose. "
+            "Note that MultiHeadAttention might be slower than Attention since MatMul of input projection is excluded. "
+            "MultiHeadAttention has only CUDA implementation so the model can only run with cuda execution provider.",
+        )
+        parser.set_defaults(use_multi_head_attention=False)
+
+        parser.add_argument(
+            "--disable_group_norm",
+            required=False,
+            action="store_true",
+            help="not fuse GroupNorm. Only works for model_type=unet",
+        )
+        parser.set_defaults(disable_group_norm=False)
+
+        parser.add_argument(
+            "--disable_packed_kv",
+            required=False,
+            action="store_true",
+            help="not use packed kv in cross attention. Only works for model_type=unet",
+        )
+        parser.set_defaults(disable_packed_kv=False)

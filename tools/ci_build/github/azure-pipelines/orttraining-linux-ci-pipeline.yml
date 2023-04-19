@@ -8,7 +8,7 @@ resources:
 
 jobs:
 - job: Linux_Build
-  timeoutInMinutes: 120
+  timeoutInMinutes: 150
   variables:
     skipComponentGovernanceDetection: true
   workspace:
@@ -21,7 +21,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '12.16.3'
+      versionSpec: '16.x'
 
   - task: UsePythonVersion@0
     inputs:

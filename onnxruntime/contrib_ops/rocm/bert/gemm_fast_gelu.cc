@@ -3,19 +3,16 @@
 
 #include "contrib_ops/rocm/bert/gemm_fast_gelu.h"
 
-#include "contrib_ops/rocm/bert/fast_gelu_impl.h"
-#include "contrib_ops/rocm/bert/transformer_common.h"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_impl.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "core/providers/rocm/math/matmul_impl.h"
 #include "core/providers/rocm/rocm_common.h"
-#include "core/providers/rocm/shared_inc/fpgeneric.h"
+
+using onnxruntime::rocm::ToHipType;
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
-
-using onnxruntime::rocm::MatMulImpl;
-using onnxruntime::rocm::ToHipType;
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -48,34 +45,30 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(X->Shape(), W->Shape(), transa, transb, trans_batch_a, trans_batch_b, false));
 
-  auto gemm_buffer = GetScratchBuffer<T>(helper.OutputShape().Size());
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0)
     return Status::OK();
 
-  const float alpha = 1.0f;
-  const float zero = 0.0f;
+  // gemmfastgelu only support alpha == 1 and beta == 0
+  const HipT alpha = ToHipType<T>::FromFloat(1.0f);
+  const HipT beta = ToHipType<T>::FromFloat(0.0f);
 
-  if (MatMulImpl<T>(this, helper, reinterpret_cast<const T*>(X->Data<T>()),
-                    reinterpret_cast<const T*>(W->Data<T>()),
-                    reinterpret_cast<T*>(gemm_buffer.get()),
-                    X->Shape(), W->Shape(),
-                    transa, transb, trans_batch_a, trans_batch_b, alpha, zero) != Status::OK()) {
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
+  using onnxruntime::rocm::tunable::blas::BlasOp;
 
-  int64_t fast_gelu_input_length = Y->Shape().Size();
-  int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
-
-  return LaunchFastGeluKernel<HipT>(Stream(),
-                                  static_cast<int>(fast_gelu_input_length),
-                                  static_cast<int>(bias_length),
-                                  reinterpret_cast<HipT*>(gemm_buffer.get()),
-                                  (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
-                                  reinterpret_cast<HipT*>(Y->MutableData<T>()),
-                                  false);
+  return blas::row_major::GemmFastGelu(
+      IsTunableOpEnabled(),
+      Stream(ctx), GetRocblasHandle(ctx),
+      transa ? BlasOp::Trans : BlasOp::NonTrans,
+      transb ? BlasOp::Trans : BlasOp::NonTrans,
+      helper.M(), helper.N(), helper.K(),
+      alpha,
+      reinterpret_cast<const HipT*>(X->Data<T>()), helper.Lda(transa),
+      reinterpret_cast<const HipT*>(W->Data<T>()), helper.Ldb(transb),
+      (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
+      beta,
+      reinterpret_cast<HipT*>(Y->MutableData<T>()), helper.Ldc());
 }
 
 }  // namespace rocm

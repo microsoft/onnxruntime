@@ -9,14 +9,15 @@
 #include "migraphx_execution_provider.h"
 #include "migraphx_execution_provider_utils.h"
 #include "hip_allocator.h"
-#include "hip_fence.h"
 #include "gpu_data_transfer.h"
-#include "migraphx_call.h"
 #include "migraphx_inc.h"
 
 #include <fstream>
 #include <algorithm>
 #include <iterator>
+
+// TODO: find a better way to share this
+#include "core/providers/rocm/rocm_stream_handle.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -40,9 +41,13 @@ class Memcpy final : public OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
+    ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
     Tensor* Y = ctx->Output(0, X->Shape());
-    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
-    return retval;
+    ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
+    const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+    if (!gpu_data_transfer)
+      return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in Migraphx EP.");
+    return gpu_data_transfer->CopyTensorAsync(*X, *Y, *(ctx->GetComputeStream()));
   }
 };
 
@@ -56,7 +61,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kMIGraphXExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .ExecQueueId(kHipStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -67,7 +71,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kMIGraphXExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .ExecQueueId(kHipStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -115,6 +118,17 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   if (!dump_model_ops_env.empty()) {
     dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
   }
+
+  ROCBLAS_CALL_THROW(rocblas_create_handle(&external_rocblas_handle_));
+  ROCBLAS_CALL_THROW(rocblas_set_stream(external_rocblas_handle_, stream_));
+
+  MIOPEN_CALL_THROW(miopenCreate(&external_miopen_handle_));
+  MIOPEN_CALL_THROW(miopenSetStream(external_miopen_handle_, stream_));
+}
+
+MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
+  ORT_IGNORE_RETURN_VALUE(ROCBLAS_CALL(rocblas_destroy_handle(external_rocblas_handle_)));
+  ORT_IGNORE_RETURN_VALUE(MIOPEN_CALL(miopenDestroy(external_miopen_handle_)));
 }
 
 AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -194,7 +208,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::GPUDataTransfer>(static_cast<hipStream_t>(GetComputeStream()));
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
 static bool IsTypeSupported(const NodeArg* node_arg) {
@@ -527,11 +541,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
 }
 
 void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters, const logging::Logger& logger) {
-  // If the number of nodes in the graph is less than 5, do nothing
-  // this is to deal with onnx unit tests
-  if (graph_viewer.NumberOfNodes() <= 5) {
-    return;
-  }
 
   // Then check whether a subgraph should fallback to CPU
   // 1. Check whether a subgraph contains a RNN operator
@@ -554,11 +563,6 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
           }
         }
       }
-    }
-
-    // if 6 operators or more
-    if (git.size() > 5) {
-      return false;
     }
 
     // rnn operators, run on GPU
@@ -1040,7 +1044,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         delete static_cast<MIGraphXFuncState*>(state);
     };
 
-    compute_info.compute_func = [this](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
 
@@ -1168,7 +1172,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
 
         #ifdef MIGRAPHX_STREAM_SYNC
-        auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(GetComputeStream()));
+        void* rocm_stream;
+        Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
+        auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
         #else
         auto prog_outputs = prog.eval(m);
         HIP_CALL_THROW(hipDeviceSynchronize());
@@ -1198,12 +1204,17 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
   return Status::OK();
 }
 
+void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false/*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
+}
+
 #ifdef MIGRAPHX_STREAM_SYNC
 
 Status MIGraphXExecutionProvider::Sync() const {
   HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
 
-  auto status = hipStreamQuery(static_cast<hipStream_t>(GetComputeStream()));
+  auto status = hipStreamQuery(stream_);
   if (status != hipSuccess) {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::EP_FAIL);
   }
@@ -1216,14 +1227,13 @@ Status MIGraphXExecutionProvider::OnRunStart()
 }
 
 Status MIGraphXExecutionProvider::OnRunEnd(bool) {
-  auto status = hipStreamQuery(static_cast<hipStream_t>(GetComputeStream()));
+  auto status = hipStreamQuery(stream_);
 
   if (status != hipSuccess) {
-    HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
+    HIP_CALL_THROW(hipStreamSynchronize(stream_));
   }
   return Status::OK();
 }
 
 #endif
-
 }  // namespace onnxruntime

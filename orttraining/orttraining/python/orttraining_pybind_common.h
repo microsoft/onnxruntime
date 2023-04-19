@@ -15,24 +15,23 @@ namespace py = pybind11;
 
 using namespace onnxruntime::logging;
 
-using ExecutionProviderMap = std::unordered_map<std::string, std::shared_ptr<IExecutionProvider> >;
-using ExecutionProviderLibInfoMap = std::unordered_map<std::string, std::pair<std::string, ProviderOptions> > ;
+using ExecutionProviderMap = std::unordered_map<std::string, std::shared_ptr<IExecutionProvider>>;
+using ExecutionProviderLibInfoMap = std::unordered_map<std::string, std::pair<std::string, ProviderOptions>>;
 
-
-class ORTTrainingPythonEnv{
-public:
+class ORTTrainingPythonEnv {
+ public:
   ORTTrainingPythonEnv();
 
   Environment& GetORTEnv();
 
   std::shared_ptr<IExecutionProvider> GetExecutionProviderInstance(const std::string& provider_type,
-                                                                 size_t hash);
+                                                                   size_t hash);
 
   void AddExecutionProvider(const std::string& provider_type,
                             size_t hash,
                             std::unique_ptr<IExecutionProvider> execution_provider);
 
-  void RegisterExtExecutionProviderInfo(const std::string& provider_type, 
+  void RegisterExtExecutionProviderInfo(const std::string& provider_type,
                                         const std::string& provider_lib_path,
                                         const ProviderOptions& default_options);
 
@@ -42,7 +41,7 @@ public:
 
   void ClearExecutionProviderInstances();
 
-private:
+ private:
   std::string GetExecutionProviderMapKey(const std::string& provider_type,
                                          size_t hash);
 
@@ -51,5 +50,5 @@ private:
   std::vector<std::string> available_training_eps_;
 };
 
-}
-}
+}  // namespace python
+}  // namespace onnxruntime

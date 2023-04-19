@@ -71,19 +71,18 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, shape);
 
-  cublasHandle_t cublas = CublasHandle();
-  cudaStream_t stream = Stream();
-  CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas, stream));
+  cublasHandle_t cublas = GetCublasHandle(context);
+  cudaStream_t stream = Stream(context);
 
   constexpr size_t element_size = sizeof(T);
 
   // TODO(tianleiwu): only calculate global index once per model instead of once per LongformerAttention node.
   // Build Global Index
-  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * sequence_length);
-  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
+  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * sequence_length, context->GetComputeStream());
+  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size, context->GetComputeStream());
 
   size_t global_scratch_bytes = GetGlobalScratchSize(sequence_length);
-  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes);
+  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes, context->GetComputeStream());
 
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(BuildGlobalIndex(
@@ -117,7 +116,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t qkv_size = batch_size * sequence_length * 3 * hidden_size * element_size;
   // Buffer for GEMM outputs of q, k, v, global_q, global_k and global_v
   // TODO(tianleiwu): compact global_q only need batch_size * window * hidden_size * element_size buffer size.
-  auto gemm_buffer = GetScratchBuffer<void>(qkv_size + qkv_size);
+  auto gemm_buffer = GetScratchBuffer<void>(qkv_size + qkv_size, context->GetComputeStream());
 
   bool use_merged_qkv_weights = (weights->Shape().NumDimensions() == 2);
 
@@ -147,7 +146,6 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         q_weight, n,
         input_data, k,
         &zero, q_data, n, device_prop));
-
     // k
     const CudaT* k_weight = q_weight + hidden_size * hidden_size;
     CudaT* k_data = q_data + batch_size * sequence_length * hidden_size;
@@ -257,35 +255,35 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                              max_num_global,
                                                              window_,
                                                              disable_compact_memory);
-  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
+  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
   ORT_RETURN_IF_ERROR(LaunchLongformerAttentionKernel(
-          device_prop,
-          cublas,
-          stream,
-          reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          reinterpret_cast<const CudaT*>(bias->Data<T>()),
-          reinterpret_cast<const CudaT*>(attention_mask->Data<T>()),
-          reinterpret_cast<const CudaT*>(global_gemm_buffer),
-          reinterpret_cast<const CudaT*>(global_bias->Data<T>()),
-          global_attention_mask->Data<int>(),
-          global_index_buffer.get(),
-          batch_global_num_buffer.get(),
-          pinned_buffer.get(),
-          workspace_buffer.get(),
-          output->MutableData<T>(),
-          batch_size,
-          sequence_length,
-          num_heads_,
-          head_size,
-          window_,
-          max_num_global,
-          element_size,
-          disable_compact_memory,
-          use_merged_qkv_weights,
-          use_half4_));
+      device_prop,
+      cublas,
+      stream,
+      reinterpret_cast<const CudaT*>(gemm_buffer.get()),
+      reinterpret_cast<const CudaT*>(bias->Data<T>()),
+      reinterpret_cast<const CudaT*>(attention_mask->Data<T>()),
+      reinterpret_cast<const CudaT*>(global_gemm_buffer),
+      reinterpret_cast<const CudaT*>(global_bias->Data<T>()),
+      global_attention_mask->Data<int>(),
+      global_index_buffer.get(),
+      batch_global_num_buffer.get(),
+      pinned_buffer.get(),
+      workspace_buffer.get(),
+      output->MutableData<T>(),
+      batch_size,
+      sequence_length,
+      num_heads_,
+      head_size,
+      window_,
+      max_num_global,
+      element_size,
+      disable_compact_memory,
+      use_merged_qkv_weights,
+      use_half4_));
 
   // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
-  this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
+  this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), context->GetComputeStream());
 
   return Status::OK();
 }

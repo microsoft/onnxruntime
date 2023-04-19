@@ -114,12 +114,12 @@ static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
 
 OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
   Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
-  
+
   static const CustomOpOne c_CustomOpOne;
   static const CustomOpTwo c_CustomOpTwo;
-  
+
   OrtStatus* result = nullptr;
-  
+
   ORT_TRY {
     Ort::CustomOpDomain domain{c_OpDomain};
     domain.Add(&c_CustomOpOne);
@@ -135,4 +135,8 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     });
   }
   return result;
+}
+
+OrtStatus* ORT_API_CALL RegisterCustomOpsAltName(OrtSessionOptions* options, const OrtApiBase* api) {
+  return RegisterCustomOps(options, api);
 }

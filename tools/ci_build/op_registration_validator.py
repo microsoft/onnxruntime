@@ -82,8 +82,16 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
             key, value = entry
             opset_from, opset_to = value
 
-            deprecated = key in deprecated_ops and opset_to == deprecated_ops[key] - 1
-            if opset_to and not deprecated:
+            allow_missing_unversioned_registration = key in deprecated_ops and opset_to == deprecated_ops[key] - 1
+
+            # special handling for ArgMin/ArgMax, which CUDA EP doesn't yet support for opset 12+
+            # TODO remove once CUDA EP supports ArgMin/ArgMax for opset 12+
+            ops_with_incomplete_support = ["kOnnxDomain:ArgMin", "kOnnxDomain:ArgMax"]
+            if key in ops_with_incomplete_support:
+                log.warn("Allowing missing unversioned registration for op with incomplete support: {}".format(key))
+                allow_missing_unversioned_registration = True
+
+            if opset_to and not allow_missing_unversioned_registration:
                 log.error("Missing unversioned registration for {}".format(key))
                 self.failed = True
 

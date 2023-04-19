@@ -5,7 +5,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 #include "test/providers/kernel_compute_test_utils.h"
 #endif
 
@@ -187,7 +187,7 @@ TEST(ExpandOpTest, Expand_scalar_int32) {
   test.Run();
 }
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 TEST(ExpandOpTest, Strided) {
 #ifdef USE_CUDA
   const char* provider = kCudaExecutionProvider;

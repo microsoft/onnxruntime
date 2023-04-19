@@ -2,5 +2,5 @@ setuptools
 wheel
 numpy
 typing_extensions
-torch==1.12
+torch==1.13.1
 parameterized

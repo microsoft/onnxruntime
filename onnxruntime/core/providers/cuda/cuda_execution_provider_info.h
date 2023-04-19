@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <functional>
 #include <limits>
 
+#include "core/common/hash_combine.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
@@ -34,6 +36,12 @@ struct CUDAExecutionProviderExternalAllocatorInfo {
   }
 };
 
+namespace cuda {
+struct TunableOpInfo {
+  bool enabled{false};
+};
+}  // namespace cuda
+
 struct CUDAExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
   size_t gpu_mem_limit{std::numeric_limits<size_t>::max()};                         // Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
@@ -48,17 +56,29 @@ struct CUDAExecutionProviderInfo {
   // arena config.
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
-  // By default use fix workspace size (32M) for Conv algo search, the final algo might not be the best.
-  // If set to true, try to use as much as possible memory for algo search.
-  bool cudnn_conv_use_max_workspace{false};
+
+  // By default, try to use as much as possible memory for algo search.
+  // If set to false, use fix workspace size (32M) for Conv algo search, the final algo might not be the best.
+  bool cudnn_conv_use_max_workspace{true};
 
   bool enable_cuda_graph{false};
 
   // By default, for Conv1D, will pad [N,C,D] to [N,C,D,1], if turn on, will pad to [N,C,1,D].
   bool cudnn_conv1d_pad_to_nc1d{false};
 
+  cuda::TunableOpInfo tunable_op{};
+
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtCUDAProviderOptionsV2& info);
 };
 }  // namespace onnxruntime
+
+template<>
+struct std::hash<::onnxruntime::cuda::TunableOpInfo> {
+  size_t operator()(const ::onnxruntime::cuda::TunableOpInfo& info) const {
+    size_t seed_and_value{0xbc9f1d34};
+    onnxruntime::HashCombine(info.enabled, seed_and_value);
+    return seed_and_value;
+  }
+};

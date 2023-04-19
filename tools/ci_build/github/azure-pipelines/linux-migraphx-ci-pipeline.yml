@@ -8,14 +8,14 @@ jobs:
   pool: 'AMD-GPU'
   timeoutInMinutes: 180
 
-  # gid of video and render group on gcr-openpai-35 and -36
+  # gid of video and render group on gcramdrr1-mi100-085 and -86
   variables:
     - name: video
       value: 44
     - name: render
       value: 109
     - name: RocmVersion
-      value: 5.2.3
+      value: 5.4
 
   steps:
   - checkout: self
@@ -24,8 +24,8 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
-      Context: tools/ci_build/github/pai
+      Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
+      Context: tools/ci_build/github/linux/docker
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
@@ -46,7 +46,7 @@ jobs:
           --workdir /onnxruntime_src \
           onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
             python tools/ci_build/build.py \
-              --config RelWithDebInfo \
+              --config Release \
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
               --mpi_home /opt/ompi \
@@ -57,10 +57,10 @@ jobs:
               --update \
               --build_dir /build \
               --build \
-              --parallel 16 \
+              --parallel 32 \
               --build_wheel \
               --skip_submodule_sync \
-              --skip_tests
+              --skip_tests --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime'
 
@@ -79,7 +79,7 @@ jobs:
           --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          --workdir /build/RelWithDebInfo \
+          --workdir /build/Release \
           onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
             /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh
       workingDirectory: $(Build.SourcesDirectory)

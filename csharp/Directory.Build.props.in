@@ -4,8 +4,9 @@
     <!-- Note: build.py puts the CMake binary directory under an additional directory named for the build
                configuration, so we want the parent directory here. -->
     <OnnxRuntimeBuildDirectory>@CMAKE_BINARY_DIR@/..</OnnxRuntimeBuildDirectory>
-    
+    <OnnxSourceDirectory>@onnx_SOURCE_DIR@</OnnxSourceDirectory>
     <OnnxRuntimeCsharpRoot>$(MSBuildThisDirectory)</OnnxRuntimeCsharpRoot>
+    <ProtocDirectory>@protobuf_BINARY_DIR@</ProtocDirectory>
     <RestorePackagesPath>$(MSBuildThisFileDirectory)\packages</RestorePackagesPath>
     <RestoreConfigFile>$(MSBuildThisFileDirectory)\NuGet.CSharp.config</RestoreConfigFile>
     <MSBuildWarningsAsMessages>NU1503</MSBuildWarningsAsMessages>

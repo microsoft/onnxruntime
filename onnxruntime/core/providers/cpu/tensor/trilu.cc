@@ -7,6 +7,7 @@
 #include "Eigen/src/Core/Map.h"
 #include "trilu.h"
 #include <functional>
+#include <core/common/safeint.h>
 
 using namespace onnxruntime::common;
 
@@ -39,12 +40,12 @@ static Status TriluImpl(const Tensor* X, Tensor* Y, int64_t k_val, bool up) {
   int64_t X_num_dims = static_cast<int64_t>(X_shape.NumDimensions());
 
   const auto* X_data = reinterpret_cast<const T*>(X->DataRaw());
-  int64_t matrix_h = static_cast<int64_t>(X_shape[X_num_dims - 2]);
-  int64_t matrix_w = static_cast<int64_t>(X_shape[X_num_dims - 1]);
+  int64_t matrix_h = static_cast<int64_t>(X_shape[SafeInt<size_t>(X_num_dims) - 2]);
+  int64_t matrix_w = static_cast<int64_t>(X_shape[SafeInt<size_t>(X_num_dims) - 1]);
 
   int64_t batch_size = 1;
   for (int64_t i = 0; i < X_num_dims - 2; ++i) {
-    batch_size *= X_shape[i];
+    batch_size *= X_shape[onnxruntime::narrow<size_t>(i)];
   }
 
   int64_t num_matrix_elems = matrix_h * matrix_w;
@@ -53,8 +54,8 @@ static Status TriluImpl(const Tensor* X, Tensor* Y, int64_t k_val, bool up) {
     auto X_batch_data = X_data + (b * num_matrix_elems);
     auto Y_batch_data = Y_data + (b * num_matrix_elems);
 
-    auto input_mat = ConstEigenMatrixMapRowMajor<T>(X_batch_data, matrix_h, matrix_w);
-    auto output_mat = EigenMatrixMapRowMajor<T>(Y_batch_data, matrix_h, matrix_w);
+    auto input_mat = ConstEigenMatrixMapRowMajor<T>(X_batch_data, onnxruntime::narrow<std::ptrdiff_t>(matrix_h), onnxruntime::narrow<std::ptrdiff_t>(matrix_w));
+    auto output_mat = EigenMatrixMapRowMajor<T>(Y_batch_data, onnxruntime::narrow<std::ptrdiff_t>(matrix_h), onnxruntime::narrow<std::ptrdiff_t>(matrix_w));
 
     if (X_batch_data != Y_batch_data) {
       output_mat = input_mat;
@@ -64,14 +65,14 @@ static Status TriluImpl(const Tensor* X, Tensor* Y, int64_t k_val, bool up) {
       int64_t start_i = k_val > 0 ? 0 : 1 - k_val;
       for (int64_t i = start_i; i < matrix_h; i++) {
         for (int64_t j = 0; j < i + k_val && j < matrix_w; j++) {
-          output_mat(i, j) = 0;
+          output_mat(onnxruntime::narrow<std::ptrdiff_t>(i), onnxruntime::narrow<std::ptrdiff_t>(j)) = 0;
         }
       }
     } else {
       int64_t end_i = std::min(matrix_h, matrix_w - k_val);
       for (int64_t i = 0; i < end_i; i++) {
         for (int64_t j = std::max(static_cast<int64_t>(0), i + k_val + 1); j < matrix_w; j++) {
-          output_mat(i, j) = 0;
+          output_mat(onnxruntime::narrow<std::ptrdiff_t>(i), onnxruntime::narrow<std::ptrdiff_t>(j)) = 0;
         }
       }
     }

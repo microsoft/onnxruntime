@@ -27,11 +27,12 @@ size_t GetAttentionWorkspaceSize(
     size_t sequence_length,
     size_t kv_sequence_length,
     size_t total_sequence_length,
-    void* fused_runner);
+    void* fused_runner,
+    bool use_memory_efficient_attention = false);
 
 template <typename T>
 struct AttentionData {
-  const T* gemm_buffer;
+  T* gemm_buffer;
   const T* bias;
 
   const T* query;
@@ -40,21 +41,25 @@ struct AttentionData {
   const int* mask_index;
   gsl::span<const int64_t> mask_index_dims;
   const T* past;
-  const T* extra_add_qk;
+  const T* relative_position_bias;
 
   T* workspace;
   T* output;
   T* present;
+
+  void* fused_runner;
+  const void* fused_cross_attention_kernel;
+
+  bool use_memory_efficient_attention;
 };
 
 template <typename T>
 Status QkvToContext(
-    const cudaDeviceProp& prop,
+    const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
-    AttentionData<T>& data,
-    void* fused_runner);
+    AttentionData<T>& data);
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
@@ -70,6 +75,7 @@ Status LaunchDecoderAttentionKernel(
     const bool use_past,              // Whether use cache or not
     const bool has_layer_state,       // Whether output cache or not
     const bool has_key_padding_mask,  // Whether use key_padding_mask or not
+    const float mask_filter_value,    // Mask filter value
     const void* gemm_query_buffer,    // Query buffer
     const void* gemm_kv_buffer,       // Key and value buffer
     const bool* key_padding_mask,     // Key padding mask
@@ -94,11 +100,13 @@ Status LaunchTransCtx(cudaStream_t stream,
 // BxSxMxNxH or SxBxMxNxH (reversed_bs is true) => MxBxNxSxH
 Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
+                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output,
+                      int total_matrix_count = -1);
 
 Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
+                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output,
+                      int total_matrix_count = -1);
 
 Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const int all_sequence_length,
@@ -145,12 +153,6 @@ Status LaunchConcatPastToPresent(cudaStream_t stream,
                                  const half* past,
                                  const half* k_v,
                                  half* present);
-
-void LaunchTrtSequenceOffset(int* trt_mha_padding_offset,
-                             const int* mask_index,
-                             const int batch_size,
-                             cudaStream_t stream);
-
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

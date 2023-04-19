@@ -27,25 +27,8 @@ const std::string log_tag = "[OpenVINO-EP] ";
 bool IsDebugEnabled();
 #endif
 
-//Internal diagnostic function. 
+// Internal diagnostic function.
 bool IsCILogEnabled();
-
-bool UseCompiledNetwork();
-
-std::string GetCurrentWorkingDir();
-
-bool IsDirExists(const std::string& pathname);
-
-void CreateDirectory(const std::string& ov_compiled_blobs_dir);
-
-void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
-               std::shared_ptr<InferenceEngine::CNNNetwork> network,
-               std::unordered_map<std::string, int> output_names,
-               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
-               std::string device);
-
-std::shared_ptr<InferenceEngine::CNNNetwork>
-CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
@@ -69,7 +52,6 @@ GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names);
 
-#if defined (OV_API_20)
 void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::KernelContext& context,
                    const SubGraphContext& subgraph_context);
@@ -78,24 +60,11 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
                     size_t batch_slice_idx);
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context,
+              std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName);
-#endif
-
-void printPerformanceCounts(const std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& performanceMap,
-                            std::ostream& stream, std::string deviceName);
-
-std::vector<std::pair<std::string, InferenceEngine::InferenceEngineProfileInfo>>
-perfCountersSorted(std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> perfMap);
-
-void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx,
-                   std::string input_name, Ort::KernelContext& context,
-                   InferenceEngine::Precision precision, const SubGraphContext& subgraph_context);
-
-void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, Ort::UnownedValue& output_tensor,
-                    InferenceEngine::Precision precision, size_t batch_slice_idx);
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
 

@@ -4,8 +4,9 @@
 #pragma once
 
 #include "core/common/common.h"
-#include <unordered_map>
+
 #include <string>
+#include <unordered_map>
 
 namespace onnxruntime {
 namespace profiling {
@@ -19,7 +20,7 @@ enum EventCategory {
 };
 
 // Event descriptions for the above session events.
-static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
+static constexpr const char* event_category_names_[EVENT_CATEGORY_MAX] = {
     "Session",
     "Node",
     "Kernel",
@@ -59,7 +60,7 @@ struct EventRecord {
         args(event_args) {}
 
   EventRecord(const EventRecord& other) = default;
-  EventRecord(EventRecord&& other) = default;
+  EventRecord(EventRecord&& other) noexcept = default;
   EventRecord& operator=(const EventRecord& other) = default;
   EventRecord& operator=(EventRecord&& other) = default;
 

@@ -63,20 +63,20 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
     auto x_data = reinterpret_cast<const typename ToCudaType<T>::MappedType*>(x->Data<T>());
 
     const int number_of_blocks = NonZeroCalcBlockCount(x_size);
-    auto prefix_buffer = GetScratchBuffer<int>(number_of_blocks);
+    auto prefix_buffer = GetScratchBuffer<int>(number_of_blocks, context->GetComputeStream());
     int* prefix_counts = prefix_buffer.get();
-    CUDA_RETURN_IF_ERROR(NonZeroCountEachBlock(Stream(), x_data, x_size, prefix_counts));
+    CUDA_RETURN_IF_ERROR(NonZeroCountEachBlock(Stream(context), x_data, x_size, prefix_counts));
 
     size_t temp_storage_bytes = 0;
-    CUDA_RETURN_IF_ERROR(NonZeroCalcPrefixSumTempStorageBytes(Stream(), prefix_counts, number_of_blocks, temp_storage_bytes));
-    auto temp_buffer = GetScratchBuffer<uint8_t>(temp_storage_bytes);
+    CUDA_RETURN_IF_ERROR(NonZeroCalcPrefixSumTempStorageBytes(Stream(context), prefix_counts, number_of_blocks, temp_storage_bytes));
+    auto temp_buffer = GetScratchBuffer<uint8_t>(temp_storage_bytes, context->GetComputeStream());
     auto d_temp_storage = temp_buffer.get();
-    CUDA_RETURN_IF_ERROR(NonZeroInclusivePrefixSum(Stream(), d_temp_storage, temp_storage_bytes, prefix_counts, number_of_blocks));
+    CUDA_RETURN_IF_ERROR(NonZeroInclusivePrefixSum(Stream(context), d_temp_storage, temp_storage_bytes, prefix_counts, number_of_blocks));
 
     // cudaMemcpyAsync from device memory to pageable host memory will return only once the copy has completed.
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
         &nonzero_elements, prefix_counts + number_of_blocks - 1,
-        sizeof(int), cudaMemcpyDeviceToHost, Stream()));
+        sizeof(int), cudaMemcpyDeviceToHost, Stream(context)));
 
     TArray<fast_divmod> fdm_x_strides(x_rank);
     TensorPitches x_strides(x_dims);
@@ -87,7 +87,7 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
     auto* output_tensor = context->Output(0, {x_rank, nonzero_elements});
     ORT_ENFORCE(output_tensor, "failed to get first output!");
     CUDA_RETURN_IF_ERROR(NonZeroOutputPositions(
-        Stream(), x_data, x_size, x_rank, fdm_x_strides,
+        Stream(context), x_data, x_size, x_rank, fdm_x_strides,
         prefix_counts, nonzero_elements, output_tensor->MutableData<int64_t>()));
   } else {
     context->Output(0, {x_rank, nonzero_elements});

@@ -58,6 +58,7 @@ struct RunConfig {
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
   std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_name_overrides;
   std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_denotation_overrides;
+  std::string intra_op_thread_affinities;
 };
 
 struct PerformanceTestConfig {

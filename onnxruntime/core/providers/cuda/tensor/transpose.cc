@@ -78,8 +78,14 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
 }
 
 Status Transpose::DoTranspose(const Transpose& transpose_kernel,
+                              onnxruntime::Stream* ort_stream,
                               const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
-  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), transpose_kernel.Stream(), transpose_kernel.CublasHandle(), permutations, input, output);
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
+  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(),
+                                cuda_stream,
+                                CudaKernel::GetCublasHandle(static_cast<CudaStream*>(ort_stream)),
+                                permutations,
+                                input, output);
 }
 
 Status Transpose::DoTranspose(const cudaDeviceProp& prop,
@@ -275,7 +281,7 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor* Y = ctx->Output(0, output_shape);
 
-  return DoTranspose(this->GetDeviceProp(), this->Stream(), this->CublasHandle(), *p_perm, X, *Y);
+  return DoTranspose(this->GetDeviceProp(), this->Stream(ctx), this->GetCublasHandle(ctx), *p_perm, X, *Y);
 }
 
 }  // namespace cuda

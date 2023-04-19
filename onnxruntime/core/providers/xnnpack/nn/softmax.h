@@ -16,7 +16,7 @@ class Softmax final : public XnnpackKernel {
   Softmax(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
-  static bool IsSoftmaxOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
+  static bool IsOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
 
  private:
   int axis_;

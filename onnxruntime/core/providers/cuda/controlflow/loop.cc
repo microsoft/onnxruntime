@@ -97,7 +97,6 @@ Loop::Loop(const OpKernelInfo& info) : onnxruntime::Loop(info) {
               "Using Loop operator on CUDA while using a dedicated stream for copying "
               "(a stream that is different than the compute stream) is currently not supported");
   SetConcatOutputFunc(ConcatenateGpuOutput);
-  SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
 }
 
 Status Loop::Compute(OpKernelContext* ctx) const {

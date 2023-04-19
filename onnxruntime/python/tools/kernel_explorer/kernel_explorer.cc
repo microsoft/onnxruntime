@@ -8,6 +8,7 @@
 #include "python/tools/kernel_explorer/kernels/rocm/fast_gelu.h"
 #include "python/tools/kernel_explorer/kernels/rocm/gemm.h"
 #include "python/tools/kernel_explorer/kernels/rocm/skip_layer_norm.h"
+#include "python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu.h"
 
 namespace py = pybind11;
 
@@ -22,7 +23,16 @@ PYBIND11_MODULE(_kernel_explorer, m) {
   InitFastGelu(m);
   InitGemm(m);
   InitSkipLayerNorm(m);
+  InitGemmFastGelu(m);
 #endif
+
+  m.def("is_composable_kernel_available", []() {
+#ifdef USE_COMPOSABLE_KERNEL
+    return true;
+#else
+    return false;
+#endif
+  });
 }
 
 }  // namespace onnxruntime

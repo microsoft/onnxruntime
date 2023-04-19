@@ -4,19 +4,19 @@
     <OrtPackageId Condition="'$(OrtPackageId)' == ''">Microsoft.ML.OnnxRuntime</OrtPackageId>
   </PropertyGroup>
 
-  <!-- 
+  <!--
   Temporary setup until official Visual Studio 2022 release supports .net6, as the CIs require the official release.
   We will be able to build all targets with VS once that happens.
- 
+
   Until then, we need to build the pre-.net6 targets with VS and the .net6 targets with dotnet.
-  
+
   The pre-.net6 Xamarin targets are optional and only included if the machine has the required workloads.
 
   We have 3 scenarios
     1) Build pre-net6 targets with VS - SelectedTargets=PreNet6
     2) Build net6 targets - SelectedTargets=Net6
     3) Run 'Pack' target to create nuget package from combination of 1 and 2 - SelectedTargets=All
-  
+
   Default is PreNet6 so that existing projects and CI builds will do the same thing unless explicitly updated.
   -->
   <PropertyGroup>
@@ -24,18 +24,18 @@
     <BaseTargets>netstandard1.1;netstandard2.0;net5.0;netcoreapp3.1</BaseTargets>
   </PropertyGroup>
 
-  <!-- only set the Xamarin mobile targets if we're building an ORT package, 
+  <!-- only set the Xamarin mobile targets if we're building an ORT package,
        and only if the mobile workloads are installed -->
-  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR 
-                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu') AND 
-                             Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND 
+  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
+                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu') AND
+                             Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND
                              Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
     <XamarinTargets>xamarinios10;monoandroid11.0</XamarinTargets>
   </PropertyGroup>
 
   <!-- only set the .net6 targets if we're building an ORT package.
        we can add .net6 support to other packages later as needed -->
-  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR 
+  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
                              '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu')">
     <Net6Targets>net6.0;net6.0-android;net6.0-ios;net6.0-macos</Net6Targets>
   </PropertyGroup>
@@ -64,7 +64,7 @@
     <!--internal build related properties-->
     <OnnxRuntimeRoot>$(ProjectDir)..\..\..</OnnxRuntimeRoot>
     <OnnxRuntimeCsharpRoot>$(OnnxRuntimeRoot)\csharp</OnnxRuntimeCsharpRoot>
-    <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>  
+    <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>
 
     <RootNamespace>Microsoft.ML.OnnxRuntime</RootNamespace>
     <AssemblyName>Microsoft.ML.OnnxRuntime</AssemblyName>
@@ -72,11 +72,15 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <DebugType>portable</DebugType>
 
-    <!-- Training build property. With Visual Studio, change to true to enable. -->
-    <OnDeviceTraining Condition="'$(OnDeviceTraining)' == ''">false</OnDeviceTraining>
+    <!-- Controls whether C# Bindings for Training are included in the Managed Nuget Package.
+    Bindings for training are included by default. If user tries to call training apis when the native package installed
+    on their device is not built for training, an exception will be thrown with the following message -
+    "Training is disabled in the current build. Please build onnxruntime from source with the build flags
+    enable_training_apis. "-->
+   <EnableTrainingApis Condition="'$(EnableTrainingApis)' == ''">true</EnableTrainingApis>
 
     <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
-    <!--- The parameter OrtPackageId is only used for some conditional logic below -->    
+    <!--- The parameter OrtPackageId is only used for some conditional logic below -->
     <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
     <Authors>Microsoft</Authors>
     <PackageVersion Condition=" '$(PackageVersion)' == '' And '$(Configuration)' == 'Debug' ">1.0.0</PackageVersion>
@@ -105,27 +109,35 @@
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
 
-    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
-    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
+    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild>
+    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild>
     <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild>
 
-    <!-- $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) gives better results than 
+    <!-- $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) gives better results than
          $(TargetPlatformIdentifier). See https://github.com/dotnet/msbuild/issues/7359
          Note there are slight differences in casing (e.g. macos vs macOS), so if we ever
          change to use $(TargetPlatformIdentifier) we need to adjust for that.
-         
+
     -->
-    <IsXamarinTarget Condition="$(TargetFramework.StartsWith('xamarinios')) OR 
+    <IsXamarinTarget Condition="$(TargetFramework.StartsWith('xamarinios')) OR
                                 $(TargetFramework.StartsWith('monoandroid'))">true</IsXamarinTarget>
-    <IsAndroidTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' OR 
+    <IsAndroidTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' OR
                                 $(TargetFramework.StartsWith('monoandroid'))">true</IsAndroidTarget>
-    <IsIOSTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' OR 
+    <IsIOSTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' OR
                             $(TargetFramework.StartsWith('xamarinios'))">true</IsIOSTarget>
     <IsMacTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos' OR
                             $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">true</IsMacTarget>
   </PropertyGroup>
 
-  <!-- 
+  <!-- Enable training APIs for the build. The native package must be
+       a training build with build flags 'enable_training' and
+       'enable_training_apis' set.
+  -->
+  <PropertyGroup Condition="'$(EnableTrainingApis)'=='true'">
+    <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_APIS__</OrtConstants>
+  </PropertyGroup>
+
+  <!--
     Properties that depend on the system we're building on.
   -->
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
@@ -146,7 +158,7 @@
       <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
   </PropertyGroup>
 
-  <!-- 
+  <!--
     Properties that depend on the target framework.
   -->
   <PropertyGroup Condition="'$(IsIOSTarget)'=='true' OR '$(IsAndroidTarget)'=='true'">
@@ -177,14 +189,6 @@
 
   <PropertyGroup Condition="'$(IsXamarinTarget)'=='true'">
     <OrtConstants>$(OrtConstants);__XAMARIN__</OrtConstants>
-  </PropertyGroup>
-
-  <!-- Enable training APIs for the build. The native package must be
-       a training build with build flags 'enable_training' and
-       'enable_training_on_device' set.
-  -->
-  <PropertyGroup Condition="'$(OnDeviceTraining)' == 'true'">
-    <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_ON_DEVICE__</OrtConstants>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -287,7 +291,7 @@
     <None Include="targets\netstandard\$(PackageId).targets"
           PackagePath="build\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets"
           Pack="true"
-          Visible="false" 
+          Visible="false"
     />
 
     <!-- Some tools to be packaged in nightly build only, should not be released -->
@@ -346,5 +350,5 @@
       DestinationFolder="$(NativeBuildOutputDir)"
     />
   </Target>
-  
+
 </Project>

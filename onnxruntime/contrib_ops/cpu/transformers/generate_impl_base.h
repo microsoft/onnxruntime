@@ -33,12 +33,46 @@ gsl::span<T> AllocateBuffer(AllocatorPtr allocator,
   return span;
 }
 
+template <typename ElementType>
+inline void AllocateTempBufferForGetGreedySearchTopOne(
+    int32_t batch_size,
+    AllocatorPtr allocator,
+    BufferUniquePtr& buffer,
+    gsl::span<ElementType>& stage_1_scores,  // shape (batch_size, parts_of_vocab)
+    gsl::span<int32_t>& stage_1_tokens,      // shape (batch_size, parts_of_vocab)
+    gsl::span<ElementType>& output_scores,   // shape (batch_size)
+    gsl::span<int32_t>& output_tokens        // shape (batch_size)
+) {
+  constexpr size_t kMaxPartsPerVocab = 128;
+  const size_t stage_1_element_size = kMaxPartsPerVocab * batch_size;
+  const size_t output_element_size = batch_size;
+
+  // Note: use float to allocate buffer for temporary value buffer to avoid unalignment
+  void* topk_data = allocator->Alloc((stage_1_element_size + output_element_size) * (sizeof(float) + sizeof(int32_t)));
+  BufferUniquePtr temp_buffer(topk_data, BufferDeleter(allocator));
+  buffer = std::move(temp_buffer);
+
+  ElementType* stage_1_scores_data = reinterpret_cast<ElementType*>(topk_data);
+  stage_1_scores = gsl::make_span<ElementType>(stage_1_scores_data, stage_1_element_size);
+
+  int32_t* stage_1_token_data = reinterpret_cast<int32_t*>(
+      reinterpret_cast<float*>(stage_1_scores_data) + stage_1_element_size);
+  stage_1_tokens = gsl::make_span<int32_t>(stage_1_token_data, stage_1_element_size);
+
+  ElementType* output_score_data = reinterpret_cast<ElementType*>(stage_1_token_data + stage_1_element_size);
+  output_scores = gsl::make_span<ElementType>(output_score_data, output_element_size);
+
+  int32_t* output_token_data = reinterpret_cast<int32_t*>(
+      reinterpret_cast<float*>(output_score_data) + output_element_size);
+  output_tokens = gsl::make_span<int32_t>(output_token_data, output_element_size);
+}
+
 class GenerateBase {
  public:
   GenerateBase(OpKernelContextInternal& context,
                const SessionState& decoder_session_state,
                concurrency::ThreadPool* thread_pool,
-               void* cuda_stream,
+               Stream* ort_stream,
                IConsoleDumper* cuda_dumper,
                const GenerationDeviceHelper::TopkFunc& topk_func,
                const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func)
@@ -46,7 +80,7 @@ class GenerateBase {
         decoder_session_state_(decoder_session_state),
         thread_pool_(thread_pool),
         implicit_inputs_(context_.GetImplicitInputs()),
-        cuda_stream_(cuda_stream),
+        ort_stream_(ort_stream),
         cuda_dumper_(cuda_dumper),
         cpu_allocator_(nullptr),
         temp_space_allocator_(nullptr),
@@ -67,19 +101,19 @@ class GenerateBase {
 
   Status CheckScalarInput(const std::string& name, int index, bool required) const {
     auto* scalar_tensor = context_.Input<Tensor>(index);
-      if (scalar_tensor) {
-        if (!scalar_tensor->Shape().IsScalar()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME,
-                                 FAIL,
-                                 "Node input ", name, " should be a scalar. Got shape of ",
-                                 scalar_tensor->Shape());
-        }
-      } else if (required) {
+    if (scalar_tensor) {
+      if (!scalar_tensor->Shape().IsScalar()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME,
                                FAIL,
-                               "Node input ", name, " is required");
+                               "Node input ", name, " should be a scalar. Got shape of ",
+                               scalar_tensor->Shape());
       }
-      return Status::OK();
+    } else if (required) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME,
+                             FAIL,
+                             "Node input ", name, " is required");
+    }
+    return Status::OK();
   }
 
   template <typename ParametersT>
@@ -87,7 +121,8 @@ class GenerateBase {
                          const Tensor* input_ids,
                          const Tensor* vocab_mask,
                          const Tensor* prefix_vocab_mask,
-                         const Tensor* attention_mask) const {
+                         const Tensor* attention_mask,
+                         const Tensor* presence_mask) const {
     const auto& dims = input_ids->Shape().GetDims();
     if (dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -149,12 +184,33 @@ class GenerateBase {
       }
     }
 
+    if (presence_mask != nullptr) {
+      const auto& dims_presence = presence_mask->Shape().GetDims();
+      if (dims_presence.size() != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'presence_mask' is expected to have 2 dimensions, got ", dims_presence.size());
+      }
+
+      // presence_mask first dimension should be same as the first dimension of input_ids
+      if (static_cast<int>(dims_presence[0]) != static_cast<int>(dims[0])) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "input_ids and presence_mask must have the same batch_size");
+      }
+
+      if (static_cast<int>(dims_presence[1]) != parameters->vocab_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'presence_mask' shape[1] shall be vocab_size, got ", dims_presence[1]);
+      }
+
+      // store prefix vocab mask in parameters.
+      parameters->presence_mask = presence_mask->DataAsSpan<int32_t>();
+    }
+
     return Status::OK();
   }
 
-
  protected:
-  bool IsCuda() const { return cuda_stream_ != nullptr; }
+  bool IsCuda() const { return ort_stream_ != nullptr; }
 
   const IConsoleDumper* GetConsoleDumper() const { return IsCuda() ? cuda_dumper_ : &(cpu_dumper_); }
 
@@ -166,7 +222,7 @@ class GenerateBase {
 
   const std::vector<const OrtValue*>& implicit_inputs_;
 
-  void* cuda_stream_;
+  Stream* ort_stream_;
 
   IConsoleDumper* cuda_dumper_;
   CpuTensorConsoleDumper cpu_dumper_;

@@ -32,7 +32,8 @@ class SafeIntExceptionHandler<onnxruntime::OnnxRuntimeException> {
 #pragma GCC diagnostic ignored "-Wunused-but-set-parameter"
 #endif
 #endif
-#include "safeint/SafeInt.hpp"
+#include "SafeInt.hpp"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+

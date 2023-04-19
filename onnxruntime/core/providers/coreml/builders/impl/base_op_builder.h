@@ -19,12 +19,12 @@ class BaseOpBuilder : public IOpBuilder {
 #ifdef __APPLE__
  public:
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
-  Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
-                           const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
+  [[nodiscard]] Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
+                           const logging::Logger& logger) const override final;
 
  protected:
-  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                       const logging::Logger& logger) const ORT_MUST_USE_RESULT = 0;
+  [[nodiscard]] virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                                       const logging::Logger& logger) const = 0;
 
   static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer>
   CreateNNLayer(ModelBuilder& model_builder, const Node& node);
@@ -46,7 +46,7 @@ class BaseOpBuilder : public IOpBuilder {
   virtual bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const;
 
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 17; }
+  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 18; }
 
  private:
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;

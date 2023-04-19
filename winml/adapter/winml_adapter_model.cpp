@@ -816,8 +816,6 @@ ORT_API_STATUS_IMPL(winmla::CreateThreadPool,
   params.allow_spinning = options->allow_spinning;
   params.dynamic_block_base_ = options->dynamic_block_base_;
   params.stack_size = options->stack_size;
-  params.affinity_vec = options->affinity_vec;
-  params.affinity_vec_len = options->affinity_vec_len;
   params.name = options->name;
   params.set_denormal_as_zero = options->set_denormal_as_zero;
 

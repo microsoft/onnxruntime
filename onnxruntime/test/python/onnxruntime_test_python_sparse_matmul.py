@@ -36,7 +36,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         """
         # The below values are a part of the model
         dense_shape = [3, 3]
-        values = np.array([1.764052391052246, 0.40015721321105957, 0.978738009929657], np.float)
+        values = np.array([1.764052391052246, 0.40015721321105957, 0.978738009929657], np.float32)
         indices = np.array([2, 3, 5], np.int64)
         sess = onnxrt.InferenceSession(
             get_name("sparse_initializer_as_output.onnx"),
@@ -404,7 +404,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
                 5862,
                 6165,
             ],
-            np.float,
+            np.float32,
         ).reshape(common_shape)
 
         sess = onnxrt.InferenceSession(

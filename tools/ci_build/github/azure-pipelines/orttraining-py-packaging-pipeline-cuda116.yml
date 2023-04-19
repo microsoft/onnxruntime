@@ -11,8 +11,8 @@ resources:
 stages:
 - template: templates/py-packaging-training-cuda-stage.yml
   parameters:
-    build_py_parameters: --enable_training --update --build --enable_training_on_device
-    torch_version: '1.11.0'
+    build_py_parameters: --enable_training --update --build
+    torch_version: '1.13.1'
     opset_version: '15'
     cuda_version: '11.6'
     gcc_version: 11
@@ -24,8 +24,8 @@ stages:
 
 - template: templates/py-packaging-training-cuda-stage.yml
   parameters:
-    build_py_parameters: --enable_training --update --build --enable_training_on_device
-    torch_version: '1.11.0'
+    build_py_parameters: --enable_training --update --build
+    torch_version: '1.13.1'
     opset_version: '15'
     cuda_version: '11.6'
     gcc_version: 11
@@ -37,7 +37,7 @@ stages:
 
 - template: templates/py-packaging-stage.yml
   parameters:
-    build_py_parameters: --enable_training --enable_training_on_device
+    build_py_parameters: --enable_training
     enable_linux_gpu: false
     enable_ubuntu_cpu: false
     enable_linux_cpu: false

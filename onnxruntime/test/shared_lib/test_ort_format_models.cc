@@ -76,9 +76,9 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   // will now use the same stream too
   cudaStream_t compute_stream = nullptr;
   cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
-  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
+  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
 #else
-  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
@@ -124,7 +124,7 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
 TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
 
-  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 

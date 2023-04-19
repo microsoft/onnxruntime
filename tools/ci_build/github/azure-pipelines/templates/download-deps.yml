@@ -1,0 +1,28 @@
+
+steps:
+# You can the information of the System CollectionIds by visiting https://app.vssps.visualstudio.com/_apis/accounts?memberId=me,
+# Then search the uuid below in the result.
+
+# The public ADO project
+- ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+  - task: DownloadPackage@1
+    displayName: 'Download ONNX Runtime Build Time Deps'
+    inputs:
+      packageType: upack
+      feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+      definition: '517c4f6f-5437-4392-a70d-4f15ec5be2f0'
+      version: 1.0.29
+      downloadPath: $(Build.BinariesDirectory)/deps
+
+# The private ADO project
+- ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+  - task: DownloadPackage@1
+    displayName: 'Download ONNX Runtime Build Time Deps'
+    inputs:
+      packageType: upack
+      feed: '/4c7631f5-24c0-4307-8822-1aa8f180c325'
+      definition: 'fd9dd5ad-b73e-4678-890e-edcf680dbc1a'
+      version: 1.0.29
+      downloadPath: $(Build.BinariesDirectory)/deps
+
+# You can add more ADO accounts at here.
