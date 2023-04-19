@@ -599,12 +599,14 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
      * - timing cache cache serialization/de-serialization
      * - TODO: benefir of usign a timing cache no matter if dynamic / static input
      */
-    uint64_t compilation_without_cache_ms, compilation_with_cache_ms;
+
+    // Temporarily we disable comparing the engine build time until we find the model that can benefit from timing cache to get engine build time reduced.
+    //uint64_t compilation_without_cache_ms, compilation_with_cache_ms;
 
     // First session is created with TRT EP with timing cache enabled
     params.trt_timing_cache_enable = 1;
     {
-      auto start = chrono::steady_clock::now();
+      //auto start = chrono::steady_clock::now();
       std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
       EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
       auto status = session_object.Load(model_name);
@@ -613,11 +615,11 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       ASSERT_TRUE(status.IsOK());
 
       status = session_object.Run(run_options, feeds, output_names, &fetches);
-      auto end = chrono::steady_clock::now();
+      //auto end = chrono::steady_clock::now();
       ASSERT_TRUE(status.IsOK());
       VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
       ASSERT_TRUE(IsCacheExistedByType("./", ".timing"));
-      compilation_with_cache_ms = chrono::duration_cast<chrono::microseconds>(end - start).count();
+      //compilation_with_cache_ms = chrono::duration_cast<chrono::microseconds>(end - start).count();
     }
 
     // Second session is created with TRT EP without timing cache enabled
@@ -625,7 +627,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     {
       InferenceSession session_object_new{so, GetEnvironment()};
       {
-        auto start = chrono::steady_clock::now();
+        //auto start = chrono::steady_clock::now();
         std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
         EXPECT_TRUE(session_object_new.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
         auto status = session_object_new.Load(model_name);
@@ -635,12 +637,12 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
         status = session_object_new.Run(run_options, feeds, output_names, &fetches);
         // TODO narrow down actual compilation section
-        auto end = chrono::steady_clock::now();
+        //auto end = chrono::steady_clock::now();
 
         ASSERT_TRUE(status.IsOK());
         VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
         ASSERT_TRUE(IsCacheExistedByType("./", ".timing"));
-        compilation_without_cache_ms = chrono::duration_cast<chrono::microseconds>(end - start).count();
+        //compilation_without_cache_ms = chrono::duration_cast<chrono::microseconds>(end - start).count();
       }
     }
 
