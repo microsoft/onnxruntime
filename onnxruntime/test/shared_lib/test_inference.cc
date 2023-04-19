@@ -18,6 +18,7 @@
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_lite_custom_op.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/util/thread_utils.h"
@@ -2802,3 +2803,270 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
   ASSERT_TRUE(output_dims == expected_output_dims);
 }
 #endif
+
+/////////////////////////// test lite custom ops ///////////////////////////
+
+void Fuse(
+    OrtKernelContext*,
+    const Ort::Custom::Span<float>& vector_1,
+    const Ort::Custom::Span<float>& vector_2,
+    int32_t alpha,
+    Ort::Custom::TensorT<float>& vector_output) {
+  auto len_output = std::min(vector_1.size(), vector_2.size());
+  float* floats_out = static_cast<float*>(vector_output.Allocate({(int64_t)len_output}));
+  for (size_t i = 0; i < len_output; ++i) {
+    floats_out[i] = (vector_1[i] + vector_2[i]) * alpha;
+  }
+}
+
+void Select(const Ort::Custom::Span<int32_t>& indices_in,
+            Ort::Custom::TensorT<int32_t>& indices_out) {
+  std::vector<int32_t> selected_indices;
+  for (size_t i = 0; i < indices_in.size(); ++i) {
+    if (indices_in[i] % 2 == 0) {
+      selected_indices.push_back(indices_in[i]);
+    }
+  }
+
+  int32_t* int_out = static_cast<int32_t*>(indices_out.Allocate({static_cast<int64_t>(selected_indices.size())}));
+  for (size_t j = 0; j < selected_indices.size(); ++j) {
+    int_out[j] = selected_indices[j];
+  }
+}
+
+void Filter(const Ort::Custom::TensorT<float>& floats_in,
+            Ort::Custom::TensorT<float>& floats_out) {
+  const float* in = floats_in.Data();
+  auto in_len = floats_in.NumberOfElement();
+
+  std::vector<float> filter_floats;
+  for (int64_t i = 0; i < in_len; ++i) {
+    if (in[i] > 1.f) {
+      filter_floats.push_back(in[i]);
+    }
+  }
+
+  float* out = static_cast<float*>(floats_out.Allocate({static_cast<int64_t>(filter_floats.size())}));
+  for (size_t j = 0; j < filter_floats.size(); ++j) {
+    out[j] = filter_floats[j];
+  }
+}
+
+TEST(LiteCustomOpTest, CustomFunc) {
+  Ort::CustomOpDomain v2_domain{"v2"};
+  std::unique_ptr<OrtCustomOp> fus_op_ptr{Ort::Custom::CreateCustomOp("Fuse", "CPUExecutionProvider", Fuse)};
+  std::unique_ptr<OrtCustomOp> sel_op_ptr{Ort::Custom::CreateCustomOp("Select", "CPUExecutionProvider", Select)};
+  std::unique_ptr<OrtCustomOp> fil_op_ptr{Ort::Custom::CreateCustomOp("Filter", "CPUExecutionProvider", Filter)};
+
+  v2_domain.Add(fus_op_ptr.get());
+  v2_domain.Add(sel_op_ptr.get());
+  v2_domain.Add(fil_op_ptr.get());
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.Add(v2_domain);
+  session_options.SetLogSeverityLevel(0);
+
+  Ort::Session session{*ort_env, TSTR("testdata/fuse_select_filter.onnx"), session_options};
+
+  const char* input_names[] = {"vector_1", "vector_2", "alpha", "indices"};
+  const char* output_names[] = {"vector_filtered"};
+
+  float vector_1_value[] = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f};
+  int64_t vector_1_dim[] = {10};
+
+  float vector_2_value[] = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f};
+  int64_t vector_2_dim[] = {6};
+
+  int32_t alpha_value[] = {2};
+  int64_t alpha_dim[] = {1};
+
+  int32_t indices_value[] = {0, 1, 2, 3, 4, 5};
+  int64_t indices_dim[] = {6};
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[] = {
+      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, 10, vector_1_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, 6, vector_2_dim, 1),
+      Ort::Value::CreateTensor<int32_t>(memory_info, alpha_value, 1, alpha_dim, 1),
+      Ort::Value::CreateTensor<int32_t>(memory_info, indices_value, 6, indices_dim, 1)};
+
+  Ort::RunOptions run_optoins;
+  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 4, output_names, 1);
+  const auto& vector_filterred = output_tensors.at(0);
+  auto type_shape_info = vector_filterred.GetTensorTypeAndShapeInfo();
+  const float* floats_output = static_cast<const float*>(vector_filterred.GetTensorRawData());
+  ASSERT_TRUE(floats_output[0] == 8);
+  ASSERT_TRUE(floats_output[1] == 16);
+}
+
+struct Merge {
+  Merge(const OrtApi* ort_api, const OrtKernelInfo* info) {
+    int64_t reverse;
+    ORT_ENFORCE(ort_api->KernelInfoGetAttribute_int64(info, "reverse", &reverse) == nullptr);
+    reverse_ = reverse != 0;
+  }
+  void Compute(const Ort::Custom::TensorT<std::string_view>& strings_in,
+               std::string_view string_in,
+               Ort::Custom::TensorT<std::string>* strings_out) {
+    std::vector<std::string> string_pool;
+    for (const auto& s : strings_in.Data()) {
+      string_pool.emplace_back(s.data(), s.size());
+    }
+    string_pool.emplace_back(string_in.data(), string_in.size());
+    if (reverse_) {
+      for (auto& str : string_pool) {
+        std::reverse(str.begin(), str.end());
+      }
+      std::reverse(string_pool.begin(), string_pool.end());
+    }
+    strings_out->SetStringOutput(string_pool, {static_cast<int64_t>(string_pool.size())});
+  }
+  bool reverse_ = false;
+};
+
+TEST(LiteCustomOpTest, CustomStruct) {
+  const auto& ortApi = Ort::GetApi();
+
+  Ort::CustomOpDomain v2_domain{"v2"};
+  std::unique_ptr<OrtCustomOp> mrg_op_ptr{Ort::Custom::CreateCustomOp<Merge>("Merge", "CPUExecutionProvider")};
+  v2_domain.Add(mrg_op_ptr.get());
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.Add(v2_domain);
+  session_options.SetLogSeverityLevel(0);
+
+  Ort::Session session{*ort_env, TSTR("testdata/merge.onnx"), session_options};
+
+  const char* input_names[] = {"str_in_1", "str_in_2"};
+  const char* output_names[] = {"str_out"};
+
+  OrtAllocator* allocator = nullptr;
+  ortApi.GetAllocatorWithDefaultOptions(&allocator);
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  int64_t str_1_dims[] = {2};
+  int64_t str_2_dims[] = {1};
+
+  Ort::Value input_tensors[] = {Ort::Value::CreateTensor(allocator, str_1_dims, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING),
+                                Ort::Value::CreateTensor(allocator, str_2_dims, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)};
+
+  const char* str_1_raw[] = {"abc", "de"};
+  const char* str_2_raw[] = {"fg"};
+
+  input_tensors[0].FillStringTensor(str_1_raw, 2);
+  input_tensors[1].FillStringTensor(str_2_raw, 1);
+
+  Ort::RunOptions run_optoins;
+  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 2, output_names, 1);
+  const auto& str_out_tensor = output_tensors.at(0);
+  auto num_chars = str_out_tensor.GetStringTensorDataLength();
+  std::vector<char> chars(num_chars + 1, '\0');
+  std::vector<size_t> offsets(3);
+  str_out_tensor.GetStringTensorContent(static_cast<void*>(chars.data()), num_chars, offsets.data(), offsets.size());
+  ASSERT_TRUE(strncmp(chars.data(), "gfedcba", 7) == 0);
+}
+
+void Box(const Ort::Custom::TensorT<float>* float_in_1,
+         const Ort::Custom::TensorT<float>* float_in_2,
+         std::optional<const Ort::Custom::TensorT<float>*> float_in_3,
+         Ort::Custom::TensorT<float>* float_out_1,
+         std::optional<Ort::Custom::TensorT<float>*> float_out_2) {
+  auto raw_in_1 = float_in_1->Data();
+  auto raw_in_2 = float_in_2->Data();
+
+  auto l_in_1 = float_in_1->Shape()[0];
+  auto l_in_2 = float_in_2->Shape()[0];
+  auto l_out_1 = l_in_1 + l_in_2;
+
+  auto raw_out_1 = float_out_1->Allocate({l_out_1});
+
+  for (int64_t i = 0; i < l_out_1; ++i) {
+    raw_out_1[i] = i < l_in_1 ? raw_in_1[i] : raw_in_2[i - l_in_1];
+  }
+
+  if (float_in_3.has_value() && float_out_2.has_value()) {
+    auto raw_in_3 = float_in_3.value()->Data();
+    auto l_in_3 = float_in_3.value()->Shape()[0];
+    auto l_out_2 = l_in_2 + l_in_3;
+    auto raw_out_2 = float_out_2.value()->Allocate({l_out_2});
+    for (int64_t i = 0; i < l_out_2; ++i) {
+      raw_out_2[i] = i < l_in_2 ? raw_in_2[i] : raw_in_3[i - l_in_2];
+    }
+  }
+}
+
+TEST(LiteCustomOpTest, MissingOptional) {
+  Ort::CustomOpDomain v2_domain{"v2"};
+  std::unique_ptr<OrtCustomOp> box_op_ptr{Ort::Custom::CreateCustomOp("Box", "CPUExecutionProvider", Box)};
+  v2_domain.Add(box_op_ptr.get());
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.Add(v2_domain);
+  session_options.SetLogSeverityLevel(0);
+
+  Ort::Session session(*ort_env, TSTR("testdata/optional_2.onnx"), session_options);
+
+  const char* input_names[] = {"float_in_1", "float_in_2"};
+  const char* output_names[] = {"float_out_1"};
+
+  float vector_1_value[] = {0.f, 1.f, 2.f};
+  int64_t vector_1_dim[] = {3};
+
+  float vector_2_value[] = {4.f, 5.f, 6.f, 7.f};
+  int64_t vector_2_dim[] = {4};
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[] = {
+      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, vector_1_dim[0], vector_1_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, vector_2_dim[0], vector_2_dim, 1)};
+
+  Ort::RunOptions run_optoins;
+  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 2, output_names, 1);
+  ASSERT_TRUE(output_tensors.size() == 1);
+}
+
+TEST(LiteCustomOpTest, HasOptional) {
+  Ort::CustomOpDomain v2_domain{"v2"};
+  std::unique_ptr<OrtCustomOp> box_op_ptr{Ort::Custom::CreateCustomOp("Box", "CPUExecutionProvider", Box)};
+  v2_domain.Add(box_op_ptr.get());
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.Add(v2_domain);
+  session_options.SetLogSeverityLevel(0);
+
+  Ort::Session session(*ort_env, TSTR("testdata/optional_3.onnx"), session_options);
+
+  const char* input_names[] = {"float_in_1", "float_in_2", "float_in_3"};
+  const char* output_names[] = {"float_out_1", "float_out_2"};
+
+  float vector_1_value[] = {0.f, 1.f, 2.f};
+  int64_t vector_1_dim[] = {3};
+
+  float vector_2_value[] = {4.f, 5.f, 6.f, 7.f};
+  int64_t vector_2_dim[] = {4};
+
+  float vector_3_value[] = {8.f, 9.f};
+  int64_t vector_3_dim[] = {2};
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[] = {
+      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, vector_1_dim[0], vector_1_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, vector_2_dim[0], vector_2_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_3_value, vector_3_dim[0], vector_3_dim, 1),
+  };
+
+  Ort::RunOptions run_optoins;
+  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 3, output_names, 2);
+  ASSERT_TRUE(output_tensors.size() == 2);
+}
