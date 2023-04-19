@@ -371,7 +371,7 @@ auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInf
 /*
  * Apply TensorRT optimization profile shapes from provider options.
  *
- * This function handles single/multiple profiles. 
+ * This function handles single/multiple profiles.
  * (Note: An optimization profile describes a range of dimensions for each network input)
  *
  */
@@ -398,26 +398,47 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     nvinfer1::Dims dims = input->getDimensions();
     int nb_dims = dims.nbDims;
 
-    nvinfer1::Dims dims_min, dims_opt, dims_max;
-    dims_min.nbDims = nb_dims;
-    dims_max.nbDims = nb_dims;
-    dims_opt.nbDims = nb_dims;
-
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] nb_dims is " << nb_dims;
-
-    for (int j = 0; j < nb_dims; j++) {
-      dims_min.d[j] = profile_min_shapes[input_name][i][j]; 
-      dims_max.d[j] = profile_max_shapes[input_name][i][j]; 
-      dims_opt.d[j] = profile_opt_shapes[input_name][i][j]; 
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_min.d[" << j << "] is " << dims_min.d[j];
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_max.d[" << j << "] is " << dims_max.d[j];
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_opt.d[" << j << "] is " << dims_opt.d[j];
-    }
-
     auto trt_profile = trt_profiles[i];
-    trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-    trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
-    trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+
+    // Shape tensor
+    if (input->isShapeTensor()) {
+      auto shape_size = nb_dims;
+      std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] shape size of this shape tensor is " << shape_size;
+
+      for (int j = 0; j < shape_size; j++) {
+        shapes_min[j] = static_cast<int32_t>(profile_min_shapes[input_name][i][j]);
+        shapes_max[j] = static_cast<int32_t>(profile_max_shapes[input_name][i][j]);
+        shapes_opt[j] = static_cast<int32_t>(profile_opt_shapes[input_name][i][j]);
+      }
+
+      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+    }
+    // Execution tensor
+    else {
+      nvinfer1::Dims dims_min, dims_opt, dims_max;
+      dims_min.nbDims = nb_dims;
+      dims_max.nbDims = nb_dims;
+      dims_opt.nbDims = nb_dims;
+
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] number of dimension of this execution tensor is " << nb_dims;
+
+      for (int j = 0; j < nb_dims; j++) {
+        dims_min.d[j] = static_cast<int32_t>(profile_min_shapes[input_name][i][j]);
+        dims_max.d[j] = static_cast<int32_t>(profile_max_shapes[input_name][i][j]);
+        dims_opt.d[j] = static_cast<int32_t>(profile_opt_shapes[input_name][i][j]);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_min.d[" << j << "] is " << dims_min.d[j];
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_max.d[" << j << "] is " << dims_max.d[j];
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_opt.d[" << j << "] is " << dims_opt.d[j];
+      }
+
+      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+    }
   }
   return true;
 }
@@ -425,7 +446,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
 /*
  * Apply TensorRT optimization profile shapes from input tensor value.
  *
- * This function handles single/multiple profiles. 
+ * This function handles single/multiple profiles.
  * (Note: An optimization profile describes a range of dimensions for each network input)
  *
  */
@@ -456,7 +477,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 
     auto trt_profile = trt_profiles[i];
 
-    // If there are multiple profiles, for second and rest of profiles, simply copy the min/max/opt profile values from the first profile. 
+    // If there are multiple profiles, for second and rest of profiles, simply copy the min/max/opt profile values from the first profile.
     if (i > 0) {
       if (input->isShapeTensor()) {
         // shape tensor
@@ -778,7 +799,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (!tactic_sources_env.empty()) {
       tactic_sources_ = tactic_sources_env;
     }
-    
+
     profile_min_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMinShapes);
     profile_max_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMaxShapes);
     profile_opt_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesOptShapes);
@@ -829,11 +850,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 
   /*
-   * Parse explicit min/max/opt profile shapes from provider options. 
+   * Parse explicit min/max/opt profile shapes from provider options.
    *
    * The format of min/max/opt profile shapes is defined as below:
    * "input1:dim1xdim2...,input2:dim1xdim2...,...,input1:dim3xdim4...,input2:dim3xdim4...,..."
-   * 
+   *
    * (Note: if multiple shapes with same input name are specified, TRT EP will consider them as multiple profiles.
    *  Please refer to ParserProfileShapes() for more details)
    *
@@ -1703,18 +1724,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     /*
      * Initialize shape range for each dynamic shape input tensor:
-     *   1) If user explicitly specifies optimization profiles via provider options, TRT EP will create those profiles during EP compile time. 
+     *   1) If user explicitly specifies optimization profiles via provider options, TRT EP will create those profiles during EP compile time.
      *      It won't make adjustment for profile values during EP compute time.
      *
      *   2) If no explicit optimization profiles provided by user, TRT EP will firstly set range of every shape dimension to [INT_MAX, INT_MIN].
-     *      Later in EP compute time, the range will be adjusted to [min_input_value, max_input_value] based on input tensor values for every shape dimension.  
+     *      Later in EP compute time, the range will be adjusted to [min_input_value, max_input_value] based on input tensor values for every shape dimension.
      *
      *
      * Once the profiles are created:
-     *   1) If all the dynamic shape input tensors have associated profiles explicitly provided by user, those profiles will be applied to TRT builder config  
+     *   1) If all the dynamic shape input tensors have associated profiles explicitly provided by user, those profiles will be applied to TRT builder config
      *      and the engine will be built at EP compile time.
-     *  
-     *   2) As long as one of the dynamic shape input tensors has no explicitly associated profile, TRT EP will create default shape ranges as described above, 
+     *
+     *   2) As long as one of the dynamic shape input tensors has no explicitly associated profile, TRT EP will create default shape ranges as described above,
      *      and all the profiles won't be applied and engine won't be built until EP compute time.
      */
     bool has_dynamic_shape = false; // True if input tensor has dynamic shape and no explicit profile is specified, otherwise false.
@@ -1724,7 +1745,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     std::vector<nvinfer1::IOptimizationProfile*> trt_profiles;
 
     if ((!profile_min_shapes_.empty()) && (!profile_max_shapes_.empty()) && (!profile_opt_shapes_.empty())) {
-      has_explicit_profile = true; 
+      has_explicit_profile = true;
       num_profiles = GetNumProfiles(profile_min_shapes_);
       for (int i = 0; i < num_profiles; i++) {
         trt_profiles.push_back(trt_builder->createOptimizationProfile());
@@ -1741,7 +1762,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Apply explicit optimization profiles provided by user
       if(has_explicit_profile) {
         apply_explicit_profile = ApplyProfileShapesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
-      } 
+      }
 
       // If no explicit optimization profile is being applied, TRT EP will set min/max/opt optimization profile values based on input tensor values
       if(!apply_explicit_profile) {
@@ -1762,13 +1783,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
-    // Set explicit optimization profiles if all dynamic shape inputs have associated profiles provided by user 
+    // Set explicit optimization profiles if all dynamic shape inputs have associated profiles provided by user
     if (has_explicit_profile && !has_dynamic_shape) {
       for (auto trt_profile : trt_profiles) {
         trt_config->addOptimizationProfile(trt_profile);
       }
-    } 
-    // If no explicit optimization profile is applied and the input has dynamic shape, TRT EP simply creates one profile as default. 
+    }
+    // If no explicit optimization profile is applied and the input has dynamic shape, TRT EP simply creates one profile as default.
     // It will later set proper min/max/opt profile values duing EP compute time.
     else if (!has_explicit_profile && has_dynamic_shape) {
       trt_profiles.push_back(trt_builder->createOptimizationProfile());
