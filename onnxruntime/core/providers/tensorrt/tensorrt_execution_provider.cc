@@ -1784,9 +1784,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     // Set explicit optimization profiles if all dynamic shape inputs have associated profiles provided by user
-    if (has_explicit_profile && !has_dynamic_shape) {
-      for (auto trt_profile : trt_profiles) {
-        trt_config->addOptimizationProfile(trt_profile);
+    if (has_explicit_profile) {
+      // TRT EP has a constraint here.
+      // Users need to specify all the dynamic shape inputs with associated profiles if they want to explicitly specify profiles through provider options.
+      if (has_dynamic_shape) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Users need to specify all the dynamic shape inputs with associated profiles if they want to explicitly specify profiles through provider options.");
+      } else {
+        for (auto trt_profile : trt_profiles) {
+          trt_config->addOptimizationProfile(trt_profile);
+        }
       }
     }
     // If no explicit optimization profile is applied and the input has dynamic shape, TRT EP simply creates one profile as default.
