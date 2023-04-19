@@ -12,6 +12,7 @@
 
 namespace onnxruntime {
 namespace test {
+
 #if defined(ORT_RUN_EXTERNAL_ONNX_TESTS) && !defined(DISABLE_CONTRIB_OPS)
 class ResNet50FusionTests : public ::testing::Test {
  protected:
@@ -27,9 +28,9 @@ class ResNet50FusionTests : public ::testing::Test {
       GTEST_SKIP() << "Failed to load model: " << fp16_model_path;
     }
   }
-  std::basic_string<ORTCHAR_T>  fp32_model_path = ORT_TSTR("../models/opset10/Resnet50_Fusion_Testing/resnet50.onnx");
+  std::basic_string<ORTCHAR_T>  fp32_model_path = ORT_TSTR("../models/opset10/Resnet50_Fusion_Testing_fp16/resnet50.onnx");
   std::shared_ptr<Model> fp32_model;
-  std::basic_string<ORTCHAR_T> fp16_model_path = ORT_TSTR("../models/opset10/Resnet50_Fusion_Testing/resnet50.fp16.onnx");
+  std::basic_string<ORTCHAR_T> fp16_model_path = ORT_TSTR("../models/opset10/Resnet50_Fusion_Testing_fp16/resnet50.fp16.onnx");
   std::shared_ptr<Model> fp16_model;
 
 };
