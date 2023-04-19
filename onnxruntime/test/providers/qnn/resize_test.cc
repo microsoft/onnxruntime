@@ -228,7 +228,7 @@ TEST(QnnCPUBackendTests, TestResize2xLinearHalfPixel) {
 
 TEST(QnnCPUBackendTests, TestResize2xLinearHalfPixel_scales) {
   RunCPUResizeOpTestWithScales({1, 3, 4, 5}, {1.0f, 1.0f, 2.0f, 2.0f}, "linear", "half_pixel", "",
-                     ExpectedEPNodeAssignment::All, "TestResize2xLinearHalfPixel_scales");
+                               ExpectedEPNodeAssignment::All, "TestResize2xLinearHalfPixel_scales");
 }
 
 TEST(QnnCPUBackendTests, TestResize2xLinearAlignCorners) {
