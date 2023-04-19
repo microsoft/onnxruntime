@@ -239,34 +239,34 @@ namespace Microsoft.ML.OnnxRuntime
 
             try
             {
-                try
+                int outputCount = (int)count;
+                var lens = new int[outputCount];
+                int totalLength = 0;
+                for (int i = 0; i < outputCount; ++i)
                 {
-                    int outputCount = (int)count;
-                    var lens = new int[outputCount];
-                    int totalLength = 0;
-                    for (int i = 0; i < outputCount; ++i)
-                    {
-                        var len = (int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
-                        lens[i] = len;
-                        totalLength += len;
-                    }
-
-                    var stringData = new byte[totalLength];
-                    Marshal.Copy(buffer, stringData, 0, stringData.Length);
-
-                    string[] result = new string[outputCount];
-                    int readOffset = 0;
-                    for (int i = 0; i < outputCount; ++i)
-                    {
-                        var strLen = lens[i];
-                        result[i] = Encoding.UTF8.GetString(stringData, readOffset, strLen);
-                        readOffset += strLen;
-                    }
-                    return result;
+                    var len = (int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
+                    lens[i] = len;
+                    totalLength += len;
                 }
-                finally { allocator.FreeMemory(lengths); }
+
+                var stringData = new byte[totalLength];
+                Marshal.Copy(buffer, stringData, 0, stringData.Length);
+
+                string[] result = new string[outputCount];
+                int readOffset = 0;
+                for (int i = 0; i < outputCount; ++i)
+                {
+                    var strLen = lens[i];
+                    result[i] = Encoding.UTF8.GetString(stringData, readOffset, strLen);
+                    readOffset += strLen;
+                }
+                return result;
             }
-            finally { allocator.FreeMemory(buffer); }
+            finally
+            {
+                allocator.FreeMemory(lengths);
+                allocator.FreeMemory(buffer);
+            }
         }
 
         /// <summary>

@@ -386,7 +386,6 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var allocator = OrtAllocator.DefaultInstance;
             IntPtr nameHandle;
-            string str = null;
             if (training)
             {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelOutputName(
@@ -403,14 +402,7 @@ namespace Microsoft.ML.OnnxRuntime
                                            allocator.Pointer,
                                            out nameHandle));
             }
-
-            try
-            {
-                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
-            }
-            finally { allocator.FreeMemory(nameHandle); }
-
-            return str;
+            return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle, allocator);
         }
 
         private IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<FixedBufferOnnxValue> values, bool input)

@@ -1188,15 +1188,16 @@ struct ValueImpl : ConstValueImpl<T> {
   /// <summary>
   /// Allocate if necessary and obtain a pointer to a UTF-8
   /// encoded string element buffer indexed by the flat element index,
-  /// and at least the specified buffer length.
+  /// of the specified length.
   ///
   /// This API is for advanced usage. It avoids a need to construct
-  /// an axillary array of string pointers and allows to write data directly (do not zero terminate).
+  /// an auxiliary array of string pointers, and allows to write data directly
+  /// (do not zero terminate).
   /// </summary>
   /// <param name="index"></param>
   /// <param name="buffer_length"></param>
-  /// <returns></returns>
-  char* GetStringTensorElementBuffer(size_t index, size_t buffer_length);
+  /// <returns>a pointer to a writable buffer</returns>
+  char* GetResizedStringTensorElementBuffer(size_t index, size_t buffer_length);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>

@@ -203,8 +203,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                IntPtr utf8Name = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetName(handle, out utf8Name));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetName(handle, out IntPtr utf8Name));
                 return NativeOnnxValueHelper.StringFromNativeUtf8(utf8Name);
             }
         }

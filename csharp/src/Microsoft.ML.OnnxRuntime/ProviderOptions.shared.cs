@@ -48,11 +48,12 @@ namespace Microsoft.ML.OnnxRuntime
             // Process provider options string
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptionsAsString(handle, 
                 allocator.Pointer, out IntPtr providerOptions));
-            try
-            {
-                return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
-            }
-            finally { allocator.FreeMemory(providerOptions); }
+            return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions, allocator);
+        }
+
+        private static IntPtr UpdateTRTOptions(IntPtr handle, IntPtr[] keys, IntPtr[] values, UIntPtr count)
+        {
+            return NativeMethods.OrtUpdateTensorRTProviderOptions(handle, keys, values, count);
         }
 
         /// <summary>
@@ -63,31 +64,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="providerOptions">key/value pairs used to configure a TensorRT Execution Provider</param>
         public void UpdateOptions(Dictionary<string, string> providerOptions)
         {
-
-            var keyStrings = providerOptions.Keys.ToArray();
-            var valStrings = providerOptions.Values.ToArray();
-
-            MarshaledStringArray keys = default;
-            MarshaledStringArray values = default;
-            try
-            {
-                keys = new MarshaledStringArray(keyStrings);
-                values = new MarshaledStringArray(valStrings);
-
-                var nativeKeys = new IntPtr[keyStrings.Length];
-                keys.Fill(nativeKeys);
-
-                var nativeVals = new IntPtr[valStrings.Length];
-                values.Fill(nativeVals);
-
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateTensorRTProviderOptions(handle, nativeKeys, nativeVals,
-                    (UIntPtr)providerOptions.Count));
-            }
-            finally
-            {
-                keys.Dispose();
-                values.Dispose();
-            }
+            ProviderOptionsUpdater.Update(providerOptions, handle, UpdateTRTOptions);
 
             if (providerOptions.ContainsKey(_deviceIdStr))
             {
@@ -173,15 +150,15 @@ namespace Microsoft.ML.OnnxRuntime
         public string GetOptions()
         {
             var allocator = OrtAllocator.DefaultInstance;
-
             // Process provider options string
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetCUDAProviderOptionsAsString(handle, 
                 allocator.Pointer, out IntPtr providerOptions));
-            try
-            {
-                return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
-            }
-            finally { allocator.FreeMemory(providerOptions); }
+            return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions, allocator);
+        }
+
+        private static IntPtr UpdateCUDAProviderOptions(IntPtr handle, IntPtr[] keys, IntPtr[] values, UIntPtr count)
+        {
+            return NativeMethods.OrtUpdateCUDAProviderOptions(handle, keys, values, count);
         }
 
         /// <summary>
@@ -192,30 +169,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="providerOptions">key/value pairs used to configure a CUDA Execution Provider</param>
         public void UpdateOptions(Dictionary<string, string> providerOptions)
         {
-            var keyStrings = providerOptions.Keys.ToArray();
-            var valStrings = providerOptions.Values.ToArray();
-
-            MarshaledStringArray keys = default;
-            MarshaledStringArray values = default;
-            try
-            {
-                keys = new MarshaledStringArray(keyStrings);
-                values = new MarshaledStringArray(valStrings);
-
-                var nativeKeys = new IntPtr[keyStrings.Length];
-                keys.Fill(nativeKeys);
-
-                var nativeVals = new IntPtr[valStrings.Length];
-                values.Fill(nativeVals);
-
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateCUDAProviderOptions(handle, nativeKeys, nativeVals,
-                    (UIntPtr)providerOptions.Count));
-            }
-            finally
-            {
-                keys.Dispose();
-                values.Dispose();
-            }
+            ProviderOptionsUpdater.Update(providerOptions, handle, UpdateCUDAProviderOptions);
         }
 
         #endregion

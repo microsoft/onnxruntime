@@ -26,16 +26,14 @@ namespace Microsoft.ML.OnnxRuntime
         {
             int arraySize = UTF8Encoding.UTF8.GetByteCount(s);
             byte[] utf8Bytes = new byte[arraySize + 1];
-            if (arraySize != UTF8Encoding.UTF8.GetBytes(s, 0, s.Length, utf8Bytes, 0))
-            {
-                throw new OnnxRuntimeException(ErrorCode.RuntimeException, "Failed to convert to UTF8");
-            }
+            var bytesWritten = UTF8Encoding.UTF8.GetBytes(s, 0, s.Length, utf8Bytes, 0);
+            Debug.Assert(arraySize == bytesWritten);
             utf8Bytes[utf8Bytes.Length - 1] = 0;
             return utf8Bytes;
         }
 
         /// <summary>
-        /// This string converts the input string into UTF-8 encoding string (no zero termination)
+        /// This function converts the input string into UTF-8 encoding string (no zero termination)
         /// straight into the pre-allocated native buffer. The buffer size
         /// must match the required size and can be obtained in advance with
         /// System.Text.Encoding.UTF8.GetByteCount(s).
@@ -48,18 +46,28 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="totalBytesToWrite">pre-allocated buffer size</param>
         internal static void StringToUtf8NativeMemory(string s, IntPtr ptr, int totalBytesToWrite)
         {
+            // We throw here, because we are expecting the caller to properly calculate and allocate the right size buffer
             unsafe
             {
 #if NETSTANDARD1_1
                 var utf8Bytes = (s.Length != 0) ? Encoding.UTF8.GetBytes(s) : ArrayUtilities.GetEmpty<byte>();
-                Span<byte> destination = new Span<byte>((ptr).ToPointer(), utf8Bytes.Length);
-                utf8Bytes.AsSpan(0, utf8Bytes.Length).CopyTo(destination);
+                if (totalBytesToWrite != utf8Bytes.Length)
+                {
+                    throw new OnnxRuntimeException(ErrorCode.RuntimeException,
+                        $"Failed to convert to UTF8. Expected bytes: {totalBytesToWrite}, converted to UTF-8: {utf8Bytes.Length}");
+                }
+                Span<byte> destination = new Span<byte>((ptr).ToPointer(), utf8Bytes.Length);
+                utf8Bytes.AsSpan(0, utf8Bytes.Length).CopyTo(destination);
 #else
                 fixed (char* c = s) // create char pointer to start of managed string.
                 {
                     var nativeBytes = (byte*)ptr; // get managed byte* from native intptr
                     var bytesWritten = Encoding.UTF8.GetBytes(c, s.Length, nativeBytes, totalBytesToWrite); // total bytes to write is size of native memory buffer
-                    Debug.Assert(bytesWritten == totalBytesToWrite);
+                    if (bytesWritten != totalBytesToWrite)
+                    {
+                        throw new OnnxRuntimeException(ErrorCode.RuntimeException,
+                            $"Failed to convert to UTF8. Expected bytes: {totalBytesToWrite}, written: {bytesWritten}");
+                    }
                 }
 #endif
             }
@@ -70,62 +78,95 @@ namespace Microsoft.ML.OnnxRuntime
         /// and converts it into a C# UTF-16 encoded string
         /// </summary>
         /// <param name="nativeUtf8">pointer to native or pinned memory where Utf-8 resides</param>
+        /// <param name="allocator">optional allocator to free nativeUtf8 if it was allocated by OrtAllocator</param>
         /// <returns></returns>
-        internal static string StringFromNativeUtf8(IntPtr nativeUtf8)
+        internal static string StringFromNativeUtf8(IntPtr nativeUtf8, OrtAllocator allocator = null)
         {
-            unsafe
+            try
             {
-                int len = 0;
-                while(*(byte*)(nativeUtf8 + len) != 0) ++len;
-
-                if(len == 0)
+                unsafe
                 {
-                    return string.Empty;
-                }
+                    int len = 0;
+                    while (*(byte*)(nativeUtf8 + len) != 0) ++len;
+
+                    if (len == 0)
+                    {
+                        return string.Empty;
+                    }
 #if NETSTANDARD1_1
-                var src = new Span<byte>((nativeUtf8).ToPointer(), len);
-                byte[] buffer = new byte[len];
-                src.CopyTo(buffer);
-                return Encoding.UTF8.GetString(buffer, 0, buffer.Length);
+                    var src = new Span<byte>((nativeUtf8).ToPointer(), len);
+                    byte[] buffer = new byte[len];
+                    src.CopyTo(buffer);
+                    return Encoding.UTF8.GetString(buffer, 0, buffer.Length);
 #else
-                var nativeBytes = (byte*)nativeUtf8;
-                return Encoding.UTF8.GetString(nativeBytes, len);
+                    var nativeBytes = (byte*)nativeUtf8;
+                    return Encoding.UTF8.GetString(nativeBytes, len);
 #endif
+                }
+            }
+            finally
+            {
+                allocator?.FreeMemory(nativeUtf8);
             }
         }
 
         /// <summary>
         /// Reads UTF-8 string from native C zero terminated string,
-        /// converts it to C# UTF-16 string and returns both C# string and utf-8
-        /// bytes as a zero terminated array, suitable for use as a C-string
+        /// makes a copy of it on unmanaged heap and converts it to C# UTF-16 string,
+        /// then returns both C# string and the unmanaged copy of the UTF-8 string.
+        /// 
+        /// On return it deallocates the nativeUtf8 string using the specified allocator
         /// </summary>
+        /// <param name="allocator">allocator to use to free nativeUtf8</param>
         /// <param name="nativeUtf8">input</param>
         /// <param name="str">C# UTF-16 string</param>
-        /// <param name="utf8">UTF-8 bytes in a managed buffer, zero terminated</param>
-        internal static void StringAndUtf8FromNative(IntPtr nativeUtf8, out string str, out byte[] utf8)
+        /// <param name="utf8">UTF-8 bytes in a unmanaged allocation, zero terminated</param>
+        internal static void StringAndUtf8FromNative(OrtAllocator allocator, IntPtr nativeUtf8, out string str, out IntPtr utf8)
         {
-            unsafe
+            try
             {
-                int len = 0;
-                while (*(byte*)(nativeUtf8 + len) != 0) ++len;
-
-                if (len == 0)
+                unsafe
                 {
-                    str = string.Empty;
-                    utf8 = ArrayUtilities.GetEmpty<byte>();
-                    return;
-                }
+                    int len = 0;
+                    while (*(byte*)(nativeUtf8 + len) != 0) ++len;
 
-                var src = new Span<byte>((nativeUtf8).ToPointer(), len);
-                utf8 = new byte[len + 1];
-                src.CopyTo(utf8);
-                utf8[len] = 0;
+                    if (len == 0)
+                    {
+                        str = string.Empty;
+                        utf8 = IntPtr.Zero;
+                        return;
+                    }
+
+                    var src = new Span<byte>((nativeUtf8).ToPointer(), len);
+                    utf8 = Marshal.AllocHGlobal(len + 1);
+                    try
+                    {
+                        // Make a copy of the UTF-8 bytes and add a zero terminator
+                        // on unmanaged heap
+                        var dest = new Span<byte>((utf8).ToPointer(), len + 1);
+                        src.CopyTo(dest);
+                        dest[len] = 0;
 #if NETSTANDARD1_1
-                str = Encoding.UTF8.GetString(utf8, 0, len);
+                        // For .NET Standard 1.1, we need to copy the bytes to a managed buffer
+                        // before conversion
+                        byte[] buffer = new byte[len];
+                        src.CopyTo(buffer);
+                        str = Encoding.UTF8.GetString(buffer, 0, len);
 #else
-                var nativeBytes = (byte*)nativeUtf8;
-                str = Encoding.UTF8.GetString(nativeBytes, len);
+                        var nativeBytes = (byte*)nativeUtf8;
+                        str = Encoding.UTF8.GetString(nativeBytes, len);
 #endif
+                    }
+                    catch (Exception)
+                    {
+                        Marshal.FreeHGlobal(utf8);
+                        throw;
+                    }
+                }
+            }
+            finally
+            {
+                allocator.FreeMemory(nativeUtf8);
             }
         }
 
@@ -287,5 +328,48 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+    }
+
+    /// <summary>
+    /// Utility class used in SessioniOptions and ProviderOptions
+    /// </summary>
+    internal class ProviderOptionsUpdater
+    {
+        /// <summary>
+        /// A utility method to update the provider options, provides common functionality.
+        /// 
+        /// </summary>
+        /// <param name="providerOptions">The actual key/value option pairs</param>
+        /// <param name="handle">to the object</param>
+        /// <param name="updateFunc">encapsulates a native method that returns 
+        /// Arg1=handle, Arg2=array of keys, Arg3=array of values, Arg4 - count, Arg5 - return ORT status</param>
+        internal static void Update(Dictionary<string, string> providerOptions,
+                                    IntPtr handle,
+                                    Func<IntPtr, IntPtr[], IntPtr[], UIntPtr, IntPtr> updateFunc)
+        {
+            var keyStrings = providerOptions.Keys.ToArray();
+            var valStrings = providerOptions.Values.ToArray();
+
+            MarshaledStringArray keys = default;
+            MarshaledStringArray values = default;
+            try
+            {
+                keys = new MarshaledStringArray(keyStrings);
+                values = new MarshaledStringArray(valStrings);
+
+                var nativeKeys = new IntPtr[keyStrings.Length];
+                keys.Fill(nativeKeys);
+
+                var nativeVals = new IntPtr[valStrings.Length];
+                values.Fill(nativeVals);
+
+                NativeApiStatus.VerifySuccess(updateFunc(handle, nativeKeys, nativeVals, (UIntPtr)providerOptions.Count));
+            }
+            finally
+            {
+                keys.Dispose();
+                values.Dispose();
+            }
+        }
     }
 }

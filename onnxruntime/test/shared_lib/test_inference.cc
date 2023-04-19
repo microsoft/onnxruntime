@@ -1866,7 +1866,7 @@ TEST(CApiTest, fill_string_tensor_directly) {
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
-    auto* buffer = tensor.GetStringTensorElementBuffer(i, s[i].size());
+    auto* buffer = tensor.GetResizedStringTensorElementBuffer(i, s[i].size());
     memcpy(buffer, s[i].data(), s[i].size());
   }
 

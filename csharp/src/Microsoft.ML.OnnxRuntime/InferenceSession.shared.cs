@@ -637,14 +637,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionEndProfiling(_nativeHandle,
                                                                    allocator.Pointer,
                                                                    out IntPtr nameHandle));
-            try
-            {
-                return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
-            }
-            finally
-            {
-                allocator.FreeMemory(nameHandle);
-            }
+            return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle, allocator);
         }
 
         // Delegate for string extraction from an arbitrary input/output object
@@ -890,7 +883,7 @@ namespace Microsoft.ML.OnnxRuntime
                     options.Handle, prepackedWeightsContainer.Pointer, out session));
             }
 
-            InitWithSessionHandle(session, options);
+            InitWithSessionHandle(session);
         }
 
         private void Init(byte[] modelData, SessionOptions options,
@@ -912,19 +905,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             }
 
-            InitWithSessionHandle(session, options);
-        }
-
-        private void CreateNativelyAllocatedUtf8(NodeMetadata meta, byte[] utf8)
-        {
-            var nameAlloc = Marshal.AllocHGlobal(utf8.Length);
-            _namesMemoryPtrs.Add(nameAlloc);
-            meta.ZeroTerminatedName = nameAlloc;
-            unsafe
-            {
-                Span<byte> destination = new Span<byte>(nameAlloc.ToPointer(), utf8.Length);
-                utf8.AsSpan(0, utf8.Length).CopyTo(destination);
-            }
+            InitWithSessionHandle(session);
         }
 
         /// <summary>
@@ -932,7 +913,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="session">Value of a native session object</param>
         /// <param name="options">Session options</param>
-        private void InitWithSessionHandle(IntPtr session, SessionOptions options)
+        private void InitWithSessionHandle(IntPtr session)
         {
             _nativeHandle = session;
             try
@@ -945,9 +926,9 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle, out UIntPtr outputCount));
                 // get overridable initializer count
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerCount(_nativeHandle,
-                    out UIntPtr initilaizerCount));
+                    out UIntPtr initializerCount));
 
-                int totalNameCount = (int)inputCount + (int)outputCount + (int)initilaizerCount;
+                int totalNameCount = (int)inputCount + (int)outputCount + (int)initializerCount;
                 _namesMemoryPtrs = new List<IntPtr>(totalNameCount);
 
                 // get all the input names and metadata
@@ -957,9 +938,10 @@ namespace Microsoft.ML.OnnxRuntime
                 for (ulong i = 0; i < (ulong)inputCount; i++)
                 {
                     var inputMeta = GetInputMetadata(i);
-                    var iname = GetInputName(i, out byte[] utf8);
+                    var iname = GetInputName(i, out IntPtr utf8);
+                    _namesMemoryPtrs.Add(utf8);
+                    inputMeta.ZeroTerminatedName = utf8;
                     _inputNames.Add(iname);
-                    CreateNativelyAllocatedUtf8(inputMeta, utf8);
                     _inputMetadata[iname] = inputMeta;
                 }
 
@@ -970,19 +952,21 @@ namespace Microsoft.ML.OnnxRuntime
                 for (ulong i = 0; i < (ulong)outputCount; i++)
                 {
                     var outputMeta = GetOutputMetadata(i);
-                    var oname = GetOutputName(i, out byte[] utf8);
+                    var oname = GetOutputName(i, out IntPtr utf8);
+                    _namesMemoryPtrs.Add(utf8);
+                    outputMeta.ZeroTerminatedName = utf8;
                     _outputNames.Add(oname);
-                    CreateNativelyAllocatedUtf8(outputMeta, utf8);
                     _outputMetadata[oname] = outputMeta;
                 }
 
-                _overridableInitializerMetadata = new Dictionary<string, NodeMetadata>((int)initilaizerCount);
+                _overridableInitializerMetadata = new Dictionary<string, NodeMetadata>((int)initializerCount);
                 // get all the overridable initializer names and metadata
-                for (ulong i = 0; i < (ulong)initilaizerCount; i++)
+                for (ulong i = 0; i < (ulong)initializerCount; i++)
                 {
                     var meta = GetOverridableInitializerMetadata(i);
-                    var iname = GetOverridableInitializerName(i, out byte[] utf8);
-                    CreateNativelyAllocatedUtf8(meta, utf8);
+                    var iname = GetOverridableInitializerName(i, out IntPtr utf8);
+                    _namesMemoryPtrs.Add(utf8);
+                    meta.ZeroTerminatedName = utf8;
                     _overridableInitializerMetadata[iname] = meta;
                 }
                 // set profiling's start time
@@ -992,20 +976,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             catch (Exception)
             {
-                if (_inputNames != null)
-                {
-                    foreach (var ptr in _namesMemoryPtrs)
-                    {
-                        Marshal.FreeHGlobal(ptr);
-                    }
-                    _inputNames = null;
-                }
-
-                if (_nativeHandle != IntPtr.Zero)
-                {
-                    NativeMethods.OrtReleaseSession(_nativeHandle);
-                    _nativeHandle = IntPtr.Zero;
-                }
+                DisposeImpl(true);
                 throw;
             }
 
@@ -1013,9 +984,8 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-        private string GetOutputName(ulong index, out byte[] utf8)
+        private string GetOutputName(ulong index, out IntPtr utf8)
         {
-            string str;
             var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputName(
                                            _nativeHandle,
@@ -1023,19 +993,11 @@ namespace Microsoft.ML.OnnxRuntime
                                            allocator.Pointer,
                                            out IntPtr nameHandle));
 
-            try
-            {
-                NativeOnnxValueHelper.StringAndUtf8FromNative(nameHandle, out str, out utf8);
-            }
-            finally
-            {
-                allocator.FreeMemory(nameHandle);
-            }
-
+            NativeOnnxValueHelper.StringAndUtf8FromNative(allocator, nameHandle, out string str, out utf8);
             return str;
         }
 
-        private string GetInputName(ulong index, out byte[] utf8)
+        private string GetInputName(ulong index, out IntPtr utf8)
         {
             var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputName(
@@ -1044,19 +1006,11 @@ namespace Microsoft.ML.OnnxRuntime
                                            allocator.Pointer,
                                            out IntPtr nameHandle));
 
-            string str;
-            try
-            {
-                NativeOnnxValueHelper.StringAndUtf8FromNative(nameHandle, out str, out utf8);
-            }
-            finally
-            {
-                allocator.FreeMemory(nameHandle);
-            }
+            NativeOnnxValueHelper.StringAndUtf8FromNative(allocator, nameHandle, out string str, out utf8);
             return str;
         }
 
-        private string GetOverridableInitializerName(ulong index, out byte[] utf8)
+        private string GetOverridableInitializerName(ulong index, out IntPtr utf8)
         {
             var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerName(
@@ -1064,15 +1018,8 @@ namespace Microsoft.ML.OnnxRuntime
                                             (UIntPtr)index,
                                             allocator.Pointer,
                                             out IntPtr nameHandle));
-            string str;
-            try
-            {
-                NativeOnnxValueHelper.StringAndUtf8FromNative(nameHandle, out str, out utf8);
-            }
-            finally
-            {
-                allocator.FreeMemory(nameHandle);
-            }
+
+            NativeOnnxValueHelper.StringAndUtf8FromNative(allocator, nameHandle, out string str, out utf8);
             return str;
         }
 
@@ -1291,7 +1238,15 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 return;
             }
+            DisposeImpl(disposing);
+        }
 
+        /// <summary>
+        /// This function is also used on failure in the constructor
+        /// </summary>
+        /// <param name="disposing"></param>
+        void DisposeImpl(bool disposing)
+        {
             if (disposing)
             {
                 if (_namesMemoryPtrs != null)
@@ -1550,7 +1505,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Present only on the top-level instance
         /// metadata dictionary entries.
         /// 
-        /// Avoid repeated conversion and pinning
+        /// Avoids repeated conversion and pinning
         /// 
         /// This memory chunk is owned and freed by the InferenceSession
         /// object.
@@ -1662,52 +1617,31 @@ namespace Microsoft.ML.OnnxRuntime
                 // Process producer name
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetProducerName(modelMetadataHandle,
                     allocator.Pointer, out IntPtr producerNameHandle));
-                try
-                {
-                    _producerName = NativeOnnxValueHelper.StringFromNativeUtf8(producerNameHandle);
-                }
-                finally { allocator.FreeMemory(producerNameHandle); }
+                _producerName = NativeOnnxValueHelper.StringFromNativeUtf8(producerNameHandle, allocator);
 
                 // Process graph name
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphName(modelMetadataHandle,
                     allocator.Pointer, out IntPtr graphNameHandle));
-                try
-                {
-                    _graphName = NativeOnnxValueHelper.StringFromNativeUtf8(graphNameHandle);
-                }
-                finally { allocator.FreeMemory(graphNameHandle); }
+                _graphName = NativeOnnxValueHelper.StringFromNativeUtf8(graphNameHandle, allocator);
 
 
                 // Process domain
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetDomain(modelMetadataHandle,
                     allocator.Pointer, out IntPtr domainHandle));
-                try
-                {
-                    _domain = NativeOnnxValueHelper.StringFromNativeUtf8(domainHandle);
-                }
-                finally { allocator.FreeMemory(domainHandle); }
+                _domain = NativeOnnxValueHelper.StringFromNativeUtf8(domainHandle, allocator);
 
                 // Process description
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetDescription(modelMetadataHandle,
                     allocator.Pointer, out IntPtr descriptionHandle));
-                try
-                {
-                    _description = NativeOnnxValueHelper.StringFromNativeUtf8(descriptionHandle);
-                }
-                finally { allocator.FreeMemory(descriptionHandle); }
+                _description = NativeOnnxValueHelper.StringFromNativeUtf8(descriptionHandle, allocator);
 
                 // Process graph description
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphDescription(modelMetadataHandle,
                     allocator.Pointer, out IntPtr graphDescriptionHandle));
-                try
-                {
-                    _graphDescription = NativeOnnxValueHelper.StringFromNativeUtf8(graphDescriptionHandle);
-                }
-                finally { allocator.FreeMemory(graphDescriptionHandle); }
+                _graphDescription = NativeOnnxValueHelper.StringFromNativeUtf8(graphDescriptionHandle, allocator);
 
                 // Process version
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetVersion(modelMetadataHandle, out _version));
-
 
                 // Process CustomMetadata Map
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetCustomMetadataMapKeys(modelMetadataHandle,
@@ -1731,15 +1665,10 @@ namespace Microsoft.ML.OnnxRuntime
                             NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataLookupCustomMetadataMap(modelMetadataHandle,
                                 allocator.Pointer, keyHandle, out IntPtr valueHandle));
 
-                            try
-                            {
-                                var key = NativeOnnxValueHelper.StringFromNativeUtf8(keyHandle);
-                                var value = NativeOnnxValueHelper.StringFromNativeUtf8(valueHandle);
-
-                                // Put the key/value pair into the dictionary
-                                _customMetadataMap[key] = value;
-                            }
-                            finally { allocator.FreeMemory(valueHandle); }
+                            var value = NativeOnnxValueHelper.StringFromNativeUtf8(valueHandle, allocator);
+                            var key = NativeOnnxValueHelper.StringFromNativeUtf8(keyHandle);
+                            // Put the key/value pair into the dictionary
+                            _customMetadataMap[key] = value;
                         }
                     }
                 }

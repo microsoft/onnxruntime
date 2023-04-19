@@ -1145,7 +1145,7 @@ ORT_API_STATUS_IMPL(OrtApis::FillStringTensorElement, _Inout_ OrtValue* value, _
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElementBuffer, _Inout_ OrtValue* value,
+ORT_API_STATUS_IMPL(OrtApis::GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value,
                     _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char** buffer) {
   TENSOR_READWRITE_API_BEGIN
   auto* dst = tensor->MutableData<std::string>();
@@ -2724,7 +2724,7 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::KernelInfoGetConstantInput_tensor,
     &OrtApis::CastTypeInfoToOptionalTypeInfo,
     &OrtApis::GetOptionalContainedTypeInfo,
-    &OrtApis::GetStringTensorElementBuffer};
+    &OrtApis::GetResizedStringTensorElementBuffer};
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'

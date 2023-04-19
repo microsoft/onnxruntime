@@ -4157,11 +4157,11 @@ struct OrtApi {
    * \param[in] value A string tensor
    * \param[in] index - flat index of the element
    * \param[in] length_in_bytes length of the buffer in utf-8 bytes (without the null terminator)
-   * \param[in/out] buffer address return value
+   * \param[in/out] buffer - address of return value
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(GetStringTensorElementBuffer, _Inout_ OrtValue* value, _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char** buffer);
+  ORT_API2_STATUS(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value, _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char** buffer);
 };
 
 /*

@@ -341,7 +341,7 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     var str = tensor.GetValue(i);
                     var bytesCount = System.Text.Encoding.UTF8.GetByteCount(str);
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorElementBuffer(valueHandle,
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetResizedStringTensorElementBuffer(valueHandle,
                         (UIntPtr)i, (UIntPtr)bytesCount, out IntPtr buffer));
                     NativeOnnxValueHelper.StringToUtf8NativeMemory(str, buffer, bytesCount);
                 }

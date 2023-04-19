@@ -460,5 +460,6 @@ ORT_API_STATUS_IMPL(CastTypeInfoToOptionalTypeInfo, _In_ const OrtTypeInfo* type
 ORT_API_STATUS_IMPL(GetOptionalContainedTypeInfo, _In_ const OrtOptionalTypeInfo* optional_type_info,
                     _Outptr_ OrtTypeInfo** out);
 
-ORT_API_STATUS_IMPL(GetStringTensorElementBuffer, _Inout_ OrtValue* value, _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char**);
+ORT_API_STATUS_IMPL(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value,
+                    _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char**);
 }  // namespace OrtApis

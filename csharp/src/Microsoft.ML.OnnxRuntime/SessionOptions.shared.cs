@@ -352,6 +352,22 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
         }
 
+        private class ExecutionProviderAppender
+        {
+            private byte[] _utf8ProviderName;
+            internal ExecutionProviderAppender(byte[] providerName)
+            {
+                _utf8ProviderName = providerName;
+            }
+
+            public IntPtr Appender(IntPtr handle, IntPtr[] optKeys, IntPtr[] optValues, UIntPtr optCount)
+            {
+                return NativeMethods.SessionOptionsAppendExecutionProvider(
+                    handle, _utf8ProviderName, optKeys, optValues, optCount);
+            }
+        }
+
+
         /// <summary>
         /// Append SNPE or XNNPACK execution provider
         /// </summary>
@@ -365,37 +381,14 @@ namespace Microsoft.ML.OnnxRuntime
                     "Only SNPE and XNNPACK execution providers can be enabled by this method.");
             }
 
-            var utf8ProviderName = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(providerName);
-
             if (providerOptions == null)
             {
                 providerOptions = new Dictionary<string, string>();
             }
 
-            var keyStrings = providerOptions.Keys.ToArray();
-            var valStrings = providerOptions.Values.ToArray();
-
-            MarshaledStringArray keys = default;
-            MarshaledStringArray values = default;
-            try
-            {
-                keys = new MarshaledStringArray(keyStrings);
-                values = new MarshaledStringArray(valStrings);
-
-                var nativeKeys = new IntPtr[keyStrings.Length];
-                keys.Fill(nativeKeys);
-
-                var nativeVals = new IntPtr[valStrings.Length];
-                values.Fill(nativeVals);
-
-                NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider(
-                    handle, utf8ProviderName, nativeKeys, nativeVals, (UIntPtr)providerOptions.Count));
-            }
-            finally
-            {
-                keys.Dispose();
-                values.Dispose();
-            }
+            var utf8ProviderName = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(providerName);
+            var appender = new ExecutionProviderAppender(utf8ProviderName);
+            ProviderOptionsUpdater.Update(providerOptions, handle, appender.Appender);
         }
         #endregion //ExecutionProviderAppends
 

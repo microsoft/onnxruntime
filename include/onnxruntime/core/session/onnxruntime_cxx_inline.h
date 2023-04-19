@@ -1304,9 +1304,9 @@ void ValueImpl<T>::FillStringTensorElement(const char* s, size_t index) {
 }
 
 template <typename T>
-inline char* ValueImpl<T>::GetStringTensorElementBuffer(size_t index, size_t buffer_length) {
+inline char* ValueImpl<T>::GetResizedStringTensorElementBuffer(size_t index, size_t buffer_length) {
   char* result;
-  ThrowOnError(GetApi().GetStringTensorElementBuffer(this->p_, index, buffer_length, &result));
+  ThrowOnError(GetApi().GetResizedStringTensorElementBuffer(this->p_, index, buffer_length, &result));
   return result;
 }
 
