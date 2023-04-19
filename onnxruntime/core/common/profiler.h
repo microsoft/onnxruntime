@@ -19,7 +19,7 @@ namespace profiling {
 
 // uncomment the macro below, or use -DENABLE_STATIC_PROFILER_INSTANCE for debugging
 // note that static profiler instance only works with single session
-//#define ENABLE_STATIC_PROFILER_INSTANCE
+// #define ENABLE_STATIC_PROFILER_INSTANCE
 
 /**
  * Main class for profiling. It continues to accumulate events and produce
@@ -29,7 +29,7 @@ class Profiler {
  public:
   /// turned off by default.
   /// Even this function is marked as noexcept, the code inside it may throw exceptions
-  Profiler() noexcept {};  //NOLINT
+  Profiler() noexcept {};  // NOLINT
 
   ~Profiler();
 

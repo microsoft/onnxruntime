@@ -16,18 +16,18 @@
 namespace onnxruntime {
 namespace contrib {
 
-#define REGISTER_KERNEL_VERSIONED_TYPED(OpName, Domain, StartVer, EndVer, T1, T2)   \
-  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                                      \
-      OpName,                                                                       \
-      Domain,                                                                       \
-      StartVer,                                                                     \
-      EndVer,                                                                       \
-      T1,                                                                           \
-      T2,                                                                           \
-      kCpuExecutionProvider,                                                        \
-      KernelDefBuilder()                                                            \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())                   \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<T2>()),               \
+#define REGISTER_KERNEL_VERSIONED_TYPED(OpName, Domain, StartVer, EndVer, T1, T2) \
+  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                                    \
+      OpName,                                                                     \
+      Domain,                                                                     \
+      StartVer,                                                                   \
+      EndVer,                                                                     \
+      T1,                                                                         \
+      T2,                                                                         \
+      kCpuExecutionProvider,                                                      \
+      KernelDefBuilder()                                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())                 \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<T2>()),             \
       OpName<T1, T2>);
 
 #define REGISTER_KERNEL_TYPED(OpName, Domain, VER, T1, T2)            \

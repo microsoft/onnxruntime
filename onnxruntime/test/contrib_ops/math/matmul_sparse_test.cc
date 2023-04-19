@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace test {
 
 // Compilation only tests
-//TEST(SparseTestInterfaces, Test) {
+// TEST(SparseTestInterfaces, Test) {
 //
 //  // Test initializer overload for booleans input
 //  OpTester tester("DoesNotMatter", 1, onnxruntime::kMSDomain);
@@ -38,13 +38,12 @@ namespace test {
 //  tester.AddSparseCsrOutput("B", {2, 3}, gsl::make_span(float_values), {0, 2, 5}, {0, 2, 3}, CheckParams());
 //}
 
-template<typename T>
+template <typename T>
 void ConvertToCsr(gsl::span<const T> input_span,
-  const std::vector<int64_t>& dims,
-  std::vector<T>& values_out,
-  std::vector<int64_t>& inner_indicies_out,
-  std::vector<int64_t>& outer_indicies_out) {
-
+                  const std::vector<int64_t>& dims,
+                  std::vector<T>& values_out,
+                  std::vector<int64_t>& inner_indicies_out,
+                  std::vector<int64_t>& outer_indicies_out) {
   ASSERT_EQ(dims.size(), 2U);
   const auto rows = dims[0];
   const auto cols = dims[1];
@@ -85,12 +84,11 @@ void ConvertToCsr(gsl::span<const T> input_span,
 }
 
 // Converts with 2-D indices
-template<typename T>
+template <typename T>
 void ConvertToCoo(gsl::span<const T> input_span,
-  const std::vector<int64_t>& dims,
-  std::vector<T>& values_out,
-  std::vector<int64_t>& indices_out) {
-
+                  const std::vector<int64_t>& dims,
+                  std::vector<T>& values_out,
+                  std::vector<int64_t>& indices_out) {
   ASSERT_EQ(dims.size(), 2U);
   const auto rows = dims[0];
   const auto cols = dims[1];
@@ -201,15 +199,15 @@ TEST(SparseToDenseMatMul, TestCsr) {
 
   // Transpose A output
   const std::vector<float> t_a_output = {
-        5544, 5688, 5832, 5742, 5868, 5994, 234, 252, 270,
-        5688, 5838, 5988, 5877, 6006, 6135, 261, 282, 303,
-        5832, 5988, 6144, 6012, 6144, 6276, 288, 312, 336,
-        5742, 5877, 6012, 7947, 8154, 8361, 2016, 2088, 2160,
-        5868, 6006, 6144, 8154, 8367, 8580, 2097, 2172, 2247,
-        5994, 6135, 6276, 8361, 8580, 8799, 2178, 2256, 2334,
-        234, 261, 288, 2016, 2097, 2178, 2574, 2682, 2790,
-        252, 282, 312, 2088, 2172, 2256, 2682, 2796, 2910,
-        270, 303, 336, 2160, 2247, 2334, 2790, 2910, 3030};
+      5544, 5688, 5832, 5742, 5868, 5994, 234, 252, 270,
+      5688, 5838, 5988, 5877, 6006, 6135, 261, 282, 303,
+      5832, 5988, 6144, 6012, 6144, 6276, 288, 312, 336,
+      5742, 5877, 6012, 7947, 8154, 8361, 2016, 2088, 2160,
+      5868, 6006, 6144, 8154, 8367, 8580, 2097, 2172, 2247,
+      5994, 6135, 6276, 8361, 8580, 8799, 2178, 2256, 2334,
+      234, 261, 288, 2016, 2097, 2178, 2574, 2682, 2790,
+      252, 282, 312, 2088, 2172, 2256, 2682, 2796, 2910,
+      270, 303, 336, 2160, 2247, 2334, 2790, 2910, 3030};
 
   {
     OpTester tester("SparseToDenseMatMul", 1, onnxruntime::kMSDomain);
@@ -222,8 +220,8 @@ TEST(SparseToDenseMatMul, TestCsr) {
 
   // Transpose B output
   const std::vector<float> t_b_output = {
-      55,  145, 235,  266,  338,  410,  113,  131,  149,
-      145, 451, 757,  662,  842,  1022, 779,  905,  1031,
+      55, 145, 235, 266, 338, 410, 113, 131, 149,
+      145, 451, 757, 662, 842, 1022, 779, 905, 1031,
       235, 757, 1279, 1058, 1346, 1634, 1445, 1679, 1913,
       266, 662, 1058, 2539, 3277, 4015, 2282, 2624, 2966,
       338, 842, 1346, 3277, 4231, 5185, 3002, 3452, 3902,
@@ -249,10 +247,9 @@ TEST(SparseToDenseMatMul, TestCsr) {
       552, 1362, 2172, 4362, 5604, 6846, 2892, 3324, 3756,
       564, 1392, 2220, 4485, 5763, 7041, 3012, 3462, 3912,
       576, 1422, 2268, 4608, 5922, 7236, 3132, 3600, 4068,
-      39,  201,  363,  1551, 2037, 2523, 4263, 4911, 5559,
-      42,  222,  402,  1608, 2112, 2616, 4494, 5178, 5862,
-      45,  243,  441,  1665, 2187, 2709, 4725, 5445, 6165
-  };
+      39, 201, 363, 1551, 2037, 2523, 4263, 4911, 5559,
+      42, 222, 402, 1608, 2112, 2616, 4494, 5178, 5862,
+      45, 243, 441, 1665, 2187, 2709, 4725, 5445, 6165};
 
   {
     OpTester tester("SparseToDenseMatMul", 1, onnxruntime::kMSDomain);
@@ -264,7 +261,7 @@ TEST(SparseToDenseMatMul, TestCsr) {
     tester.Run(OpTester::ExpectResult::kExpectSuccess);
   }
 }
-#endif // //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
+#endif  // //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
 TEST(SparseToDenseMatMul, TestCoo) {
   constexpr int64_t rows = 9;
@@ -341,7 +338,7 @@ TEST(SparseToDenseMatMul, TestCoo) {
     tester.Run(OpTester::ExpectResult::kExpectSuccess);
   }
 
-    // Transpose B output
+  // Transpose B output
   const std::vector<float> t_b_output = {
       55, 145, 235, 266, 338, 410, 113, 131, 149,
       145, 451, 757, 662, 842, 1022, 779, 905, 1031,
@@ -383,7 +380,7 @@ TEST(SparseToDenseMatMul, TestCoo) {
     tester.Run(OpTester::ExpectResult::kExpectSuccess);
   }
 }
-#endif // !defined(DISABLE_SPARSE_TENSORS)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -1385,7 +1385,7 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
 
 // TODO: Reshape missing
 
-TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
+TEST(GradientCheckerTest, BatchNormalizationGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"BatchNormInternal", kMSDomain, 1};

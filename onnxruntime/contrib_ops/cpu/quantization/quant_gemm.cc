@@ -32,7 +32,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     size_t N = SafeInt<size_t>(helper.N());
     size_t K = SafeInt<size_t>(helper.K());
 
-    //validate scales and zero points
+    // validate scales and zero points
     const auto* a_zp = context->Input<Tensor>(IN_A_ZERO_POINT);
     const auto* b_zp = context->Input<Tensor>(IN_B_ZERO_POINT);
     const auto* y_zp = context->Input<Tensor>(IN_Y_ZERO_POINT);

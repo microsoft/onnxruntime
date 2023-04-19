@@ -569,7 +569,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
                         /*nsp_loss*/ "nsp_loss"});
   config.weight_names_to_not_train = {
       "position_01",            // Slice's dat input
-      "op_min_ends_expand_10",  //op_min_ends_expand_10
+      "op_min_ends_expand_10",  // op_min_ends_expand_10
   };
   config.immutable_weights = {
       {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
@@ -840,7 +840,7 @@ class PipelineSplitter {
     }
 
     if (wait_pipeline_np) {
-      //add dependencies on the first wait
+      // add dependencies on the first wait
       auto* wait_np = wait_data_np ? wait_data_np : wait_pipeline_np;
       for (const auto& dep : dependencies) {
         *wait_np->mutable_input()->Add() = dep;
@@ -1344,7 +1344,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
       // Add weight_names_to_not_train to avoid generating backward graph on those tensor
       config.weight_names_to_not_train = {
           "position_01",            // Slice's dat input
-          "op_min_ends_expand_10",  //op_min_ends_expand_10
+          "op_min_ends_expand_10",  // op_min_ends_expand_10
       };
       pipe.partitioned_model_path = partition_file;
       config.pipeline_config = pipe;
@@ -1657,13 +1657,13 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 
 TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   auto config = MakeBasicTrainingConfig();
-  //config.set_gradients_as_graph_outputs = true;
+  // config.set_gradients_as_graph_outputs = true;
   PathString backprop_model_file;
   ASSERT_STATUS_OK(BuildBackPropGraph(ORIGINAL_MODEL_PATH, config, backprop_model_file));
 
   // cut the model using outputs
   const std::vector<PipelineSplitter::CutInfo> cuts = {
-      //sub model 0
+      // sub model 0
       {{{"T1", "T2", "T3"},
         {"X"},
         {"T3"},

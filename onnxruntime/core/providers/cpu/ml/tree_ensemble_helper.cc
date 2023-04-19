@@ -32,7 +32,7 @@ Status GetNumberOfElementsAttrsOrDefault(const OpKernelInfo& info, const std::st
   return Status::OK();
 }
 
-template<typename TH>
+template <typename TH>
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name,
                                ONNX_NAMESPACE::TensorProto_DataType proto_type, std::vector<TH>& data) {
   if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE) {

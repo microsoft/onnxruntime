@@ -223,7 +223,7 @@ TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -267,7 +267,7 @@ TEST_F(ActivationOpTest, Tanh_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -307,7 +307,7 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -337,18 +337,18 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif  //USE_CUDA || USE_ROCM || USE_DNNL
+#endif  // USE_CUDA || USE_ROCM || USE_DNNL
 
 #if defined(USE_DNNL)
 TEST_F(ActivationOpTest, LeakyRelu_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
   OpTester test("LeakyRelu", 16);
-  float alpha = 0.01f; // oneDNN set alpha equal to 0.01
+  float alpha = 0.01f;  // oneDNN set alpha equal to 0.01
   auto formula = [alpha](float x) { return (x >= 0) ? x : alpha * x; };
 
   std::vector<float> X = input_values.front();

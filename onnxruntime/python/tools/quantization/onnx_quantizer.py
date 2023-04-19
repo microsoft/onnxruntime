@@ -179,7 +179,7 @@ class ONNXQuantizer:
         ]
         if len(graph_attrs) == 0:
             return node
-        node_name = node.name if node.name != "" else f"{node.op_type}_node_count_{len(self.new_nodes)}"
+        node_name = node.name if node.name else f"{node.op_type}_node_count_{len(self.new_nodes)}"
         kwargs = {}
         for attr in node.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:

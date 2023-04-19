@@ -21,14 +21,13 @@ namespace contrib {
  *
  * TODO!! implemente thread partition similar with
  * fp16 conv operator
-*/
+ */
 class NhwcPoolFp16 : public OpKernel {
  public:
   explicit NhwcPoolFp16(const OpKernelInfo& info)
       : OpKernel(info),
-      pool_attrs_(info, info.GetKernelDef().OpName(), info.node().SinceVersion()),
-      is_max_pool_(info.GetKernelDef().OpName() == "MaxPool")
-  {}
+        pool_attrs_(info, info.GetKernelDef().OpName(), info.node().SinceVersion()),
+        is_max_pool_(info.GetKernelDef().OpName() == "MaxPool") {}
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -181,7 +180,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     NhwcPoolFp16);
-
 
 #endif
 

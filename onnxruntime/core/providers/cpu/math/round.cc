@@ -16,7 +16,6 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 11, MLFloat16, KernelDefBuilder().TypeCons
 ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Round<float>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Round<double>);
 
-
 template <typename T>
 Status Round<T>::Compute(OpKernelContext* ctx) const {
   const auto& X = *ctx->Input<Tensor>(0);

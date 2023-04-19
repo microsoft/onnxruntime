@@ -60,7 +60,7 @@ def main():
 
         azure_blob_url = args.azure_blob_url
         azure_blob_sas_token = os.getenv("AZURE_BLOB_SAS_TOKEN", None)
-        if azure_blob_sas_token and azure_blob_sas_token != "":
+        if azure_blob_sas_token:
             azure_blob_url = azure_blob_url + "?" + azure_blob_sas_token
 
         _download(azcopy_path, azure_blob_url, archive_path)

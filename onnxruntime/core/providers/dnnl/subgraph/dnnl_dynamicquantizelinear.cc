@@ -6,10 +6,8 @@
 #include "dnnl_subgraph_primitive.h"
 #include "dnnl_util.h"
 
-
 namespace onnxruntime {
 namespace ort_dnnl {
-
 
 /*
 x_min = np.minimum(0, np.min(X))
@@ -65,9 +63,8 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   // Create reduction primitive
   auto max_reduction_prim = dnnl::reduction({eng, dnnl::algorithm::reduction_max,
                                              x_md, y_scale_md, 0.f, 0.f, max_reduction_attr});
-  auto min_reduction_prim = dnnl::reduction(  {eng, dnnl::algorithm::reduction_min,
-                                              x_md, y_scale_md, 0.f, 0.f, min_reduction_attr});
-
+  auto min_reduction_prim = dnnl::reduction({eng, dnnl::algorithm::reduction_min,
+                                             x_md, y_scale_md, 0.f, 0.f, min_reduction_attr});
 
   // Create y_scale and min memory
   auto y_scale_mem = dnnl::memory(y_scale_md, eng);
@@ -83,7 +80,6 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
                                        {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, zero_mem},
                                        {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1, min_reduction_mem},
                                        {DNNL_ARG_DST, y_scale_mem}});
-
 
   // Y_ZERO_POINT COMPUTATION
   // Create memory and primitive descriptors
@@ -104,15 +100,15 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   sp.WriteToDnnlMemory<float>(scale_mem, {-1.0f});
 
   // Create primitives
-  auto zp_prim_pd = dnnl::binary::primitive_desc( eng, dnnl::algorithm::binary_div,
-                                                  y_scale_md, y_scale_md, y_zp_md, zp_prim_attr);
+  auto zp_prim_pd = dnnl::binary::primitive_desc(eng, dnnl::algorithm::binary_div,
+                                                 y_scale_md, y_scale_md, y_zp_md, zp_prim_attr);
   auto zp_prim = dnnl::binary(zp_prim_pd);
 
   // Create zp memory dst
   auto y_zp_mem = dnnl::memory(zp_prim_pd.dst_desc(), eng);
 
   // Calc zp
-  sp.AddPrimitive(zp_prim,{ {DNNL_ARG_SRC_0, min_reduction_mem},
+  sp.AddPrimitive(zp_prim, {{DNNL_ARG_SRC_0, min_reduction_mem},
                             {DNNL_ARG_SRC_1, y_scale_mem},
                             {DNNL_ARG_DST, y_zp_mem},
                             {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0, scale_mem}});
@@ -145,7 +141,7 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   sp.SetMemory(node.Output(OUT_Y_ZP), y_zp_mem, false, true);
 }
 
-//change md to targeted data type of cast op dst
+// change md to targeted data type of cast op dst
 dnnl::memory::desc DnnlDynamicQuantizeLinear::ChangeMemoryDescDataType(dnnl::memory::desc md, dnnl::memory::data_type dt) {
   auto dims = md.get_dims();
   auto strides = md.get_strides();
@@ -157,7 +153,7 @@ dnnl::memory::desc DnnlDynamicQuantizeLinear::ChangeMemoryDescDataType(dnnl::mem
   return result;
 }
 
-//write zero to memory
+// write zero to memory
 void DnnlDynamicQuantizeLinear::WriteZeroToMem(dnnl::memory& mem) {
   bool on_gpu = false;
   if (mem.get_engine().get_kind() == dnnl::engine::kind::gpu) {
@@ -168,14 +164,14 @@ void DnnlDynamicQuantizeLinear::WriteZeroToMem(dnnl::memory& mem) {
     size_t size = mem.get_desc().get_size();
     memset(dst, 0, size);
   } else {
-    //create a memory on cpu and do a reorder to gpu
+    // create a memory on cpu and do a reorder to gpu
     auto cpu_engine = dnnl::engine(dnnl::engine::kind::cpu, 0);
-    auto cpu_memory = dnnl::memory(mem.get_desc(),cpu_engine);
-    memset(cpu_memory.get_data_handle(),0,cpu_memory.get_desc().get_size());
+    auto cpu_memory = dnnl::memory(mem.get_desc(), cpu_engine);
+    memset(cpu_memory.get_data_handle(), 0, cpu_memory.get_desc().get_size());
     dnnl::stream s{mem.get_engine()};
-    //mem now contains all zero
+    // mem now contains all zero
     dnnl::reorder(cpu_memory, mem).execute(s, cpu_memory, mem);
-    //wait for reorder to complete
+    // wait for reorder to complete
     s.wait();
   }
 }

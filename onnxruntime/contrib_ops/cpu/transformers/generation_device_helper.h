@@ -329,7 +329,6 @@ Status CreateWhisperEncoderInputs(
     OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids);
 
-
 // ---------------------------------------------------------------
 // Utility Functions
 // ---------------------------------------------------------------
