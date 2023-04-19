@@ -63,6 +63,8 @@ struct AttentionData {
 
   bool has_qkv_workspace;
   T* workspace;
+  T* temp_k_workspace;
+  T* temp_v_workspace;
 
   T* output;
   T* present;
