@@ -16,35 +16,12 @@ namespace onnxruntime::training::test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/training_api/")
 
-TEST(TrainingCApiTest, GetState) {
-  auto model_uri = MODEL_FOLDER "training_model.onnx";
-
-  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
-  Ort::TrainingSession training_session = Ort::TrainingSession(Ort::SessionOptions(), checkpoint_state, model_uri);
-
-  Ort::CheckpointState state = training_session.GetState(false);
-
-  // Check if the retrieved state and the original checkpoint state are equal
-  OrtCheckpointState* checkpoint_state_c = checkpoint_state;
-  OrtCheckpointState* state_c = state;
-  auto checkpoint_state_internal = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state_c);
-  auto state_internal = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(state_c);
-
-  ASSERT_FALSE(checkpoint_state_internal->module_checkpoint_state.named_parameters.empty());
-  ASSERT_EQ(checkpoint_state_internal->module_checkpoint_state.named_parameters.size(),
-            state_internal->module_checkpoint_state.named_parameters.size());
-  for (auto& [key, value] : checkpoint_state_internal->module_checkpoint_state.named_parameters) {
-    ASSERT_TRUE(state_internal->module_checkpoint_state.named_parameters.count(key));
-  }
-}
-
 TEST(TrainingCApiTest, SaveCheckpoint) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
 
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
   Ort::TrainingSession training_session = Ort::TrainingSession(Ort::SessionOptions(), checkpoint_state, model_uri);
 
-  Ort::CheckpointState state = training_session.GetState(false);
   auto test_dir = ORT_TSTR("save_checkpoint_dir");
   if (Env::Default().FolderExists(test_dir)) {
     ORT_ENFORCE(Env::Default().DeleteFolder(test_dir).IsOK());
@@ -53,7 +30,7 @@ TEST(TrainingCApiTest, SaveCheckpoint) {
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
 
-  Ort::CheckpointState::SaveCheckpoint(state, checkpoint_path);
+  Ort::CheckpointState::SaveCheckpoint(checkpoint_state, checkpoint_path);
 
   Ort::CheckpointState new_checkpoint_state = Ort::CheckpointState::LoadCheckpoint(checkpoint_path);
   Ort::TrainingSession new_training_session = Ort::TrainingSession(Ort::SessionOptions(), new_checkpoint_state, model_uri);

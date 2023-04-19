@@ -23,6 +23,9 @@ struct OrtTrainingApi {
    * state into the checkpoint_state. This checkpoint state can then be used to create the
    * training session by invoking CreateTrainingSession. By doing so, the training session will resume
    * training from the given checkpoint state.
+   * Note that the training session created with a checkpoint state uses this state to store the entire
+   * training state (including model parameters, its gradients, the optimizer states and the properties).
+   * As a result, it is required that the checkpoint state outlive the lifetime of the training session.
    *
    * \param[in] checkpoint_path Path to the checkpoint directory
    * \param[out] checkpoint_state Checkpoint state that contains the states of the training session.
@@ -40,11 +43,13 @@ struct OrtTrainingApi {
    *
    * \param[in] checkpoint_state The checkpoint state to save.
    * \param[in] checkpoint_path Path to the checkpoint directory.
+   * \param[in] include_optimizer_state Flag to indicate whether to save the optimizer state or not.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(SaveCheckpoint, _In_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* checkpoint_path);
+  ORT_API2_STATUS(SaveCheckpoint, _In_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* checkpoint_path,
+                  const bool include_optimizer_state);
 
   /** \brief Create a training session that can be used to begin or resume training.
    *
@@ -374,22 +379,6 @@ struct OrtTrainingApi {
    */
   ORT_API2_STATUS(TrainingSessionGetEvalModelInputName, _In_ const OrtTrainingSession* sess, size_t index,
                   _In_ OrtAllocator* allocator, _Outptr_ char** output);
-
-  /** \brief Gets the current state of the training session.
-   *
-   * The state contains information about the model parameters and their gradients.
-   * It also contains information about the optimizer parameters should the user request it.
-   * The returned state can be used to save a checkpoint or analyze the model parameters.
-   *
-   * \param[in] session The training session.
-   * \param[in] include_optimizer_state Whether or not to include optimizer states in the returned state.
-   * \param[out] checkpoint_state The current state of the training session.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   */
-  ORT_API2_STATUS(GetState, _In_ const OrtTrainingSession* session, bool include_optimizer_state,
-                  _Outptr_ OrtCheckpointState** checkpoint_state);
 
   /** \brief Adds the given property to the checkpoint state.
    *

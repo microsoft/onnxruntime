@@ -45,9 +45,10 @@ using Property = std::variant<int64_t, float, std::string>;
  *
  */
 class CheckpointState : public detail::Base<OrtCheckpointState> {
- public:
+ private:
   CheckpointState(OrtCheckpointState* checkpoint_state) { p_ = checkpoint_state; }
 
+ public:
   CheckpointState() = delete;
 
   /** \brief Loads the checkpoint at provided path and returns the checkpoint state
@@ -67,7 +68,8 @@ class CheckpointState : public detail::Base<OrtCheckpointState> {
    * \param[in] path_to_checkpoint Path to the checkpoint file to load
    */
   static void SaveCheckpoint(const CheckpointState& checkpoint_state,
-                             const std::basic_string<ORTCHAR_T>& path_to_checkpoint);
+                             const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
+                             const bool include_optimizer_state = false);
 
   /** \brief Adds the given property to the state.
    *
@@ -179,15 +181,6 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
    */
   void ExportModelForInferencing(const std::basic_string<ORTCHAR_T>& inference_model_path,
                                  const std::vector<std::string>& graph_output_names);
-
-  /** \brief Gets the current training state of the session.
-   *
-   * Wraps OrtTrainingApi::GetState
-   *
-   * \param[in] include_optimizer_state Whether or not to include the optimizer state in the returned state.
-   * \return A CheckpointState object that includes all training session parameters' state.
-   */
-  CheckpointState GetState(const bool include_optimizer_state);
 
   /** \brief Gets the graph input names.
    *

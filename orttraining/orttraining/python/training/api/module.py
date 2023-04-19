@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -12,9 +11,6 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue, get_ort_device_type
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
 from onnxruntime.training.api.checkpoint_state import CheckpointState
-
-if TYPE_CHECKING:
-    from onnxruntime.training.apioptimizer import Optimizer
 
 
 class Module:
@@ -61,6 +57,7 @@ class Module:
             os.fspath(eval_model_uri) if eval_model_uri is not None else None,
             self._device,
         )
+        self._state = state
 
     def __call__(self, *user_inputs) -> tuple[np.ndarray] | np.ndarray:
         """Invokes either the training or the evaluation step of the model.
@@ -125,17 +122,6 @@ class Module:
         of train().
         """
         return self._model.lazy_reset_grad()
-
-    def get_state(self, optimizer: Optimizer = None) -> CheckpointState:
-        """Gets the state of the training session.
-
-        The state includes all the training session parameters and the optimizer state.
-
-        Args:
-            optimizer: If provided, the optimizer state is included in the checkpoint state.
-        """
-
-        return CheckpointState(self._model.get_state(optimizer))
 
     def get_contiguous_parameters(self, trainable_only: bool = False) -> OrtValue:
         """Creates a contiguous buffer of the training session parameters

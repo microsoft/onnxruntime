@@ -166,14 +166,13 @@ struct TrainingConfigurationResult {
 #ifdef ENABLE_TRAINING_APIS
 // Thin wrapper over internal C++ Optimizer
 struct PyOptimizer {
-  PyOptimizer(const std::string optimizer_model_uri,
-              onnxruntime::training::api::Module* model, std::vector<std::shared_ptr<IExecutionProvider>> provider)
+  PyOptimizer(const std::string optimizer_model_uri, onnxruntime::training::api::CheckpointState* state,
+              std::vector<std::shared_ptr<IExecutionProvider>> providers)
       : optimizer_() {
     auto env = GetTrainingEnv().GetORTEnv();
     // XXX: We hope that env will be around when optimizer needs it.
-    optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
-                                                                         model->NamedParameters(), onnxruntime::SessionOptions(),
-                                                                         *env, provider);
+    optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(
+        optimizer_model_uri, state, onnxruntime::SessionOptions(), *env, providers);
   }
 
   std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
@@ -882,7 +881,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
   training_module
       .def(py::init([](const std::string& model_uri,
-                       onnxruntime::training::api::CheckpointState& state,
+                       onnxruntime::training::api::CheckpointState* state,
                        std::optional<std::string> eval_model_uri,
                        OrtDevice device) {
         onnxruntime::SessionOptions session_option;
@@ -890,9 +889,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
         auto env = GetTrainingEnv().GetORTEnv();
         return std::make_unique<onnxruntime::training::api::Module>(
-            model_uri,
-            state.module_checkpoint_state.named_parameters, session_option,
-            *env, provider, eval_model_uri);
+            model_uri, state, session_option, *env, provider, eval_model_uri);
       }))
       .def("train_step",
            [](onnxruntime::training::api::Module* model,
@@ -919,17 +916,6 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("get_parameters_size",
            [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
              return model->GetParametersSize(trainable_only);
-           })
-      .def("get_state",
-           [](onnxruntime::training::api::Module* model,
-              std::optional<PyOptimizer*> optimizer)
-               -> onnxruntime::training::api::CheckpointState {
-             onnxruntime::training::api::CheckpointState state;
-             ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
-             if (optimizer.has_value()) {
-               ORT_THROW_IF_ERROR(optimizer.value()->optimizer_->GetStateDict(state.optimizer_checkpoint_state));
-             }
-             return state;
            })
       .def("export_model_for_inferencing",
            [](onnxruntime::training::api::Module* model, const std::string& inference_model_path,
@@ -991,17 +977,14 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
   py::class_<PyOptimizer>
       training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
-  training_optimizer.def(py::init([](
-                                      const std::string optimizer_model_uri,
-                                      onnxruntime::training::api::Module* model,
-                                      OrtDevice device) {
-                      onnxruntime::SessionOptions session_option;
-                      std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
+  training_optimizer
+      .def(py::init([](const std::string optimizer_model_uri,
+                       onnxruntime::training::api::CheckpointState* state,
+                       OrtDevice device) {
+        std::vector<std::shared_ptr<IExecutionProvider>> providers = GetExecutionProvidersForTrainingApis(device);
 
-                      return std::make_unique<PyOptimizer>(
-                          optimizer_model_uri,
-                          model, provider);
-                    }))
+        return std::make_unique<PyOptimizer>(optimizer_model_uri, state, providers);
+      }))
       .def("optimizer_step", [](PyOptimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->optimizer_->Step());
       })
@@ -1056,9 +1039,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
   m.def("save_checkpoint",
         [](onnxruntime::training::api::CheckpointState* checkpoint_state,
-           const std::string& checkpoint_path) -> void {
+           const std::string& checkpoint_path, const bool include_optimizer_state) -> void {
           ORT_THROW_IF_ERROR(
-              onnxruntime::training::api::SaveCheckpoint(*checkpoint_state, ToPathString(checkpoint_path)));
+              onnxruntime::training::api::SaveCheckpoint(*checkpoint_state, ToPathString(checkpoint_path),
+                                                         include_optimizer_state));
         });
 
   m.def("load_checkpoint",

@@ -38,7 +38,6 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr TrainingSessionGetEvalModelInputCount;
             public IntPtr TrainingSessionGetTrainingModelInputName;
             public IntPtr TrainingSessionGetEvalModelInputName;
-            public IntPtr GetState;
             public IntPtr AddProperty;
             public IntPtr GetProperty;
         }
@@ -91,7 +90,6 @@ namespace Microsoft.ML.OnnxRuntime
                     OrtGetEvalModelInputCount = (DOrtGetEvalModelInputCount)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetEvalModelInputCount, typeof(DOrtGetEvalModelInputCount));
                     OrtGetTrainingModelInputName = (DOrtGetTrainingModelInputName)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetTrainingModelInputName, typeof(DOrtGetTrainingModelInputName));
                     OrtGetEvalModelInputName = (DOrtGetEvalModelInputName)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetEvalModelInputName, typeof(DOrtGetEvalModelInputName));
-                    OrtGetState = (DOrtGetState)Marshal.GetDelegateForFunctionPointer(trainingApi_.GetState, typeof(DOrtGetState));
                     OrtAddProperty = (DOrtAddProperty)Marshal.GetDelegateForFunctionPointer(trainingApi_.AddProperty, typeof(DOrtAddProperty));
                     OrtGetProperty = (DOrtGetProperty)Marshal.GetDelegateForFunctionPointer(trainingApi_.GetProperty, typeof(DOrtGetProperty));
                 }
@@ -115,12 +113,14 @@ namespace Microsoft.ML.OnnxRuntime
             /// <summary>
             /// Creates an instance of OrtSession with provided parameters
             /// </summary>
-            /// <param name="checkpointPath">checkpoint string path</param>
-            /// <param name="checkpointState">(Output) Loaded OrtCheckpointState instance</param>
+            /// <param name="checkpointState">OrtCheckpointState instance to save</param>
+            /// <param name="checkpointPath">Checkpoint string path</param>
+            /// <param name="includeOptimizerState">Flag indicating whether to save the optimizer state.</param>
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /* OrtStatus* */DOrtSaveCheckpoint(
                                             IntPtr /*(OrtCheckpointState*)*/ checkpointState,
-                                            byte[] checkpointPath);
+                                            byte[] checkpointPath,
+                                            bool includeOptimizerState);
 
             public static DOrtSaveCheckpoint OrtSaveCheckpoint;
 
@@ -308,15 +308,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                     );
 
             public static DOrtGetEvalModelInputName OrtGetEvalModelInputName;
-
-            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetState(
-                                                    IntPtr /*(OrtTrainingSession*)*/ session,
-                                                    bool includeOptimizerState,
-                                                    out IntPtr /*(OrtCheckpointState**)*/ checkpointState
-                                                    );
-
-            public static DOrtGetState OrtGetState;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtAddProperty(

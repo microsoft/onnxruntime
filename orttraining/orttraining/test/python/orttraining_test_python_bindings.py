@@ -214,16 +214,15 @@ def test_training_module_checkpoint():
 
         checkpoint_save_path = os.path.join(temp_dir, "checkpoint_export.ckpt")
 
-        session_state = model.get_state()
-        CheckpointState.save_checkpoint(session_state, checkpoint_save_path)
+        CheckpointState.save_checkpoint(state, checkpoint_save_path)
         old_flatten_params = model.get_contiguous_parameters()
 
         # Assert the checkpoint was saved.
         assert os.path.exists(checkpoint_save_path)
 
         # Assert the checkpoint parameters remain after saving.
-        state = CheckpointState.load_checkpoint(checkpoint_save_path)
-        new_model = Module(training_model_file_path, state)
+        new_state = CheckpointState.load_checkpoint(checkpoint_save_path)
+        new_model = Module(training_model_file_path, new_state)
 
         new_params = new_model.get_contiguous_parameters()
 
@@ -318,11 +317,11 @@ def test_cuda_execution_provider():
     "property_value",
     [-1, 0, 1, 1234567890, -1.0, -0.1, 0.1, 1.0, 1234.0, "hello", "world", "onnxruntime"],
 )
-def test_add_property(property_value):
+def test_add_get_property(property_value):
     with tempfile.TemporaryDirectory() as temp_dir:
         (
             checkpoint_file_path,
-            _,
+            training_model_file_path,
             _,
             _,
             _,
@@ -330,6 +329,9 @@ def test_add_property(property_value):
 
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
+
+        # Create a Module.
+        _ = Module(training_model_file_path, state)
 
         # Float values in python are double precision.
         # Convert to float32 to match the type of the property.
@@ -339,6 +341,11 @@ def test_add_property(property_value):
         state["property"] = property_value
         assert "property" in state
         assert state["property"] == property_value
+
+        CheckpointState.save_checkpoint(state, checkpoint_file_path)
+        new_state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        assert "property" in new_state
+        assert new_state["property"] == property_value
 
 
 def test_get_input_output_names():

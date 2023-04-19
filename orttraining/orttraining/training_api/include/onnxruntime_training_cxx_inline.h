@@ -82,12 +82,6 @@ inline void TrainingSession::OptimizerStep() {
   ThrowOnError(GetTrainingApi().OptimizerStep(p_, run_options));
 }
 
-inline CheckpointState TrainingSession::GetState(const bool include_optimizer_state) {
-  OrtCheckpointState* state;
-  ThrowOnError(GetTrainingApi().GetState(p_, include_optimizer_state, &state));
-  return CheckpointState(state);
-}
-
 inline std::vector<std::string> TrainingSession::InputNames(const bool training) {
   auto& input_count_function = training ? GetTrainingApi().TrainingSessionGetTrainingModelInputCount
                                         : GetTrainingApi().TrainingSessionGetEvalModelInputCount;
@@ -183,8 +177,10 @@ inline CheckpointState CheckpointState::LoadCheckpoint(const std::basic_string<O
 }
 
 inline void CheckpointState::SaveCheckpoint(const CheckpointState& checkpoint_states,
-                                            const std::basic_string<ORTCHAR_T>& path_to_checkpoint) {
-  ThrowOnError(GetTrainingApi().SaveCheckpoint(checkpoint_states, path_to_checkpoint.c_str()));
+                                            const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
+                                            const bool include_optimizer_state) {
+  ThrowOnError(GetTrainingApi().SaveCheckpoint(checkpoint_states, path_to_checkpoint.c_str(),
+                                               include_optimizer_state));
 }
 
 inline void TrainingSession::ExportModelForInferencing(const std::basic_string<ORTCHAR_T>& inference_model_path,

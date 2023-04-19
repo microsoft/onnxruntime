@@ -319,18 +319,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         }
 
-        /// <summary>
-        /// Gets the current training session state. The state can be saved to a checkpoint file
-        /// by calling <see cref="SaveCheckpoint"/>
-        /// </summary>
-        /// <param name="includeOptimizerState">SFlag indicating whether to include optimizer state or not.</param>
-        public CheckpointState GetState(bool includeOptimizerState = false)
-        {
-            IntPtr checkpointHandle = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetState(_nativeHandle, includeOptimizerState, out checkpointHandle));
-            return new CheckpointState(checkpointHandle);
-        }
-
     #endregion
     #region private methods
 

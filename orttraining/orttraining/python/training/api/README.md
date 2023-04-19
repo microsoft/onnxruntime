@@ -42,7 +42,6 @@ eval_model_outputs = model(<inputs to your eval model>)
 print("Loss : ", training_model_outputs[0])
 
 # Saving checkpoint.
-state = model.get_state()
 CheckpointState.save_checkpoint(state, "checkpoint_export.ckpt")
 
 ```

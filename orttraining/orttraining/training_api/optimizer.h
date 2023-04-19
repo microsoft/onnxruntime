@@ -49,6 +49,8 @@ enum class OptimizerType {
   // Lamb,
 };
 
+struct CheckpointState;
+
 struct Optimizer {
   friend struct LRSchedulerBase;
 
@@ -57,7 +59,7 @@ struct Optimizer {
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input's ValueInfoProto if the parameter doesn't have it already.
   Optimizer(const std::string& optim_path_or_bytes,
-            const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+            CheckpointState* state,
             const onnxruntime::SessionOptions& session_options,
             const Environment& env,
             const std::vector<std::shared_ptr<IExecutionProvider>>& providers);
@@ -69,23 +71,23 @@ struct Optimizer {
   Status LoadStateDict(const OptimizerCheckpointState& optimizer_checkpoint_states);
 
   Status SetLearningRate(float lr) {
-    optimizer_state_.learning_rate = lr;
+    optimizer_state_->learning_rate = lr;
     return Status::OK();
   }
 
   float GetLearningRate() const noexcept {
-    return optimizer_state_.learning_rate;
+    return optimizer_state_->learning_rate;
   }
 
   Status SetInitialLearningRate(float initial_lr) {
-    optimizer_state_.initial_lr = initial_lr;
-    optimizer_state_.learning_rate = initial_lr;
+    optimizer_state_->initial_lr = initial_lr;
+    optimizer_state_->learning_rate = initial_lr;
     return Status::OK();
   }
 
  private:
   int64_t GetStep() const {
-    return optimizer_state_.step;
+    return optimizer_state_->step;
   }
 
   // Generates optimizer momentum states for applicable optimizer types
@@ -97,8 +99,8 @@ struct Optimizer {
   // TODO: load this info from checkpoint
   OptimizerType optimizer_type_ = OptimizerType::AdamW;
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
-  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
-  GroupOptimizerState optimizer_state_;
+  CheckpointState* state_;  // Non owning pointer to the state.
+  std::shared_ptr<GroupOptimizerState> optimizer_state_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::vector<OrtValue> inputs_;

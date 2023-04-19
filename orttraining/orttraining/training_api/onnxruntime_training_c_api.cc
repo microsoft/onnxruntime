@@ -43,7 +43,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
         env->GetEnvironment(),
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         options == nullptr ? ProvidersType() : CreateProviders(options->provider_factories),
-        chkpt_state->module_checkpoint_state.named_parameters,
+        chkpt_state,
         onnxruntime::training::api::ModelIdentifiers(
             onnxruntime::ToUTF8String(train_model_path),
             eval_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_path))
@@ -271,10 +271,11 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::LoadCheckpoint, _In_ const ORTCHAR_T* check
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ OrtCheckpointState* checkpoint_state,
-                    _In_ const ORTCHAR_T* checkpoint_path) {
+                    _In_ const ORTCHAR_T* checkpoint_path, const bool include_optimizer_state) {
   API_IMPL_BEGIN
   auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::training::api::SaveCheckpoint(*chkpt_state, checkpoint_path));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      onnxruntime::training::api::SaveCheckpoint(*chkpt_state, checkpoint_path, include_optimizer_state));
 
   return nullptr;
   API_IMPL_END
@@ -401,20 +402,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelInputName, _In_ 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::GetState, _In_ const OrtTrainingSession* sess, bool include_optimizer_state,
-                    _Outptr_ OrtCheckpointState** checkpoint_state) {
-  API_IMPL_BEGIN
-
-  *checkpoint_state = nullptr;
-  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
-  auto chkpt_state = std::make_unique<onnxruntime::training::api::CheckpointState>().release();
-  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CreateCheckpointState(*chkpt_state, include_optimizer_state));
-  *checkpoint_state = reinterpret_cast<OrtCheckpointState*>(chkpt_state);
-
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtTrainingApis::AddProperty, _Inout_ OrtCheckpointState* checkpoint_state,
                     _In_ const char* property_name, _In_ enum OrtPropertyType property_type,
                     _In_ void* property_value) {
@@ -527,7 +514,6 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::TrainingSessionGetEvalModelInputCount,
     &OrtTrainingApis::TrainingSessionGetTrainingModelInputName,
     &OrtTrainingApis::TrainingSessionGetEvalModelInputName,
-    &OrtTrainingApis::GetState,
     &OrtTrainingApis::AddProperty,
     &OrtTrainingApis::GetProperty,
 };

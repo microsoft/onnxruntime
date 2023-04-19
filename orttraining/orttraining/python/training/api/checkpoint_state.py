@@ -33,14 +33,17 @@ class CheckpointState:
         return cls(C.load_checkpoint(os.fspath(checkpoint_uri)))
 
     @classmethod
-    def save_checkpoint(cls, state: CheckpointState, checkpoint_uri: str | os.PathLike) -> None:
+    def save_checkpoint(
+        cls, state: CheckpointState, checkpoint_uri: str | os.PathLike, include_optimizer_state: bool = False
+    ) -> None:
         """Saves the checkpoint state to the checkpoint file
 
         Args:
             state: The checkpoint state object.
             checkpoint_uri: The path to the checkpoint file.
+            include_optimizer_state: If True, the optimizer state is also saved to the checkpoint file.
         """
-        C.save_checkpoint(state._state, os.fspath(checkpoint_uri))
+        C.save_checkpoint(state._state, os.fspath(checkpoint_uri), include_optimizer_state)
 
     def __getitem__(self, name: str) -> int | float | str:
         """Gets the property associated with the given name
