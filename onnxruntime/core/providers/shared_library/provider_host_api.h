@@ -26,6 +26,9 @@ struct Provider {
   // Update provider options from key-value string configuration
   virtual void UpdateProviderOptions(void* /*provider options to be configured*/, const ProviderOptions& /*key-value string provider options*/){};
 
+  // Get provider specific custom op domain list. Provider has the resposibility to release OrtCustomOpDomain instances it creates.
+  virtual void GetCustomOpDomainList(IExecutionProviderFactory* /*pointer to factory instance*/, std::vector<OrtCustomOpDomain*>& /*provider custom op domain list*/){};
+
   virtual void Initialize() = 0;  // Called right after loading the shared library, if this throws any errors Shutdown() will be called and the library unloaded
   virtual void Shutdown() = 0;    // Called right before unloading the shared library
 

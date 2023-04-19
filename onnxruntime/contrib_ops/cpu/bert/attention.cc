@@ -80,7 +80,7 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packb_size, loop_len));
 
   // Initialize memory to 0 as there could be some padding associated with pre-packed
-  // buffer memory and we don not want it uninitialized and generate different hashes
+  // buffer memory and we do not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
   packed_weights_[qkv_index] = BufferUniquePtr(packed_weights_data, BufferDeleter(std::move(alloc)));
@@ -328,8 +328,9 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q, K, V, mask_index, past, output,
-                        batch_size, sequence_length,
+  return ApplyAttention(Q, K, V, mask_index, past, nullptr /* past_key */, nullptr /* past_value */,
+                        output, nullptr /* present_key */, nullptr /* present_value */,
+                        batch_size, sequence_length, sequence_length,
                         parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
                         relative_position_bias, context);
 }
