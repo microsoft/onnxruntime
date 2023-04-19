@@ -126,13 +126,13 @@ TEST_F(ActivationOpTest, Relu) {
       "Relu",
       input_values_fp16,
       [](MLFloat16 x) {
-          if (x.ToFloat() > 0.0f) return x;
-          return MLFloat16();
+        if (x.ToFloat() > 0.0f) return x;
+        return MLFloat16();
       },
       {},
       /*is_tensorrt_supported=*/false,
       /*opset_version= */ 11);
-#endif // MLAS_F16VEC_INTRINSICS_SUPPORTED
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -427,7 +427,7 @@ TEST_F(ActivationOpTest, LeakyRelu_fp16) {
 
   test.AddInput<MLFloat16>("X", dims, bf_X);
   test.AddOutput<MLFloat16>("Y", dims, bf_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+  test.Run();
 }
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 

@@ -87,16 +87,16 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
 
 class ActivationOpTest : public ::testing::Test {
  protected:
-  std::vector<std::vector<float>> input_values{{-1.0f, 0, 1.0f,                                                        // normal input values for activation
-                                                100.0f, -100.0f, 1000.0f, -1000.0f,                                    // input values that leads to exp() overflow
-                                                FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,                                  // min, denorm, -denorm
-                                                FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity()}};           // max, -max, inf
-  std::vector<std::vector<double>> input_values_double{{-1.0, 0, 1.0,                                                  // normal input values for activation
-                                                        100.0, -100.0, 1000.0, -1000.0,                                // input values that leads to exp() overflow
-                                                        DBL_MIN, DBL_MIN / 10, -DBL_MIN / 10,                          // min, denorm, -denorm
-                                                        DBL_MAX, -DBL_MAX, std::numeric_limits<double>::infinity()}};  // max, -max, inf
-  std::vector<std::vector<int8_t>> input_values_int8{{-1, -5, 0, 1, 5, 100, -100,                                       // normal input values for activation
-                                                        std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max()}}; // min, max
+  std::vector<std::vector<float>> input_values{{-1.0f, 0, 1.0f,                                                                  // normal input values for activation
+                                                100.0f, -100.0f, 1000.0f, -1000.0f,                                              // input values that leads to exp() overflow
+                                                FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,                                            // min, denorm, -denorm
+                                                FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity()}};                     // max, -max, inf
+  std::vector<std::vector<double>> input_values_double{{-1.0, 0, 1.0,                                                            // normal input values for activation
+                                                        100.0, -100.0, 1000.0, -1000.0,                                          // input values that leads to exp() overflow
+                                                        DBL_MIN, DBL_MIN / 10, -DBL_MIN / 10,                                    // min, denorm, -denorm
+                                                        DBL_MAX, -DBL_MAX, std::numeric_limits<double>::infinity()}};            // max, -max, inf
+  std::vector<std::vector<int8_t>> input_values_int8{{-1, -5, 0, 1, 5, 100, -100,                                                // normal input values for activation
+                                                      std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max()}};  // min, max
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
   std::vector<std::vector<MLFloat16>> input_values_fp16{{MLFloat16(-1.0f),
                                                          MLFloat16(-5.f),
@@ -107,7 +107,7 @@ class ActivationOpTest : public ::testing::Test {
                                                          MLFloat16(-100.f),
                                                          MLFloat16(65504.f),
                                                          MLFloat16(-65504.f)}};
-#endif // MLAS_F16VEC_INTRINSICS_SUPPORTED
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
   void SetUp() override {
     float low = -1.0f, high = 1.0f;

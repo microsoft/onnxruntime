@@ -20,7 +20,7 @@ struct Relu<MLFloat16> : public ElementWiseRangedTransform<MLFloat16> {
     return Status::OK();
   }
   GSL_SUPPRESS(r .11)
-  ElementWiseRangedTransform<MLFloat16>* Copy() const final{
+  ElementWiseRangedTransform<MLFloat16>* Copy() const final {
     using T1 = typename std::remove_pointer<decltype(this)>::type;
     using T2 = typename std::remove_const<T1>::type;  // redundant?
     return new T2(*this);
@@ -34,7 +34,7 @@ struct Relu<MLFloat16> : public ElementWiseRangedTransform<MLFloat16> {
     const MLFloat16* input_ptr = this->input + first;
 
     // Linux compilation pipeline complained memcpy_s does not exists?!
-    //memcpy_s(output_ptr, len * sizeof(MLFloat16), input_ptr, len * sizeof(MLFloat16));
+    // memcpy_s(output_ptr, len * sizeof(MLFloat16), input_ptr, len * sizeof(MLFloat16));
     memcpy(output_ptr, input_ptr, len * sizeof(MLFloat16));
 
     MlasFp16Activation(&Activation, output_ptr, 1, len, len);
@@ -77,8 +77,7 @@ struct LeakyRelu<MLFloat16> : public ElementWiseRangedTransform<MLFloat16> {
 //    MlasClipActivation,
 //    MlasHardSigmoidActivation,
 
-
 }  // namespace functors
 }  // namespace onnxruntime
 
-#endif // MLAS_F16VEC_INTRINSICS_SUPPORTED
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED

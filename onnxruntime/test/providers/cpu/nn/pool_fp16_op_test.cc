@@ -88,7 +88,6 @@ TEST(PoolFp16Test, MaxPool) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: result differs
 }
 
-
 TEST(PoolFp16Test, MaxPool_10_Dilation_1d) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
@@ -283,7 +282,6 @@ TEST(PoolFp16Test, MaxPool_Dilation_Ceil1_2d) {
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
-
 
 TEST(PoolTest, MaxPool_DilationPadding_3d) {
   OpTester test("MaxPool", 12);
@@ -489,7 +487,6 @@ TEST(PoolFp16Test, AveragePool_10_ceil1_2d) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
-
 TEST(PoolFp16Test, GlobalAveragePool) {
   OpTester test("GlobalAveragePool");
 
@@ -557,8 +554,7 @@ TEST(PoolFp16Test, GlobalAveragePool) {
       MLFloat16(0x1.974p-3f), MLFloat16(0x1.9dcp-3f), MLFloat16(0x1.460p-2f),
       MLFloat16(0x1.cfcp-2f), MLFloat16(0x1.204p-2f), MLFloat16(0x1.a40p-1f),
       MLFloat16(0x1.fc4p-2f), MLFloat16(0x1.de0p-2f), MLFloat16(0x1.7b4p-1f),
-      MLFloat16(0x1.9b8p-2f), MLFloat16(0x1.b30p-3f), MLFloat16(0x1.e08p-2f)
-  };
+      MLFloat16(0x1.9b8p-2f), MLFloat16(0x1.b30p-3f), MLFloat16(0x1.e08p-2f)};
   std::vector<int64_t> x_dims = {1, 3, 8, 8};
   std::vector<int64_t> expected_dims = {1, 3, 1, 1};
   std::vector<MLFloat16> expected_vals = {MLFloat16(0x1.078448p-1f), MLFloat16(0x1.f0bf4p-2f), MLFloat16(0x1.e719a8p-2f)};

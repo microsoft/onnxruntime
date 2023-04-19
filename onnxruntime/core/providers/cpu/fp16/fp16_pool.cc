@@ -11,9 +11,7 @@
 #include "core/platform/threadpool.h"
 #include "core/common/safeint.h"
 
-
 namespace onnxruntime {
-
 
 /**
  * @brief Pooling operator for type FP16,
@@ -23,15 +21,14 @@ namespace onnxruntime {
  *
  * TODO!! implemente thread partition similar with
  * fp16 conv operator
-*/
+ */
 class PoolFp16 : public OpKernel {
  public:
   explicit PoolFp16(const OpKernelInfo& info)
       : OpKernel(info),
-      pool_attrs_(info, info.GetKernelDef().OpName(), info.node().SinceVersion()),
-      is_max_pool_(info.GetKernelDef().OpName() == "MaxPool"),
-      channels_last_(info.GetKernelDef().Domain() == kMSInternalNHWCDomain)
-  {}
+        pool_attrs_(info, info.GetKernelDef().OpName(), info.node().SinceVersion()),
+        is_max_pool_(info.GetKernelDef().OpName() == "MaxPool"),
+        channels_last_(info.GetKernelDef().Domain() == kMSInternalNHWCDomain) {}
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -244,7 +241,6 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     PoolFp16);
 
-
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
 
@@ -279,8 +275,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     PoolFp16);
 
 }  // namespace contrib
-#endif // DISABLE_CONTRIB_OPS
+#endif  // DISABLE_CONTRIB_OPS
 
 }  // namespace onnxruntime
-#endif // MLAS_F16VEC_INTRINSICS_SUPPORTED
-
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
