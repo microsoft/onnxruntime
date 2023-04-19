@@ -415,7 +415,7 @@ struct OrtTrainingApi {
    */
   ORT_API2_STATUS(GetProperty, _In_ const OrtCheckpointState* checkpoint_state,
                   _In_ const char* property_name, _Inout_ OrtAllocator* allocator,
-                  _Out_ enum OrtPropertyType* property_type, _Out_ void** property_value);
+                  _Out_ enum OrtPropertyType* property_type, _Outptr_ void** property_value);
 };
 
 typedef struct OrtTrainingApi OrtTrainingApi;
