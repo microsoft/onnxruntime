@@ -88,7 +88,7 @@ SNPEExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       continue;
 
     const auto& node = *p_node;
-    if (!node.GetExecutionProviderType().empty()) {
+    if (!node.GetExecutionProviderType().empty() && node.GetExecutionProviderType() != kSnpeExecutionProvider) {
       continue;
     }
 
