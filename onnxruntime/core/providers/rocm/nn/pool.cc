@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/rocm/miopen_common.h"
 #include "core/providers/rocm/nn/pool.h"
 #include "core/providers/rocm/nn/max_pool_with_index.h"
@@ -307,7 +306,6 @@ Status GlobalPool<T, PoolType>::ComputeInternal(OpKernelContext* context) const 
     ORT_RETURN_IF_ERROR(reduce_desc.Set(reduce_op, miopen_type_X, MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES));
   }
 
-  ORT_ENFORCE(x_shape.NumDimensions() >= 3);
   auto x_dims = x_shape.AsShapeVector();
   TensorShapeVector y_dims;
   y_dims.resize(x_dims.size(), 1);
