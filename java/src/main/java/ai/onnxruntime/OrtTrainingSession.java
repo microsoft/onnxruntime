@@ -920,7 +920,11 @@ public final class OrtTrainingSession implements AutoCloseable {
       Objects.requireNonNull(outputPath, "checkpoint path must not be null");
       String outputStr = outputPath.toString();
       saveCheckpoint(
-          OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, outputStr, saveOptimizer);
+          OnnxRuntime.ortApiHandle,
+          OnnxRuntime.ortTrainingApiHandle,
+          nativeHandle,
+          outputStr,
+          saveOptimizer);
     }
 
     @Override
@@ -962,7 +966,8 @@ public final class OrtTrainingSession implements AutoCloseable {
      *              const bool include_optimizer_state);
      */
     private native void saveCheckpoint(
-        long apiHandle, long trainingHandle, long nativeHandle, String path, boolean saveOptimizer) throws OrtException;
+        long apiHandle, long trainingHandle, long nativeHandle, String path, boolean saveOptimizer)
+        throws OrtException;
 
     private native void close(long trainingApiHandle, long nativeHandle);
   }
