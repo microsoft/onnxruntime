@@ -41,6 +41,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   OrtAllocator* allocator;
   Ort::ThrowOnError(ort_.KernelContext_GetAllocator(context, &mem_info, &allocator));
   void* allocated = allocator->Alloc(allocator, 2);
+  EXPECT_NE(allocated, nullptr) << "KernelContext_GetAllocator() can successfully allocate some memory";
   allocator->Free(allocator, allocated);
 
   // Do computation
