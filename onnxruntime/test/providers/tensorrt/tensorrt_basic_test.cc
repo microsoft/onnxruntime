@@ -601,7 +601,6 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
      */
     uint64_t compilation_without_cache_ms, compilation_with_cache_ms;
 
-
     // First session is created with TRT EP with timing cache enabled
     params.trt_timing_cache_enable = 1;
     {
