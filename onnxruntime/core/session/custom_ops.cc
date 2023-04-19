@@ -106,6 +106,17 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
   API_IMPL_END
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
+  API_IMPL_BEGIN
+  onnxruntime::AllocatorPtr allocator = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetAllocator(*mem_info);
+  if (!allocator) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
+  }
+  *out = new onnxruntime::OrtAllocatorImplWrappingIAllocator(std::move(allocator));
+  return nullptr;
+  API_IMPL_END
+};
+
 #ifdef _WIN32
 #pragma warning(pop)
 #endif

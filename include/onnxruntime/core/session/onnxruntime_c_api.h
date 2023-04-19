@@ -4150,6 +4150,18 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetOptionalContainedTypeInfo, _In_ const OrtOptionalTypeInfo* optional_type_info,
                   _Outptr_ OrtTypeInfo** out);
+
+  /** \brief Get Allocator from KernelContext for a specific memoryInfo.
+   *
+   * \param[in] context OrtKernelContext instance
+   * \param[in] mem_info OrtMemoryInfo instance
+   * \param[out] out A pointer to OrtAllocator.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value. Always returns nullptr.
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
 };
 
 /*
