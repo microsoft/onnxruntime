@@ -69,10 +69,9 @@ struct BFloat16 {
       val = static_cast<uint16_t>((U32 + rounding_bias) >> 16);
     }
 #else
-    if constexpr(endian::native == endian::little) {
+    if constexpr (endian::native == endian::little) {
       std::memcpy(&val, reinterpret_cast<char*>(&v) + sizeof(uint16_t), sizeof(uint16_t));
-    }
-    else {
+    } else {
       std::memcpy(&val, &v, sizeof(uint16_t));
     }
 #endif
@@ -93,11 +92,10 @@ struct BFloat16 {
     float result;
     char* const first = reinterpret_cast<char*>(&result);
     char* const second = first + sizeof(uint16_t);
-    if constexpr(endian::native == endian::little) {
+    if constexpr (endian::native == endian::little) {
       std::memset(first, 0, sizeof(uint16_t));
       std::memcpy(second, &val, sizeof(uint16_t));
-    }
-    else {
+    } else {
       std::memcpy(first, &val, sizeof(uint16_t));
       std::memset(second, 0, sizeof(uint16_t));
     }
@@ -116,7 +114,6 @@ struct BFloat16 {
 inline ORT_HOST_DEVICE bool operator==(const BFloat16& left, const BFloat16& right) { return left.val == right.val; }
 inline ORT_HOST_DEVICE bool operator!=(const BFloat16& left, const BFloat16& right) { return left.val != right.val; }
 inline ORT_HOST_DEVICE bool operator<(const BFloat16& left, const BFloat16& right) { return left.val < right.val; }
-
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat16 and BFloat16 from unsigned short

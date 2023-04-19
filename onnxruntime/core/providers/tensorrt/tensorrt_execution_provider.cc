@@ -10,6 +10,7 @@
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
+#include "tensorrt_execution_provider_custom_ops.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
@@ -634,6 +635,7 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
+  ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 }
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(OrtMemType mem_type) const {
@@ -722,6 +724,10 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
   return Status::OK();
+}
+
+void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
+  custom_op_domain_list = info_.custom_op_domain_list;
 }
 
 // Check the graph is the subgraph of control flow op
@@ -1514,7 +1520,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // enable builder heuristics
     if (build_heuristics_enable_) {
-      trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC );
+      trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
     }
 #if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
@@ -1732,7 +1738,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             runtime_.get(), nullptr, allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
             force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
-            builder_optimization_level_, auxiliary_streams_ , !tactic_sources_.empty(), tactics};
+            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics};
       *state = p.release();
       return 0;
     };
@@ -2021,7 +2027,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
         // enable builder heuristics
         if (trt_state->build_heuristics_enable) {
-          trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC );
+          trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
         }
 #if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8

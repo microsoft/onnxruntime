@@ -56,7 +56,7 @@ void RunQLinearGlobalAveragePool(
   });
 
   CalculateGlobalAvgPool(x_data.data(), batch, h * w, channel, channels_last, y_data.data(),
-                           x_zero_point, x_scale, y_zero_point, y_scale);
+                         x_zero_point, x_scale, y_zero_point, y_scale);
 
   OpTester test("QLinearGlobalAveragePool", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("channels_last", channels_last ? 1LL : 0LL);

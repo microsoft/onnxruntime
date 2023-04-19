@@ -35,12 +35,12 @@ using ConvPadVector = ConvAttributes::ConvPadVector;
  * Add is performed AFTER activation.
  *
  * The implementation supports both NCHW and NHWC. It runs faster with NHWC.
- * 
+ *
  * Currently this class implement 3 operators: onnx.Conv, ms.FusedConv and ms.NhwcFusedConv
  * In the constructor, if we see the operator name is NhwcFusedConv, we assume the
  * input layout to be NHWC, otherwise we assume layout is NCHW.
  *
-*/
+ */
 class FusedConvFp16 final : public OpKernel {
  public:
   FusedConvFp16(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
@@ -51,7 +51,7 @@ class FusedConvFp16 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-      /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override;
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
                                    int input_idx,
@@ -61,7 +61,6 @@ class FusedConvFp16 final : public OpKernel {
   bool channels_last_{false};
 
  private:
-
   /**
    * @brief Reorder filter data to facilitate compute.
    *
@@ -76,7 +75,7 @@ class FusedConvFp16 final : public OpKernel {
    * @param output_channels  number of feature maps
    * @param input_channels
    * @param kernel_size      kH x kW
-  */
+   */
   static void ReorderFilter(const MLFloat16* input,
                             MLFloat16* output,
                             size_t output_channels,
@@ -100,7 +99,6 @@ class FusedConvFp16 final : public OpKernel {
   bool is_W_packed_{false};
   BufferUniquePtr reordered_W_buffer_;
 };
-
 
 Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                               /*out*/ bool& is_packed,
@@ -212,8 +210,8 @@ Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
 }
 
 Status FusedConvFp16::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                                       int input_idx,
-                                                       /*out*/ bool& used_shared_buffers) {
+                                                int input_idx,
+                                                /*out*/ bool& used_shared_buffers) {
   if (input_idx != 1) {
     // only the filter tensor is packed
     return Status::OK();
@@ -232,11 +230,10 @@ Status FusedConvFp16::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
   return Status::OK();
 }
 
-
 Status FusedConvFp16::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* W = is_W_packed_? nullptr : context->Input<Tensor>(1);
+  const Tensor* W = is_W_packed_ ? nullptr : context->Input<Tensor>(1);
   const auto& W_shape = W ? W->Shape() : W_shape_;
   const Tensor* B = num_inputs >= 3 ? context->Input<Tensor>(2) : nullptr;
 
@@ -289,7 +286,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Z shape does not match output shape.",
                              " Z: ", Sum->Shape().ToString().c_str(),
                              " Output: ", Y->Shape().ToString().c_str());
-    }    
+    }
   }
 
   const int64_t input_image_size = input_shape.Size();
@@ -363,32 +360,31 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   if (is_depthwise_conv) {
     use_indirection_buffer = true;
   } else if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
-//    if (is_symmetric_conv_) {
-//      use_indirection_buffer = true;
-//    } else {
-      // Pointwise convolutions can use the original input tensor in place,
-      // otherwise a temporary buffer is required for the im2col transform.
-      int64_t group_col_buffer_size = (kernel_rank > 2) ? group_count * col_buffer_size : col_buffer_size;
-      group_col_buffer_size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
-      auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(MLFloat16)) * group_col_buffer_size);
-      col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
-      memset(col_data, 0, SafeInt<size_t>(sizeof(MLFloat16)) * group_col_buffer_size);
-//    }
+    //    if (is_symmetric_conv_) {
+    //      use_indirection_buffer = true;
+    //    } else {
+    // Pointwise convolutions can use the original input tensor in place,
+    // otherwise a temporary buffer is required for the im2col transform.
+    int64_t group_col_buffer_size = (kernel_rank > 2) ? group_count * col_buffer_size : col_buffer_size;
+    group_col_buffer_size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
+    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(MLFloat16)) * group_col_buffer_size);
+    col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+    memset(col_data, 0, SafeInt<size_t>(sizeof(MLFloat16)) * group_col_buffer_size);
+    //    }
   }
 
-//  bool parallel_batch = is_symmetric_conv_ && channels_last_;
+  //  bool parallel_batch = is_symmetric_conv_ && channels_last_;
 
   if (use_indirection_buffer) {
     // Allocate indirection buffer pointers and prepare a padding vector for
     // the im2col transform.
     ind_buf_length = SafeInt<size_t>(sizeof(const MLFloat16*)) * kernel_size * output_image_size;
-//    if (parallel_batch)
-//      ind_buf_length *= SafeInt<size_t>(N);  // ind buffer per each image in the batch
+    //    if (parallel_batch)
+    //      ind_buf_length *= SafeInt<size_t>(N);  // ind buffer per each image in the batch
     auto* indirection_data = alloc->Alloc(ind_buf_length);
     indirection_buffer = BufferUniquePtr(indirection_data, BufferDeleter(alloc));
     padding_data.resize(static_cast<size_t>(C), MLFloat16());
   }
-
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
@@ -413,7 +409,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     const auto* input_data = Xdata;
     auto* output_data = Ydata;
-    const auto* add_src = SumData; 
+    const auto* add_src = SumData;
 
     if (!channels_last_) {
       // Transpose the input from channels first (CHW) to channels last (HWC).
@@ -558,7 +554,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
           gemm_params.C = worker_output + group_id * group_output_channels;
           gemm_params.ldc = static_cast<size_t>(M);
           gemm_params.Bias = Bdata;
-          gemm_params.OutputProcessor = &act; // process fused activation and add
+          gemm_params.OutputProcessor = &act;  // process fused activation and add
 
           MlasHalfGemmBatch(
               static_cast<size_t>(output_count),
@@ -567,7 +563,6 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
               1, &gemm_params, thread_pool);
         }
       }
-
     };
 
     concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, onnxruntime::narrow<ptrdiff_t>(task_count), conv_worker);
@@ -609,7 +604,6 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     MLFloat16,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     FusedConvFp16);
-
 
 #ifndef DISABLE_CONTRIB_OPS
 

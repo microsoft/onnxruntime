@@ -792,8 +792,9 @@ class TestInferenceSession(unittest.TestCase):
             sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=onnxrt.get_available_providers())
             a = np.array([[True, True], [False, False]], dtype=bool)
             sess.run([], {"input:0": a})
-
-        self.assertTrue("Model requires 2 inputs" in str(context.exception))
+        self.assertIn(
+            "Required inputs (['input1:0']) are missing from input feed (['input:0'])", str(context.exception)
+        )
 
     def testModelMeta(self):  # noqa: N802
         model_path = "../models/opset8/test_squeezenet/model.onnx"

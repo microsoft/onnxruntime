@@ -147,7 +147,7 @@ class LogitsProcessorList : public ILogitsProcessorList {
   void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step);
 
  private:
-  template<typename GenerationParametersT>
+  template <typename GenerationParametersT>
   void LogitsProcessorInitImpl(const GenerationParametersT& parameters) {
     processor_list_.clear();
 
@@ -159,8 +159,7 @@ class LogitsProcessorList : public ILogitsProcessorList {
 
     if (parameters.no_repeat_ngram_size > 0) {
       no_repeat_ngram_processor_ = std::make_unique<
-                                     NoRepeatNGramLogitsProcessor<float>
-                                   >(parameters.no_repeat_ngram_size);
+          NoRepeatNGramLogitsProcessor<float>>(parameters.no_repeat_ngram_size);
       processor_list_.push_back(no_repeat_ngram_processor_.get());
     }
 
@@ -171,9 +170,8 @@ class LogitsProcessorList : public ILogitsProcessorList {
 
     if (!parameters.prefix_vocab_mask.empty()) {
       prefix_vocab_mask_processor_ = std::make_unique<
-                                       PrefixVocabMaskLogitsProcessor<float>
-                                     >(parameters.prefix_vocab_mask,
-                                       parameters.batch_size);
+          PrefixVocabMaskLogitsProcessor<float>>(parameters.prefix_vocab_mask,
+                                                 parameters.batch_size);
       processor_list_.push_back(prefix_vocab_mask_processor_.get());
     }
 
@@ -190,9 +188,8 @@ class LogitsProcessorList : public ILogitsProcessorList {
 
     if (!parameters.presence_mask.empty()) {
       presence_penalty_processor_ = std::make_unique<
-                                     PresencePenaltyLogitsProcessor<float>
-                                   >(parameters.presence_mask,
-                                     parameters.presence_penalty);
+          PresencePenaltyLogitsProcessor<float>>(parameters.presence_mask,
+                                                 parameters.presence_penalty);
       processor_list_.push_back(presence_penalty_processor_.get());
     }
 

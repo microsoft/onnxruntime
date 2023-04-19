@@ -50,7 +50,6 @@ static void RunReduceOpQDQTest(const std::string& op_type, int opset, const char
                   test_description);
 }
 
-
 //
 // ReduceSum
 //

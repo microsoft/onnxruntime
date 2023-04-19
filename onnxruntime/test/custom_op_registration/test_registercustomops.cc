@@ -21,7 +21,6 @@ typedef const char* PATH_TYPE;
 extern std::unique_ptr<Ort::Env> ort_env;
 static constexpr PATH_TYPE TestModel = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 
-
 // Test OrtApi RegisterCustomOpsUsingFunction.
 // Replicate the expected mobile setup where the binary is linked against onnxruntime and a custom ops library.
 // In the test we use testdata/custom_op_library. In mobile scenarios onnxruntime-extensions would provide custom ops.

@@ -8,15 +8,15 @@
 namespace onnxruntime {
 
 struct DummyNotification : public synchronize::Notification {
-DummyNotification(Stream& s) : Notification(s) {}
-void Activate() override {}
+  DummyNotification(Stream& s) : Notification(s) {}
+  void Activate() override {}
 };
 
 struct DummyStream : Stream {
-DummyStream(StreamHandle h, const OrtDevice& d) : Stream(h, d) {}
-std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
-  return std::make_unique<DummyNotification>(*this);
-}
+  DummyStream(StreamHandle h, const OrtDevice& d) : Stream(h, d) {}
+  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
+    return std::make_unique<DummyNotification>(*this);
+  }
 };
 
 class DeviceStreamCollectionImpl {

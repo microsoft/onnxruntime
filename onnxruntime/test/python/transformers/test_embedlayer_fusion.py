@@ -32,8 +32,8 @@ class TestFusion(unittest.TestCase):
 
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
-    def verify_parity(self, optimized_model_path, expected_model):
-        expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "models", expected_model)
+    def verify_parity(self, optimized_model_path, expected_model_filename):
+        expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "models", expected_model_filename)
         sess_optimized = InferenceSession(optimized_model_path, providers=["CPUExecutionProvider"])
         sess_expected = InferenceSession(expected_model_path, providers=["CPUExecutionProvider"])
         inputs = np.random.randint(low=0, high=6, size=(4, 8), dtype=np.int32) + 1
