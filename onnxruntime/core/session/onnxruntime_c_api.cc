@@ -83,12 +83,12 @@ const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
 #endif
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
+using onnxruntime::DataTypeImpl;
+using onnxruntime::Environment;
 using onnxruntime::Float8E4M3FN;
 using onnxruntime::Float8E4M3FNUZ;
 using onnxruntime::Float8E5M2;
 using onnxruntime::Float8E5M2FNUZ;
-using onnxruntime::DataTypeImpl;
-using onnxruntime::Environment;
 using onnxruntime::IAllocator;
 using onnxruntime::InputDefList;
 using onnxruntime::MLFloat16;

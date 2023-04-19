@@ -974,7 +974,7 @@ struct ProviderHostImpl : ProviderHost {
   bool Tensor__IsDataType_Float8E4M3FNUZ(const Tensor* p) noexcept override { return p->IsDataType<Float8E4M3FNUZ>(); }
   bool Tensor__IsDataType_Float8E5M2(const Tensor* p) noexcept override { return p->IsDataType<Float8E5M2>(); }
   bool Tensor__IsDataType_Float8E5M2FNUZ(const Tensor* p) noexcept override { return p->IsDataType<Float8E5M2FNUZ>(); }
-  
+
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
   void Tensor__Reshape(Tensor* p, const TensorShape& new_shape) override { return p->Reshape(new_shape); }
   void Tensor__SetByteOffset(Tensor* p, ptrdiff_t byte_offset) override { p->SetByteOffset(byte_offset); }

@@ -50,21 +50,21 @@ UNARY_OPS()
 #define DECL_IMPL_CAST(InT, OutT) \
   void _Explicit_Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count);
 
-#define DECL_IMPL_CAST_FROM(T)  \
-  DECL_IMPL_CAST(T, half)     \
-  DECL_IMPL_CAST(T, float)    \
-  DECL_IMPL_CAST(T, double)   \
-  DECL_IMPL_CAST(T, int8_t)   \
-  DECL_IMPL_CAST(T, int16_t)  \
-  DECL_IMPL_CAST(T, int32_t)  \
-  DECL_IMPL_CAST(T, int64_t)  \
-  DECL_IMPL_CAST(T, uint8_t)  \
-  DECL_IMPL_CAST(T, uint16_t) \
-  DECL_IMPL_CAST(T, uint32_t) \
-  DECL_IMPL_CAST(T, uint64_t) \
-  DECL_IMPL_CAST(T, bool)     \
-  DECL_IMPL_CAST(T, BFloat16) \
-  DECL_IMPL_CAST(T, Float8E4M3FN)   \
+#define DECL_IMPL_CAST_FROM(T)    \
+  DECL_IMPL_CAST(T, half)         \
+  DECL_IMPL_CAST(T, float)        \
+  DECL_IMPL_CAST(T, double)       \
+  DECL_IMPL_CAST(T, int8_t)       \
+  DECL_IMPL_CAST(T, int16_t)      \
+  DECL_IMPL_CAST(T, int32_t)      \
+  DECL_IMPL_CAST(T, int64_t)      \
+  DECL_IMPL_CAST(T, uint8_t)      \
+  DECL_IMPL_CAST(T, uint16_t)     \
+  DECL_IMPL_CAST(T, uint32_t)     \
+  DECL_IMPL_CAST(T, uint64_t)     \
+  DECL_IMPL_CAST(T, bool)         \
+  DECL_IMPL_CAST(T, BFloat16)     \
+  DECL_IMPL_CAST(T, Float8E4M3FN) \
   DECL_IMPL_CAST(T, Float8E5M2)
 
 DECL_IMPL_CAST_FROM(half)

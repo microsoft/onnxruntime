@@ -313,11 +313,10 @@ class Cast final : public OpKernel {
     status = info.GetAttr("saturate", &saturate);
     if (!status.IsOK()) {
       saturate = 1;
-    } else if (saturate == 0 && (
-                  to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN &&
-                  to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
-                  to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&
-                  to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ)) {
+    } else if (saturate == 0 && (to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN &&
+                                 to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
+                                 to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&
+                                 to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ)) {
       ORT_THROW("Parameter saturate is only used for cast to float 8 types.");
     }
     saturate_ = saturate == 1;

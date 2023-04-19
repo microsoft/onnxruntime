@@ -43,15 +43,15 @@ static void PrepareForQDQ(const TensorShape& input_shape,
   }
 }
 
-#define REGISTER_DEQUANTIZELINEAR(T)                              \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                 \
-      DequantizeLinear,                                           \
-      19,                                                         \
-      T,                                                          \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())             \
-          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),        \
-                                 DataTypeImpl::GetTensorType<MLFloat16>()}),  \
+#define REGISTER_DEQUANTIZELINEAR(T)                                         \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                            \
+      DequantizeLinear,                                                      \
+      19,                                                                    \
+      T,                                                                     \
+      KernelDefBuilder()                                                     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),       \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}), \
       DequantizeLinear<T>);
 
 #define REGISTER_DEQUANTIZELINEAR_VERSIONED(T)                    \
@@ -111,19 +111,19 @@ struct DequantizeLinearApply {
   }
 };
 
-#define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T) \
-  template <typename OutT> \
-  struct DequantizeLinearApply<T, OutT> { \
+#define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T)                                                                                      \
+  template <typename OutT>                                                                                                     \
+  struct DequantizeLinearApply<T, OutT> {                                                                                      \
     void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale, OutT* output, const T*) { \
-      for (size_t n = 0; n < static_cast<size_t>(N); n++) { \
-        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) { \
-          auto sc = scale[bd]; \
-          for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++, input++) { \
-            *output++ = static_cast<OutT>(input->ToFloat() * sc); \
-          } \
-        } \
-      } \
-    } \
+      for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                                                    \
+        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                                                   \
+          auto sc = scale[bd];                                                                                                 \
+          for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++, input++) {                                           \
+            *output++ = static_cast<OutT>(input->ToFloat() * sc);                                                              \
+          }                                                                                                                    \
+        }                                                                                                                      \
+      }                                                                                                                        \
+    }                                                                                                                          \
   };
 
 DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E4M3FN)
@@ -176,15 +176,15 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-#define REGISTER_QUANTIZELINEAR(T)                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
-      QuantizeLinear,                                                 \
-      19,                                                             \
-      T,                                                              \
-      KernelDefBuilder()                                              \
+#define REGISTER_QUANTIZELINEAR(T)                                          \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                           \
+      QuantizeLinear,                                                       \
+      19,                                                                   \
+      T,                                                                    \
+      KernelDefBuilder()                                                    \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
                                  DataTypeImpl::GetTensorType<MLFloat16>()}) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),          \
       QuantizeLinear<T>);
 
 #define REGISTER_QUANTIZELINEAR_VERSIONED(T)                          \

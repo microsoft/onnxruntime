@@ -52,13 +52,13 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 template <class T, class U>
 typename std::enable_if<boost::mp11::mp_set_contains<TypeList<int8_t, uint8_t>, T>::value, Status>::type
 CudaDequantizeLinear(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element) {
-  return CudaDequantizeLinearStd(stream, input, output, scale, zero_point, num_of_element);  
+  return CudaDequantizeLinearStd(stream, input, output, scale, zero_point, num_of_element);
 }
 
 template <class T, class U>
 typename std::enable_if<boost::mp11::mp_set_contains<TypeList<Float8E4M3FN, Float8E5M2>, T>::value, Status>::type
 CudaDequantizeLinear(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element) {
-  return CudaDequantizeLinearSat(stream, input, output, scale, zero_point, num_of_element);  
+  return CudaDequantizeLinearSat(stream, input, output, scale, zero_point, num_of_element);
 }
 
 template <class T, class U>
@@ -104,17 +104,17 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 REGISTER_Q_KERNEL_TYPED(int8_t)
 REGISTER_Q_KERNEL_TYPED(uint8_t)
 
-#define REGISTER_Q_KERNEL_TYPED_19(T)                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
-      QuantizeLinear,                                                 \
-      kOnnxDomain,                                                    \
-      19,                                                             \
-      T,                                                              \
-      kCudaExecutionProvider,                                         \
-      (*KernelDefBuilder::Create())                                   \
+#define REGISTER_Q_KERNEL_TYPED_19(T)                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
+      QuantizeLinear,                                                       \
+      kOnnxDomain,                                                          \
+      19,                                                                   \
+      T,                                                                    \
+      kCudaExecutionProvider,                                               \
+      (*KernelDefBuilder::Create())                                         \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
                                  DataTypeImpl::GetTensorType<MLFloat16>()}) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),          \
       QuantizeLinear<T, float>);
 
 REGISTER_Q_KERNEL_TYPED_19(int8_t)
@@ -137,17 +137,17 @@ REGISTER_Q_KERNEL_TYPED_19(Float8E5M2)
 REGISTER_DQ_KERNEL_TYPED(int8_t)
 REGISTER_DQ_KERNEL_TYPED(uint8_t)
 
-#define REGISTER_DQ_KERNEL_TYPED_19(T)                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      DequantizeLinear,                                           \
-      kOnnxDomain,                                                \
-      19,                                                         \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())             \
-          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),        \
-                                 DataTypeImpl::GetTensorType<MLFloat16>()}),  \
+#define REGISTER_DQ_KERNEL_TYPED_19(T)                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                             \
+      DequantizeLinear,                                                      \
+      kOnnxDomain,                                                           \
+      19,                                                                    \
+      T,                                                                     \
+      kCudaExecutionProvider,                                                \
+      (*KernelDefBuilder::Create())                                          \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),       \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}), \
       DequantizeLinear<T, float>);
 
 REGISTER_DQ_KERNEL_TYPED_19(int8_t)

@@ -15,7 +15,7 @@ class QuantizeLinear final : public CudaKernel {
   QuantizeLinear(const OpKernelInfo& info) : CudaKernel(info) {
     if (!info.GetAttr<int64_t>("saturate", &saturate_).IsOK()) {
       saturate_ = 1;
-    }    
+    }
   }
 
   Status ComputeInternal(OpKernelContext* p_op_kernel_context) const override;

@@ -23,7 +23,7 @@ class Cast final : public CudaKernel {
     if (!status.IsOK()) {
       saturate = 1;
     } else if (saturate == 0 &&
-               to != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN && 
+               to != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN &&
                to != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ &&
                to != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2 &&
                to != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2FNUZ) {
