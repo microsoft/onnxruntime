@@ -13,7 +13,7 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
                                       std::vector<OrtValue>& fetches,
                                       const std::unordered_map<size_t, CustomAllocator>&,
                                       const logging::Logger&) {
-  //collect input names
+  // collect input names
   const auto& inputs = session_state.GetGraphViewer().GetInputs();
   InlinedVector<std::string> input_names;
   input_names.reserve(inputs.size());
@@ -21,7 +21,7 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
     input_names.push_back(input->Name());
   }
 
-  //collect output names
+  // collect output names
   const auto& outputs = session_state.GetGraphViewer().GetOutputs();
   InlinedVector<std::string> output_names;
   output_names.reserve(outputs.size());
@@ -29,7 +29,7 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
     output_names.push_back(output->Name());
   }
 
-  //create invoker
+  // create invoker
   static const OrtDevice cpu_device;
   auto allocator = session_state.GetAllocator(cpu_device);
   std::unique_ptr<CloudEndPointInvoker> invoker;

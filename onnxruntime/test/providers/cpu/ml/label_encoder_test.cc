@@ -24,7 +24,6 @@ static void RunTest(const std::vector<int64_t>& dims, const std::vector<TInput>&
   test.Run();
 }
 
-
 TEST(LabelEncoder, StringToInt) {
   std::vector<int64_t> dims{2, 2, 2};
 

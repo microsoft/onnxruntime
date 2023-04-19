@@ -25,7 +25,6 @@ static GetTestModelFn BuildAveragePoolTestCase(const std::vector<int64_t>& shape
                                                const std::string& auto_pad = "NOTSET") {
   return [shape, kernel_shape, strides, pads,
           count_include_pad, auto_pad](ModelTestBuilder& builder) {
-
     // Random input data
     auto input = builder.MakeInput<float>(shape, 0.0f, 10.0f);
 
@@ -60,7 +59,6 @@ GetQDQTestCaseFn BuildAveragePoolQDQTestCase(const std::vector<int64_t>& shape,
                                              const std::string& auto_pad = "NOTSET") {
   return [shape, kernel_shape, strides, pads,
           count_include_pad, auto_pad](ModelTestBuilder& builder) {
-
     float dq_scale = 0.0038f;
     float pool_output_scale = 0.0038f;
     float q_scale = 0.0038f;
@@ -105,7 +103,6 @@ GetQDQTestCaseFn BuildAveragePoolQDQTestCase(const std::vector<int64_t>& shape,
   };
 }
 
-
 // Runs an AveragePool model on the QNN CPU backend. Checks the graph node assignment, and that inference
 // outputs for QNN and CPU match.
 static void RunAveragePoolOpTest(const std::vector<int64_t>& shape,
@@ -136,13 +133,13 @@ static void RunAveragePoolOpTest(const std::vector<int64_t>& shape,
 // outputs for QNN and CPU match.
 template <typename QuantType>
 static void RunQDQAveragePoolOpTest(const std::vector<int64_t>& shape,
-                                 const std::vector<int64_t>& kernel_shape,
-                                 const std::vector<int64_t>& strides,
-                                 const std::vector<int64_t>& pads,
-                                 int64_t count_include_pad,
-                                 const std::string& auto_pad,
-                                 ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
-                                 int opset = 18, float fp32_abs_err = 1e-5f) {
+                                    const std::vector<int64_t>& kernel_shape,
+                                    const std::vector<int64_t>& strides,
+                                    const std::vector<int64_t>& pads,
+                                    int64_t count_include_pad,
+                                    const std::string& auto_pad,
+                                    ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                                    int opset = 18, float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -168,10 +165,10 @@ static void RunQDQAveragePoolOpTest(const std::vector<int64_t>& shape,
 // AveragePool with kernel size equal to the spatial dimension of input tensor.
 TEST(QnnCPUBackendTests, TestAveragePool_Global) {
   RunAveragePoolOpTest({1, 2, 3, 3},  // shape
-                       {3, 3},  // kernel_shape
-                       {3, 3},  // strides
+                       {3, 3},        // kernel_shape
+                       {3, 3},        // strides
                        {0, 0, 0, 0},  // pads
-                       0,  // count_include_pad
+                       0,             // count_include_pad
                        "NOTSET",
                        ExpectedEPNodeAssignment::All, "TestAveragePool_Global");
 }
@@ -208,7 +205,6 @@ TEST(QnnCPUBackendTests, TestAveragePool_AutopadSameLower) {
                        "SAME_LOWER",
                        ExpectedEPNodeAssignment::All, "TestAveragePool_CountIncludePad");
 }
-
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //

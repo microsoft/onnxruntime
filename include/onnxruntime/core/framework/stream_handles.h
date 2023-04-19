@@ -167,5 +167,4 @@ class IStreamCommandHandleRegistry {
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
 };
 
-
 }  // namespace onnxruntime

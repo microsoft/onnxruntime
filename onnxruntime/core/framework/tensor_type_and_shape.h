@@ -19,7 +19,6 @@ class DataTypeImpl;
 
 struct OrtTensorTypeAndShapeInfo {
  public:
-
   ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
   onnxruntime::TensorShape shape;
   // dim_param values. empty string if dim_value or no dim_param was specified.

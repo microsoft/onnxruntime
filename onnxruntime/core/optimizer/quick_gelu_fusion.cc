@@ -31,7 +31,7 @@ Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     float alpha = 1.0f;
     if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13, 14}) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) && node.GetOutputEdgesCount() == 1 &&
-	!graph.NodeProducesGraphOutput(node)) {
+        !graph.NodeProducesGraphOutput(node)) {
       for (int i = 0; i < static_cast<int>(node.InputDefs().size()); ++i) {
         const NodeArg& input_arg = *(node.InputDefs()[i]);
         if (!optimizer_utils::IsScalar(input_arg)) continue;

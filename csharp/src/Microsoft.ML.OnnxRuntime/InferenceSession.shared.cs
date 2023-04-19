@@ -877,7 +877,7 @@ namespace Microsoft.ML.OnnxRuntime
         private void Init(string modelPath, SessionOptions options,
                           PrePackedWeightsContainer prepackedWeightsContainer = null)
         {
-            var envHandle = OrtEnv.Handle;
+            var envHandle = OrtEnv.Instance().Handle;
             IntPtr session;
             if (prepackedWeightsContainer == null)
             {
@@ -898,7 +898,7 @@ namespace Microsoft.ML.OnnxRuntime
         private void Init(byte[] modelData, SessionOptions options,
                           PrePackedWeightsContainer prepackedWeightsContainer = null)
         {
-            var envHandle = OrtEnv.Handle;
+            var envHandle = OrtEnv.Instance().Handle;
             IntPtr session;
             if (prepackedWeightsContainer == null)
             {

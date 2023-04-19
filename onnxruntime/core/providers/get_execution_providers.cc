@@ -176,7 +176,7 @@ const std::vector<std::string>& GetAllExecutionProviderNames() {
     std::vector<std::string> result{};
     result.reserve(kAllExecutionProvidersCount);
     for (const auto& provider : kProvidersInPriorityOrder) {
-      ORT_ENFORCE(provider.name.size() <= kMaxExecutionProviderNameLen, "Make the EP:", provider.name , " name shorter");
+      ORT_ENFORCE(provider.name.size() <= kMaxExecutionProviderNameLen, "Make the EP:", provider.name, " name shorter");
       result.push_back(std::string(provider.name));
     }
     return result;

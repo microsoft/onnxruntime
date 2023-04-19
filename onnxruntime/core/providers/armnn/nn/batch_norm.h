@@ -32,16 +32,16 @@ class BatchNorm final : public OpKernel {
   }
 
   ~BatchNorm() {
-	batchNormLayers.erase(this);
+    batchNormLayers.erase(this);
   }
 
   Status Compute(OpKernelContext* context) const override;
 
-  static armnn::IRuntimePtr initRuntime(){
-  	if (BatchNorm::run)
-  		return std::move(BatchNorm::run);
-	armnn::IRuntime::CreationOptions options;
-  	return std::move(armnn::IRuntime::Create(options));
+  static armnn::IRuntimePtr initRuntime() {
+    if (BatchNorm::run)
+      return std::move(BatchNorm::run);
+    armnn::IRuntime::CreationOptions options;
+    return std::move(armnn::IRuntime::Create(options));
   }
 
  protected:
@@ -50,7 +50,6 @@ class BatchNorm final : public OpKernel {
   ArmNNExecutionProvider* provider_;
   static armnn::IRuntimePtr run;
 };
-
 
 }  // namespace armnn_ep
 }  // namespace onnxruntime

@@ -28,9 +28,9 @@ class BatchNormOpBuilder : public BaseOpBuilder {
 // The nodes from 1st call of GetCapability do not get layout transformer applied, it's still NCHW
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
 Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
-                                    const NodeUnit& node_unit,
-                                    const logging::Logger& logger,
-                                    bool is_quantized_model) const {
+                                         const NodeUnit& node_unit,
+                                         const logging::Logger& logger,
+                                         bool is_quantized_model) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {
     // It's useless to fallback the node after layout transformation because CPU EP can't support it anyway
     // Still do it here so hopefully QNN Op validation API can tell us some details why it's not supported
@@ -53,7 +53,7 @@ Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");
     const size_t input_rank = input_shape.size();
 
-    ORT_RETURN_IF(input_rank <= 2 || input_rank > 4, 
+    ORT_RETURN_IF(input_rank <= 2 || input_rank > 4,
                   "QNN BatchNorm only supports input ranks of size 3 or 4.");
 
     const uint32_t num_channels = input_shape[1];
