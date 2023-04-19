@@ -93,7 +93,7 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
       }
     }
   } else {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concrerte input dims. Initializing backend for graph " << subgraph_context_.subgraph_name;
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concrete input dims. Initializing backend for graph " << subgraph_context_.subgraph_name;
 
     subgraph_context_.has_dynamic_input_shape = false;
     try {
