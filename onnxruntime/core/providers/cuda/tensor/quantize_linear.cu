@@ -36,6 +36,8 @@ struct RoundStd<float, uint8_t> {
   }
 };
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+
 template <>
 struct RoundSat<float, Float8E4M3FN> {
   __device__ __forceinline__ Float8E4M3FN operator()(float v, float scale, Float8E4M3FN zero_point, bool saturate) const {
@@ -63,6 +65,38 @@ struct RoundSat<half, Float8E5M2> {
     return Float8E5M2(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v / scale, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E5M2)), Float8E5M2::FromBits());
   }
 };
+
+#else
+
+template <>
+struct RoundSat<float, Float8E4M3FN> {
+  __device__ __forceinline__ Float8E4M3FN operator()(float v, float scale, Float8E4M3FN zero_point, bool saturate) const {
+    return Float8E4M3FN(v / scale, saturate);
+  }
+};
+
+template <>
+struct RoundSat<half, Float8E4M3FN> {
+  __device__ __forceinline__ Float8E4M3FN operator()(half v, half scale, Float8E4M3FN zero_point, bool saturate) const {
+    return Float8E4M3FN(__half2float(v / scale), true);
+  }
+};
+
+template <>
+struct RoundSat<float, Float8E5M2> {
+  __device__ __forceinline__ Float8E5M2 operator()(float v, float scale, Float8E5M2 zero_point, bool saturate) const {
+    return Float8E5M2(v / scale, saturate);
+  }
+};
+
+template <>
+struct RoundSat<half, Float8E5M2> {
+  __device__ __forceinline__ Float8E5M2 operator()(half v, half scale, Float8E5M2 zero_point, bool saturate) const {
+    return Float8E5M2(__half2float(v / scale), saturate);
+  }
+};
+
+#endif
 
 template <>
 struct RoundStd<half, int8_t> {
@@ -161,6 +195,8 @@ __global__ void DequantizeLinearKernelStd(const InT* input, OutT* output, const 
 template <typename InT, typename OutT>
 struct DQFloat8;
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+
 template <>
 struct DQFloat8<Float8E4M3FN, half> {
   __device__ __forceinline__ half operator()(Float8E4M3FN v, half scale) const {
@@ -188,6 +224,38 @@ struct DQFloat8<Float8E5M2, float> {
     return __half2float(__nv_cvt_fp8_to_halfraw(v.val, __NV_E5M2)) * scale;
   }
 };
+
+#else
+
+template <>
+struct DQFloat8<Float8E4M3FN, half> {
+  __device__ __forceinline__ half operator()(Float8E4M3FN v, half scale) const {
+    return __float2half(v.ToFloat()) * scale;
+  }
+};
+
+template <>
+struct DQFloat8<Float8E5M2, half> {
+  __device__ __forceinline__ half operator()(Float8E5M2 v, half scale) const {
+    return __float2half(v.ToFloat()) * scale;
+  }
+};
+
+template <>
+struct DQFloat8<Float8E4M3FN, float> {
+  __device__ __forceinline__ float operator()(Float8E4M3FN v, float scale) const {
+    return v.ToFloat() * scale;
+  }
+};
+
+template <>
+struct DQFloat8<Float8E5M2, float> {
+  __device__ __forceinline__ float operator()(Float8E5M2 v, float scale) const {
+    return v.ToFloat() * scale;
+  }
+};
+
+#endif
 
 template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void DequantizeLinearKernelSat(const InT* input, OutT* output, const OutT* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N) {

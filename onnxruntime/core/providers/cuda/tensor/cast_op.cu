@@ -21,6 +21,8 @@ struct CastSat;
 template <typename OutT, typename InT>
 struct CastNoSat;
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+
 template <>
 struct CastStd<float, Float8E4M3FN> {
   __device__ __forceinline__ float operator()(Float8E4M3FN v) const {
@@ -76,6 +78,66 @@ struct CastSat<Float8E5M2, half> {
     return Float8E5M2(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3)), Float8E5M2::FromBits());
   }
 };
+
+#else
+
+template <>
+struct CastStd<float, Float8E4M3FN> {
+  __device__ __forceinline__ float operator()(Float8E4M3FN v) const {
+    return v.ToFloat();
+  }
+};
+
+template <>
+struct CastStd<half, Float8E4M3FN> {
+  __device__ __forceinline__ half operator()(Float8E4M3FN v) const {
+    return __float2half(v.ToFloat());
+  }
+};
+
+template <>
+struct CastStd<float, Float8E5M2> {
+  __device__ __forceinline__ float operator()(Float8E5M2 v) const {
+    return v.ToFloat();
+  }
+};
+
+template <>
+struct CastStd<half, Float8E5M2> {
+  __device__ __forceinline__ half operator()(Float8E5M2 v) const {
+    return __float2half(v.ToFloat());
+  }
+};
+
+template <>
+struct CastSat<Float8E4M3FN, float> {
+  __device__ __forceinline__ Float8E4M3FN operator()(float v, bool saturate) const {
+    return Float8E4M3FN(v, saturate);
+  }
+};
+
+template <>
+struct CastSat<Float8E4M3FN, half> {
+  __device__ __forceinline__ Float8E4M3FN operator()(half v, bool saturate) const {
+    return Float8E4M3FN(__half2float(v), saturate);
+  }
+};
+
+template <>
+struct CastSat<Float8E5M2, float> {
+  __device__ __forceinline__ Float8E5M2 operator()(float v, bool saturate) const {
+    return Float8E5M2(v, saturate);
+  }
+};
+
+template <>
+struct CastSat<Float8E5M2, half> {
+  __device__ __forceinline__ Float8E5M2 operator()(half v, bool saturate) const {
+    return Float8E5M2(__half2float(v), saturate);
+  }
+};
+
+#endif
 
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void CastKernelStd(const InT* input, OutT* output, CUDA_LONG N, CastStd<OutT, InT> cast) {
