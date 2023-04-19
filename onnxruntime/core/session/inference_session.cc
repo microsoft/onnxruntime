@@ -508,6 +508,18 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  // Create Custom Op if EP requests it
+  std::vector<OrtCustomOpDomain*> custom_op_domains;
+  p_exec_provider->GetCustomOpDomainList(custom_op_domains);
+
+  if (!custom_op_domains.empty()) {
+    if (AddCustomOpDomains(custom_op_domains) != Status::OK()) {
+      LOGS(*session_logger_, WARNING) << "Can't register custom op domains with ORT for " << provider_type;
+    }
+  }
+#endif
+
   // if any EPs do not support concurrent calls to Run we add locking around graph execution
   if (p_exec_provider->ConcurrentRunSupported() == false) {
     is_concurrent_run_supported_ = false;

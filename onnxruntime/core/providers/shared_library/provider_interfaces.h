@@ -891,9 +891,14 @@ struct ProviderHost {
 
 #ifdef _WIN32
   virtual std::string ToUTF8String(const std::wstring& s) = 0;
+  virtual std::wstring ToWideString(const std::string& s) = 0;
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  virtual Status LoadDynamicLibrary(onnxruntime::PathString library_name) = 0;
+#endif
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)
