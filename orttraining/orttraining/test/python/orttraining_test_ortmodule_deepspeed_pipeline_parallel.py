@@ -2,10 +2,10 @@ import argparse
 
 import deepspeed
 import torch
-from deepspeed.pipe import PipelineModule  # noqa: F401
-from torch import nn  # noqa: F401
+from deepspeed.pipe import PipelineModule
+from torch import nn
 
-from onnxruntime.training.ortmodule import ORTModule  # noqa: F401
+from onnxruntime.training.ortmodule import ORTModule
 
 # USAGE:
 # pip install deepspeed
