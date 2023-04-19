@@ -322,11 +322,10 @@ int RunTraining(const TestRunnerParameters& params) {
         std::ostringstream oss;
         oss << "ckpt_" << params.model_name << std::to_string(batch_idx);
         PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
-        Ort::CheckpointState state = session.GetState(true);
-        state.AddProperty("epoch", epoch);
-        state.AddProperty("loss", *loss);
-        state.AddProperty("framework", "onnxruntime");
-        Ort::CheckpointState::SaveCheckpoint(state, ckpt_file);
+        checkpoint_state.AddProperty("epoch", epoch);
+        checkpoint_state.AddProperty("loss", *loss);
+        checkpoint_state.AddProperty("framework", "onnxruntime");
+        Ort::CheckpointState::SaveCheckpoint(checkpoint_state, ckpt_file);
       }
       batch_idx++;
     }
@@ -338,8 +337,7 @@ int RunTraining(const TestRunnerParameters& params) {
   std::ostringstream oss;
   oss << "ckpt_" << params.model_name;
   PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
-  Ort::CheckpointState state = session.GetState(true);
-  Ort::CheckpointState::SaveCheckpoint(state, ckpt_file);
+  Ort::CheckpointState::SaveCheckpoint(checkpoint_state, ckpt_file);
 
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - end_to_end_start;
