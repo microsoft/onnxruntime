@@ -167,10 +167,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   auto kernel_shape = pool_attrs_.kernel_shape;
   auto pads = pool_attrs_.pads;
   auto strides = pool_attrs_.strides;
-
-  if (pool_attrs_.global_pooling) {
-    ORT_ENFORCE("unreachable");
-  }
+  ORT_ENFORCE(!this->pool_attrs_.global_pooling);
 
   auto y_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   TensorShape y_shape(y_dims);
@@ -246,10 +243,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   auto kernel_shape = this->pool_attrs_.kernel_shape;
   auto pads = this->pool_attrs_.pads;
   auto strides = this->pool_attrs_.strides;
-
-  if (this->pool_attrs_.global_pooling) {
-    ORT_ENFORCE("unreachable");
-  }
+  ORT_ENFORCE(!this->pool_attrs_.global_pooling);
 
   auto y_dims = this->pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
