@@ -173,8 +173,6 @@ jobs:
           displayName: cache stat
           env:
             CCACHE_DIR: $(DEPS_CACHE_DIR)
-          condition: eq(${{ parameters.WITH_CACHE }}, true)
-
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
@@ -232,7 +230,6 @@ jobs:
       displayName: cache stat
       env:
         CCACHE_DIR: $(ORT_CACHE_DIR)
-      condition: eq(${{ parameters.WITH_CACHE }}, true)
 
   - powershell: |
       Get-Volume D
