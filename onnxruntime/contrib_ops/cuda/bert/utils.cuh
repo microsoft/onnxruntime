@@ -64,6 +64,8 @@ struct Float4_ {
   float2 y;
 };
 
+#ifndef USE_ROCM
+
 template <typename T>
 struct num_elems;
 template <>
@@ -901,6 +903,8 @@ inline __device__ void ConvertFromFloat(uint4& dst, Float8_ src) {
   dst.z = Float2ToHalf2(src.z);
   dst.w = Float2ToHalf2(src.w);
 }
+
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime
