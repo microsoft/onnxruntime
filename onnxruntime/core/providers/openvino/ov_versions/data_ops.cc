@@ -837,7 +837,7 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
   } else {
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if (device_id_ == "VPUX" || device_id_.find("HETERO") != std::string::npos ||
+    if (device_id_.find("VPUX") != std::string::npos || device_id_.find("HETERO") != std::string::npos ||
         device_id_.find("MULTI") != std::string::npos || device_id_.find("AUTO") != std::string::npos) {
       for (auto const& var : supported_types_vpu_) {
         if ((var.first <= version_id_) &&

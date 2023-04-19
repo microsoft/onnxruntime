@@ -15,8 +15,10 @@ BackendFactory::MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                             GlobalContext& global_context,
                             const SubGraphContext& subgraph_context) {
   std::string type = global_context.device_type;
-  if (type == "CPU" || type.find("GPU") != std::string::npos || type == "VPUX" ||
-            type.find("HETERO") != std::string::npos || type.find("MULTI") != std::string::npos ||
+  if (type == "CPU" || type.find("GPU") != std::string::npos ||
+            type.find("VPUX") != std::string::npos ||
+            type.find("HETERO") != std::string::npos ||
+            type.find("MULTI") != std::string::npos ||
             type.find("AUTO") != std::string::npos) {
     std::shared_ptr<IBackend> concrete_backend_;
     try {
