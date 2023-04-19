@@ -86,54 +86,6 @@ impl OrtValue {
         Ok( (OrtValue::new(tensor_ptr), data_ptr) )
     }
 
-    /// try to allocate a new ortvalue from an ndarray
-    pub fn try_from_array<T, D>(session: &Session, array: &Array<T, D>) -> OrtResult<Self>
-    where
-        T: TypeToTensorElementDataType + Debug + Clone,
-        D: ndarray::Dimension,
-    {
-        // where onnxruntime will write the tensor data to
-        let mut tensor_ptr: *mut sys::OrtValue = std::ptr::null_mut();
-
-        // shapes
-        let shape: Vec<i64> = array.shape().iter().map(|d: &usize| *d as i64).collect();
-        let shape_ptr = shape.as_ptr();
-        let shape_len = array.shape().len();
-
-        match T::tensor_element_data_type() {
-            TensorElementDataType::Float
-            | TensorElementDataType::Uint8
-            | TensorElementDataType::Int8
-            | TensorElementDataType::Uint16
-            | TensorElementDataType::Int16
-            | TensorElementDataType::Int32
-            | TensorElementDataType::Int64
-            | TensorElementDataType::Double
-            | TensorElementDataType::Uint32
-            | TensorElementDataType::Uint64 => {
-                // primitive data is already suitably laid out in memory; provide it to
-                // onnxruntime as is
-                let tensor_values_ptr = array.as_ptr() as *mut std::ffi::c_void;
-
-                let status = unsafe {
-                    ort_api().CreateTensorWithDataAsOrtValue.unwrap()(
-                        session.memory_info.ptr,
-                        tensor_values_ptr,
-                        array.len() * std::mem::size_of::<T>(),
-                        shape_ptr,
-                        shape_len,
-                        T::tensor_element_data_type().into(),
-                        &mut tensor_ptr,
-                    )
-                };
-                status_to_result(status).map_err(OrtError::IsTensor)?;
-            }
-            _ => todo!(),
-        }
-
-        Ok(Self::new(tensor_ptr))
-    }
-
     /// Return if an OrtValue is a tensor type.
     pub fn is_tensor(&self) -> OrtResult<bool> {
         let mut is_tensor = 0;
