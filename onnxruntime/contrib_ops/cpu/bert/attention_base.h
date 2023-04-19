@@ -27,7 +27,7 @@ class AttentionBase {
                      const Tensor* past,
                      int batch_size,
                      int head_size,
-                     int sequence_length,
+                     int kv_sequence_length,
                      int& past_sequence_length) const;
 
  protected:
