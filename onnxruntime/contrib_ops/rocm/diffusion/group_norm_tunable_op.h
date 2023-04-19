@@ -7,6 +7,7 @@
 #include <hip/hip_runtime_api.h>
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/rocm_common.h"
+#include "contrib_ops/rocm/diffusion/group_norm_ck.cuh"
 #include "contrib_ops/rocm/diffusion/group_norm_common.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl_kernel.cuh"
@@ -136,12 +137,16 @@ class GroupNormNHWCOp {
 
   Status IsSupported(const GroupNormNHWCParams<T>* params) {
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-        !(params->c % VecSize == 0 && params->cPerGroup % VecSize == 0));
+        !(params->c % VecSize == 0 && params->cPerGroup % VecSize == 0),
+        "The number of channels (", params->c, ") or the number of channels per group (", params->cPerGroup,
+        ") isn't divisible by the number of vector size: ", VecSize);
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock % params->cPerGroup == 0 &&
-                                                params->c % params->cPerBlock == 0 &&
-                                                params->hw % params->hwPerBlock == 0));
+                                                params->c % params->cPerBlock == 0 && params->hw % params->hwPerBlock == 0),
+                                              "The value of attributes don't meet the requirements.");
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock <= ThreadsPerBlock * VecSize &&
-                                                params->cPerBlock > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize));
+                                                params->cPerBlock > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize),
+                                              "Configuration: Threads (", ThreadsPerBlock, "), vector size (",
+                                              VecSize, ") is redundant for the number of channels per group: ", params->cPerBlock);
 
     return Status::OK();
   }
@@ -160,19 +165,14 @@ Status GroupNormNHWCStaticSelection(const GroupNormNHWCParams<T>* params) {
 #define ADD_OP_FOR_ALL_VEC_SIZE(name, threads_per_block) \
   this->RegisterOp(name<T, threads_per_block, 1>{});     \
   this->RegisterOp(name<T, threads_per_block, 2>{});     \
-  this->RegisterOp(name<T, threads_per_block, 4>{});     \
-  this->RegisterOp(name<T, threads_per_block, 8>{});     \
-  this->RegisterOp(name<T, threads_per_block, 16>{});
+  this->RegisterOp(name<T, threads_per_block, 4>{});
 
 #define ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name) \
   ADD_OP_FOR_ALL_VEC_SIZE(name, 64)                         \
   ADD_OP_FOR_ALL_VEC_SIZE(name, 128)                        \
   ADD_OP_FOR_ALL_VEC_SIZE(name, 192)                        \
   ADD_OP_FOR_ALL_VEC_SIZE(name, 256)                        \
-  ADD_OP_FOR_ALL_VEC_SIZE(name, 320)                        \
-  ADD_OP_FOR_ALL_VEC_SIZE(name, 384)                        \
-  ADD_OP_FOR_ALL_VEC_SIZE(name, 448)                        \
-  ADD_OP_FOR_ALL_VEC_SIZE(name, 512)
+  ADD_OP_FOR_ALL_VEC_SIZE(name, 320)
 
 template <typename T>
 class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCParams<T>> {
@@ -180,6 +180,18 @@ class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCParams<T>> {
   GroupNormNHWCTunableOp() {
     this->RegisterOp(GroupNormNHWCStaticSelection<T>);
     ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWCOp)
+
+#ifdef USE_COMPOSABLE_KERNEL
+    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSwish=*/false>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+
+    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSwish=*/true>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+#endif  // USE_COMPOSABLE_KERNEL
   }
 };
 
