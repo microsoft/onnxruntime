@@ -146,7 +146,7 @@ def optimize_by_fusion(
     Note that ONNXRuntime graph optimizations (like constant folding) will not be applied. So it is better to enable
     constant folding during exporting ONNX model, or run optimize_by_onnxruntime on the model first like optimize_model.
 
-    For BERT model, num_heads and hidden_size are optional. For other model types, you need specify these parameters.
+    For BERT model, num_heads and hidden_size are optional. For other model types, you need to specify these parameters.
 
     Args:
         model (ModelProto): model object

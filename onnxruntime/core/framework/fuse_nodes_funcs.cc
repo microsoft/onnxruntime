@@ -28,7 +28,7 @@ Status FuncManager::GetFuncs(const std::string& name, const NodeComputeInfo*& co
     return Status(common::ONNXRUNTIME, common::FAIL, "func info for node: " + name + " not found.");
 
   if (!it->second.compute_info.compute_func) {
-    //load from path
+    // load from path
     void* handle = nullptr;
     ORT_RETURN_IF_ERROR(lib_loader_.LoadExternalLib(it->second.dso_path, &handle));
     void* create_func_symbol_handle = nullptr;

@@ -28,7 +28,6 @@ struct OrtTensorTypeAndShapeInfo;
  * This class is mainly for the C API
  */
 struct OrtTypeInfo {
-
   ONNXType type;
   std::string denotation;
 
@@ -53,15 +52,13 @@ struct OrtTypeInfo {
 
   explicit OrtTypeInfo(std::unique_ptr<OrtOptionalTypeInfo> optional_type_info) noexcept;
 
-
   OrtTypeInfo(const OrtTypeInfo&) = delete;
   OrtTypeInfo& operator=(const OrtTypeInfo&) = delete;
 
   ~OrtTypeInfo();
 
-  template<typename... Args>
+  template <typename... Args>
   static std::unique_ptr<OrtTypeInfo> MakePtr(Args... args) {
     return std::make_unique<OrtTypeInfo>(std::forward<Args>(args)...);
   }
-
 };

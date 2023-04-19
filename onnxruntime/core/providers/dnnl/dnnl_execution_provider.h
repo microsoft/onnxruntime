@@ -39,7 +39,7 @@ class DnnlExecutionProvider : public IExecutionProvider {
   // dump subgraphs to onnx format for debugging purpose
   bool dump_subgraphs_ = false;
   bool debug_log_ = false;
-  //enable fusion by default
+  // enable fusion by default
   bool enable_fusion_ = true;
 };
 

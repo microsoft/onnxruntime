@@ -29,6 +29,7 @@ class Node;
 #include "core/framework/allocatormgr.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
+#include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
 
@@ -145,6 +146,20 @@ class IExecutionProvider {
      Get execution provider's configuration options.
    */
   virtual ProviderOptions GetProviderOptions() const { return {}; }
+
+  /**
+     Get provider specific custom op domain list.
+     Provider has the responsibility to release OrtCustomOpDomain instances it creates.
+
+     NOTE: In the case of ONNX model having EP specific custom nodes and don't want to ask user to register those nodes,
+     EP might need to a way to register those custom nodes. This API is added for the purpose where EP can use it to
+     leverage ORT custom op to register those custom nodes with one or more custom op domains.
+
+     For example, TensorRT EP uses this API to support TRT plugins where each custom op is mapped to TRT plugin and no
+     kernel implementation is needed for custom op since the real implementation is inside TRT. This custom op acts as
+     a role to help pass ONNX model validation.
+   */
+  virtual void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& /*provider custom op domain list*/) const {};
 
   /**
      Returns an opaque handle whose exact type varies based on the provider

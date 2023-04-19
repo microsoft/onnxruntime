@@ -20,7 +20,6 @@
 
 #include "tvm_api.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
@@ -35,11 +34,9 @@ TvmModule TVMCompile(const TvmEPOptions& options,
                      int opset,
                      const TVMTensorShapes& input_shapes) {
   ::tvm::Array<TvmIntArray> shapes;
-  for (size_t i = 0; i < input_shapes.size(); ++i)
-  {
+  for (size_t i = 0; i < input_shapes.size(); ++i) {
     TvmIntArray shape;
-    for (auto& dim : input_shapes[i])
-    {
+    for (auto& dim : input_shapes[i]) {
       shape.push_back(::tvm::Integer(dim));
     }
     shapes.push_back(shape);
@@ -71,11 +68,11 @@ std::vector<std::string> glob(const std::string& dir, const std::string& extensi
   HANDLE hFind = ::FindFirstFile(pattern.c_str(), &fd);
   if (hFind != INVALID_HANDLE_VALUE) {
     do {
-      if ( !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ) {
+      if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
         filenames.push_back(
-          dir +
-          ToUTF8String(PathString{k_preferred_path_separator}) +
-          fd.cFileName);
+            dir +
+            ToUTF8String(PathString{k_preferred_path_separator}) +
+            fd.cFileName);
       }
     } while (::FindNextFile(hFind, &fd));
     ::FindClose(hFind);
@@ -113,27 +110,26 @@ std::string filter_lib_paths(const std::vector<std::string>& lib_paths, const st
 }
 
 static std::unordered_map<std::string, uint64_t> str2dev_type = {
-  {"llvm", 1},
-  {"stackvm", 1},
-  {"cpu", 1},
-  {"c", 1},
-  {"hybrid", 1},
-  {"composite", 1},
-  {"cuda", 2},
-  {"nvptx", 2},
-  {"cl", 4},
-  {"opencl", 4},
-  {"sdaccel", 4},
-  {"aocl", 5},
-  {"aocl_sw_emu", 5},
-  {"vulkan", 7},
-  {"metal", 8},
-  {"vpi", 9},
-  {"rocm", 10},
-  {"ext_dev", 12},
-  {"hexagon", 14},
-  {"webgpu", 15}
-};
+    {"llvm", 1},
+    {"stackvm", 1},
+    {"cpu", 1},
+    {"c", 1},
+    {"hybrid", 1},
+    {"composite", 1},
+    {"cuda", 2},
+    {"nvptx", 2},
+    {"cl", 4},
+    {"opencl", 4},
+    {"sdaccel", 4},
+    {"aocl", 5},
+    {"aocl_sw_emu", 5},
+    {"vulkan", 7},
+    {"metal", 8},
+    {"vpi", 9},
+    {"rocm", 10},
+    {"ext_dev", 12},
+    {"hexagon", 14},
+    {"webgpu", 15}};
 
 TvmModule TVMSoCompile(const TvmEPOptions& options) {
   const std::string& dir = options.so_folder;
@@ -224,7 +220,7 @@ void TVM_VM_SetInputs(TvmModule& mod,
   const std::string func_name = "main";
   setter(0, func_name.c_str());
   for (size_t k = 0; k < num_total_args - 1; ++k) {
-    setter(inds[k]+1, &inputs[k]);
+    setter(inds[k] + 1, &inputs[k]);
   }
 
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
@@ -249,7 +245,7 @@ void TVM_VM_SetOutputsZeroCopy(TvmModule& mod,
   const std::string func_name = "main";
   setter(0, func_name.c_str());
   for (size_t k = 0; k < num_total_args - 1; ++k) {
-    setter(k+1, &outputs[k]);
+    setter(k + 1, &outputs[k]);
   }
 
   TvmPackedFunc set_output = mod.GetFunction("set_outputs", false);

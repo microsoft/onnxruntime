@@ -1108,7 +1108,8 @@ class PlannerImpl {
               if (p_input_arg->Exists()) {
                 OrtValueIndex reusable_input{};
                 if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() /*&&
-                    allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate*/) {
+                    allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate*/
+                ) {
                   std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                   allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                   allocation_plan[output_idx_global].reused_buffer = reusable_input;
@@ -1822,9 +1823,9 @@ class PlannerImpl {
           // if the output node is not in the same stream, generate a trigger point
           if (node_stream_map_[it->Index()] != i
 #ifdef ENABLE_TRAINING
-             // Do not insert Barrier/TriggerDownStream step if the producer and consumer are in different sides of yieldOp
-             // As in this case producer will surely be ready before consumer is running.
-             && !AreNodesSeparatedByYield(node_index, it->Index())
+              // Do not insert Barrier/TriggerDownStream step if the producer and consumer are in different sides of yieldOp
+              // As in this case producer will surely be ready before consumer is running.
+              && !AreNodesSeparatedByYield(node_index, it->Index())
 #endif
           ) {
             node_to_trigger_points[node_index] = num_trigger_points++;
@@ -1852,8 +1853,7 @@ class PlannerImpl {
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
                   OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.device.Type();
                   WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), output_arg_device);
-                  if ((node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU)
-                      && wait_handle != nullptr) {
+                  if ((node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {
                       node_to_notification[node_index] = plan_.notification_owners.size();
                       plan_.notification_owners.push_back(i);
@@ -1919,7 +1919,7 @@ class PlannerImpl {
         if (wait_it != node_to_wait.end()) {
           for (auto wait_param : wait_it->second) {
             execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param.second,
-              node_to_notification[wait_param.first], node_index));
+                                                                                  node_to_notification[wait_param.first], node_index));
           }
         }
 

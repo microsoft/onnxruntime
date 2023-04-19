@@ -208,10 +208,10 @@ std::string AzureTritonInvoker::MapDataType(int32_t ort_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       triton_data_type = "INT64";
       break;
-    //do we need to support string?
-    //case ONNX_NAMESPACE::TensorProto_DataType_STRING:
-    //  triton_data_type = "BYTES";
-    //  break;
+    // do we need to support string?
+    // case ONNX_NAMESPACE::TensorProto_DataType_STRING:
+    //   triton_data_type = "BYTES";
+    //   break;
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
       triton_data_type = "BOOL";
       break;
@@ -269,7 +269,7 @@ onnxruntime::TensorPtr AzureTritonInvoker::CreateTensor(const std::string& data_
 }
 
 AzureTritonInvoker::AzureTritonInvoker(const CloudEndPointConfig& config,
-                             const AllocatorPtr& allocator) : CloudEndPointInvoker(config, allocator) {
+                                       const AllocatorPtr& allocator) : CloudEndPointInvoker(config, allocator) {
   ReadConfig(kAzureUri, uri_);
   ReadConfig(kAzureModelName, model_name_);
   ReadConfig(kAzureModelVer, model_ver_, false);
@@ -282,10 +282,10 @@ AzureTritonInvoker::AzureTritonInvoker(const CloudEndPointConfig& config,
 }
 
 onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_options,
-                                        const InlinedVector<std::string>& input_names,
-                                        gsl::span<const OrtValue> ort_inputs,
-                                        const InlinedVector<std::string>& output_names,
-                                        std::vector<OrtValue>& ort_outputs) const {
+                                             const InlinedVector<std::string>& input_names,
+                                             gsl::span<const OrtValue> ort_inputs,
+                                             const InlinedVector<std::string>& output_names,
+                                             std::vector<OrtValue>& ort_outputs) const {
   const auto auth_key_iter = run_options.find(kAzureAuthKey);
   if (run_options.end() == auth_key_iter) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -306,12 +306,12 @@ onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_opti
   tc::Error err;
 
   try {
-    //assemble triton inputs
+    // assemble triton inputs
     auto iter = input_names.begin();
     for (int i = 0; i < static_cast<int>(ort_inputs.size()); i++) {
       const OrtValue& ort_input = ort_inputs[i];
       if (!ort_input.IsTensor()) {
-        //do we need to support tensor sequence and sparse tensor?
+        // do we need to support tensor sequence and sparse tensor?
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton client only accept tensor(s) as input");
       }
 
@@ -335,7 +335,7 @@ onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_opti
       triton_inputs.push_back(triton_input);
       triton_input->AppendRaw(static_cast<const uint8_t*>(input_tensor.DataRaw()), input_tensor.SizeInBytes());
       ++iter;
-    }  //for
+    }  // for
 
     iter = output_names.begin();
     while (iter != output_names.end()) {
@@ -358,7 +358,7 @@ onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_opti
 
     err = triton_client_->Infer(&results, options, triton_inputs, triton_outputs,
                                 http_headers, tc::Parameters(),
-                                tc::InferenceServerHttpClient::CompressionType::NONE,  //support compression in config?
+                                tc::InferenceServerHttpClient::CompressionType::NONE,  // support compression in config?
                                 tc::InferenceServerHttpClient::CompressionType::NONE);
     results_ptr.reset(results);
     CHECK_TRITON_ERR(err, "Triton client failed to do inference");
@@ -388,7 +388,7 @@ onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_opti
       if (!output_tensor) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for output", *iter);
       }
-      //how to skip memcpy?
+      // how to skip memcpy?
       memcpy(output_tensor->MutableDataRaw(), raw_data, raw_size);
       ort_outputs[output_index++].Init(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
       ++iter;

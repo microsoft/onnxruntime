@@ -35,6 +35,7 @@ namespace Microsoft.ML.OnnxRuntime
 
     /// <summary>
     /// Holds the options for creating an InferenceSession
+    /// It forces the instantiation of the OrtEnv singleton.
     /// </summary>
     public class SessionOptions : SafeHandle
     {
@@ -51,6 +52,8 @@ namespace Microsoft.ML.OnnxRuntime
             : base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out handle));
+            // Instantiate the OrtEnv singleton if not already done.
+            OrtEnv.Instance();
         }
 
         /// <summary>
@@ -639,7 +642,7 @@ namespace Microsoft.ML.OnnxRuntime
                 _logId = value;
             }
         }
-        private string _logId = "";
+        private string _logId = string.Empty;
 
         /// <summary>
         /// Log Severity Level for the session logs. Default = ORT_LOGGING_LEVEL_WARNING
