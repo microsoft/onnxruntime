@@ -34,8 +34,6 @@ namespace js {
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);
 
-
-
 REGISTER_KERNEL_TYPED(float)
 
 }  // namespace js

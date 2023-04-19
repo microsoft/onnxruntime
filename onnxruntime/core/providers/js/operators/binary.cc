@@ -24,7 +24,6 @@ namespace js {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),              \
       KERNEL_CLASS);
 
-
 JSEP_KERNEL_IMPL(Add, Add)
 REG_ELEMENTWISE_VERSIONED_KERNEL(Add, 7, 12, float, Add);
 REG_ELEMENTWISE_VERSIONED_KERNEL(Add, 13, 13, float, Add);

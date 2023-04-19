@@ -5,7 +5,7 @@
 
 #include "core/providers/js/data_transfer.h"
 
-EM_ASYNC_JS(void, jsepDownload, (const void *src_data, void *dst_data, size_t bytes), {
+EM_ASYNC_JS(void, jsepDownload, (const void* src_data, void* dst_data, size_t bytes), {
   await Module.jsepCopyAsync(src_data, dst_data, bytes);
 });
 

@@ -164,7 +164,6 @@ class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnn
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 12, float, MaxPool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, float, GlobalMaxPool);
 
-
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
@@ -310,7 +309,8 @@ void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager)
     if (!custom_alloc) {
       AllocatorCreationInfo customAllocatorCreationInfo([&](int) {
         return std::make_unique<js::JsCustomAllocator>();
-      }, 0, false);
+      },
+                                                        0, false);
       custom_alloc = CreateAllocator(customAllocatorCreationInfo);
       allocator_manager.InsertAllocator(custom_alloc);
     }

@@ -8,14 +8,14 @@
 namespace onnxruntime {
 namespace js {
 
-#define POOLING_KERNEL(op_name, domain, is_channels_last, data_type, pool_type, since_version)             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                           \
-      op_name,                                                                                             \
-      domain,                                                                                              \
-      since_version,                                                                                       \
-      data_type,                                                                                           \
-      kJsExecutionProvider,                                                                                \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()),         \
+#define POOLING_KERNEL(op_name, domain, is_channels_last, data_type, pool_type, since_version)     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                   \
+      op_name,                                                                                     \
+      domain,                                                                                      \
+      since_version,                                                                               \
+      data_type,                                                                                   \
+      kJsExecutionProvider,                                                                        \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
       Pool<data_type, pool_type, is_channels_last>);
 
 #define POOLING_KERNEL_VERSIONED(op_name, domain, is_channels_last, data_type, pool_type, since_version, end_version) \

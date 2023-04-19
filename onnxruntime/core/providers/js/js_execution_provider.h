@@ -18,7 +18,7 @@ namespace js {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 
-}
+}  // namespace js
 
 // placeholder for future use. no options currently
 struct JsExecutionProviderInfo {
