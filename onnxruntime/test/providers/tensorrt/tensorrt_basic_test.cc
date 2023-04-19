@@ -602,7 +602,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     uint64_t compilation_without_cache_ms, compilation_with_cache_ms;
 
 
-    // First session is created with TRT EP with timing cache enabled 
+    // First session is created with TRT EP with timing cache enabled
     params.trt_timing_cache_enable = 1;
     {
       auto start = chrono::steady_clock::now();
@@ -621,7 +621,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       compilation_with_cache_ms = chrono::duration_cast<chrono::microseconds>(end - start).count();
     }
 
-    // Second session is created with TRT EP without timing cache enabled 
+    // Second session is created with TRT EP without timing cache enabled
     params.trt_timing_cache_enable = 0;
     {
       InferenceSession session_object_new{so, GetEnvironment()};
