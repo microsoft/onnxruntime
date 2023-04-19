@@ -84,11 +84,11 @@ class ReduceOpBuilder : public BaseOpBuilder {
 };
 
 const std::array<int, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder::opset_with_axes_as_input = {
-  18,  // ReduceMax
-  18,  // ReduceMin
-  18,  // ReduceMean
-  18,  // ReduceProd
-  13   // ReduceSum
+    18,  // ReduceMax
+    18,  // ReduceMin
+    18,  // ReduceMean
+    18,  // ReduceProd
+    13   // ReduceSum
 };
 
 Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
@@ -250,7 +250,6 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   QnnParamWrapper keep_dims_param(node_unit.Index(), node_unit.Name(), qnn_def::keep_dims, scalar_param);
   param_tensor_names.push_back(keep_dims_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(keep_dims_param));
-
 
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),

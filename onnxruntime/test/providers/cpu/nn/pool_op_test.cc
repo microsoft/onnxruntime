@@ -57,7 +57,7 @@ TEST(PoolTest, MaxPool) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: result differs
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: result differs
 }
 
 // Only CUDA kernel has float 16 support
@@ -115,7 +115,7 @@ TEST(PoolTest, MaxPool_F16) {
 
   test.AddInput<MLFloat16>("X", x_dims, f_X);
   test.AddOutput<MLFloat16>("Y", expected_dims, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Assertion `!attrs.count("pads")' failed
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Assertion `!attrs.count("pads")' failed
 }
 #endif
 
@@ -275,7 +275,7 @@ TEST(PoolTest, MaxPool1D_12_With_Index_8bits) {
 }
 
 // Used by MaxPool2D_uint8
-template<typename InputIter>
+template <typename InputIter>
 void print_vector(std::ostream& os, const std::string& txt, InputIter begin, InputIter end) {
   os << txt;
   while (begin != end) {
@@ -298,12 +298,7 @@ TEST(PoolTest, MaxPool2D_uint8) {
       23, 24, 25, 25, 25,
       23, 24, 25, 25, 25};
 
-  test.AddInput<uint8_t>("Input", {1, 1, 5, 5}, {
-    1, 2, 3, 4, 5,
-    6, 7, 8, 9, 10,
-    11, 12, 13, 14, 15,
-    16, 17, 18, 19, 20,
-    21, 22, 23, 24, 25});
+  test.AddInput<uint8_t>("Input", {1, 1, 5, 5}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25});
 
   test.AddOutput<uint8_t>("Output", output_shape, output);
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
@@ -1375,10 +1370,10 @@ TEST(PoolTest, LpPool2d) {
       {20.6398f, 23.3024f, 31.6544f, 34.5109f},
       {20.6398f}};
   std::vector<int64_t> y_sizes[4] = {
-    {1, 1, 3, 3},
-    {1, 1, 2, 2},
-    {1, 1, 2, 2},
-    {1, 1, 1, 1},
+      {1, 1, 3, 3},
+      {1, 1, 2, 2},
+      {1, 1, 2, 2},
+      {1, 1, 1, 1},
   };
   int y_count = 0;
   for (int kernel_size_count = 0; kernel_size_count < 2; kernel_size_count++)

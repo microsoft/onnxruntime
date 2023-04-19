@@ -7,10 +7,10 @@
 
 namespace onnxruntime {
 
+using ONNX_NAMESPACE::TensorProto;
 using std::string_view;
 using std::unordered_map;
 using std::unordered_set;
-using ONNX_NAMESPACE::TensorProto;
 
 /**
  * @Class IdenticalChildrenConsolidation

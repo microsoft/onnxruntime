@@ -122,7 +122,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
                        cublasLtOrder_t weight_order,
                        cublasLtPointerMode_t pointer_mode) {
 #if defined(CUDA_VERSION) && CUDA_VERSION < 11040
-  ORT_RETURN_IF(pointer_mode > CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_ZERO ,
+  ORT_RETURN_IF(pointer_mode > CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_ZERO,
                 "Need CUDA 11.4.2 to support CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST")
 #endif
 

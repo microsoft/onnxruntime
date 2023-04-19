@@ -66,7 +66,7 @@ TEST(TransposeOpTest, TwoDimNoAttr) {
       2.0f, 5.0f,
       3.0f, 6.0f};
 
-  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals, false);  //TensorRT: SegFault error
+  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals, false);  // TensorRT: SegFault error
 }
 
 TEST(TransposeOpTest, TwoDimNoAttrStr) {
@@ -162,7 +162,7 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
 #if defined(USE_DNNL)
 TEST(TransposeOpTest, TwoDim_opset13_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -180,7 +180,7 @@ TEST(TransposeOpTest, TwoDim_opset13_bfloat16) {
 
 TEST(TransposeOpTest, TwoDimNoAttr_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -197,7 +197,7 @@ TEST(TransposeOpTest, TwoDimNoAttr_bfloat16) {
 
 TEST(TransposeOpTest, Transpose021_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -311,7 +311,7 @@ TEST(TransposeOpTest, Transpose021) {
       2.3f, 5.3f,
       3.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, Transpose120) {
@@ -338,10 +338,9 @@ TEST(TransposeOpTest, Transpose120) {
 
       4.0f, 4.1f, 4.2f, 4.3f,
       5.0f, 5.1f, 5.2f, 5.3f,
-      6.0f, 6.1f, 6.2f, 6.3f
-     };
+      6.0f, 6.1f, 6.2f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
 }
 
 // test when the suffix size is > 1 (last dimension is not moved)
@@ -373,7 +372,7 @@ TEST(TransposeOpTest, Transpose102) {
       4.2f, 5.2f, 6.2f,
       4.3f, 5.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, TransposeReshape) {
@@ -406,7 +405,7 @@ TEST(TransposeOpTest, TransposeReshape) {
       1.3f, 2.3f, 3.3f,
       4.3f, 5.3f, 6.3f};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  // TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, ThreeDimStr) {

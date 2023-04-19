@@ -49,9 +49,10 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
                                     bool is_quantized_model) const {
-  ORT_UNUSED_PARAMETER(qnn_model_wrapper);
-  ORT_UNUSED_PARAMETER(node_unit);
-  ORT_UNUSED_PARAMETER(logger);
+  if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
+  }
+
   const auto& inputs = node_unit.Inputs();
   ONNX_NAMESPACE::DataType input_data_type = inputs[0].node_arg.Type();
   if (!is_quantized_model && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float")) {
@@ -73,6 +74,13 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   if (node_unit.Outputs().size() > 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN only support 1 output!");
   }
+
+  if (node_unit.OpType() == "MaxPool" || node_unit.OpType() == "AveragePool") {
+    auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
+    ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
+                  "QNN Pool operators do not support 'auto_pad' value: ", auto_pad.c_str());
+  }
+
   return Status::OK();
 }
 
@@ -98,6 +106,9 @@ Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
 
   std::vector<int32_t> pads = {0, 0, 0, 0};
   auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
+  ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
+                "QNN Pool operators do not support 'auto_pad' value: ", auto_pad.c_str());
+
   if (auto_pad.compare("NOTSET") != 0) {
     auto dilation_values = node_helper.Get("dilations", std::vector<int32_t>{1, 1});
 
@@ -198,7 +209,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     scalar_param.dataType = QNN_DATATYPE_BOOL_8;
     scalar_param.bool8Value = 1;
     QnnParamWrapper count_pad_for_edges_param(node_unit.Index(),
-                                              node_unit.Name(), 
+                                              node_unit.Name(),
                                               qnn_def::count_pad_for_edges,
                                               scalar_param);
     param_tensor_names.push_back(count_pad_for_edges_param.GetParamTensorName());

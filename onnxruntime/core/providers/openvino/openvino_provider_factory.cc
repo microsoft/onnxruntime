@@ -12,9 +12,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
                           const char* device_id, size_t num_of_threads,
                           const char* cache_dir, void* context,
                           bool enable_opencl_throttling, bool enable_dynamic_shapes)
-      : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads),
-        context_(context), enable_opencl_throttling_(enable_opencl_throttling),
-        enable_dynamic_shapes_(enable_dynamic_shapes) {
+      : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads), context_(context), enable_opencl_throttling_(enable_opencl_throttling), enable_dynamic_shapes_(enable_dynamic_shapes) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     device_id_ = (device_id == nullptr) ? "" : device_id;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
@@ -44,11 +42,11 @@ std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
     const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads,
-    const char* cache_dir, void * context, bool enable_opencl_throttling,
+    const char* cache_dir, void* context, bool enable_opencl_throttling,
     bool enable_dynamic_shapes) {
   return std::make_shared<onnxruntime::OpenVINOProviderFactory>(device_type, enable_vpu_fast_compile,
-  device_id, num_of_threads, cache_dir, context, enable_opencl_throttling,
-  enable_dynamic_shapes);
+                                                                device_id, num_of_threads, cache_dir, context, enable_opencl_throttling,
+                                                                enable_dynamic_shapes);
 }
 
 }  // namespace onnxruntime

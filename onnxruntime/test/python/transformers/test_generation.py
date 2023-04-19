@@ -211,8 +211,7 @@ class TestBeamSearchT5(unittest.TestCase):
 
         self.sentences = [
             "translate English to French: The product is released",
-            "summarize: research continues to show that pets bring real health benefits to their owners."
-            + "Having a dog around can lead to lower levels of stress for both adults and kids.",
+            "summarize: research continues to show that pets bring real health benefits to their owners. Having a dog around can lead to lower levels of stress for both adults and kids.",
         ]
 
         if os.path.exists(self.beam_search_onnx_path):

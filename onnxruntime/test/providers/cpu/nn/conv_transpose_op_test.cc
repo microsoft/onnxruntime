@@ -650,7 +650,6 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_4) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_1) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{2, 2},
@@ -673,7 +672,6 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_1) {
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
-
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_2) {
   ConvTransposeOpAttributes attrs = {
@@ -698,7 +696,6 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_2) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_3) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{2, 2},
@@ -722,7 +719,6 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_3) {
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
-
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_4) {
   ConvTransposeOpAttributes attrs = {
