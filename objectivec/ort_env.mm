@@ -13,8 +13,8 @@
 NS_ASSUME_NONNULL_BEGIN
 
 NSString* ORTVersion(void) {
-    std::string result = OrtGetApiBase()->GetVersionString();
-    return [NSString stringWithUTF8String: result.c_str()];
+  std::string result = OrtGetApiBase()->GetVersionString();
+  return [NSString stringWithUTF8String:result.c_str()];
 }
 
 @implementation ORTEnv {

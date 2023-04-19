@@ -18,7 +18,6 @@ NS_ASSUME_NONNULL_BEGIN
   XCTAssertNotNil(ver);
 }
 
-
 - (void)testInitOk {
   NSError* err = nil;
   ORTEnv* env = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning
