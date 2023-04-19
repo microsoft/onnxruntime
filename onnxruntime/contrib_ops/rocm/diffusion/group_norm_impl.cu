@@ -14,6 +14,7 @@ namespace rocm {
 
 template <typename T>
 Status LaunchGroupNormKernel(
+    RocmTuningContext* tuning_ctx,
     hipStream_t stream,
     T* output,
     const T* input,
@@ -37,18 +38,23 @@ Status LaunchGroupNormKernel(
                            "only num_groups=32 is supported. Got", num_groups);
   }
 
-  GroupNormNHWCParams<T> params(nullptr, stream, output, reinterpret_cast<float*>(workspace), input, gamma, beta,
+  GroupNormNHWCParams<T> params(tuning_ctx, stream, output, reinterpret_cast<float*>(workspace), input, gamma, beta,
                                 batch_size, height, width, num_channels, num_groups, epsilon, use_swish_activation);
+
+  if (tuning_ctx->IsTunableOpEnabled()) {
+    static GroupNormNHWCTunableOp<T> op;
+    return op(&params);
+  }
 
   return GroupNormNHWCStaticSelection(&params);
 }
 
-template Status LaunchGroupNormKernel<half>(hipStream_t stream, half* output,
+template Status LaunchGroupNormKernel<half>(RocmTuningContext* tuning_ctx, hipStream_t stream, half* output,
                                             const half* input, const float* gamma, const float* beta, void* workspace,
                                             float epsilon, int batch_size, int num_channels,
                                             int height, int width, int num_groups, bool swish);
 
-template Status LaunchGroupNormKernel<float>(hipStream_t stream, float* output,
+template Status LaunchGroupNormKernel<float>(RocmTuningContext* tuning_ctx, hipStream_t stream, float* output,
                                              const float* input, const float* gamma, const float* beta, void* workspace,
                                              float epsilon, int batch_size, int num_channels,
                                              int height, int width, int num_groups, bool swish);

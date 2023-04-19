@@ -163,6 +163,22 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
 
   Node::EdgeConstIterator v_;
 };
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_name) {
+  const auto& platform_env = onnxruntime::Env::Default();
+  void* library_handle = nullptr;
+
+  ORT_RETURN_IF_ERROR(platform_env.LoadDynamicLibrary(library_name, false, &library_handle));
+  if (!library_handle) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load dynamic library ",
+                           onnxruntime::PathToUTF8String(library_name));
+  }
+
+  return onnxruntime::Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -1071,9 +1087,14 @@ struct ProviderHostImpl : ProviderHost {
 
 #ifdef _WIN32
   std::string ToUTF8String(const std::wstring& s) override { return onnxruntime::ToUTF8String(s); }
+  std::wstring ToWideString(const std::string& s) override { return onnxruntime::ToWideString(s); }
 #endif
 
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
+#endif
 } provider_host_;
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
@@ -1315,6 +1336,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_builder_optimization_level = 2;
   trt_options_converted.trt_auxiliary_streams = -1;
   trt_options_converted.trt_tactic_sources = "";
+  trt_options_converted.trt_extra_plugin_lib_paths = "";
   return trt_options_converted;
 }
 
@@ -1325,6 +1347,10 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
 
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const OrtTensorRTProviderOptionsV2* provider_options) {
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
+}
+
+void TensorrtProviderGetCustomOpDomainList(IExecutionProviderFactory* factory, std::vector<OrtCustomOpDomain*>& custom_op_domains_ptr) {
+  s_library_tensorrt.Get().GetCustomOpDomainList(factory, custom_op_domains_ptr);
 }
 
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
@@ -1486,6 +1512,13 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
   }
 
   options->provider_factories.push_back(factory);
+
+  std::vector<OrtCustomOpDomain*> custom_op_domains;
+  TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
+  for (auto ptr : custom_op_domains) {
+    options->custom_op_domains_.push_back(ptr);
+  }
+
   return nullptr;
   API_IMPL_END
 }
@@ -1510,6 +1543,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
   }
 
   options->provider_factories.push_back(factory);
+
+  std::vector<OrtCustomOpDomain*> custom_op_domains;
+  TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
+  for (auto ptr : custom_op_domains) {
+    options->custom_op_domains_.push_back(ptr);
+  }
+
   return nullptr;
   API_IMPL_END
 }
@@ -1611,6 +1651,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   }
 
   options->provider_factories.push_back(factory);
+
+  std::vector<OrtCustomOpDomain*> custom_op_domains;
+  TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
+  for (auto ptr : custom_op_domains) {
+    options->custom_op_domains_.push_back(ptr);
+  }
   return nullptr;
   API_IMPL_END
 }
@@ -1642,6 +1688,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_timing_cache_enable = false;
   (*out)->trt_force_timing_cache = false;
   (*out)->trt_detailed_build_log = false;
+  (*out)->trt_extra_plugin_lib_paths = nullptr;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

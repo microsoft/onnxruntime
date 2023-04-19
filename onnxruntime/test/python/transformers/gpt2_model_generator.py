@@ -869,10 +869,10 @@ if __name__ == "__main__":
     onnx.save(model, "gpt2_embedlayer.onnx")
 
     model = create_gpt2_fused_embedlayer()
-    onnx.save(model, "gpt2_embedlayer_exp.onnx")
+    onnx.save(model, "./test_data/models/gpt2_embedlayer_exp.onnx")
 
     model = create_gpt2_embedlayer(one_attention_node=True)
     onnx.save(model, "gpt2_embedlayer_one_attn.onnx")
 
     model = create_gpt2_fused_embedlayer(one_attention_node=True)
-    onnx.save(model, "gpt2_embedlayer_one_attn_exp.onnx")
+    onnx.save(model, "./test_data/models/gpt2_embedlayer_one_attn_exp.onnx")

@@ -2460,6 +2460,12 @@ void RegisterContribSchemas() {
         }
       });
 
+  // ORT will not regsiter TRT plugins as contrib ops, instead it will use custom ops handled by TRT EP.
+  // In order not to break the old models using those TRT plugins which were registered with ONNX domain and maintain backward compatible,
+  // we still keep EfficientNMS_TRT, MultilevelCropAndResize_TRT, PyramidROIAlign_TRT and DisentangledAttention_TRT as legacy code.
+  // We don't need to add new schema definition when a new TRT plugin is introduced, TRT EP will register it as custom op for us.
+  // Moving forward, please create TRT plugin node with "trt.plugins" domain.
+
   static const char* EfficientNMS_TRT_ver1_doc =
       R"DOC(Efficient NMS TensorRT Plugin.)DOC";
 
@@ -2661,6 +2667,8 @@ void RegisterContribSchemas() {
         // updateOutputShape(ctx, 0, disentangled_attention_shape);
         propagateShapeFromInputToOutput(ctx, 0, 0);
       });
+
+  // Please note that we don't need to add new schema definition when a new TRT plugin is introduced, TRT EP will register it as custom op for us.
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Snpe)
       .SetDomain(kMSDomain)

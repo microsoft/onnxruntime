@@ -38,6 +38,7 @@ static const std::string kSparsityEnable = "ORT_TENSORRT_SPARSITY_ENABLE";
 static const std::string kBuilderOptimizationLevel = "ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL";
 static const std::string kAuxiliaryStreams = "ORT_TENSORRT_AUXILIARY_STREAMS";
 static const std::string kTacticSources = "ORT_TENSORRT_TACTIC_SOURCES";
+static const std::string kExtraPluginLibPaths = "ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -162,6 +163,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   }
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+
+  void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override;
 
  private:
   TensorrtExecutionProviderInfo info_;
