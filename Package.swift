@@ -52,17 +52,17 @@ let package = Package(
 
 // Add the ORT iOS Pod archive as a binary target.
 //
-// There are 3 scenarios:
+// There are 2 scenarios:
 //
-// Release branch/tag of ORT github repo:
-//    Target will be released pod archive and its checksum.
+// Release branch of ORT github repo:
+//    Target will be set to the released pod archive and its checksum.
 //
-// `main` branch of ORT github repo:
-//    Invalid. We do not have a pod archive that is guaranteed to work with the latest code on main as the objective-c
-//    bindings may have changed.
-//
+// Any other branch/tag of ORT github repo:
+//    Invalid by default. We do not have a pod archive that is guaranteed to work
+//    as the objective-c bindings may have changed since the pod archive was released.
+
 // CI or local testing where you have built/obtained the iOS Pod archive matching the current source code.
-//    Requires the ORT_IOS_POD_LOCAL_PATH environment variable to be set to specify the location of the pod.
+// Requires the ORT_IOS_POD_LOCAL_PATH environment variable to be set to specify the location of the pod.
 if let pod_archive_path = ProcessInfo.processInfo.environment["ORT_IOS_POD_LOCAL_PATH"] {
     // ORT_IOS_POD_LOCAL_PATH MUST be a path that is relative to Package.swift.
     //
