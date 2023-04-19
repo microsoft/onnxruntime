@@ -582,7 +582,7 @@ Status CutBasedApplyPipelinePartitionToMainGraph(
                            split_count);
   }
 
-  std::vector<Node *> send_nodes, recv_nodes;
+  std::vector<Node*> send_nodes, recv_nodes;
   send_nodes.reserve(split_count);
   recv_nodes.reserve(split_count);
 
@@ -622,20 +622,20 @@ Status CutBasedApplyPipelinePartitionToMainGraph(
     // send_node inserted during split.
     ORT_RETURN_IF_NOT(recv_node == nullptr, "Error: first stage contains Recv node in forward pass.");
     ORT_RETURN_IF_NOT(send_node == send_nodes[0],
-                "Error: first stage doesn't contain the right Send node. Possibly CutInfo data is wrong.");
+                      "Error: first stage doesn't contain the right Send node. Possibly CutInfo data is wrong.");
   } else if (pipeline_stage_id == split_count) {
     // For the last stage, there should be no send node, and the recv node contained in graph should match the last
     // recv_node inserted during split.
     ORT_RETURN_IF_NOT(recv_node == recv_nodes.back(),
-                "Error: last stage doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
+                      "Error: last stage doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
     ORT_RETURN_IF_NOT(send_node == nullptr, "Error: last stage contains Send node in forward pass.");
   } else {
     // For stages in the middle, i-th stage should contain recv node that matches the (i-1)-th inserted recv node, and the i-th
     // inserted send node.
     ORT_RETURN_IF_NOT(recv_node == recv_nodes[pipeline_stage_id - 1],
-                "Error: stage ", pipeline_stage_id, " doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
+                      "Error: stage ", pipeline_stage_id, " doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
     ORT_RETURN_IF_NOT(send_node == send_nodes[pipeline_stage_id],
-                "Error: stage ", pipeline_stage_id, " doesn't contain the right Send node. Possibly CutInfo data is wrong.");
+                      "Error: stage ", pipeline_stage_id, " doesn't contain the right Send node. Possibly CutInfo data is wrong.");
   }
 
   return Status::OK();

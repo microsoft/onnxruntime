@@ -72,10 +72,10 @@ std::optional<T> ParseTestOnlyEnvironmentVariable(const std::string& name,
     std::ostringstream oss;
     auto it = valid_values.cbegin();
     oss << *it++;
-    while(it != valid_values.cend()) {
+    while (it != valid_values.cend()) {
       oss << ", " << *it++;
     }
-    ORT_THROW("Value of environment variable ", name," must be ", oss.str(), ", but got ", raw_env);
+    ORT_THROW("Value of environment variable ", name, " must be ", oss.str(), ", but got ", raw_env);
   }
 
   auto env = onnxruntime::ParseEnvironmentVariable<T>(name);

@@ -51,7 +51,6 @@ Status RegisterSnpeContribKernels(KernelRegistry& kernel_registry) {
 }  // namespace snpe
 }  // namespace contrib
 
-
 KernelRegistryAndStatus GetSnpeKernelRegistry() {
   KernelRegistryAndStatus ret;
   ret.st = ::onnxruntime::contrib::snpe::RegisterSnpeContribKernels(*ret.kernel_registry);
@@ -66,8 +65,7 @@ std::shared_ptr<KernelRegistry> SNPEExecutionProvider::GetKernelRegistry() const
 }
 
 SNPEExecutionProvider::SNPEExecutionProvider(const ProviderOptions& provider_options_map)
-    : IExecutionProvider{onnxruntime::kSnpeExecutionProvider}
-    , runtime_options_(provider_options_map) {
+    : IExecutionProvider{onnxruntime::kSnpeExecutionProvider}, runtime_options_(provider_options_map) {
   AllocatorCreationInfo device_info(
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(SNPE, OrtAllocatorType::OrtDeviceAllocator));

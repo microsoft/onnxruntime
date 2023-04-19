@@ -14,25 +14,25 @@
 using namespace onnxruntime;
 using namespace onnxruntime::training;
 
-//const std::string MODEL_NAME = "inceptionv1";
-//const std::string PREDICTION_NAME = "prob_1";
-//const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1", "OC2_DUMMY_3"};
+// const std::string MODEL_NAME = "inceptionv1";
+// const std::string PREDICTION_NAME = "prob_1";
+// const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1", "OC2_DUMMY_3"};
 
-//const std::string MODEL_NAME = "alexnet";
-//const std::string PREDICTION_NAME = "prob_1";
-//const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
+// const std::string MODEL_NAME = "alexnet";
+// const std::string PREDICTION_NAME = "prob_1";
+// const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
 
-//const std::string MODEL_NAME = "vgg19";
-//const std::string PREDICTION_NAME = "prob_1";
-//const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
+// const std::string MODEL_NAME = "vgg19";
+// const std::string PREDICTION_NAME = "prob_1";
+// const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
 
-//const std::string MODEL_NAME = "caffenet";
-//const std::string PREDICTION_NAME = "prob_1";
-//const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
+// const std::string MODEL_NAME = "caffenet";
+// const std::string PREDICTION_NAME = "prob_1";
+// const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
 
-//const std::string MODEL_NAME = "zfnet512";
-//const std::string PREDICTION_NAME = "gpu_0/softmax_1";
-//const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
+// const std::string MODEL_NAME = "zfnet512";
+// const std::string PREDICTION_NAME = "gpu_0/softmax_1";
+// const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
 
 const std::string MODEL_NAME = "squeezenet";
 const std::string PREDICTION_NAME = "pool10_1_reshaped";
@@ -52,7 +52,7 @@ const std::string BACKWARD_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model_bw.on
     }                                                                  \
   }
 
-int main(int /*argc*/, char* /*args*/ []) {
+int main(int /*argc*/, char* /*args*/[]) {
   std::string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
                                                   logging::Severity::kWARNING, false,
@@ -84,8 +84,8 @@ int main(int /*argc*/, char* /*args*/ []) {
     return -1;
   }
 
-  //TERMINATE_IF_FAILED(training_session.Save(TRANSFORMED_MODEL_PATH,
-  //                                          TrainingSession::SaveOption::NO_RELOAD));
+  // TERMINATE_IF_FAILED(training_session.Save(TRANSFORMED_MODEL_PATH,
+  //                                           TrainingSession::SaveOption::NO_RELOAD));
 
   TERMINATE_IF_FAILED(training_session.Save(BACKWARD_MODEL_PATH,
                                             TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS));

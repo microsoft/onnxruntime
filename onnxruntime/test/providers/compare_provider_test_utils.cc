@@ -153,7 +153,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   status = target_session_object.Run(run_options, feeds, output_names, &target_fetches);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  //compare
+  // compare
   ASSERT_TRUE(cpu_fetches.size() == target_fetches.size());
   for (size_t i = 0; i < cpu_fetches.size(); i++) {
     auto ret = CompareOrtValue(target_fetches[i], cpu_fetches[i], per_sample_tolerance, relative_per_sample_tolerance, false);

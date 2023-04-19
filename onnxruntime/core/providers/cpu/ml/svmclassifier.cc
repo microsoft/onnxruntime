@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/svmclassifier.h"
 #include "core/platform/threadpool.h"
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 // Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
@@ -61,10 +61,10 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   }
 
   if (vector_count_ > 0) {
-    feature_count_ = support_vectors_.size() / vector_count_;  //length of each support vector
+    feature_count_ = support_vectors_.size() / vector_count_;  // length of each support vector
     mode_ = SVM_TYPE::SVM_SVC;
   } else {
-    feature_count_ = coefficients_.size() / class_count_;  //liblinear mode
+    feature_count_ = coefficients_.size() / class_count_;  // liblinear mode
     mode_ = SVM_TYPE::SVM_LINEAR;
     set_kernel_type(KERNEL::LINEAR);
   }
@@ -360,7 +360,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
         ChooseClass<int64_t>(Y, n, max_weight, maxclass, have_proba, weights_are_all_positive_,
                              classlabels_ints_, 1, 0);
       }
-    } else {  //multiclass
+    } else {  // multiclass
       if (using_strings_) {
         Y.MutableData<std::string>()[n] = classlabels_strings_[onnxruntime::narrow<size_t>(maxclass)];
       } else {

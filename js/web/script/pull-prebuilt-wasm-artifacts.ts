@@ -76,7 +76,7 @@ console.log('=== Start to pull WebAssembly artifacts from CI ===');
 downloadJson(
     'https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/builds?api-version=6.1-preview.6' +
         '&definitions=161' +
-        '&resultFilter=succeeded' +
+        '&resultFilter=succeeded%2CpartiallySucceeded' +
         '&$top=1' +
         '&repositoryId=Microsoft/onnxruntime' +
         '&repositoryType=GitHub' +

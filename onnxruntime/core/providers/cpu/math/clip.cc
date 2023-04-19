@@ -71,26 +71,26 @@ Status Clip_6<T>::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   Tensor* Y = ctx->Output(0, X->Shape());
 
-  // We split input/output data into chunks. Each chunk has N elements 
+  // We split input/output data into chunks. Each chunk has N elements
   // (except, maybe, the last chunk), and we use a thread pool to process
   // the chunks in parallel. N = 16384 was selected based on performance
   // results on input tensors of 10^i elements for i in [1 .. 6].
   static constexpr int64_t length_per_task = 16384;
-  
+
   const int64_t elem_count = Y->Shape().Size();
   const int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
   concurrency::ThreadPool::TryBatchParallelFor(
-      ctx->GetOperatorThreadPool(), 
+      ctx->GetOperatorThreadPool(),
       static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
-          const int64_t start = task_idx * length_per_task;
-          const size_t count = narrow<size_t>(std::min(length_per_task, elem_count - start));
+        const int64_t start = task_idx * length_per_task;
+        const size_t count = narrow<size_t>(std::min(length_per_task, elem_count - start));
 
-          EigenVectorMap<T>(Y->MutableData<T>() + start, count) =
-              ConstEigenVectorMap<T>(X->Data<T>() + start, count)
-                  .cwiseMax(this->min_)
-                  .cwiseMin(this->max_);
+        EigenVectorMap<T>(Y->MutableData<T>() + start, count) =
+            ConstEigenVectorMap<T>(X->Data<T>() + start, count)
+                .cwiseMax(this->min_)
+                .cwiseMin(this->max_);
       },
       0);
 
@@ -98,9 +98,9 @@ Status Clip_6<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-struct Clip::ComputeImpl {  
+struct Clip::ComputeImpl {
   void operator()(const Tensor* X, const Tensor* min, const Tensor* max, Tensor* Y,
-    concurrency::ThreadPool *tp) const {
+                  concurrency::ThreadPool* tp) const {
     auto min_val = std::numeric_limits<T>::lowest();
     auto max_val = std::numeric_limits<T>::max();
     if (min) {
@@ -112,25 +112,25 @@ struct Clip::ComputeImpl {
       max_val = *(max->Data<T>());
     }
 
-    // We split input/output data into chunks. Each chunk has N elements 
+    // We split input/output data into chunks. Each chunk has N elements
     // (except, maybe, the last chunk), and we use a thread pool to process
     // the chunks in parallel. N = 16384 was selected based on performance
     // results on input tensors of 10^i elements for i in [1 .. 6].
     static constexpr int64_t length_per_task = 16384;
-  
+
     const int64_t elem_count = Y->Shape().Size();
     const int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
     concurrency::ThreadPool::TryBatchParallelFor(
         tp, static_cast<int32_t>(task_count),
         [&](ptrdiff_t task_idx) {
-            const int64_t start = task_idx * length_per_task;
-            const size_t count = narrow<size_t>(std::min(length_per_task, elem_count - start));
+          const int64_t start = task_idx * length_per_task;
+          const size_t count = narrow<size_t>(std::min(length_per_task, elem_count - start));
 
-            EigenVectorMap<T>(Y->MutableData<T>() + start, count) =
-                ConstEigenVectorMap<T>(X->Data<T>() + start, count)
-                    .cwiseMax(min_val)
-                    .cwiseMin(max_val);
+          EigenVectorMap<T>(Y->MutableData<T>() + start, count) =
+              ConstEigenVectorMap<T>(X->Data<T>() + start, count)
+                  .cwiseMax(min_val)
+                  .cwiseMin(max_val);
         },
         0);
   }

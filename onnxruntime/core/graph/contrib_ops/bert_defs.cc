@@ -694,7 +694,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         {"tensor(int32)"},
                         "Constrain mask index to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-           MultiHeadAttentionTypeAndShapeInference(ctx, 5);
+          MultiHeadAttentionTypeAndShapeInference(ctx, 5);
         }));
 
 constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
@@ -968,8 +968,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Or 2D input tensor with shape (token_count, hidden_size)",
                "T")
         .Input(1,
-              "skip",
-              "3D input tensor with shape (batch_size, sequence_length, hidden_size)"
+               "skip",
+               "3D input tensor with shape (batch_size, sequence_length, hidden_size)"
                "Or 2D input tensor with shape (token_count, hidden_size)",
                "T")
         .Input(2,
@@ -977,10 +977,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "1D input tensor with shape (hidden_size)",
                "T")
         .Input(3,
-              "bias",
-              "1D bias tensor with shape (hidden_size",
-              "T",
-              OpSchema::Optional)
+               "bias",
+               "1D bias tensor with shape (hidden_size",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)"

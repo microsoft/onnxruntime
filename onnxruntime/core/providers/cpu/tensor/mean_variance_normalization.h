@@ -119,4 +119,4 @@ class MeanVarianceNormalization_1 final : public MeanVarianceNormalization_0<T> 
   }
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

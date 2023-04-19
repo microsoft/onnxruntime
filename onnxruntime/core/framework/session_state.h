@@ -162,7 +162,7 @@ class SessionState {
 #endif
 
 #ifdef ENABLE_TRAINING
-// This is referenced in training::TrainingSession. Should be removed when this class is removed.
+  // This is referenced in training::TrainingSession. Should be removed when this class is removed.
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
