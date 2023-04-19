@@ -53,4 +53,4 @@ bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
   return true;
 }
 
-}
+}  // namespace onnxruntime::QDQ

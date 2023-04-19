@@ -64,7 +64,7 @@ POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 7, 9)
 POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 10, 10)
 POOLING_KERNEL_VERSIONED(AveragePool, double, AveragePool, 10, 10)
 POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 10, 10)
-//AveragePool and MaxPool op set 11 only update spec document on default value for dilations and strides.
+// AveragePool and MaxPool op set 11 only update spec document on default value for dilations and strides.
 POOLING_KERNEL(AveragePool, float, AveragePool, 11)
 POOLING_KERNEL(AveragePool, double, AveragePool, 11)
 POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 11)

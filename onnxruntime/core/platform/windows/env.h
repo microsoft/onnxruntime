@@ -87,46 +87,46 @@ class WindowsEnv : public Env {
 
  protected:
   /*
-  * "cores_" host all physical cores dicoverred in a windows system.
-  * Every LogicalProcessors represent a core of logical processors.
-  * Specifically, LogicalProcessors is a vector of global processor id.
-  * E.g.
-  * Assume we have a system of 4 cores, each has 2 logical processors.
-  * Then "cores_" will be like:
-  * {
-  * {0,1} // core 1
-  * {2,3} // core 2
-  * {4,5} // core 3
-  * {6,7} // core 4
-  * }
-  * Further, assume we have a system of two groups, each has 4 cores like above,
-  * then "cores_" will be like:
-  * {
-  * {0,1}   // core 1, group 1
-  * {2,3}   // core 2, group 1
-  * {4,5}   // core 3, group 1
-  * {6,7}   // core 4, group 1
-  * {8,9}   // core 5, group 2
-  * {10,11} // core 6, group 2
-  * {12,13} // core 7, group 2
-  * {14,15} // core 8, group 2
-  * }
-  */
+   * "cores_" host all physical cores dicoverred in a windows system.
+   * Every LogicalProcessors represent a core of logical processors.
+   * Specifically, LogicalProcessors is a vector of global processor id.
+   * E.g.
+   * Assume we have a system of 4 cores, each has 2 logical processors.
+   * Then "cores_" will be like:
+   * {
+   * {0,1} // core 1
+   * {2,3} // core 2
+   * {4,5} // core 3
+   * {6,7} // core 4
+   * }
+   * Further, assume we have a system of two groups, each has 4 cores like above,
+   * then "cores_" will be like:
+   * {
+   * {0,1}   // core 1, group 1
+   * {2,3}   // core 2, group 1
+   * {4,5}   // core 3, group 1
+   * {6,7}   // core 4, group 1
+   * {8,9}   // core 5, group 2
+   * {10,11} // core 6, group 2
+   * {12,13} // core 7, group 2
+   * {14,15} // core 8, group 2
+   * }
+   */
   std::vector<LogicalProcessors> cores_;
   /*
-  * "global_processor_info_map_" is a map of:
-  * global_processor_id <--> (group_id, local_processor_id)
-  * "global_processor_id" means "index" of a logical processor in the system,
-  * "local_processor_id" refers to "index" of a logical processor in its belonging group,
-  * E.g.
-  * Assume the system have two groups,
-  * each group has two cores,
-  * and each core has two logical processors.
-  * then the global processor ids will be like:
-  * 0,1,2,3,4,5,6,7
-  * the local processor ids will be like:
-  * 0,1,2,3,0,1,2,3
-  */
+   * "global_processor_info_map_" is a map of:
+   * global_processor_id <--> (group_id, local_processor_id)
+   * "global_processor_id" means "index" of a logical processor in the system,
+   * "local_processor_id" refers to "index" of a logical processor in its belonging group,
+   * E.g.
+   * Assume the system have two groups,
+   * each group has two cores,
+   * and each core has two logical processors.
+   * then the global processor ids will be like:
+   * 0,1,2,3,4,5,6,7
+   * the local processor ids will be like:
+   * 0,1,2,3,0,1,2,3
+   */
   GlobalProcessorInfoMap global_processor_info_map_;
   WindowsEnv();
 

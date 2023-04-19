@@ -228,12 +228,12 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
   auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
   Qnn_ErrorHandle_t execute_status = QNN_GRAPH_NO_ERROR;
   execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
-                                             qnn_inputs_.data(),
-                                             static_cast<uint32_t>(qnn_inputs_.size()),
-                                             qnn_outputs_.data(),
-                                             static_cast<uint32_t>(qnn_outputs_.size()),
-                                             profile_backend_handle,
-                                             nullptr);
+                                              qnn_inputs_.data(),
+                                              static_cast<uint32_t>(qnn_inputs_.size()),
+                                              qnn_outputs_.data(),
+                                              static_cast<uint32_t>(qnn_outputs_.size()),
+                                              profile_backend_handle,
+                                              nullptr);
 
   ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo());
   if (QNN_GRAPH_NO_ERROR != execute_status) {

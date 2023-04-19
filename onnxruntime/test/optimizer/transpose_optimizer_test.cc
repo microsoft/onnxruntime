@@ -3734,22 +3734,22 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
   };
 
   auto check_graph = [&](InferenceSessionWrapper& session) {
-      const auto& graph = session.GetGraph();
+    const auto& graph = session.GetGraph();
 
-      const auto op_count = CountOpsInGraph(graph);
-      decltype(op_count) expected_op_count{
-          {"DequantizeLinear", 2},  // EnsureUniqueDQForNodeUnit should duplicate the original DQ
-          {"Transpose", 2},
-      };
-      ASSERT_EQ(op_count, expected_op_count);
+    const auto op_count = CountOpsInGraph(graph);
+    decltype(op_count) expected_op_count{
+        {"DequantizeLinear", 2},  // EnsureUniqueDQForNodeUnit should duplicate the original DQ
+        {"Transpose", 2},
+    };
+    ASSERT_EQ(op_count, expected_op_count);
 
-      // Transposes should be pushed, so check for Transpose -> DQ edges
-      for (const auto& node : graph.Nodes()) {
-        if (node.OpType() == "Transpose") {
-          ASSERT_EQ(node.GetOutputEdgesCount(), static_cast<size_t>(1));
-          ASSERT_EQ(node.OutputEdgesBegin()->GetNode().OpType(), "DequantizeLinear");
-        }
+    // Transposes should be pushed, so check for Transpose -> DQ edges
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Transpose") {
+        ASSERT_EQ(node.GetOutputEdgesCount(), static_cast<size_t>(1));
+        ASSERT_EQ(node.OutputEdgesBegin()->GetNode().OpType(), "DequantizeLinear");
       }
+    }
   };
 
   TransformerTester(build_test_case_1,

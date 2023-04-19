@@ -48,7 +48,7 @@ def onnx_compile(
             log.info("Build TVM graph executor")
             lib = relay.build(irmod, target=target, params=params)
         else:
-            log.error(f"Executor type {executor} is unsupported. " + 'Only "vm" and "graph" types are supported')
+            log.error(f'Executor type {executor} is unsupported. Only "vm" and "graph" types are supported')
             return None
         return lib
 
@@ -75,7 +75,7 @@ def onnx_compile(
     irmod = relay.transform.DynamicToStatic()(irmod)
 
     # Tuning file can be set by client through ep options
-    if tuning_logfile == "":
+    if not tuning_logfile:
         tuning_logfile = os.getenv("AUTOTVM_TUNING_LOG")
     lib = None
     tvm_target = tvm.target.Target(target, host=target_host)
@@ -115,7 +115,7 @@ def onnx_compile(
         else:
             log.error(
                 f"Tuning log type {tuning_type} is unsupported. "
-                + f"Only {ANSOR_TYPE} and {AUTO_TVM_TYPE} types are supported"
+                f"Only {ANSOR_TYPE} and {AUTO_TVM_TYPE} types are supported"
             )
             return None
     else:

@@ -25,6 +25,9 @@ class OrtValueNameIdxMap;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
 class Stream;
+#ifdef ORT_ENABLE_STREAM
+class DeviceStreamCollection;
+#endif
 
 class IExecutionFrame {
  protected:
@@ -138,9 +141,10 @@ class ExecutionFrame final : public IExecutionFrame {
                  gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                 const SessionState& session_state,
-                 gsl::span<Stream*> device_streams);
-
+#ifdef ORT_ENABLE_STREAM
+                 const DeviceStreamCollection* device_streams,
+#endif
+                 const SessionState& session_state);
   ~ExecutionFrame() override;
 
   // TODO: These two AllocateMLValue... methods are in the API purely for unit test usage.
@@ -213,6 +217,10 @@ class ExecutionFrame final : public IExecutionFrame {
 
   Stream* GetValueStream(int ort_value_idx) const;
 
+#ifdef ORT_ENABLE_STREAM
+  const DeviceStreamCollection* device_streams_;
+#endif
+
   const SessionState& session_state_;
 
   // map of index to custom allocator
@@ -236,8 +244,6 @@ class ExecutionFrame final : public IExecutionFrame {
   // inferred_shapes_ is generated together with mem_patterns_.
   // It is never updated after creation
   const InlinedHashMap<int, TensorShape>* inferred_shapes_{nullptr};
-
-  gsl::span<Stream*> device_streams_;
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Size of virtual memory allocated before any kernel execution.

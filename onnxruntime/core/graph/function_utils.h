@@ -27,15 +27,15 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
                                                        bool allow_aggregated_tensor_type = false);
 
 /** Create a OpSchema given from a local function in onnx model.
-* @param function_domain The domain of the function.
-* @param function_name The name of the function.
-* @param model_local_functions The map of local functions in the same onnx model.
-*                              This will be used as context for the function's type/shape inference.
-* @param domain_version_map Domain to version map used in current onnx model.
-* @param schema_registry The schema registry current model is using.
-* @param logger The logger current model is using.
-* @param allow_released_opsets_only The flag whether we only enable released opset.
-*/
+ * @param function_domain The domain of the function.
+ * @param function_name The name of the function.
+ * @param model_local_functions The map of local functions in the same onnx model.
+ *                              This will be used as context for the function's type/shape inference.
+ * @param domain_version_map Domain to version map used in current onnx model.
+ * @param schema_registry The schema registry current model is using.
+ * @param logger The logger current model is using.
+ * @param allow_released_opsets_only The flag whether we only enable released opset.
+ */
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
                                                        const std::string& function_name,
                                                        const InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
@@ -45,10 +45,10 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
                                                        bool allow_released_opsets_only);
 
 /** Get the unique id for function. This is used as a key to find the
-* relevant model local function from it's container.
-* @param function_domain Domain for the function.
-* @param function_name Name of the function. Name should match the OpType of the node which references the function.
-*/
+ * relevant model local function from it's container.
+ * @param function_domain Domain for the function.
+ * @param function_name Name of the function. Name should match the OpType of the node which references the function.
+ */
 inline std::string GetFunctionIdentifier(std::string_view function_domain, std::string_view function_name) {
   return function_domain.data() + std::string(":") + function_name.data();
 }
@@ -58,6 +58,6 @@ void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMES
 
 void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, Node& calling_node, std::string unique_prefix);
 
-}
+}  // namespace function_utils
 
 }  // namespace onnxruntime

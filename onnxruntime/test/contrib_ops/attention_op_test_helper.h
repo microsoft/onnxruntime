@@ -60,7 +60,11 @@ void GetCrossAttentionData_HeadSize16_8(AttentionTestData& data);
 void GetCrossAttentionData_HeadSize16(AttentionTestData& data);
 
 void GetCrossAttentionDataWithPast(AttentionTestData& data);
-void GetSelfAttentionDataWithPast(AttentionTestData& data);
+void GetSelfAttentionData_WithPast_WithRelPosBias_ForT5(AttentionTestData& data);
+
+void GetCrossAttentionData_DiffSequenceLengths(AttentionTestData& data);
+void GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(AttentionTestData& data);
+void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& data);
 
 void GetAttentionDataCutlassRelPosBias(AttentionTestData& data);
 

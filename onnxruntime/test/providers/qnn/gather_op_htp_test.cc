@@ -36,9 +36,9 @@ static void RunGatherOpQDQTest(int opset, const char* test_description, bool sca
 
   constexpr int expected_nodes_in_partition = 1;
   if (scalar_indices) {
-    RunQnnModelTest(BuildQDQGatherOpScalarIndicesTestCase<QuantType, IndicesType>({2, 3, 4},// input shape
-                                                                                  1,        // indices
-                                                                                  1),       // axis
+    RunQnnModelTest(BuildQDQGatherOpScalarIndicesTestCase<QuantType, IndicesType>({2, 3, 4},  // input shape
+                                                                                  1,          // indices
+                                                                                  1),         // axis
                     provider_options,
                     opset,
                     expected_ep_assignment,

@@ -32,7 +32,7 @@ _GRAPH_TOKEN = 0
 def _get_token() -> int:
     """Return a token that is one more than the previous token retrieved by calling this function."""
 
-    global _GRAPH_TOKEN  # pylint: disable=global-statement
+    global _GRAPH_TOKEN  # pylint: disable=global-statement  # noqa: PLW0603
     _GRAPH_TOKEN += 1
     return _GRAPH_TOKEN
 

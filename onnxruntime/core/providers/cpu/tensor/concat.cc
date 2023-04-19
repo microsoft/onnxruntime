@@ -105,9 +105,9 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
   // Handle and fix negative axis
   // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
-  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_,onnxruntime::narrow<int64_t>( !is_stack_
-                                                               ? reference_rank
-                                                               : reference_rank + 1)));
+  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, onnxruntime::narrow<int64_t>(!is_stack_
+                                                                                            ? reference_rank
+                                                                                            : reference_rank + 1)));
 
   // Ensure all of the non concatenated axes match each other
   for (size_t index = static_cast<size_t>(reference_tensor_index) + 1; index < input_count; index++) {
@@ -157,7 +157,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                           " and ", reference_dims[axis_index]);
       }
 
-      input_tensor_sizes.push_back(tensor_size);  //assign the computed size of the input tensor
+      input_tensor_sizes.push_back(tensor_size);  // assign the computed size of the input tensor
     }
   }
 

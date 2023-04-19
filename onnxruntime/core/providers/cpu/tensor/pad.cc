@@ -96,7 +96,6 @@ using EnabledPad13Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
 using EnabledPad18Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 18, Input, 0);
 
-
 using AllEnabledPadTypes =
     utils::TypeSetUnion<
         EnabledPad2Types,
@@ -140,7 +139,6 @@ ONNX_CPU_OPERATOR_KERNEL(
             "T",
             BuildKernelDefConstraintsFromTypeList<EnabledPad18Types>()),
     Pad);
-
 
 using PadsVector = PadBase::PadsVector;
 
@@ -310,8 +308,8 @@ static Status PadImpl(OpKernelContext* ctx,
   size_t new_dims_count = reshaped_input_dims.size();
   size_t inner_axis = new_dims_count - 1;
   size_t inner_no_pad_size = onnxruntime::narrow<size_t>(output_dims[inner_axis] > 0
-                                 ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
-                                 : 0);
+                                                             ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
+                                                             : 0);
   PadsVector reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
   ReshapePads(pads, data_rank, new_dims_count, inner_no_pad_size, reshaped_pad);
   ReshapePads(slices, data_rank, new_dims_count, inner_no_pad_size, reshaped_slice);
@@ -353,7 +351,7 @@ static Status PadImpl(OpKernelContext* ctx,
 
   // Initial skip, sum up the begin padding on each axis
   for (size_t i = 0; i < new_dims_count; i++)
-    alignSkip += SafeInt<size_t>(reshaped_pad[i] )* output_pitches[i];
+    alignSkip += SafeInt<size_t>(reshaped_pad[i]) * output_pitches[i];
 
   ExtentAxisCounters input_counters(input_extents);
 
@@ -536,17 +534,17 @@ Status Pad::Compute(OpKernelContext* ctx) const {
       if (axes_tensor->IsDataType<int32_t>()) {
         const int32_t* axes_tensor_raw_data = axes_tensor->Data<int32_t>();
         ComputePadWithAxes<int32_t>(
-          {pads_tensor_raw_data, onnxruntime::narrow<size_t>(2 * axes_size)},
-          {axes_tensor_raw_data, onnxruntime::narrow<size_t>(axes_size)},
-          data_rank,
-          pads);
-      } else if(axes_tensor->IsDataType<int64_t>()) {
+            {pads_tensor_raw_data, onnxruntime::narrow<size_t>(2 * axes_size)},
+            {axes_tensor_raw_data, onnxruntime::narrow<size_t>(axes_size)},
+            data_rank,
+            pads);
+      } else if (axes_tensor->IsDataType<int64_t>()) {
         const int64_t* axes_tensor_raw_data = axes_tensor->Data<int64_t>();
         ComputePadWithAxes<int64_t>(
-          {pads_tensor_raw_data, onnxruntime::narrow<size_t>(2 * axes_size)},
-          {axes_tensor_raw_data, onnxruntime::narrow<size_t>(axes_size)},
-          data_rank,
-          pads);
+            {pads_tensor_raw_data, onnxruntime::narrow<size_t>(2 * axes_size)},
+            {axes_tensor_raw_data, onnxruntime::narrow<size_t>(axes_size)},
+            data_rank,
+            pads);
       }
     } else {
       ORT_ENFORCE(pads_size == 2 * data_rank,

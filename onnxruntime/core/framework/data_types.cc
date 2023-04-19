@@ -314,7 +314,7 @@ struct TensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {
 const ONNX_NAMESPACE::TypeProto* TensorTypeBase::GetTypeProto() const {
   return impl_->GetProto();
 }
-//TODO: Fix the warning
+// TODO: Fix the warning
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26409)
 #endif
@@ -532,8 +532,8 @@ NonTensorTypeBase::NonTensorTypeBase(size_t size)
       impl_(new Impl()) {
 }
 
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
-//However, we do not allocate this type on heap.
+// The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// However, we do not allocate this type on heap.
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -1133,6 +1133,20 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypes() {
       }();
 
   return all_tensor_and_sequence_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes() {
+  static std::vector<MLDataType> all_optional_and_tensor_and_sequence_types =
+      []() {
+        auto temp = AllOptionalTypes();
+        const auto tensor = AllTensorTypes();
+        temp.insert(temp.end(), tensor.begin(), tensor.end());
+        const auto& seq = AllSequenceTensorTypes();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_optional_and_tensor_and_sequence_types;
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypes() {
