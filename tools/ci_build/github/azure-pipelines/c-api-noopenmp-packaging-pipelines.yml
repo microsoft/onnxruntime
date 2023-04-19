@@ -43,9 +43,9 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Azure'
     AdditionalBuildFlags: ''
-    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
+    AdditionalWinBuildFlags: '--use_azure --enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
 
 - stage: Linux_C_API_Packaging_GPU_x64
