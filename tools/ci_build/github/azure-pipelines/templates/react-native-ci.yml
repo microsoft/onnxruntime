@@ -180,6 +180,7 @@ stages:
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Start Android Emulator
+      retryCountOnTaskFailure: 2
 
     - script: |
         xcrun simctl create iPhoneRNTest com.apple.CoreSimulator.SimDeviceType.iPhone-13
