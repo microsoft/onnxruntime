@@ -5,7 +5,7 @@
 
 #include <exception>
 
-#import "src/cxx_api.h"
+#import "cxx_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

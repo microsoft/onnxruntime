@@ -1,16 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#import "src/ort_env_internal.h"
+#import "ort_env_internal.h"
 
 #include <optional>
 
-#import "src/cxx_api.h"
+#import "cxx_api.h"
 
-#import "src/error_utils.h"
-#import "src/ort_enums_internal.h"
+#import "error_utils.h"
+#import "ort_enums_internal.h"
 
 NS_ASSUME_NONNULL_BEGIN
+
+NSString* ORTVersion(void) {
+  std::string result = OrtGetApiBase()->GetVersionString();
+  return [NSString stringWithUTF8String:result.c_str()];
+}
 
 @implementation ORTEnv {
   std::optional<Ort::Env> _env;
