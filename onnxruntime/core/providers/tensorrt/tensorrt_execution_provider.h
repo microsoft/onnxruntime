@@ -42,6 +42,7 @@ static const std::string kExtraPluginLibPaths = "ORT_TENSORRT_EXTRA_PLUGIN_LIB_P
 static const std::string kProfilesMinShapes = "ORT_TENSORRT_PROFILE_MIN_SHAPES";
 static const std::string kProfilesMaxShapes = "ORT_TENSORRT_PROFILE_MAX_SHAPES";
 static const std::string kProfilesOptShapes = "ORT_TENSORRT_PROFILE_OPT_SHAPES";
+static const std::string kEngineCacheBuiltWithExplicitProfiles = "ORT_ENGINE_CACHE_BUILT_WITH_EXPLICIT_PROFILES";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -207,6 +208,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool timing_cache_enable_ = false;
   bool force_timing_cache_match_ = false;
   bool detailed_build_log_ = false;
+  bool engine_cache_built_with_explicit_profiles_ = false; 
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;

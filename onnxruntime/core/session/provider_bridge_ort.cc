@@ -1311,6 +1311,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_profile_min_shapes = "";
   trt_options_converted.trt_profile_max_shapes = "";
   trt_options_converted.trt_profile_opt_shapes = "";
+  trt_options_converted.trt_engine_cache_built_with_explicit_profiles = 0;
 
   return trt_options_converted;
 }
@@ -1667,6 +1668,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_profile_min_shapes = nullptr;
   (*out)->trt_profile_max_shapes = nullptr;
   (*out)->trt_profile_opt_shapes = nullptr;
+  (*out)->trt_engine_cache_built_with_explicit_profiles = false;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

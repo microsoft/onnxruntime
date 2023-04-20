@@ -412,6 +412,9 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
         shapes_min[j] = static_cast<int32_t>(profile_min_shapes[input_name][i][j]);
         shapes_max[j] = static_cast<int32_t>(profile_max_shapes[input_name][i][j]);
         shapes_opt[j] = static_cast<int32_t>(profile_opt_shapes[input_name][i][j]);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] shapes_min.d[" << j << "] is " << shapes_min[j];
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] shapes_max.d[" << j << "] is " << shapes_max[j];
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] shapes_opt.d[" << j << "] is " << shapes_opt[j];
       }
 
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
@@ -666,6 +669,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_min_shapes = info.profile_min_shapes;
     profile_max_shapes = info.profile_max_shapes;
     profile_opt_shapes = info.profile_opt_shapes;
+    engine_cache_built_with_explicit_profiles_ = info.engine_cache_built_with_explicit_profiles;
   } else {
     const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
@@ -804,6 +808,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_min_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMinShapes);
     profile_max_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMaxShapes);
     profile_opt_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesOptShapes);
+
+    const std::string engine_cache_built_with_explicit_profiles_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheBuiltWithExplicitProfiles);
+    if (!engine_cache_built_with_explicit_profiles_env.empty()) {
+      engine_cache_built_with_explicit_profiles_ = (std::stoi(engine_cache_built_with_explicit_profiles_env) == 0 ? false : true);
+    }
   }
 
   // Validate setting
@@ -1801,7 +1810,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
       }
     }
-    // If no explicit optimization profile is applied and the input has dynamic shape, TRT EP simply creates one profile as default.
+    // If no explicit optimization profile is applied and the input has dynamic shape, TRT EP simply creates one profile by default.
     // It will later set proper min/max/opt profile values duing EP compute time.
     else if (!has_explicit_profile && has_dynamic_shape) {
       trt_profiles.push_back(trt_builder->createOptimizationProfile());
@@ -1907,11 +1916,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
     }
 
-    // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
-    // be built at runtime
+    // Build TRT engine here if,
+    // (1) graph has no dynamic shape input or all the dynamic shape inputs have associted profiles specified by users.
+    // (2) engine cache built with explict profiles exists and engine cache enable flag is on.
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
     std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
-    if (!has_dynamic_shape) {
+    if (!has_dynamic_shape || engine_cache_built_with_explicit_profiles_) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       std::string timing_cache_path = "";
