@@ -102,7 +102,6 @@
         "^test_if_opt",
         "^test_loop16_seq_none",
         "^test_identity_opt",
-        "^test_col2im_pads*",           // remove this when using ONNX with this: https://github.com/onnx/onnx/pull/4769
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
         //GPU failures
@@ -163,8 +162,6 @@
         "^test_edge_pad*",
         "^test_equal_bcast*",
         "^test_equal*",
-        "^test_equal_string_broadcast*",
-        "^test_equal_string*",
         "^test_reflect_pad*",
         "^test_resize_downsample_scales_cubic_antialias*",
         "^test_resize_downsample_scales_linear_antialias*",
@@ -191,6 +188,10 @@
         "^test_dequantizelinear*",
         "^test_dequantizelinear_e4m3fn*",
         "^test_dequantizelinear_e5m2*",
+        "^test_quantizelinear_axis*",
+        "^test_quantizelinear*",
+        "^test_quantizelinear_e4m3fn*",
+        "^test_quantizelinear_e5m2*",
         "^test_reshape_allowzero_reordered*",
         "^test_reshape_extended_dims*",
         "^test_reshape_negative_dim*",
@@ -695,7 +696,14 @@
         // The test cases for Bernoulli op are for informational purpose. The generator operator is
         // non-deterministic and may not produce the same values in different implementations
         // even if a seed is specified.
-        "^test_bernoulli_*"
+        "^test_bernoulli_*",
+        // No support for float8 in numpy
+        "^test_cast_FLOAT_to_FLOAT8*",
+        "^test_castlike_FLOAT_to_FLOAT8*",
+        "^test_cast_FLOAT8*",
+        "^test_castlike_FLOAT8*",
+        "^test_cast_no_saturate_*",
+        "^test_castlike_no_saturate_*"
     ],
     "failing_permanently_nodejs_binding": [
         // those test cases are no longer available in later opset version
