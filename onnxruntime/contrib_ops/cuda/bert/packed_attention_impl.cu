@@ -18,7 +18,7 @@
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 
 using namespace onnxruntime::cuda;
-using namespace cub;
+using namespace onnxruntime::contrib::attention_softmax_cuda;
 
 #define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
 

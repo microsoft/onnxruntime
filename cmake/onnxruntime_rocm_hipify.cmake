@@ -9,6 +9,7 @@ set(contrib_ops_excluded_files
   "bert/attention.h"
   "bert/attention_impl.cu"
   "bert/attention_softmax.h"
+  "bert/attention_softmax.cu"
   "bert/multihead_attention.cc"
   "bert/multihead_attention.h"
   "bert/fast_gelu_impl.cu"
