@@ -57,8 +57,8 @@ void RegisterCollectiveOps() {
         auto input_type = ctx.getInputType(0);
         if (hasShape(*input_type)) {
           auto shape = input_type->tensor_type().shape();
-          auto dim = shape.dim(axis) * group_size;
-          *shape.mutable_dim(axis) = dim;
+          auto dim = shape.dim(static_cast<int>(axis)) * group_size;
+          *shape.mutable_dim(static_cast<int>(axis)) = dim;
           *output_type->mutable_tensor_type()->mutable_shape() = shape;
         }
       });
