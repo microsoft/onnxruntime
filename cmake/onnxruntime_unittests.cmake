@@ -69,6 +69,10 @@ function(AddTest)
       target_include_directories(${_UT_TARGET} PRIVATE ${NCCL_INCLUDE_DIRS})
     endif()
   endif()
+  if (onnxruntime_USE_TENSORRT)
+    # used for instantiating placeholder TRT builder to mitigate TRT library load/unload overhead
+    target_include_directories(${_UT_TARGET} PRIVATE ${TENSORRT_INCLUDE_DIR})
+  endif()
 
   if(MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
@@ -583,6 +587,7 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/tensorrt_execution_provider_utils.h")
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
+  list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER})
 endif()
 
 if(onnxruntime_USE_MIGRAPHX)

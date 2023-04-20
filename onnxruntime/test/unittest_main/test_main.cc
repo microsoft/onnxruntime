@@ -25,6 +25,23 @@ void ortenv_setup() {
   ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
 }
 
+#ifdef USE_TENSORRT
+#include "NvInfer.h"
+class DummyLogger : public nvinfer1::ILogger {
+  nvinfer1::ILogger::Severity verbosity_;
+
+ public:
+  DummyLogger(Severity verbosity = Severity::kWARNING)
+      : verbosity_(verbosity) {}
+  void log(Severity severity, const char* msg) noexcept override
+  {
+    static_cast<void>(0);
+  }
+};
+DummyLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+#endif
+
 #define TEST_MAIN main
 
 #if defined(__APPLE__)
