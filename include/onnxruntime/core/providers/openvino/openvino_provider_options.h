@@ -19,6 +19,7 @@ struct OrtOpenVINOProviderOptionsV2 {
   unsigned char enable_vpu_fast_compile;   ///< 0 = disabled, nonzero = enabled
   const char* device_id="";
   size_t num_of_threads;                   ///< 0 = Use default number of threads
+  int num_streams;
   const char* cache_dir;                   ///path is set to empty by default
   void* context;
   unsigned char enable_opencl_throttling;  ///< 0 = disabled, nonzero = enabled

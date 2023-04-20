@@ -1344,6 +1344,7 @@ OrtOpenVINOProviderOptionsV2 OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOpti
   ov_options_converted.enable_dynamic_shapes = legacy_ov_options->enable_dynamic_shapes;
 
   // Add new provider option below
+  ov_options_converted.num_streams = 1;
 
   return ov_options_converted;
 }

@@ -34,6 +34,7 @@ class BasicBackend : public IBackend {
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
   void PopulateConfigValue(OVConfig& config, ov::AnyMap& device_config);
   void EnableCaching();
+  void EnableStreams();
   void EnableGPUThrottling(ov::AnyMap& device_config);
   void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 

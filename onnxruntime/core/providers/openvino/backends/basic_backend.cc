@@ -51,6 +51,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
+  // Enable streams; default=1 unless ovverriden by user config
+  EnableStreams();
+
 #if defined(IO_BUFFER_ENABLED)
   try {
     if ((global_context.device_type.find("GPU") != std::string::npos) &&
@@ -144,6 +147,10 @@ void BasicBackend::EnableCaching() {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
     global_context_.ie_core.SetCache(global_context_.cache_dir);
   }
+}
+
+void BasicBackend::EnableStreams() {
+  global_context_.ie_core.SetStreams(global_context_.device_type, global_context_.num_streams);
 }
 
 void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {

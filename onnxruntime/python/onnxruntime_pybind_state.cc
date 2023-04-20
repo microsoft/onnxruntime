@@ -642,6 +642,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "cache_dir") {
           cache_dir = option.second;
           params.cache_dir = cache_dir.c_str();
+        } else if (option.first == "num_streams") {
+          params.num_streams = std::stoi(option.second);
         } else if (option.first == "context") {
           params.context = (void*)(option.second.c_str());
         } else {
