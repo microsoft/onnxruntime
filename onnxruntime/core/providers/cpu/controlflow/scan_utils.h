@@ -25,7 +25,7 @@ namespace scan {
 namespace detail {
 
 enum class ScanDirection { kForward = 0,
-                           kReverse = 1 };
+                           kReverse = 1, };
 
 /**
 Class to provide input/output OrtValue instances for a loop state variable.

@@ -13,7 +13,7 @@ namespace onnxruntime {
 enum class ReductionType {
   MEAN = 0,
   SUM = 1,
-  NONE = 2
+  NONE = 2,
 };
 
 inline ReductionType StringToReductionType(const std::string& str) {

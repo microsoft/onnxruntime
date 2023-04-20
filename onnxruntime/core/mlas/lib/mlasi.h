@@ -912,7 +912,7 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
 // Environment information class.
 //
 
-enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big = 3 };
+enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big = 3, };
 
 
 struct MLAS_PLATFORM {

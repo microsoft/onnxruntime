@@ -109,7 +109,7 @@ enum WeightingCriteria {
   kNone = 0,
   kTF = 1,
   kIDF = 2,
-  kTFIDF = 3
+  kTFIDF = 3,
 };
 
 struct TfIdfVectorizer::Impl {

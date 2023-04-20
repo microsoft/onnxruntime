@@ -28,7 +28,7 @@ enum DeviceCopyDirection {
   hostToHost = 0,
   hostToDevice = 1,
   deviceToHost = 2,
-  deviceToDevice = 3
+  deviceToDevice = 3,
 };
 
 namespace GenerationDeviceHelper {

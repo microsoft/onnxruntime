@@ -313,7 +313,7 @@ typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
   ORT_ENABLE_EXTENDED = 2,
-  ORT_ENABLE_ALL = 99
+  ORT_ENABLE_ALL = 99,
 } GraphOptimizationLevel;
 
 typedef enum ExecutionMode {
@@ -362,7 +362,7 @@ typedef enum OrtMemType {
 typedef enum OrtMemoryInfoDeviceType {
   OrtMemoryInfoDeviceType_CPU = 0,
   OrtMemoryInfoDeviceType_GPU = 1,
-  OrtMemoryInfoDeviceType_FPGA = 2
+  OrtMemoryInfoDeviceType_FPGA = 2,
 } OrtMemoryInfoDeviceType;
 
 /** \brief Algorithm to use for cuDNN Convolution Op

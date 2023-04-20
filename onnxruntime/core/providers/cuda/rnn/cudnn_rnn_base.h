@@ -20,7 +20,7 @@ enum RNN_Input_Index {
   B = 3,
   sequence_lens = 4,
   initial_h = 5,
-  initial_c = 6
+  initial_c = 6,
 };
 
 // Onnx RNN/GRU/LSTM only support 1 layer
@@ -178,7 +178,7 @@ class CudnnRnnBase : public CudaKernel {
   enum Output_Index {
     Y = 0,
     Y_h = 1,
-    Y_c = 2
+    Y_c = 2,
   };
 };
 

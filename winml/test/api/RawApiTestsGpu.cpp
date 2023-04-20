@@ -22,7 +22,7 @@ enum class DeviceType
     D3D12CommandQueue,
     DirectXHighPerformance,
     DirectXMinPower,
-    Last
+    Last,
 };
 
 

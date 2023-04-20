@@ -26,7 +26,7 @@ enum class ExecutionOrder {
 enum class FreeDimensionOverrideType {
   Invalid = 0,
   Denotation = 1,
-  Name = 2
+  Name = 2,
 };
 
 enum class ExecutionPriority : int {

@@ -10,7 +10,7 @@
 enum class InputStrategy {
     CopyInputs,
     BindAsReference,
-    BindWithMultipleReferences
+    BindWithMultipleReferences,
 };
 
 void RunOnDevice(Microsoft::AI::MachineLearning::learning_model& model, Microsoft::AI::MachineLearning::learning_model_device& device, InputStrategy strategy);

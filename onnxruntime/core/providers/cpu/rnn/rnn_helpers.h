@@ -27,7 +27,7 @@ namespace detail {
 enum Direction {
   kForward = 0,
   kReverse = 1,
-  kBidirectional = 2
+  kBidirectional = 2,
 };
 
 inline Direction MakeDirection(const std::string& direction) {

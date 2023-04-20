@@ -44,7 +44,7 @@ enum StatusCode {
   MODEL_LOADED = 8,
   NOT_IMPLEMENTED = 9,
   INVALID_GRAPH = 10,
-  EP_FAIL = 11
+  EP_FAIL = 11,
 };
 
 constexpr const char* StatusCodeToString(StatusCode status) noexcept {
