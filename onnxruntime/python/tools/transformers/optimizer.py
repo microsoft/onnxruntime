@@ -56,6 +56,8 @@ MODEL_TYPES = {
     "unet": (UnetOnnxModel, "pytorch", 1),
     "vae": (VaeOnnxModel, "pytorch", 1),
     "clip": (ClipOnnxModel, "pytorch", 1),
+    "vit": (BertOnnxModel, "pytorch", 1),
+    "swin": (BertOnnxModel, "pytorch", 1),
 }
 
 
@@ -144,7 +146,7 @@ def optimize_by_fusion(
     Note that ONNXRuntime graph optimizations (like constant folding) will not be applied. So it is better to enable
     constant folding during exporting ONNX model, or run optimize_by_onnxruntime on the model first like optimize_model.
 
-    For BERT model, num_heads and hidden_size are optional. For other model types, you need specify these parameters.
+    For BERT model, num_heads and hidden_size are optional. For other model types, you need to specify these parameters.
 
     Args:
         model (ModelProto): model object
@@ -159,7 +161,7 @@ def optimize_by_fusion(
      Returns:
         object of an optimizer class.
     """
-    if model_type not in ["bert", "unet", "vae", "clip"] and (num_heads == 0 or hidden_size == 0):
+    if model_type not in ["bert", "swin", "unet", "vae", "clip"] and (num_heads == 0 or hidden_size == 0):
         logger.warning(f"Please specify parameters of num_heads and hidden_size for model_type {model_type}")
 
     (optimizer_class, producer, _) = MODEL_TYPES[model_type]

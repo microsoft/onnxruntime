@@ -17,8 +17,8 @@ TEST(CUDAEPTEST, ALL) {
   ASSERT_TRUE(ep.TestAll());
 }
 
-}  // namespace test
 }  // namespace cuda
+}  // namespace test
 }  // namespace onnxruntime
 
 #endif

@@ -32,7 +32,7 @@ _GRAPH_TOKEN = 0
 def _get_token() -> int:
     """Return a token that is one more than the previous token retrieved by calling this function."""
 
-    global _GRAPH_TOKEN  # pylint: disable=global-statement
+    global _GRAPH_TOKEN  # pylint: disable=global-statement  # noqa: PLW0603
     _GRAPH_TOKEN += 1
     return _GRAPH_TOKEN
 
@@ -72,3 +72,16 @@ def register_graph_outputs(model: onnx.ModelProto, output_names: Union[List[str]
     del model.graph.output[:]
 
     model.graph.output.extend(graph_outputs)
+
+
+def node_arg_exists(model: onnx.ModelProto, node_arg_name: str) -> bool:
+    """Returns True if the given node_arg_name exists in the model graph."""
+
+    for node in model.graph.node:
+        if node_arg_name in node.input:
+            return True
+
+        if node_arg_name in node.output:
+            return True
+
+    return False

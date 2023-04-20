@@ -63,6 +63,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
   ORT_ENFORCE(attn.sequence_length == attn.kv_sequence_length);  // self attention
+  ORT_ENFORCE(attn.qkv_format == Q_K_V_BNSH);  // non-packed, permuted
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(attn.batch_size);

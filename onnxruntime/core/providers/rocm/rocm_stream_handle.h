@@ -1,6 +1,6 @@
 #pragma once
 #include "core/providers/rocm/rocm_pch.h"
-//#include "core/providers/cuda/shared_inc/cuda_utils.h"
+// #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
 #include "core/framework/stream_handles.h"
 

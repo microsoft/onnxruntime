@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/status.h"
 #include "core/providers/cuda/nn/conv.h"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -14,28 +15,24 @@ class FusedConv : public onnxruntime::cuda::Conv<T, false> {
   using Base = onnxruntime::cuda::Conv<T, false>;
   FusedConv(const OpKernelInfo& info) : onnxruntime::cuda::Conv<T, false>(info) {
     std::string activation;
-    if (info.GetAttr<std::string>("activation", &activation) == Status::OK() &&
-        MapMode(activation) == Status::OK() &&
-        cudnnCreateActivationDescriptor(&activation_desc_) == CUDNN_STATUS_SUCCESS) {
-      status_ = cudnnSetActivationDescriptor(activation_desc_,
-                                             activation_mode_,
-                                             cudnnNanPropagation_t::CUDNN_NOT_PROPAGATE_NAN,
-                                             std::numeric_limits<double>::max());
-    }
+    ORT_THROW_IF_ERROR(info.GetAttr<std::string>("activation", &activation));
+    ORT_THROW_IF_ERROR(MapMode(activation));
+    CUDNN_CALL_THROW(cudnnCreateActivationDescriptor(&activation_desc_));
+    CUDNN_CALL_THROW(cudnnSetActivationDescriptor(
+        activation_desc_, activation_mode_, cudnnNanPropagation_t::CUDNN_NOT_PROPAGATE_NAN,
+        std::numeric_limits<double>::max()));
   }
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(FusedConv);
 
   ~FusedConv() {
     if (activation_desc_) {
-      cudnnDestroyActivationDescriptor(activation_desc_);
-      status_ = CUDNN_STATUS_NOT_INITIALIZED;
+      CUDNN_CALL_THROW(cudnnDestroyActivationDescriptor(activation_desc_));
       activation_desc_ = nullptr;
     }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    CUDNN_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(Base::s_.mutex);
     auto cudnnHandle = this->GetCudnnHandle(context);
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
@@ -104,13 +101,12 @@ class FusedConv : public onnxruntime::cuda::Conv<T, false> {
     if (activaton_mode == "Relu") {
       activation_mode_ = cudnnActivationMode_t::CUDNN_ACTIVATION_RELU;
     } else {
-      return Status(common::StatusCategory::ONNXRUNTIME,
-                    common::StatusCode::INVALID_ARGUMENT,
-                    "unsupported conv activation mode");
+      return ORT_MAKE_STATUS(
+          StatusCategory::ONNXRUNTIME, StatusCode::INVALID_ARGUMENT,
+          "unsupported conv activation mode \"", activaton_mode, "\"");
     }
     return Status::OK();
   }
-  cudnnStatus_t status_ = CUDNN_STATUS_NOT_INITIALIZED;
   cudnnActivationMode_t activation_mode_;
   cudnnActivationDescriptor_t activation_desc_ = nullptr;
 };

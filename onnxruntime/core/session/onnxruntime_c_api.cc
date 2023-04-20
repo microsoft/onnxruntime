@@ -836,7 +836,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
 
     if (!input[i]) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-        MakeString("NULL input supplied for input ", input_names[i]).c_str());
+                                   MakeString("NULL input supplied for input ", input_names[i]).c_str());
     }
 
     feed_names.emplace_back(input_names[i]);
@@ -1028,7 +1028,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
 
   // Used to destroy and de-allocate on exception
   IAllocatorUniquePtr<OrtValue*> ortvalues_alloc(reinterpret_cast<OrtValue**>(allocator->Alloc(allocator, outputs.size() * sizeof(OrtValue*))),
-                                                 [allocator](OrtValue** p) { if (p) allocator->Free(allocator, p);});
+                                                 [allocator](OrtValue** p) { if (p) allocator->Free(allocator, p); });
   if (!ortvalues_alloc) {
     return OrtApis::CreateStatus(ORT_FAIL, "Output buffer allocation failed");
   }
@@ -1324,7 +1324,9 @@ static ORT_STATUS_PTR GetNodeDefTypeInfoHelper(const OrtSession* sess, GetDefLis
   if (p.second->size() <= index)
     return OrtApis::CreateStatus(ORT_FAIL, "out of index");
   const ONNX_NAMESPACE::TypeProto* type_proto = (*p.second)[index]->TypeAsProto();
-  return OrtTypeInfo::FromTypeProto(type_proto, out);
+  auto type_info = OrtTypeInfo::FromTypeProto(*type_proto);
+  *out = type_info.release();
+  return nullptr;
   API_IMPL_END
 }
 
@@ -2703,7 +2705,8 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::Logger_LogMessage,
     &OrtApis::Logger_GetLoggingSeverityLevel,
     &OrtApis::KernelInfoGetConstantInput_tensor,
-};
+    &OrtApis::CastTypeInfoToOptionalTypeInfo,
+    &OrtApis::GetOptionalContainedTypeInfo};
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'

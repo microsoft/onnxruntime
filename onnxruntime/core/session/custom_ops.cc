@@ -256,7 +256,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTypeInfo, _In_ const OrtKernelIn
     return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo input does not have a type");
   }
 
-  return OrtTypeInfo::FromTypeProto(type_proto, type_info);
+  auto type_info_ret = OrtTypeInfo::FromTypeProto(*type_proto);
+  *type_info = type_info_ret.release();
+  return nullptr;
   API_IMPL_END
 }
 
@@ -277,7 +279,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelI
     return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo output does not have a type");
   }
 
-  return OrtTypeInfo::FromTypeProto(type_proto, type_info);
+  auto type_info_ret = OrtTypeInfo::FromTypeProto(*type_proto);
+  *type_info = type_info_ret.release();
+  return nullptr;
   API_IMPL_END
 }
 
@@ -488,6 +492,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     }
     std::string input_name = "Input" + std::to_string(i);
     schema.Input(i, input_name, "", input_name, option, is_homogeneous, min_arity);
+    // support all types as input here in schema, and handle the type inference in TypeShapeInference func
     schema.TypeConstraint(input_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
   }
 
@@ -525,6 +530,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     }
     std::string output_name = "Output" + std::to_string(i);
     schema.Output(i, output_name, "", output_name, option, is_homogeneous, min_arity);
+    // support all types as input here in schema, and handle the type inference in TypeShapeInference func
     schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
   }
   schema.SetDomain(domain);

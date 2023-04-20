@@ -58,7 +58,7 @@ class QLinearActivation(QuantOperatorBase):
 
         qlinear_activation_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qlinear_activation_name = ""
-        if node.name != "":
+        if node.name:
             qlinear_activation_name = node.name + "_quant"
         kwargs = {}
         for attribute in node.attribute:

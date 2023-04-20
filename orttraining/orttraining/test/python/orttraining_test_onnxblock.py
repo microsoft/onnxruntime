@@ -12,6 +12,7 @@ import torch
 import onnxruntime
 import onnxruntime.training.onnxblock as onnxblock
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.training import artifacts
 
 # PyTorch Module definitions
 
@@ -293,7 +294,7 @@ def test_crossentropy_loss_execution():
     ort_output_names = [onnx_model.graph.output[0].name]
     ort_inputs = {
         onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target).type(torch.int32)),
+        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target).type(torch.int64)),
     }
 
     def crossentropy_loss(prediction, target):
@@ -410,7 +411,7 @@ def test_crossentropy_loss_training_graph_execution():
     onnx_model, _ = simple_block.to_model_proto()
 
     ort_output_names = _get_training_ort_output_names(pt_model, onnx_model)
-    ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=torch.int32)
+    ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=torch.int64)
 
     def crossentropy_loss(prediction, target):
         loss = torch.nn.CrossEntropyLoss()
@@ -816,3 +817,101 @@ def test_grad_clipping_execution():
         # assert all the gradients are close
         for ort_grad, pt_param in zip(ort_outs[0], pt_model.parameters()):
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
+
+
+def test_eval_model_has_no_training_mode_dropout():
+    class DropoutModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.dropout = torch.nn.Dropout(p=0.5)
+
+        def forward(self, x):
+            return self.dropout(x)
+
+    model = DropoutModel()
+    onnx_model = _get_onnx_model(model, (torch.randn(1, 3, 224, 224),))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(onnx_model, loss=artifacts.LossType.CrossEntropyLoss, artifact_directory=temp_dir)
+
+        eval_model = onnx.load(os.path.join(temp_dir, "eval_model.onnx"))
+
+        flag = False
+        for node in eval_model.graph.node:
+            if node.op_type == "Dropout":
+                assert not node.input[2]
+                flag = True
+
+        assert flag
+
+
+def test_eval_model_has_no_training_mode_batchnorm():
+    class BatchNormModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.batchnorm = torch.nn.BatchNorm2d(100)
+
+        def forward(self, x):
+            return self.batchnorm(x)
+
+    model = BatchNormModel()
+    onnx_model = _get_onnx_model(model, (torch.randn(20, 100, 35, 45),))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(onnx_model, loss=artifacts.LossType.CrossEntropyLoss, artifact_directory=temp_dir)
+
+        eval_model = onnx.load(os.path.join(temp_dir, "eval_model.onnx"))
+
+        flag = False
+        for node in eval_model.graph.node:
+            if node.op_type == "BatchNormalization":
+                for attr in node.attribute:
+                    if attr.name == "training_mode":
+                        assert attr.i == 0
+                        flag = True
+
+        assert flag
+
+
+def test_label_encoder_composition():
+    device = "cuda"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    base_model.opset_import.append(
+        onnx.helper.make_opsetid("ai.onnx.ml", onnx.defs.onnx_opset_version()),
+    )
+
+    all_nodes = [node.op_type for node in base_model.graph.node]
+    assert "LabelEncoder" not in all_nodes
+
+    class SCELossWithLabelEncoder(onnxblock.ForwardBlock):
+        def __init__(self):
+            super().__init__()
+            self._loss = onnxblock.loss.CrossEntropyLoss()
+
+        def build(self, output_name):
+            keys_int64s = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+            values_int64s = [521, 522, 523, 524, 525, 526, 527, 528, 529, 530]
+
+            # Create a new graph input for the labels
+            labels_name = "labels"
+            labels_input = copy.deepcopy(self.base.graph.output[0])
+            labels_input.type.tensor_type.elem_type = onnx.TensorProto.INT64
+            labels_input.name = labels_name
+            del labels_input.type.tensor_type.shape.dim[1]
+            self.base.graph.input.append(labels_input)
+
+            label_encoder = onnxblock.blocks.LabelEncoder(
+                default_int64=521, keys_int64s=keys_int64s, values_int64s=values_int64s
+            )
+
+            return self._loss(output_name, label_encoder(labels_name))
+
+    block = SCELossWithLabelEncoder()
+    model = None
+    with onnxblock.base(base_model):
+        _ = block(base_model.graph.output[0].name)
+        model = block.to_model_proto()
+
+    all_nodes = [node.op_type for node in model.graph.node]
+    assert "LabelEncoder" in all_nodes

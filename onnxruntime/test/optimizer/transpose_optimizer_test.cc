@@ -324,7 +324,10 @@ TEST(TransposeOptimizerTests, TestPadNonconst) {
 // Per tests included in #10824, the ROCM EP also generates
 // incorrect results when this handler is used, so the Resize
 // handler is not enabled even for those builds.
-#if !defined(USE_CUDA) && !defined(USE_ROCM)
+//
+// The QNN EP requires the input to be NHWC, so the Resize handler is also not enabled
+// for QNN builds.
+#if !defined(USE_CUDA) && !defined(USE_ROCM) && !defined(USE_QNN)
 TEST(TransposeOptimizerTests, TestResize) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
@@ -3734,22 +3737,22 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
   };
 
   auto check_graph = [&](InferenceSessionWrapper& session) {
-      const auto& graph = session.GetGraph();
+    const auto& graph = session.GetGraph();
 
-      const auto op_count = CountOpsInGraph(graph);
-      decltype(op_count) expected_op_count{
-          {"DequantizeLinear", 2},  // EnsureUniqueDQForNodeUnit should duplicate the original DQ
-          {"Transpose", 2},
-      };
-      ASSERT_EQ(op_count, expected_op_count);
+    const auto op_count = CountOpsInGraph(graph);
+    decltype(op_count) expected_op_count{
+        {"DequantizeLinear", 2},  // EnsureUniqueDQForNodeUnit should duplicate the original DQ
+        {"Transpose", 2},
+    };
+    ASSERT_EQ(op_count, expected_op_count);
 
-      // Transposes should be pushed, so check for Transpose -> DQ edges
-      for (const auto& node : graph.Nodes()) {
-        if (node.OpType() == "Transpose") {
-          ASSERT_EQ(node.GetOutputEdgesCount(), static_cast<size_t>(1));
-          ASSERT_EQ(node.OutputEdgesBegin()->GetNode().OpType(), "DequantizeLinear");
-        }
+    // Transposes should be pushed, so check for Transpose -> DQ edges
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Transpose") {
+        ASSERT_EQ(node.GetOutputEdgesCount(), static_cast<size_t>(1));
+        ASSERT_EQ(node.OutputEdgesBegin()->GetNode().OpType(), "DequantizeLinear");
       }
+    }
   };
 
   TransformerTester(build_test_case_1,

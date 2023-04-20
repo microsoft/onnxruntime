@@ -143,19 +143,19 @@ static bool GetSliceInfo(const Graph& graph,
 
 /**
 Apply Concat Slice Elimination transform. This transform removes the redundant
-Concat + Slice pattern if the concat and slice axis is 0 and we are slicing the same 
+Concat + Slice pattern if the concat and slice axis is 0 and we are slicing the same
 sizes as the inputs to concat.
 
 Before transform:
-ip_0(l0)               -- >Slice [0, l0] ---> op0  
-      \               | 
+ip_0(l0)               -- >Slice [0, l0] ---> op0
+      \               |
 ip_1(l1)-- Concat(axis=0) -->Slice [q, l0+l1]---> op1
-      /               | 
+      /               |
 ip_2(l2)                -->Slice [l0+l1, :]---> op2
 
 After transform:
-ip_0 ---> op0  
-      
+ip_0 ---> op0
+
 ip_1 ---> op1
 
 ip_2 ---> op2
@@ -248,7 +248,7 @@ bool ConcatSliceElimination::FuseConcatSliceSubgraph(Node& concat, Graph& graph,
   if (replace_cnt == 3) {
     LOGS(logger, INFO) << "Fused concat node: " << concat.OutputDefs()[0]->Name();
 
-    //delete the slice nodes and concat node
+    // delete the slice nodes and concat node
     graph_utils::RemoveNodeOutputEdges(graph, concat);
     graph.RemoveNode(concat.Index());
     for (auto slice_node : ordered_slice) {

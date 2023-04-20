@@ -508,6 +508,18 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  // Create Custom Op if EP requests it
+  std::vector<OrtCustomOpDomain*> custom_op_domains;
+  p_exec_provider->GetCustomOpDomainList(custom_op_domains);
+
+  if (!custom_op_domains.empty()) {
+    if (AddCustomOpDomains(custom_op_domains) != Status::OK()) {
+      LOGS(*session_logger_, WARNING) << "Can't register custom op domains with ORT for " << provider_type;
+    }
+  }
+#endif
+
   // if any EPs do not support concurrent calls to Run we add locking around graph execution
   if (p_exec_provider->ConcurrentRunSupported() == false) {
     is_concurrent_run_supported_ = false;
@@ -1568,7 +1580,7 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(inference_session_utils::ParseTuningResultsFromModelMetadata(
         model_metadata_, tuning_results, found_tuning_results));
     if (found_tuning_results) {
-      ORT_RETURN_IF_ERROR_SESSIONID_(SetTuningResults(tuning_results));
+      ORT_RETURN_IF_ERROR_SESSIONID_(SetTuningResults(tuning_results, /*error_on_invalid*/ false, /*auto_enable*/ true));
     }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -2268,7 +2280,10 @@ std::vector<TuningResults> InferenceSession::GetTuningResults() const {
   return ret;
 }
 
-Status InferenceSession::SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid) {
+Status InferenceSession::SetTuningResults(
+    const std::vector<TuningResults>& trs,
+    bool error_on_invalid,
+    bool auto_enable) {
   std::string msg;
 
   for (size_t i = 0; i < trs.size(); i++) {
@@ -2294,6 +2309,12 @@ Status InferenceSession::SetTuningResults(const std::vector<TuningResults>& trs,
       msg = MakeString("Failed to load TuningResults (index=", i, "). Reason: ", status.ErrorMessage());
       ORT_RETURN_IF(error_on_invalid, msg);
       LOGS(*session_logger_, WARNING) << msg;
+      continue;
+    }
+
+    if (auto_enable) {
+      LOGS(*session_logger_, INFO) << "Correctly set TuningResults for " << tr.ep << ", enable TunableOp for using";
+      tuning_ctx->EnableTunableOp();
     }
   }
   return Status::OK();
