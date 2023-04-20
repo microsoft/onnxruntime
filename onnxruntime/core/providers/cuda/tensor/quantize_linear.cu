@@ -261,7 +261,7 @@ template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThrea
 __global__ void DequantizeLinearKernelSat(const InT* input, OutT* output, const OutT* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
 
-  float scale = *scale_ptr;
+  OutT scale = *scale_ptr;
   // zero_point is unused.
   // InT zero_point = zero_point_ptr != nullptr ? *zero_point_ptr : InT(0, true);
 #pragma unroll

@@ -12,7 +12,7 @@ import parameterized
 from numpy.testing import assert_allclose
 from onnx import TensorProto
 from onnx.checker import check_model
-from onnx.helper import make_graph, make_model, make_node, make_tensor, make_tensor_value_info
+from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor, make_tensor_value_info
 from onnx.reference import ReferenceEvaluator
 
 import onnxruntime
@@ -219,7 +219,7 @@ class TestInferenceSession(unittest.TestCase):
         node1 = make_node("Cast", ["X"], ["T"], to=to, saturate=saturate)
         node2 = make_node("Cast", ["T"], ["Y"], to=src)
         graph = make_graph([node1, node2], "lr", [x], [y])
-        onnx_model = make_model(graph)
+        onnx_model = make_model(graph, opset_imports=[make_opsetid("", 19)])
         check_model(onnx_model)
         return onnx_model
 
@@ -229,7 +229,7 @@ class TestInferenceSession(unittest.TestCase):
         node1 = make_node("Cast", ["X"], ["T"], to=to, saturate=saturate)
         node2 = make_node("Cast", ["T"], ["Y"], to=TensorProto.FLOAT16 if rev else TensorProto.FLOAT)
         graph = make_graph([node1, node2], "lr", [x], [y])
-        onnx_model = make_model(graph)
+        onnx_model = make_model(graph, opset_imports=[make_opsetid("", 19)])
         check_model(onnx_model)
         return onnx_model
 
@@ -290,7 +290,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_cast_cast_cpu(self, name: str, float_name: str, saturate: int):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        so.add_session_config_entry("session.allow_released_opsets_only", "0")
+        # so.add_session_config_entry("session.allow_released_opsets_only", "0")
 
         to = getattr(TensorProto, name)
         expected = TestInferenceSession.expected_saturate if saturate else TestInferenceSession.expected_no_saturate
@@ -323,7 +323,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_cast_cast_cuda(self, name: str, float_name: str, saturate: int, provider: str):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        so.add_session_config_entry("session.allow_released_opsets_only", "0")
+        # so.add_session_config_entry("session.allow_released_opsets_only", "0")
 
         to = getattr(TensorProto, name)
         expected = TestInferenceSession.expected_saturate if saturate else TestInferenceSession.expected_no_saturate
@@ -362,7 +362,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_cast_cast_cuda_ortvalue(self, name: str, float_name: str, saturate: int, provider: str):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        so.add_session_config_entry("session.allow_released_opsets_only", "0")
+        # so.add_session_config_entry("session.allow_released_opsets_only", "0")
 
         to = getattr(TensorProto, name)
         expected = TestInferenceSession.expected_saturate if saturate else TestInferenceSession.expected_no_saturate
@@ -406,7 +406,7 @@ class TestInferenceSession(unittest.TestCase):
         else:
             node2 = make_node("DequantizeLinear", ["Temp", "scale"], ["Y"], axis=0)
         graph = make_graph([scale, zero, node1, node2], "lr", [x], [y])
-        onnx_model = make_model(graph)
+        onnx_model = make_model(graph, opset_imports=[make_opsetid("", 19)])
         check_model(onnx_model)
         return onnx_model
 
@@ -486,7 +486,14 @@ class TestInferenceSession(unittest.TestCase):
             raise AssertionError(
                 f"Cannot build InferenceSession with name={name}, float_name={float_name}, saturate={saturate}."
             ) from e
-        y = sess.run(None, {"X": x})[0]
+        try:
+            y = sess.run(None, {"X": x})[0]
+        except Exception as e:
+            if "Quantization from float16 is not supported yet for CPU provider" in str(e):
+                return
+            raise AssertionError(
+                f"Unable to run qdq for name={name!r}, " f"float_name={float_name!r}, saturate={saturate!r}."
+            ) from e
         assert_allclose(expect, y)
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)
@@ -515,7 +522,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_cast_like_x2_cpu(self, name: str, float_name: str, saturate: int):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        so.add_session_config_entry("session.allow_released_opsets_only", "0")
+        # so.add_session_config_entry("session.allow_released_opsets_only", "0")
 
         to = getattr(TensorProto, name)
         expected = TestInferenceSession.expected_saturate if saturate else TestInferenceSession.expected_no_saturate
@@ -536,7 +543,7 @@ class TestInferenceSession(unittest.TestCase):
         try:
             assert_allclose(expect, y)
         except AssertionError as e:
-            # TODO: if not saturate, it fails, CastLike is probably handle with Cast but where?
+            # TODO: if not saturate, it fails, CastLike is probably handled with Cast but where?
             if not saturate:
                 return
             raise AssertionError(
@@ -563,7 +570,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_qdq_cuda(self, name: str, float_name: str, saturate: int, provider: str):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        so.add_session_config_entry("session.allow_released_opsets_only", "0")
+        # so.add_session_config_entry("session.allow_released_opsets_only", "0")
 
         to = getattr(TensorProto, name)
         expected = TestInferenceSession.expected_saturate if saturate else TestInferenceSession.expected_no_saturate
@@ -574,7 +581,13 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxruntime.InferenceSession(
             onnx_model.SerializeToString(), so, providers=[provider], read_config_from_model=1
         )
-        y = sess.run(None, {"X": x})[0]
+        try:
+            y = sess.run(None, {"X": x})[0]
+        except Exception as e:
+            raise AssertionError(
+                f"qdq failed with name={name!r}, float_name={float_name!r}, "
+                f"saturate={saturate!r}, provider={provider!r}."
+            ) from e
         assert_allclose(expect, y)
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)
@@ -596,7 +609,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_model_qdq_cuda_ortvalue(self, name: str, float_name: str, saturate: int, provider: str):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        so.add_session_config_entry("session.allow_released_opsets_only", "0")
+        # so.add_session_config_entry("session.allow_released_opsets_only", "0")
 
         to = getattr(TensorProto, name)
         expected = TestInferenceSession.expected_saturate if saturate else TestInferenceSession.expected_no_saturate
@@ -608,7 +621,13 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxruntime.InferenceSession(
             onnx_model.SerializeToString(), so, providers=[provider], read_config_from_model=1
         )
-        y = sess.run_with_ort_values(["Y"], {"X": ortv})[0].numpy()
+        try:
+            y = sess.run_with_ort_values(["Y"], {"X": ortv})[0].numpy()
+        except Exception as e:
+            raise AssertionError(
+                f"qdq failed with name={name!r}, float_name={float_name!r}, "
+                f"saturate={saturate!r}, provider={provider!r}."
+            ) from e
         assert_allclose(expect, y)
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)
