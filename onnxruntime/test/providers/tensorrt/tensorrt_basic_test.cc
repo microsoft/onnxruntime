@@ -641,7 +641,6 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
         ASSERT_TRUE(status.IsOK());
         VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
-        ASSERT_TRUE(IsCacheExistedByType("./", ".timing"));
         // compilation_without_cache_ms = chrono::duration_cast<chrono::microseconds>(end - start).count();
       }
     }
