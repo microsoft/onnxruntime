@@ -689,6 +689,8 @@ def parse_arguments():
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
+    parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
+
     if not is_windows():
         parser.add_argument(
             "--allow_running_as_root",
@@ -992,6 +994,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
+        "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
@@ -1982,6 +1985,7 @@ def build_python_wheel(
     build_eager_mode=False,
     enable_training_apis=False,
     enable_rocm_profiling=False,
+    use_triton_kernel=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2005,6 +2009,8 @@ def build_python_wheel(
             args.append("--disable_auditwheel_repair")
         if enable_rocm_profiling:
             args.append("--enable_rocm_profiling")
+        if use_triton_kernel:
+            args.append("--use_triton_kernel")
 
         # The following arguments are mutually exclusive
         if use_cuda:
@@ -2749,6 +2755,7 @@ def main():
                 build_eager_mode=args.build_eager_mode,
                 enable_training_apis=args.enable_training_apis,
                 enable_rocm_profiling=args.enable_rocm_profiling,
+                use_triton_kernel=args.use_triton_kernel,
             )
         if args.build_nuget:
             build_nuget_package(
