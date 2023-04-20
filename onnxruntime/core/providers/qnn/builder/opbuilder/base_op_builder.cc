@@ -98,7 +98,6 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                                    const logging::Logger& logger,
                                    bool is_quantized_model,
                                    std::vector<std::string>& input_names) const {
-
   const auto& input_name = input.node_arg.Name();
 
   if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {

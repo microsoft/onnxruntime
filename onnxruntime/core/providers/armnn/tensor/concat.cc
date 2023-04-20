@@ -23,7 +23,6 @@ armnn::IRuntimePtr Concat<T>::run = Concat<T>::initRuntime();
 
 template <typename T>
 Status Concat<T>::Compute(OpKernelContext* ctx) const {
-
   // Number of input tensors to concatenate
   auto input_count = Node().InputArgCount().front();
 
@@ -52,7 +51,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     }
 
     output_dims[axis_] = concat_axis_size;
-  } else { // 'Stack' mode
+  } else {  // 'Stack' mode
     // While stacking, the rank of the output is one more than the input rank(s).
     // Stacking may be thought of as adding an unit dimension (of value 1) in the input tensors,
     // and concatenating them on thie new axis.
@@ -60,7 +59,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     output_dims.insert(output_dims.begin() + axis_, static_cast<int64_t>(input_count));
   }
 
-  if(output_dims.size() > 4 || axis_ > 3) {
+  if (output_dims.size() > 4 || axis_ > 3) {
     LOGS_DEFAULT(WARNING) << "ArmNN does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
     return onnxruntime::Concat::Compute(ctx);
   }
@@ -71,7 +70,6 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
   armnn::NetworkId* pNetworkId;
   ConcatIterator it = Concat::concatLayers.find((OpKernel*)this);
   if (it == Concat::concatLayers.end()) {
-
     armnn::NetworkId networkId;
     armnn::INetworkPtr myNetwork = armnn::INetwork::Create();
 
@@ -94,15 +92,15 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 
     // Update the output shape
     mergeDims[axis_] = mergeDim;
-    armnn::IConnectableLayer *layer = myNetwork->AddConcatLayer(concatDescriptor, "concat_armnn");
+    armnn::IConnectableLayer* layer = myNetwork->AddConcatLayer(concatDescriptor, "concat_armnn");
 
     for (unsigned int viewIndex = 0; viewIndex < numConcatViews; ++viewIndex) {
-      armnn::IConnectableLayer *InputLayer  = myNetwork->AddInputLayer(viewIndex);
+      armnn::IConnectableLayer* InputLayer = myNetwork->AddInputLayer(viewIndex);
       InputLayer->GetOutputSlot(0).Connect(layer->GetInputSlot(viewIndex));
       InputLayer->GetOutputSlot(0).SetTensorInfo(armnn::TensorInfo(ArmNNTensorShape(input_tensors[viewIndex]->Shape(), PREF_DIM), armnn::DataType::Float32));
     }
 
-    armnn::IConnectableLayer *OutputLayer = myNetwork->AddOutputLayer(0);
+    armnn::IConnectableLayer* OutputLayer = myNetwork->AddOutputLayer(0);
     layer->GetOutputSlot(0).Connect(OutputLayer->GetInputSlot(0));
     layer->GetOutputSlot(0).SetTensorInfo(armnn::TensorInfo(mergeDims, armnn::DataType::Float32));
 
@@ -128,7 +126,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
   armnn::InputTensors inputTensors{};
   for (int index = 0; index < input_count; ++index)
     inputTensors.push_back({index, armnn::ConstTensor(Concat::run->GetInputTensorInfo(*pNetworkId, index),
-                                                       input_tensors[index]->Data<T>())});
+                                                      input_tensors[index]->Data<T>())});
   armnn::OutputTensors outputTensors{{0, armnn::Tensor(Concat::run->GetOutputTensorInfo(*pNetworkId, 0),
                                                        Y->MutableData<T>())}};
 

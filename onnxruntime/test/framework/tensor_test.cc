@@ -147,7 +147,7 @@ TEST(TensorTest, EmptyTensorTest) {
 }
 
 TEST(TensorTest, StringTensorTest) {
-//add scope to explicitly delete tensor
+// add scope to explicitly delete tensor
 #ifdef _MSC_VER
   std::string* string_ptr = nullptr;
 #else

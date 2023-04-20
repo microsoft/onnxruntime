@@ -149,14 +149,13 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                         t5_decoder_subgraph_->head_size,
                                         t5_decoder_subgraph_->num_layers);
     }
-  }
-  else if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
+  } else if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
     if (attribute_name == "encoder") {
       ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
       t5_encoder_subgraph_ = std::make_unique<WhisperEncoderSubgraph>(node,
-                                                                 attribute_name,
-                                                                 subgraph_session_state.GetGraphViewer());
+                                                                      attribute_name,
+                                                                      subgraph_session_state.GetGraphViewer());
       ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
       encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
 
@@ -260,23 +259,23 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   if (parameters_.model_type == IGenerationParameters::kModelTypeT5) {
     // Subgraph has constraint that the output is either float or float16
     if (!t5_decoder_subgraph_->IsOutputFloat16()) {
-        BeamSearchT5<float> impl{
-            *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
-            *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
-            add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-            reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
-            topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
-            process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
-            init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
-            device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
-            device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
-            create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateEncoderInputs,
-            update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
-            expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
-            expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
-            expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
-            cuda_device_prop_,
-            cuda_device_arch_};
+      BeamSearchT5<float> impl{
+          *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
+          *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
+          add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
+          topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
+          process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
+          init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
+          device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
+          device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
+          create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateEncoderInputs,
+          update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
+          expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
+          expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
+          expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
+          cuda_device_prop_,
+          cuda_device_arch_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);

@@ -19,7 +19,6 @@ Abstract:
 #include "test_util.h"
 #include "mlas_float16.h"
 
-
 //
 // Define our own fp16 type to avoid dragging in big dependencies
 //
@@ -53,8 +52,7 @@ operator!=(const MLFp16& left, const MLFp16& right) {
   return left.val != right.val;
 }
 
-
-template<typename T>
+template <typename T>
 void SmallFloatFill(T* start, size_t size) {
   constexpr float MinimumFillValue = -11.0f;
   auto* FillAddress = start;

@@ -1241,7 +1241,7 @@ TEST(CApiTest, test_custom_op_get_const_input) {
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                 &output_name, 1);
+              &output_name, 1);
 }
 #endif
 

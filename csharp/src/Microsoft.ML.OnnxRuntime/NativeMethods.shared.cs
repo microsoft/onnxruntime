@@ -309,6 +309,9 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetVersionString, typeof(DOrtGetVersionString));
 
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
+            OrtCreateEnvWithCustomLogger = (DOrtCreateEnvWithCustomLogger)Marshal.GetDelegateForFunctionPointer(api_.CreateEnvWithCustomLogger, typeof(DOrtCreateEnvWithCustomLogger));
+            OrtCreateEnvWithGlobalThreadPools = (DOrtCreateEnvWithGlobalThreadPools)Marshal.GetDelegateForFunctionPointer(api_.CreateEnvWithGlobalThreadPools, typeof(DOrtCreateEnvWithGlobalThreadPools));
+            OrtCreateEnvWithCustomLoggerAndGlobalThreadPools = (DOrtCreateEnvWithCustomLoggerAndGlobalThreadPools)Marshal.GetDelegateForFunctionPointer(api_.CreateEnvWithCustomLoggerAndGlobalThreadPools, typeof(DOrtCreateEnvWithCustomLoggerAndGlobalThreadPools));
             OrtReleaseEnv = (DOrtReleaseEnv)Marshal.GetDelegateForFunctionPointer(api_.ReleaseEnv, typeof(DOrtReleaseEnv));
             OrtEnableTelemetryEvents = (DOrtEnableTelemetryEvents)Marshal.GetDelegateForFunctionPointer(api_.EnableTelemetryEvents, typeof(DOrtEnableTelemetryEvents));
             OrtDisableTelemetryEvents = (DOrtDisableTelemetryEvents)Marshal.GetDelegateForFunctionPointer(api_.DisableTelemetryEvents, typeof(DOrtDisableTelemetryEvents));
@@ -373,6 +376,13 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRunOptionsGetRunTag = (DOrtRunOptionsGetRunTag)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsGetRunTag, typeof(DOrtRunOptionsGetRunTag));
             OrtRunOptionsSetTerminate = (DOrtRunOptionsSetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetTerminate, typeof(DOrtRunOptionsSetTerminate));
             OrtRunOptionsUnsetTerminate = (DOrtRunOptionsUnsetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsUnsetTerminate, typeof(DOrtRunOptionsUnsetTerminate));
+
+            OrtCreateThreadingOptions = (DOrtCreateThreadingOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateThreadingOptions, typeof(DOrtCreateThreadingOptions));
+            OrtReleaseThreadingOptions = (DOrtReleaseThreadingOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseThreadingOptions, typeof(DOrtReleaseThreadingOptions));
+            OrtThreadingOptionsSetGlobalInterOpNumThreads = (DOrtThreadingOptionsSetGlobalInterOpNumThreads)Marshal.GetDelegateForFunctionPointer(api_.SetGlobalInterOpNumThreads, typeof(DOrtThreadingOptionsSetGlobalInterOpNumThreads));
+            OrtThreadingOptionsSetGlobalIntraOpNumThreads = (DOrtThreadingOptionsSetGlobalIntraOpNumThreads)Marshal.GetDelegateForFunctionPointer(api_.SetGlobalIntraOpNumThreads, typeof(DOrtThreadingOptionsSetGlobalIntraOpNumThreads));
+            OrtThreadingOptionsSetGlobalDenormalAsZero = (DOrtThreadingOptionsSetGlobalDenormalAsZero)Marshal.GetDelegateForFunctionPointer(api_.SetGlobalDenormalAsZero, typeof(DOrtThreadingOptionsSetGlobalDenormalAsZero));
+            OrtThreadingOptionsSetGlobalSpinControl = (DOrtThreadingOptionsSetGlobalSpinControl)Marshal.GetDelegateForFunctionPointer(api_.SetGlobalSpinControl, typeof(DOrtThreadingOptionsSetGlobalSpinControl));
             OrtAddRunConfigEntry = (DOrtAddRunConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddRunConfigEntry, typeof(DOrtAddRunConfigEntry));
 
             OrtCreateArenaCfg = (DOrtCreateArenaCfg)Marshal.GetDelegateForFunctionPointer(api_.CreateArenaCfg, typeof(DOrtCreateArenaCfg));
@@ -500,11 +510,45 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern ref OrtApiBase OrtGetApiBase();
 
-#region Runtime/Environment API
+        #region Runtime/Environment API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */DOrtCreateEnv(LogLevel default_warning_level, string logId, out IntPtr /*(OrtEnv*)*/ env);
+        public delegate IntPtr /* OrtStatus* */DOrtCreateEnv(
+            OrtLoggingLevel defaultLoggingLevel,
+            byte[] /*const char* */ logId,
+            out IntPtr /*(OrtEnv*)*/ env);
+
         public static DOrtCreateEnv OrtCreateEnv;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtCreateEnvWithCustomLogger(
+            IntPtr /* (OrtLoggingFunction*) */ loggingFunction,
+            IntPtr /* (void*) */ loggerParam,
+            OrtLoggingLevel defaultLoggingLevel,
+            byte[] /* const char* */ logId,
+            out IntPtr /*(OrtEnv*)*/ env);
+
+        public static DOrtCreateEnvWithCustomLogger OrtCreateEnvWithCustomLogger;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtCreateEnvWithGlobalThreadPools(
+            OrtLoggingLevel defaultWarningLevel,
+            byte[] /*const char* */ logId,
+            IntPtr /*(const OrtThreadingOptions *) */ threadingOptions,
+            out IntPtr /*(OrtEnv*)*/ env);
+
+        public static DOrtCreateEnvWithGlobalThreadPools OrtCreateEnvWithGlobalThreadPools;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtCreateEnvWithCustomLoggerAndGlobalThreadPools(
+            IntPtr /* OrtLoggingFunction */ loggingFunction,
+            IntPtr /* void* */loggerParam,
+            OrtLoggingLevel logSeverityLevel,
+            byte[] /* const char* */ logId,
+            IntPtr /*(const OrtThreadingOptions *) */ threadingOptions,
+            out IntPtr /*(OrtEnv*)*/ env);
+
+        public static DOrtCreateEnvWithCustomLoggerAndGlobalThreadPools OrtCreateEnvWithCustomLoggerAndGlobalThreadPools;
 
         // OrtReleaseEnv should not be used
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -520,7 +564,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtDisableTelemetryEvents OrtDisableTelemetryEvents;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */DOrtUpdateEnvWithCustomLogLevel(IntPtr /*(OrtEnv*)*/ env, LogLevel custom_log_level);
+        public delegate IntPtr /* OrtStatus* */DOrtUpdateEnvWithCustomLogLevel(IntPtr /*(OrtEnv*)*/ env, OrtLoggingLevel custom_log_level);
         public static DOrtUpdateEnvWithCustomLogLevel OrtUpdateEnvWithCustomLogLevel;
 
         #endregion Runtime/Environment API
@@ -614,9 +658,9 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtReleaseCUDAProviderOptions(IntPtr /*(OrtCUDAProviderOptions*)*/ cudaProviderOptionsInstance);
         public static DOrtReleaseCUDAProviderOptions OrtReleaseCUDAProviderOptions;
-#endregion
+        #endregion
 
-#region Status API
+        #region Status API
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate ErrorCode DOrtGetErrorCode(IntPtr /*(OrtStatus*)*/status);
         public static DOrtGetErrorCode OrtGetErrorCode;
@@ -631,9 +675,9 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseStatus(IntPtr /*(OrtStatus*)*/ statusPtr);
         public static DOrtReleaseStatus OrtReleaseStatus;
 
-#endregion Status API
+        #endregion Status API
 
-#region InferenceSession API
+        #region InferenceSession API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */DOrtCreateSession(
@@ -809,9 +853,9 @@ namespace Microsoft.ML.OnnxRuntime
                                                 out UIntPtr /*(ulong* out)*/ startTime);
         public static DOrtSessionGetProfilingStartTimeNs OrtSessionGetProfilingStartTimeNs;
 
-#endregion InferenceSession API
+        #endregion InferenceSession API
 
-#region SessionOptions API
+        #region SessionOptions API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateSessionOptions(out IntPtr /*(OrtSessionOptions**)*/ sessionOptions);
@@ -1069,9 +1113,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DSessionOptionsAppendExecutionProvider SessionOptionsAppendExecutionProvider;
 
-#endregion
+        #endregion
 
-#region RunOptions API
+        #region RunOptions API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateRunOptions(out IntPtr /* OrtRunOptions** */ runOptions);
@@ -1098,7 +1142,8 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtRunOptionsGetRunLogVerbosityLevel OrtRunOptionsGetRunLogVerbosityLevel;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunLogSeverityLevel(IntPtr /* OrtRunOptions* */ options, out OrtLoggingLevel severityLevel);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunLogSeverityLevel(IntPtr /* OrtRunOptions* */ options,
+            out OrtLoggingLevel severityLevel);
         public static DOrtRunOptionsGetRunLogSeverityLevel OrtRunOptionsGetRunLogSeverityLevel;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -1128,6 +1173,33 @@ namespace Microsoft.ML.OnnxRuntime
                                                                       IntPtr /* const char* */ configValue);
         public static DOrtAddRunConfigEntry OrtAddRunConfigEntry;
 
+        #endregion
+
+        #region ThreadingOptions API
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateThreadingOptions(out IntPtr /* OrtCreateThreadingOptions** */ threadingOptions);
+        public static DOrtCreateThreadingOptions OrtCreateThreadingOptions;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtReleaseThreadingOptions(IntPtr /* OrtThreadingOptions* */ threadingOptions);
+        public static DOrtReleaseThreadingOptions OrtReleaseThreadingOptions;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtThreadingOptionsSetGlobalInterOpNumThreads(IntPtr /* OrtThreadingOptions* */ threadingOptions, int numThreads);
+        public static DOrtThreadingOptionsSetGlobalInterOpNumThreads OrtThreadingOptionsSetGlobalInterOpNumThreads;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtThreadingOptionsSetGlobalIntraOpNumThreads(IntPtr /* OrtThreadingOptions* */ threadingOptions, int numThreads);
+        public static DOrtThreadingOptionsSetGlobalIntraOpNumThreads OrtThreadingOptionsSetGlobalIntraOpNumThreads;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtThreadingOptionsSetGlobalDenormalAsZero(IntPtr /* OrtThreadingOptions* */ threadingOptions);
+        public static DOrtThreadingOptionsSetGlobalDenormalAsZero OrtThreadingOptionsSetGlobalDenormalAsZero;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtThreadingOptionsSetGlobalSpinControl(IntPtr /* OrtThreadingOptions* */ threadingOptions, int allowSpinning);
+        public static DOrtThreadingOptionsSetGlobalSpinControl OrtThreadingOptionsSetGlobalSpinControl;
         #endregion
 
         #region Allocator/MemoryInfo API
@@ -1269,9 +1341,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtAllocatorFree OrtAllocatorFree;
 
-#endregion Allocator/MemoryInfo API
+        #endregion Allocator/MemoryInfo API
 
-#region IoBinding API
+        #region IoBinding API
 
         /// <summary>
         /// Create OrtIoBinding instance that is used to bind memory that is allocated
@@ -1455,13 +1527,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="projection">the source projected language</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetLanguageProjection(IntPtr /* (OrtEnv*) */ environment, OrtLanguageProjection projection);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetLanguageProjection(IntPtr /* (OrtEnv*) */ environment,
+            int projection);
 
         public static DOrtSetLanguageProjection OrtSetLanguageProjection;
 
-#endregion IoBinding API
+        #endregion IoBinding API
 
-#region ModelMetadata API
+        #region ModelMetadata API
 
         /// <summary>
         /// Gets the ModelMetadata associated with an InferenceSession
@@ -1580,9 +1653,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtReleaseModelMetadata OrtReleaseModelMetadata;
 
-#endregion ModelMetadata API
+        #endregion ModelMetadata API
 
-#region Tensor/OnnxValue API
+        #region Tensor/OnnxValue API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetValue(IntPtr /*(OrtValue*)*/ value,
@@ -1608,7 +1681,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtGetValueCount OrtGetValueCount;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr/*(OrtStatus*)*/ DOrtCreateValue(IntPtr[] /* const OrtValue* const* in */ values, 
+        public delegate IntPtr/*(OrtStatus*)*/ DOrtCreateValue(IntPtr[] /* const OrtValue* const* in */ values,
             UIntPtr /* size_t */ num_values, IntPtr /* (OnnxValueType */ onnxValueType, out IntPtr /* OrtValue** */ ortValue);
 
         public static DOrtCreateValue OrtCreateValue;
@@ -1780,9 +1853,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtReleaseValue OrtReleaseValue;
 
-#endregion
+        #endregion
 
-#region Misc API
+        #region Misc API
 
         /// <summary>
         /// Queries all the execution providers supported in the native onnxruntime shared library
@@ -1822,6 +1895,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
 
-#endregion
+        #endregion
     } //class NativeMethods
 } //namespace

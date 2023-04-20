@@ -1392,7 +1392,7 @@ class SymbolicShapeInference:
 
     def _infer_aten_argmax(self, node):
         new_shape = None
-        if node.input[1] == "":
+        if not node.input[1]:
             # The argmax of the flattened input is returned.
             new_shape = []
         else:
@@ -1458,7 +1458,7 @@ class SymbolicShapeInference:
 
         # this works for opsets < 14 and 14 since we check i < len(node.output) in the loop
         for i in [1, 2, 3, 4]:
-            if i < len(node.output) and node.output[i] != "":
+            if i < len(node.output) and node.output[i]:
                 # all of these parameters have the same shape as the 1st input
                 self._propagate_shape_and_type(node, input_index=1, output_index=i)
 
@@ -1932,7 +1932,7 @@ class SymbolicShapeInference:
                 if len(symbolic_dimensions) > 0:
                     logger.debug(
                         f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
-                        + f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}"
+                        f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}"
                     )
         else:
             axes = [handle_negative_axis(a, len(input_shape)) for a in axes]
@@ -1945,7 +1945,7 @@ class SymbolicShapeInference:
                     if self.verbose_ > 0 and type(input_shape[i]) != int:
                         logger.debug(
                             f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
-                            + f"Assuming the dimension '{input_shape[i]}' at index {i} of the input to be equal to 1."
+                            f"Assuming the dimension '{input_shape[i]}' at index {i} of the input to be equal to 1."
                         )
 
         vi = self.known_vi_[node.output[0]]
@@ -2090,8 +2090,9 @@ class SymbolicShapeInference:
                 # mask shape: (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length) or (batch_size, 1, max_seq_len, max_seq_len)
                 # present shape: (2, batch_size, num_heads, total_sequence_length, head_size), where total_sequence_length=sequence_length+past_sequence_length
                 input_shape = self._get_shape(node, 0)
-                past_shape = self._get_shape(node, 4)
-                mask_shape = self._get_shape(node, 3)
+                past_shape = self._get_shape(node, 4) if node.input[4] else []
+                mask_shape = self._get_shape(node, 3) if node.input[3] else []
+
                 if past_shape and len(past_shape) == 5:
                     if mask_shape and len(mask_shape) in [2, 3]:
                         past_shape[3] = mask_shape[-1]
@@ -2102,6 +2103,13 @@ class SymbolicShapeInference:
                             past_shape[3] = f"{past_shape[3]}+{input_shape[1]}"
                     vi = self.known_vi_[node.output[1]]
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+                # No past input but present output still exists
+                else:
+                    num_heads = get_attribute(node, "num_heads")
+                    head_size = input_shape[2] // num_heads
+                    present_shape = [2, input_shape[0], num_heads, input_shape[1], head_size]
+                    vi = self.known_vi_[node.output[1]]
+                    vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
 
     def _infer_PackedAttention(self, node):  # noqa: N802
         shape = self._get_shape(node, 0)
@@ -2434,6 +2442,7 @@ class SymbolicShapeInference:
                     raise Exception("Invalid model with cyclic graph")
 
         for node in sorted_nodes:
+            # print(node.name)
             assert all([i in self.known_vi_ for i in node.input if i])
             self._onnx_infer_single_node(node)
             known_aten_op = False

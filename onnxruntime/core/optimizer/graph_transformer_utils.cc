@@ -210,7 +210,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       for (const auto& p : session_options.initializers_to_share_map) {
         excluded_initializers.insert(p.first);
       }
-      transformers.emplace_back(std::make_unique<ConstantSharing>(cpu_ep, excluded_initializers));
+      const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+      transformers.emplace_back(std::make_unique<ConstantSharing>(no_limit_empty_ep_list, excluded_initializers));
 
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));

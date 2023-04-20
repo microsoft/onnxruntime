@@ -24,8 +24,8 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32) {
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  RunQnnModelTest(BuildQDQConvTestCase<uint8_t, uint8_t, int32_t, uint8_t>({1, 1, 5, 5},    // Input shape
-                                                                           {1, 1, 3, 3} ),  // Weights shape
+  RunQnnModelTest(BuildQDQConvTestCase<uint8_t, uint8_t, int32_t, uint8_t>({1, 1, 5, 5},   // Input shape
+                                                                           {1, 1, 3, 3}),  // Weights shape
                   provider_options,
                   18,                             // Opset
                   ExpectedEPNodeAssignment::All,  // All nodes assigned to QNN EP.

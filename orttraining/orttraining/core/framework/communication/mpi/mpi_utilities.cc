@@ -3,31 +3,30 @@
 #ifdef USE_MPI
 #include "orttraining/core/framework/communication/mpi/mpi_utilities.h"
 
-
 namespace onnxruntime {
 namespace training {
 
-MPI_Datatype GetMPIDataType (MLDataType data_type) {
-  if(data_type == DataTypeImpl::GetType<uint8_t>()) {
+MPI_Datatype GetMPIDataType(MLDataType data_type) {
+  if (data_type == DataTypeImpl::GetType<uint8_t>()) {
     return MPI_UINT8_T;
-  } else if(data_type == DataTypeImpl::GetType<int8_t>()) {
+  } else if (data_type == DataTypeImpl::GetType<int8_t>()) {
     return MPI_INT8_T;
-  } else if(data_type == DataTypeImpl::GetType<uint16_t>() ||
-            data_type == DataTypeImpl::GetType<MLFloat16>()) {
+  } else if (data_type == DataTypeImpl::GetType<uint16_t>() ||
+             data_type == DataTypeImpl::GetType<MLFloat16>()) {
     return MPI_UINT16_T;
-  } else if(data_type == DataTypeImpl::GetType<int16_t>()) {
+  } else if (data_type == DataTypeImpl::GetType<int16_t>()) {
     return MPI_INT16_T;
-  } else if(data_type == DataTypeImpl::GetType<int32_t>()) {
+  } else if (data_type == DataTypeImpl::GetType<int32_t>()) {
     return MPI_INT32_T;
-  } else if(data_type == DataTypeImpl::GetType<int64_t>()) {
+  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
     return MPI_INT64_T;
-  } else if(data_type == DataTypeImpl::GetType<float>()) {
+  } else if (data_type == DataTypeImpl::GetType<float>()) {
     return MPI_FLOAT;
-  } else if(data_type == DataTypeImpl::GetType<double>()) {
+  } else if (data_type == DataTypeImpl::GetType<double>()) {
     return MPI_DOUBLE;
-  } else if(data_type == DataTypeImpl::GetType<bool>()) {
+  } else if (data_type == DataTypeImpl::GetType<bool>()) {
     return MPI_C_BOOL;
-  } else if(data_type == DataTypeImpl::GetType<uint8_t>()) {
+  } else if (data_type == DataTypeImpl::GetType<uint8_t>()) {
     return MPI_BYTE;
   } else {
     ORT_THROW("Unsupported MPI data type.");
@@ -48,4 +47,4 @@ int GetMPISize(MPI_Comm comm) {
 
 }  // namespace training
 }  // namespace onnxruntime
-#endif // USE_MPI
+#endif  // USE_MPI

@@ -19,7 +19,7 @@ TEST(AzureEP, TestSessionCreation) {
   so.AddConfigEntry("azure.endpoint_type", "triton");
   onnxruntime::ProviderOptions options;
   so.AppendExecutionProvider("AZURE", options);
-  //session could be created
+  // session could be created
   EXPECT_NO_THROW((Ort::Session{*ort_env, ort_model_path, so}));
 }
 
@@ -40,7 +40,7 @@ TEST(AzureEP, TestSessionRunMissingConfig) {
 
   Ort::RunOptions run_options;
   run_options.AddConfigEntry("use_azure", "1");
-  //exception expected due to the missing of endpoint type
+  // exception expected due to the missing of endpoint type
   EXPECT_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL), Ort::Exception);
 }
 
@@ -59,11 +59,11 @@ TEST(AzureEP, TestSessionRunMissingEP) {
   input_values.emplace_back(Ort::Value::CreateTensor<float>(default_allocator->Info(), raw_inputs, 6, input_dims.data(), 2));
 
   Ort::RunOptions run_options;
-  //local inference should work
+  // local inference should work
   EXPECT_NO_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL));
 
   run_options.AddConfigEntry("use_azure", "1");
-  //exception expected due to the missing of azure.uri and azure.model_name
+  // exception expected due to the missing of azure.uri and azure.model_name
   EXPECT_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL), Ort::Exception);
 }
 
@@ -86,7 +86,7 @@ TEST(AzureEP, TestSessionRunWrongUri) {
   Ort::RunOptions run_options;
   run_options.AddConfigEntry("use_azure", "1");
   run_options.AddConfigEntry("azure.auth_key", "asdjfakldkvnlkajefoiauh32hriunive2324");
-  //exception expected due to the non-existing endpoint
+  // exception expected due to the non-existing endpoint
   EXPECT_THROW(sess.Run(run_options, input_names, input_values.data(), 1UL, output_names, 1UL), Ort::Exception);
 }
 

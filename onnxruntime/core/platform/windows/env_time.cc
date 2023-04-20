@@ -96,8 +96,8 @@ void AccumulateTimeSpec(TIME_SPEC* base, const TIME_SPEC* start, const TIME_SPEC
   *base += std::max<TIME_SPEC>(0, *end - *start);
 }
 
-//Return the interval in seconds.
-//If the function fails, the return value is zero
+// Return the interval in seconds.
+// If the function fails, the return value is zero
 double TimeSpecToSeconds(const TIME_SPEC* value) {
   BOOL initState = InitOnceExecuteOnce(&g_InitOnce, InitHandleFunction, nullptr, nullptr);
   if (!initState) return 0;

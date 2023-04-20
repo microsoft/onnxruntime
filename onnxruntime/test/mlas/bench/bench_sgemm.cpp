@@ -17,7 +17,6 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
   const size_t N = static_cast<size_t>(state.range(1));
   const size_t K = static_cast<size_t>(state.range(2));
 
-
   auto A = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
   auto B = RandomVectorUniform(static_cast<size_t>(N * K), -1.0f, 1.0f);
   std::vector<float> C(static_cast<size_t>(M * N));

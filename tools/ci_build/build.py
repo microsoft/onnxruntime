@@ -57,9 +57,9 @@ def _check_python_version():
     # Python 2 is definitely not supported and it should be safer to consider
     # it won't run with python 4:
     if sys.version_info[0] != 3:  # noqa: YTT201
-        raise BuildError("Bad python major version: expecting python 3, found version " "'{}'".format(sys.version))
+        raise BuildError(f"Bad python major version: expecting python 3, found version '{sys.version}'")
     if sys.version_info[1] < 6:  # noqa: YTT203
-        raise BuildError("Bad python minor version: expecting python 3.6+, found version " "'{}'".format(sys.version))
+        raise BuildError(f"Bad python minor version: expecting python 3.6+, found version '{sys.version}'")
 
 
 def _str_to_bool(s):
@@ -104,18 +104,18 @@ def _openvino_verify_device_type(device_read):
                 break
 
     def invalid_hetero_build():
-        print("\n" + "If trying to build Hetero/Multi/Auto, specifiy the supported devices along with it." + +"\n")
+        print("\nIf trying to build Hetero/Multi/Auto, specifiy the supported devices along with it.\n")
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
-        print("in the order of priority you want to build" + "\n")
+        print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
-        print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
-        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
-        print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")
-        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU" + "\n")
+        print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']\n")
+        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU\n")
+        print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU\n")
+        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU\n")
         sys.exit("Wrong Build Type selected")
 
     if res is False:
-        print("\n" + "You have selcted wrong configuration for the build.")
+        print("\nYou have selcted wrong configuration for the build.")
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
@@ -231,7 +231,7 @@ def parse_arguments():
     # CUDA related
     parser.add_argument("--use_cuda", action="store_true", help="Enable CUDA.")
     parser.add_argument(
-        "--cuda_version", help="The version of CUDA toolkit to use. " "Auto-detect if not specified. e.g. 9.0"
+        "--cuda_version", help="The version of CUDA toolkit to use. Auto-detect if not specified. e.g. 9.0"
     )
     parser.add_argument(
         "--cuda_home",
@@ -252,10 +252,10 @@ def parse_arguments():
     parser.add_argument("--build_wheel", action="store_true", help="Build Python Wheel.")
     parser.add_argument(
         "--wheel_name_suffix",
-        help="Suffix to append to created wheel names. " "This value is currently only used for nightly builds.",
+        help="Suffix to append to created wheel names. This value is currently only used for nightly builds.",
     )
     parser.add_argument(
-        "--numpy_version", help="Installs a specific version of numpy " "before building the python binding."
+        "--numpy_version", help="Installs a specific version of numpy before building the python binding."
     )
     parser.add_argument("--skip-keras-test", action="store_true", help="Skip tests with Keras if keras is installed")
 
@@ -354,7 +354,7 @@ def parse_arguments():
     parser.add_argument("--use_gdk", action="store_true", help="Build with the GDK toolchain.")
     parser.add_argument(
         "--gdk_edition",
-        default=os.path.normpath(os.environ.get("GameDKLatest", "")).split(os.sep)[-1],
+        default=os.path.normpath(os.environ.get("GameDKLatest", "")).split(os.sep)[-1],  # noqa: SIM112
         help="Build with a specific GDK edition. Defaults to the latest installed.",
     )
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
@@ -366,7 +366,7 @@ def parse_arguments():
     parser.add_argument(
         "--ios_toolchain_file",
         default="",
-        help="Path to ios toolchain file, " "or cmake/onnxruntime_ios.toolchain.cmake will be used",
+        help="Path to ios toolchain file, or cmake/onnxruntime_ios.toolchain.cmake will be used",
     )
     parser.add_argument(
         "--xcode_code_signing_team_id", default="", help="The development team ID used for code signing in Xcode"
@@ -456,7 +456,7 @@ def parse_arguments():
     parser.add_argument(
         "--skip_submodule_sync",
         action="store_true",
-        help="Don't do a " "'git submodule update'. Makes the Update phase faster.",
+        help="Don't do a 'git submodule update'. Makes the Update phase faster.",
     )
     parser.add_argument("--use_mimalloc", action="store_true", help="Use mimalloc allocator")
     parser.add_argument("--use_dnnl", action="store_true", help="Build with DNNL.")
@@ -610,7 +610,7 @@ def parse_arguments():
     parser.add_argument(
         "--include_ops_by_config",
         type=str,
-        help="Include ops from config file. " "See /docs/Reduced_Operator_Kernel_build.md for more information.",
+        help="Include ops from config file. See /docs/Reduced_Operator_Kernel_build.md for more information.",
     )
     parser.add_argument(
         "--enable_reduced_operator_type_support",
@@ -715,7 +715,7 @@ def resolve_executable_path(command_or_path):
     if command_or_path and command_or_path.strip():
         executable_path = shutil.which(command_or_path)
         if executable_path is None:
-            raise BuildError("Failed to resolve executable path for " "'{}'.".format(command_or_path))
+            raise BuildError(f"Failed to resolve executable path for '{command_or_path}'.")
         return os.path.abspath(executable_path)
     else:
         return None
@@ -1213,9 +1213,9 @@ def generate_build_tree(
             args.apple_deploy_target,
         ]
         arg_names = [
-            "--use_xcode            " + "<need use xcode to cross build iOS on MacOS>",
-            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",
-            "--apple_deploy_target  " + "<the minimum version of the target platform>",
+            "--use_xcode            " + "<need use xcode to cross build iOS on MacOS>",  # noqa: ISC003
+            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",  # noqa: ISC003
+            "--apple_deploy_target  " + "<the minimum version of the target platform>",  # noqa: ISC003
         ]
         if not all(needed_args):
             raise BuildError(
@@ -1327,8 +1327,8 @@ def generate_build_tree(
     # (e.g. 191101-2300.1.master) and source version in environment
     # variables. If present, use these values to define the
     # WinML/ORT DLL versions.
-    build_number = os.getenv("Build_BuildNumber")
-    source_version = os.getenv("Build_SourceVersion")
+    build_number = os.getenv("Build_BuildNumber")  # noqa: SIM112
+    source_version = os.getenv("Build_SourceVersion")  # noqa: SIM112
     if build_number and source_version:
         build_matches = re.fullmatch(r"(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)", build_number)
         if build_matches:
@@ -1857,7 +1857,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                     onnxml_test = True
                 except ImportError:
-                    log.warning("onnxmltools and keras are not installed. " "The keras tests will be skipped.")
+                    log.warning("onnxmltools and keras are not installed. The keras tests will be skipped.")
                     onnxml_test = False
                 if onnxml_test:
                     run_subprocess([sys.executable, "onnxruntime_test_python_keras.py"], cwd=cwd, dll_path=dll_path)
@@ -1985,7 +1985,7 @@ def build_nuget_package(
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
-            "Currently csharp builds and nuget package creation is only supportted " "on Windows and Linux platforms."
+            "Currently csharp builds and nuget package creation is only supportted on Windows and Linux platforms."
         )
 
     csharp_build_dir = os.path.join(source_dir, "csharp")
@@ -2000,7 +2000,9 @@ def build_nuget_package(
     target_name = "/t:CreatePackage"
     execution_provider = '/p:ExecutionProvider="None"'
     package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime"'
+    enable_training_tests = '/p:TrainingEnabledNativeBuild="false"'
     if enable_training_apis:
+        enable_training_tests = '/p:TrainingEnabledNativeBuild="true"'
         if use_cuda:
             package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Training.Gpu"'
         else:
@@ -2047,7 +2049,16 @@ def build_nuget_package(
         configuration = '/p:Configuration="' + config + '"'
 
         if not use_winml:
-            cmd_args = ["dotnet", "msbuild", sln, configuration, package_name, is_linux_build, ort_build_dir]
+            cmd_args = [
+                "dotnet",
+                "msbuild",
+                sln,
+                configuration,
+                package_name,
+                is_linux_build,
+                ort_build_dir,
+                enable_training_tests,
+            ]
             run_subprocess(cmd_args, cwd=csharp_build_dir)
         else:
             winml_interop_dir = os.path.join(source_dir, "csharp", "src", "Microsoft.AI.MachineLearning.Interop")
@@ -2109,10 +2120,10 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     if use_cuda:
         macros += "USE_CUDA;"
     if enable_training_apis:
-        macros += "__TRAINING_ENABLED_NATIVE_BUILD__;"
+        macros += "__TRAINING_ENABLED_NATIVE_BUILD__;__ENABLE_TRAINING_APIS__"
 
     define_constants = ""
-    if macros != "":
+    if macros:
         define_constants = '/p:DefineConstants="' + macros + '"'
 
     # set build directory based on build_dir arg
@@ -2344,7 +2355,7 @@ def main():
         if args.wasm_malloc is not None:
             # mark --wasm_malloc as deprecated
             log.warning(
-                "Flag '--wasm_malloc=<Value>' is deprecated. " "Please use '--emscripten_settings MALLOC=<Value>'."
+                "Flag '--wasm_malloc=<Value>' is deprecated. Please use '--emscripten_settings MALLOC=<Value>'."
             )
 
     if args.code_coverage and not args.android:
@@ -2517,9 +2528,7 @@ def main():
 
         if is_ubuntu_1604():
             if args.arm or args.arm64:
-                raise BuildError(
-                    "Only Windows ARM(64) cross-compiled builds supported " "currently through this script"
-                )
+                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
             if not is_docker() and not args.use_acl and not args.use_armnn:
                 install_python_deps()
 
