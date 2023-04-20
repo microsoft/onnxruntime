@@ -1014,6 +1014,18 @@ TEST(PoolTest, GlobalAveragePool) {
   test.Run();
 }
 
+TEST(PoolTest, GlobalAveragePool_Large) {
+  OpTester test("GlobalAveragePool");
+
+  std::vector<float> x_vals(1 * 1 * 256 * 256, 3.14159);
+  std::vector<int64_t> x_dims = {1, 1, 256, 256};
+  std::vector<int64_t> expected_dims = {1, 1, 1, 1};
+  std::vector<float> expected_vals = {3.14159};
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run();
+}
+
 TEST(PoolTest, LpPool) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
