@@ -30,7 +30,7 @@ class ORTBertPretrainTest(unittest.TestCase):
     def _create_allgather_ut_model(self, shape, axis):
         X = helper.make_tensor_value_info("X", TensorProto.FLOAT, shape)  # noqa: N806
         rank, size = self._get_rank_size()
-        output_shape = [s * size if _ == axis else s for _, s in enumerate(shape)]
+        output_shape = [s * size if axis_index == axis else s for axis_index, s in enumerate(shape)]
         Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, output_shape)  # noqa: N806
         node_def = helper.make_node("AllGather", ["X"], ["Y"], domain="com.microsoft", group_size=size, axis=axis)
         graph_def = helper.make_graph(
