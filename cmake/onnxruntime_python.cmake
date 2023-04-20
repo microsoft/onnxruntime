@@ -886,6 +886,21 @@ if (onnxruntime_USE_ROCM)
     )
 endif()
 
+if (onnxruntime_USE_TRITON_KERNEL)
+    set(triton_kernel_compiler "${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer/kernels/rocm/triton/compile_triton.py")
+    set(triton_kernel_output "${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer/kernels/rocm/triton/libs")
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${Python_EXECUTABLE} ${triton_kernel_compiler}
+            --output-dir ${triton_kernel_output}
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/triton_libs
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${triton_kernel_output}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/triton_libs/
+      COMMENT "Comile Triton kernels."
+    )
+endif()
+
 if (onnxruntime_USE_TVM)
   file(GLOB onnxruntime_python_providers_tvm_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/providers/tvm/*.py"
