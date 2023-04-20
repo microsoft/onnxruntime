@@ -324,7 +324,10 @@ TEST(TransposeOptimizerTests, TestPadNonconst) {
 // Per tests included in #10824, the ROCM EP also generates
 // incorrect results when this handler is used, so the Resize
 // handler is not enabled even for those builds.
-#if !defined(USE_CUDA) && !defined(USE_ROCM)
+//
+// The QNN EP requires the input to be NHWC, so the Resize handler is also not enabled
+// for QNN builds.
+#if !defined(USE_CUDA) && !defined(USE_ROCM) && !defined(USE_QNN)
 TEST(TransposeOptimizerTests, TestResize) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
