@@ -10,7 +10,7 @@ import platform
 import subprocess
 import sys
 from glob import glob, iglob
-from os import environ, getcwd, path, popen, remove, listdir
+from os import environ, getcwd, listdir, path, popen, remove
 from pathlib import Path
 from shutil import copyfile
 
@@ -607,7 +607,7 @@ package_data["onnxruntime"] = data + examples + extra
 
 if use_triton_kernel:
     packages += ["onnxruntime.triton_libs"]
-    package_data["onnxruntime"].extend(['triton_libs/*.json', 'triton_libs/*.hsaco'])
+    package_data["onnxruntime"].extend(["triton_libs/*.json", "triton_libs/*.hsaco"])
 
 version_number = ""
 with open("VERSION_NUMBER") as f:

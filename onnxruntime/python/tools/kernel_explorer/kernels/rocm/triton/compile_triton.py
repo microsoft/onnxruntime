@@ -3,10 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import argparse
 import json
 import os
 import shutil
-import argparse
 
 import triton
 from log_softmax import logsoftmax_function_table
@@ -82,12 +82,14 @@ def main(args):
         json.dump(metadata, fp, indent=2)
     print("save into file done.")
 
+
 def get_arges():
     parser = argparse.ArgumentParser(description="PyTorch Template Finetune Example")
-    parser.add_argument('--output-dir', type=str, default="./libs", help='output file name')
+    parser.add_argument("--output-dir", type=str, default="./libs", help="output file name")
 
     args = parser.parse_args()
     return args
+
 
 if __name__ == "__main__":
     args = get_arges()
