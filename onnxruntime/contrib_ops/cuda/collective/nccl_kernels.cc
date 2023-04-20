@@ -100,9 +100,7 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   void* output_data = context->Output(0, in_shape)->MutableDataRaw();
 
   ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
-#ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
-#endif
   return Status::OK();
 }
 
@@ -122,6 +120,7 @@ Status AllGather::ComputeInternal(OpKernelContext* context) const {
 
   if (axis_ > 0) {
     // Need transpose
+    // TODO: fuse transpose with allgather
     std::vector<size_t> permutation(in_shape.NumDimensions());
     AllocatorPtr alloc;
     auto status = context->GetTempSpaceAllocator(&alloc);
@@ -152,11 +151,9 @@ Status AllGather::ComputeInternal(OpKernelContext* context) const {
     all_gather_out_shape[0] = group_size_ * all_gather_out_shape[0];
     auto all_gather_output = Tensor::Create(temp_input->DataType(), all_gather_out_shape, alloc);
     ncclDataType_t dtype = GetNcclDataType(temp_input->DataType());
-#ifdef ORT_USE_NCCL
     NCCL_RETURN_IF_ERROR(ncclAllGather(temp_input->DataRaw(),
                                        all_gather_output->MutableDataRaw(),
                                        input_count, dtype, comm, Stream(context)));
-#endif
     // release temp_input
     temp_input.release();
     // transpose to output
@@ -176,9 +173,7 @@ Status AllGather::ComputeInternal(OpKernelContext* context) const {
     void* output_data = context->Output(0, out_shape)->MutableDataRaw();
 
     ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
-#ifdef ORT_USE_NCCL
     NCCL_RETURN_IF_ERROR(ncclAllGather(input_data, output_data, input_count, dtype, comm, Stream(context)));
-#endif
     return Status::OK();
   }
 }
@@ -200,7 +195,6 @@ Status AllToAll::ComputeInternal(OpKernelContext* context) const {
 
   char* output_data = static_cast<char*>(context->Output(0, out_shape)->MutableDataRaw());
 
-#ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclGroupStart());
   for (int32_t r = 0; r < group_size_; r++) {
     NCCL_RETURN_IF_ERROR(ncclSend(input_data, rank_stride, dtype, r, comm, Stream(context)));
@@ -209,7 +203,6 @@ Status AllToAll::ComputeInternal(OpKernelContext* context) const {
     output_data += (rank_stride * element_size);
   }
   NCCL_RETURN_IF_ERROR(ncclGroupEnd());
-#endif
 
   return Status::OK();
 }
