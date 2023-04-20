@@ -461,7 +461,9 @@ set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
 
 find_package(Threads)
-if(NOT WIN32)
+# On Windows we directly use Windows APIs to do the job
+# Android NDK doesn't provide the iconv lib.
+if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
   find_package(Iconv REQUIRED)
 endif()
 find_package(Patch)
