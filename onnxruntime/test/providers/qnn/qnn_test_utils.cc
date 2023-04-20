@@ -119,7 +119,7 @@ static BackendSupport GetCPUSupport(const onnxruntime::logging::Logger& logger) 
       const int64_t num_channels = input_shape[1];
 
       auto* scale = builder.MakeInitializer<float>({num_channels}, 0.0f, 1.0f);
-      auto* bias = builder.MakeInitializer<float>({num_channels}, 0.0f,4.0f);
+      auto* bias = builder.MakeInitializer<float>({num_channels}, 0.0f, 4.0f);
       auto* input_arg = builder.MakeInput<float>(input_shape, 0.0f, 10.0f);
       auto* instance_norm_output = builder.MakeOutput();
       builder.AddNode("InstanceNormalization", {input_arg, scale, bias}, {instance_norm_output});
