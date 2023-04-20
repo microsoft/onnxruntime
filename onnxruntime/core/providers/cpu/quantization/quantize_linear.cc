@@ -260,16 +260,20 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   PrepareForQDQ(x.Shape(), y_scale, y_zero_point, axis_, N, broadcast_dim, block_size);
 
   const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
-  const float* scale = y_scale.Data<float>();
-  const float* input = x.Data<float>();
-  T* output = y.MutableData<T>();
+  if (x.IsDataType<float>()) {
+    const float* scale = y_scale.Data<float>();
+    const float* input = x.Data<float>();
+    T* output = y.MutableData<T>();
 
-  for (size_t n = 0; n < static_cast<size_t>(N); n++) {
-    for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
-      ParQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], bd, zero_point, saturate_, ctx->GetOperatorThreadPool());
-      input += block_size;
-      output += block_size;
+    for (size_t n = 0; n < static_cast<size_t>(N); n++) {
+      for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
+        ParQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], bd, zero_point, saturate_, ctx->GetOperatorThreadPool());
+        input += block_size;
+        output += block_size;
+      }
     }
+  } else {
+    ORT_THROW("Quantization from float16 is not supported yet for CPU provider.");
   }
 
   return Status::OK();
