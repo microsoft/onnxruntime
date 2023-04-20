@@ -170,10 +170,10 @@ void QnnCPUBackendTests::SetUp() {
 }
 
 #if defined(_WIN32)
-// TODO: Remove or set to BE_SUPPORTED once HTP emulation is supported on win arm64.
+// TODO: Remove or set to SUPPORTED once HTP emulation is supported on win arm64.
 BackendSupport QnnHTPBackendTests::cached_htp_support_ = BackendSupport::SUPPORT_UNKNOWN;
 
-// TODO: Remove or set to BE_SUPPORTED once CPU backend works on win arm64 (pipeline VM).
+// TODO: Remove or set to SUPPORTED once CPU backend works on win arm64 (pipeline VM).
 BackendSupport QnnCPUBackendTests::cached_cpu_support_ = BackendSupport::SUPPORT_UNKNOWN;
 #else
 BackendSupport QnnHTPBackendTests::cached_htp_support_ = BackendSupport::SUPPORTED;

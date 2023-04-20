@@ -2969,7 +2969,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsDiv) {
     EXPECT_EQ(transpose_cost, 0);
   };
 
-#if defined(_M_ARM64) && defined(USE_QNN)
+#if defined(_M_ARM64) && _MSC_VER >= 1930
   // Slight difference in Windows ARM64 VS 2022:
   // expected 19.3678 (419af143), got 19.3678 (419af144), diff: 1.90735e-06, tol=0
   TransformerTester(build_test_case_1,
@@ -2985,7 +2985,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsDiv) {
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ {15, 18});
-#endif  // defined(_M_ARM64) && defined(USE_QNN)
+#endif  // defined(_M_ARM64) && _MSC_VER >= 1930
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsPRelu) {
