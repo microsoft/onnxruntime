@@ -12,11 +12,8 @@ jobs:
 - job: 'build'
   pool: 'onnxruntime-qnn-windows-vs-2022-arm64'
   variables:
-    MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     buildArch: arm64
-    setVcvars: true
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
     QNN_SDK_ROOT: 'C:\data\qnnsdk\${{parameters.QnnSdk}}'
