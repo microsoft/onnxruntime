@@ -6,6 +6,7 @@
 import json
 import os
 import shutil
+import argparse
 
 import triton
 from log_softmax import logsoftmax_function_table
@@ -63,8 +64,8 @@ def compile(function_table, lib_dir):
     return metadata
 
 
-def main():
-    lib_dir = "./libs"
+def main(args):
+    lib_dir = args.output_dir
     if not os.path.exists(lib_dir):
         os.mkdir(lib_dir)
 
@@ -81,6 +82,13 @@ def main():
         json.dump(metadata, fp, indent=2)
     print("save into file done.")
 
+def get_arges():
+    parser = argparse.ArgumentParser(description="PyTorch Template Finetune Example")
+    parser.add_argument('--output-dir', type=str, default="./libs", help='output file name')
+
+    args = parser.parse_args()
+    return args
 
 if __name__ == "__main__":
-    main()
+    args = get_arges()
+    main(args)
