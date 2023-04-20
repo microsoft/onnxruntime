@@ -1,4 +1,4 @@
-ARG BASEIMAGE=nvidia/cuda:11.6.2-cudnn8-devel-centos7
+ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-centos7
 ARG POLICY=manylinux2014
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=
@@ -157,7 +157,7 @@ CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
 ARG PYTHON_VERSION=3.9
-ARG TORCH_VERSION=1.13.1
+ARG TORCH_VERSION=2.0.0
 ARG OPSET_VERSION=15
 ARG INSTALL_DEPS_EXTRA_ARGS
 
@@ -171,7 +171,7 @@ RUN cd /tmp/scripts && \
 ENV PATH="/root/.cargo/bin/:$PATH"
 
 RUN /tmp/scripts/install_ninja.sh && \
-    /tmp/scripts/install_python_deps.sh -d gpu -v 11.6 -p $PYTHON_VERSION -h $TORCH_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
+    /tmp/scripts/install_python_deps.sh -d gpu -v 11.8 -p $PYTHON_VERSION -h $TORCH_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
     rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
