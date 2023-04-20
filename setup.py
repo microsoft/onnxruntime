@@ -10,7 +10,7 @@ import platform
 import subprocess
 import sys
 from glob import glob, iglob
-from os import environ, getcwd, listdir, path, popen, remove
+from os import environ, getcwd, path, popen, remove
 from pathlib import Path
 from shutil import copyfile
 
