@@ -10,17 +10,30 @@
 #pragma clang diagnostic ignored "-Wdocumentation"
 #endif  // defined(__clang__)
 
+// paths are different when building the Swift Package Manager package as the headers come from the iOS pod archive
+#ifdef SPM_BUILD
+#include "onnxruntime/onnxruntime_c_api.h"
+#include "onnxruntime/onnxruntime_cxx_api.h"
+
+#if __has_include("onnxruntime/coreml_provider_factory.h")
+#define ORT_OBJC_API_COREML_EP_AVAILABLE 1
+#include "onnxruntime/coreml_provider_factory.h"
+#else
+#define ORT_OBJC_API_COREML_EP_AVAILABLE 0
+#endif
+
+#else
 #include "onnxruntime_c_api.h"
 #include "onnxruntime_cxx_api.h"
 
 #if __has_include("coreml_provider_factory.h")
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 1
+#include "coreml_provider_factory.h"
 #else
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 0
+
 #endif
 
-#if ORT_OBJC_API_COREML_EP_AVAILABLE
-#include "coreml_provider_factory.h"
 #endif
 
 #if defined(__clang__)
