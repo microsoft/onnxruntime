@@ -153,9 +153,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="memInfo">instance of memory info</param>
         public void BindOutputToDevice(string name, OrtMemoryInfo memInfo)
         {
-            var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
-            using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutputToDevice(handle, pinnedName.Pointer, memInfo.Pointer));
+            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutputToDevice(handle, utf8, memInfo.Pointer));
         }
 
         /// <summary>
@@ -212,17 +211,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="isInput"></param>
         private void BindInputOrOutput(string name, IntPtr ortValue, bool isInput)
         {
-            var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
-            using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
+            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name);
+            if (isInput)
             {
-                if (isInput)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtBindInput(handle, pinnedName.Pointer, ortValue));
-                }
-                else
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutput(handle, pinnedName.Pointer, ortValue));
-                }
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtBindInput(handle, utf8, ortValue));
+            }
+            else
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutput(handle, utf8, ortValue));
             }
         }
 
@@ -232,19 +228,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>array of output names</returns>
         public string[] GetOutputNames()
         {
-            IntPtr buffer = IntPtr.Zero;
-            IntPtr lengths = IntPtr.Zero;
-            UIntPtr count = UIntPtr.Zero;
             var allocator = OrtAllocator.DefaultInstance;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputNames(handle, allocator.Pointer, out buffer, out lengths, out count));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputNames(handle,
+                allocator.Pointer, out IntPtr buffer, out IntPtr lengths, out UIntPtr count));
 
             if (count.Equals(UIntPtr.Zero))
             {
                 return new string[0];
             }
 
-            using (var bufferAllocation = new OrtMemoryAllocation(allocator, buffer, 0))
-            using (var lengthsAllocation = new OrtMemoryAllocation(allocator, lengths, 0))
+            try
             {
                 int outputCount = (int)count;
                 var lens = new int[outputCount];
@@ -269,6 +262,11 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 return result;
             }
+            finally
+            {
+                allocator.FreeMemory(lengths);
+                allocator.FreeMemory(buffer);
+            }
         }
 
         /// <summary>
@@ -277,17 +275,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>IDisposableReadOnlyCollection<OrtValue></returns>
         public IDisposableReadOnlyCollection<OrtValue> GetOutputValues()
         {
-            IntPtr ortValues = IntPtr.Zero;
-            UIntPtr count = UIntPtr.Zero;
             var allocator = OrtAllocator.DefaultInstance;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputValues(handle, allocator.Pointer, out ortValues, out count));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputValues(handle, allocator.Pointer,
+                out IntPtr ortValues, out UIntPtr count));
 
             if (count.Equals(UIntPtr.Zero))
             {
                 return new DisposableList<OrtValue>();
             }
 
-            using (var ortValuesAllocation = new OrtMemoryAllocation(allocator, ortValues, 0))
+            try
             {
                 int outputCount = (int)count;
                 var ortList = new DisposableList<OrtValue>(outputCount);
@@ -306,6 +303,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 return ortList;
             }
+            finally { allocator.FreeMemory(ortValues); }
         }
 
         /// <summary>
