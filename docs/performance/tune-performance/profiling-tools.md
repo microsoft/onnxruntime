@@ -14,12 +14,6 @@ nav_order: 1
 {:toc}
 
 
-## Olive
-
-[Olive](https://github.com/microsoft/Olive) is an easy-to-use hardware-aware model optimization tool that composes industry-leading techniques across model compression, optimization, and compilation. Given a model and targeted hardware, Olive composes the best suitable optimization techniques to output the most efficient model(s) for inferencing on cloud or edge, while taking a set of constraints such as accuracy and latency into consideration.
-
-As a quickstart, please refer to [documentation](https://microsoft.github.io/Olive) and [examples](https://github.com/microsoft/Olive/tree/main/examples).
-
 ## In-code performance profiling
 
 The onnxruntime_perf_test.exe tool (available from the build drop) can be used to test various knobs. Please find the usage instructions using `onnxruntime_perf_test.exe -h`. The [perf_view tool](https://github.com/microsoft/onnxruntime/tree/main/tools/perf_view) can also be used to render the statistics as a summarized view in the browser.
