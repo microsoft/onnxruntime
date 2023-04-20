@@ -3,9 +3,9 @@
 
 #import "ort_coreml_execution_provider.h"
 
-#import "src/cxx_api.h"
-#import "src/error_utils.h"
-#import "src/ort_session_internal.h"
+#import "cxx_api.h"
+#import "error_utils.h"
+#import "ort_session_internal.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
