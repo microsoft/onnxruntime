@@ -36,9 +36,9 @@ file(GLOB onnxruntime_objc_headers CONFIGURE_DEPENDS
     "${OBJC_ROOT}/include/*.h")
 
 file(GLOB onnxruntime_objc_srcs CONFIGURE_DEPENDS
-    "${OBJC_ROOT}/src/*.h"
-    "${OBJC_ROOT}/src/*.m"
-    "${OBJC_ROOT}/src/*.mm")
+    "${OBJC_ROOT}/*.h"
+    "${OBJC_ROOT}/*.m"
+    "${OBJC_ROOT}/*.mm")
 
 source_group(TREE "${OBJC_ROOT}" FILES
     ${onnxruntime_objc_headers}

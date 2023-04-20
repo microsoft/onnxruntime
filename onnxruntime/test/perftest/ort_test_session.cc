@@ -129,6 +129,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     int trt_builder_optimization_level = 2;
     int trt_auxiliary_streams = -1;
     std::string trt_tactic_sources = "";
+    std::string trt_extra_plugin_lib_paths = "";
     std::string trt_profile_min_shapes = "";
     std::string trt_profile_max_shapes = "";
     std::string trt_profile_opt_shapes = "";
@@ -337,6 +338,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a non-emtpy string.\n");
         }
+      } else if (key == "trt_extra_plugin_lib_paths") {
+        if (!value.empty()) {
+          trt_extra_plugin_lib_paths = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a non-emtpy string.\n");
+        }
       } else if (key == "trt_profile_min_shapes") {
         if (!value.empty()) {
           trt_profile_min_shapes = value;
@@ -388,9 +395,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_builder_optimization_level = trt_builder_optimization_level;
     tensorrt_options.trt_auxiliary_streams = trt_auxiliary_streams;
     tensorrt_options.trt_tactic_sources = trt_tactic_sources.c_str();
+    tensorrt_options.trt_extra_plugin_lib_paths = trt_extra_plugin_lib_paths.c_str();
     tensorrt_options.trt_profile_min_shapes = trt_profile_min_shapes.c_str();
     tensorrt_options.trt_profile_max_shapes = trt_profile_max_shapes.c_str();
     tensorrt_options.trt_profile_opt_shapes = trt_profile_opt_shapes.c_str();
+
     session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;

@@ -10,6 +10,7 @@
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
+#include "tensorrt_execution_provider_custom_ops.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
@@ -933,6 +934,7 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
+  ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 }
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(OrtMemType mem_type) const {
@@ -1021,6 +1023,10 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
   return Status::OK();
+}
+
+void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
+  custom_op_domain_list = info_.custom_op_domain_list;
 }
 
 // Check the graph is the subgraph of control flow op

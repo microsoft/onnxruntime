@@ -164,6 +164,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
       nullptr,
       nullptr,
       nullptr,
+      nullptr,
       nullptr};
 
   params.trt_engine_cache_enable = 1;
@@ -243,6 +244,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
       0,
       2,
       -1,
+      nullptr,
       nullptr,
       nullptr,
       nullptr,
@@ -339,6 +341,80 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
 }
 
+TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
+  std::string model_name = "testdata/trt_plugin_custom_op_test.onnx";
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderTRTPluginsTest";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  onnxruntime::AllocatorManager allocator_manager;
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  cuda_provider->RegisterAllocator(allocator_manager);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
+  std::vector<int64_t> dims_op_x = {12, 256, 256};
+  std::vector<float> values_op_x(1.0f, 786432);  // 786432=12*256*256
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
+  OrtValue ml_value_y;
+  CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_y);
+  OrtValue ml_value_z;
+  CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_z);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("input1", ml_value_x));
+  feeds.insert(std::make_pair("input2", ml_value_y));
+  feeds.insert(std::make_pair("input3", ml_value_z));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("output");
+  std::vector<OrtValue> fetches;
+
+  OrtTensorRTProviderOptionsV2 params{
+      0,
+      0,
+      nullptr,
+      1000,
+      1,
+      1 << 30,
+      0,
+      0,
+      nullptr,
+      0,
+      0,
+      0,
+      0,
+      0,
+      nullptr,
+      0,
+      nullptr,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      2,
+      -1,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr};
+
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  std::cout << model_name << std::endl;
+  auto status = session_object.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+}
+
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   // GetParam() returns the parameter of following format:
   // ##cache type##_##input shape type##
@@ -417,6 +493,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       0,
       2,
       -1,
+      nullptr,
       nullptr,
       nullptr,
       nullptr,
