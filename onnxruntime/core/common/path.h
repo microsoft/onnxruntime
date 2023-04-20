@@ -33,7 +33,12 @@ class Path {
   static Path Parse(const PathString& path_str);
 
   /** Gets a string representation of the path. */
-  PathString ToPathString() const;
+  PathString ToPathString(
+  
+  
+  ) const
+  
+  ;
   /** Gets a string representation of the path's root path, if any. */
   PathString GetRootPathString() const;
   /** Gets the path components following the path root. */
