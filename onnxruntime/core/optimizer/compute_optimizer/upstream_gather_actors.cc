@@ -83,29 +83,6 @@ TensorShapeProto CreateTensorShapeInsertDimAtAxis(const TensorShapeProto* src_sh
   return updated_shape;
 }
 
-NodeArg* CreateUnsqueezeAxesInitializer(Graph& graph, const std::vector<int64_t>& values) {
-  ONNX_NAMESPACE::TensorProto axes_const_tensor;
-  axes_const_tensor.set_name(graph.GenerateNodeArgName("axes"));
-  axes_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  axes_const_tensor.add_dims(values.size());
-  axes_const_tensor.set_raw_data(values.data(), values.size() * sizeof(int64_t));
-  return &graph_utils::AddInitializer(graph, axes_const_tensor);
-}
-
-int GetONNXOpSetVersion(const Graph& graph) {
-  int onnx_opset = -1;
-  auto onnx_domain_it = graph.DomainToVersionMap().find(kOnnxDomain);
-  if (onnx_domain_it != graph.DomainToVersionMap().end()) {
-    onnx_opset = onnx_domain_it->second;
-  } else {
-    auto onnx_domain_alias_it = graph.DomainToVersionMap().find(kOnnxDomainAlias);
-    if (onnx_domain_alias_it != graph.DomainToVersionMap().end())
-      onnx_opset = onnx_domain_alias_it->second;
-    else
-      ORT_THROW("ONNX domain not found in this model");
-  }
-  return onnx_opset;
-}
 }  // namespace
 
 bool UpdateSliceOutputShape(NodeArg& arg_to_update, int axis_to_update,
@@ -161,7 +138,8 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
               "Unsqueeze",
               "Unsqueeze node",
               {current_node.MutableInputDefs()[input_index],
-               CreateUnsqueezeAxesInitializer(graph, {pair.second.non_negative_axis})},
+               CreateInitializerFromVector(graph, {1}, {pair.second.non_negative_axis},
+                                           graph.GenerateNodeArgName("axes"))},
               {&graph.GetOrCreateNodeArg(
                   graph.GenerateNodeArgName("unsqueeze_adaptor"),
                   current_node.MutableInputDefs()[input_index]->TypeAsProto())},
@@ -218,7 +196,7 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
             "Squeeze",
             "Squeeze node",
             {consumer.MutableInputDefs()[index],
-             CreateUnsqueezeAxesInitializer(graph, {slice_axis})},
+             CreateInitializerFromVector(graph, {1}, {slice_axis}, graph.GenerateNodeArgName("axes"))},
             {&graph.GetOrCreateNodeArg(
                 graph.GenerateNodeArgName("squeeze_adaptor"),
                 consumer.MutableInputDefs()[index]->TypeAsProto())},
@@ -450,7 +428,7 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
   auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
   axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
 
-  // Make sure layernorm/softmax's reduction happens after the axis we want to slice.
+  // Make sure LayerNormalization's reduction happens after the axis we want to slice.
   if (axis <= info.non_negative_axis) {
     return false;
   }
@@ -458,17 +436,8 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
   const NodeArg* gather_data_input_arg = current_node.OutputDefs()[info.GetDataProducerOutputIndex()];
   const auto& gather_data_input_shape = gather_data_input_arg->Shape();
 
-  // Only handle the case where the first input is 3D.
-  auto ln_input_arg = current_node.InputDefs()[0];
-  auto ln_input_shape = ln_input_arg->Shape();
-  auto ln_input_rank = ln_input_shape->dim_size();
-  if (ln_input_rank != 3) {
-    LOG_DEBUG_INFO(logger, "Fail LayerNormalizationGatherActor::PreCheck for node " + current_node.Name() +
-                               ": data_input_rank is " + std::to_string(ln_input_rank));
-    return false;
-  }
-
-  auto [success, ret] = CompareInputShapeWithOutputShape(gather_data_input_shape, ln_input_shape);
+  auto [success, ret] = CompareInputShapeWithOutputShape(gather_data_input_shape,
+                                                         current_node.InputDefs()[0]->Shape());
   if (!success) {
     // This should not happen!!!
     LOG_DEBUG_INFO(logger, "Fail LayerNormalizationGatherActor::PreCheck for node " + current_node.Name() +
@@ -481,9 +450,9 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
   all_input_cmp_rets[0] = std::move(ret);
 
   shape_update_func = [&info](Node& node) -> void {
-    // Be noted: LayerNorm's 2nd and 3rd output have shape [batch, sequence, 1]. The dim is still kept even
-    // for reduced axes.
-    // So the slicing axis is same with the 1st output.
+    // Be noted: If LayerNorm's data input is [dim1, dim2, dim3], reduce axis is 1,
+    // then its 2nd and 3rd outputs have shape [dim1, dim2, 1]. The dim is still kept even
+    // for reduced axes, so the slicing axis is same with the 1st output.
     for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
       UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis,
                              info.output_dim_on_axis);
@@ -501,7 +470,7 @@ bool SoftmaxGatherActor::PreCheck(const Graph& graph, const Node& current_node, 
   auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
   axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
 
-  // Make sure layernorm/softmax's reduction happens after the axis we want to slice.
+  // Make sure Softmax's reduction happens after the axis we want to slice.
   if (axis <= info.non_negative_axis) {
     return false;
   }
@@ -613,26 +582,6 @@ bool ReshapeGatherActor::PostProcess(
   optimizer_utils::AppendTensorFromInitializer(graph, *current_node.InputDefs()[1], new_shape_const_values, true);
   const int slice_axis = info_without_node.non_negative_axis;
 
-  auto create_new_initializer_from_vector = [&graph](NodeArg* arg_to_be_replaced,
-                                                     const InlinedVector<int64_t>& new_values) -> NodeArg* {
-    // Create new TensorProto.
-    ONNX_NAMESPACE::TensorProto constant_tensor_proto;
-    constant_tensor_proto.set_name(graph.GenerateNodeArgName(arg_to_be_replaced->Name()));
-    constant_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    auto length = new_values.size();
-    constant_tensor_proto.add_dims(length);
-    constant_tensor_proto.set_raw_data(new_values.data(), length * sizeof(int64_t));
-
-    // Add initializer into Graph.
-    NodeArg* new_shape_arg = &graph_utils::AddInitializer(graph, constant_tensor_proto);
-    // Update the output arg shape.
-    ONNX_NAMESPACE::TensorShapeProto new_shape;
-    new_shape.add_dim()->set_dim_value(length);
-    new_shape_arg->SetShape(new_shape);
-
-    return new_shape_arg;
-  };
-
   // If the shape constant on slice_axis is 0, then it keeps the original dim of input.
   // If it is a scalar slice, then we just remove that dim. Otherwise, we don't need to update the dim value.
   if (new_shape_const_values[slice_axis] == 0) {
@@ -645,10 +594,11 @@ bool ReshapeGatherActor::PostProcess(
           new_values.push_back(new_shape_const_values[i]);
         }
       }
-      auto new_shape_arg = create_new_initializer_from_vector(arg_to_be_replaced, new_values);
+      auto new_shape_arg = CreateInitializerFromVector(graph, {static_cast<int64_t>(new_values.size())}, new_values,
+                                                       graph.GenerateNodeArgName(arg_to_be_replaced->Name()));
       graph_utils::ReplaceNodeInput(current_node, 1, *new_shape_arg);
     } else {
-      LOG_DEBUG_INFO(logger, "Reshape's shape has 0 specified for aixs: " + std::to_string(slice_axis) +
+      LOG_DEBUG_INFO(logger, "Reshape's shape has 0 specified for axis: " + std::to_string(slice_axis) +
                                  ", not need an update.");
     }
     return true;
@@ -657,7 +607,9 @@ bool ReshapeGatherActor::PostProcess(
   // If it selected shape is a dim value, we can update the shape tensor directory.
   if (info_without_node.output_dim_on_axis.has_dim_value()) {
     new_shape_const_values[slice_axis] = info_without_node.output_dim_on_axis.dim_value();
-    auto new_shape_arg = create_new_initializer_from_vector(current_node.MutableInputDefs()[1], new_shape_const_values);
+    auto new_shape_arg =
+        CreateInitializerFromVector(graph, {static_cast<int64_t>(new_shape_const_values.size())}, new_shape_const_values,
+                                    graph.GenerateNodeArgName(current_node.MutableInputDefs()[1]->Name()));
     graph_utils::ReplaceNodeInput(current_node, 1, *new_shape_arg);
     return true;
   }

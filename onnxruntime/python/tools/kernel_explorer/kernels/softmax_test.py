@@ -65,7 +65,7 @@ def test_softmax(batch_count, softmax_elements, is_log_softmax, dtype):
 @pytest.mark.parametrize("batch_count, softmax_elements, is_log_softmax", get_test_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
 def test_ck_softmax(batch_count, softmax_elements, is_log_softmax, dtype):
-    ck_f_name = "CKSoftmax" + "_" + dtype_to_suffix(dtype)
+    ck_f_name = "CKSoftmax_" + dtype_to_suffix(dtype)
     _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, ck_f_name)
 
 
@@ -109,7 +109,7 @@ def profile_with_args(batch_count, softmax_elements, is_log_softmax, dtype, sort
         for func in dtype_to_funcs(dtype):
             profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, func)
         # ck function
-        ck_f_name = "CKSoftmax" + "_" + dtype_to_suffix(dtype)
+        ck_f_name = "CKSoftmax_" + dtype_to_suffix(dtype)
         profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, ck_f_name)
 
 

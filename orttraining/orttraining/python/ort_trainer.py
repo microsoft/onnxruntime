@@ -581,8 +581,8 @@ def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partiti
     if is_partitioned:
         assert_msg = (
             "Couldn't find checkpoint file {}."
-            + "Optimizer partitioning is enabled using ZeRO. Please make sure that the "
-            + "checkpoint file exists for rank {} of {}."
+            "Optimizer partitioning is enabled using ZeRO. Please make sure that the "
+            "checkpoint file exists for rank {} of {}."
         ).format(checkpoint_file, model.world_rank, model.world_size)
     else:
         assert_msg = f"Couldn't find checkpoint file {checkpoint_file}."
@@ -606,7 +606,7 @@ def _load_multi_checkpoint(model, checkpoint_dir, checkpoint_prefix, strict):
 
     # aggregate other keys in the state_dict.
     # Values will be overwritten for matching keys among workers
-    all_checkpoint_states = dict()
+    all_checkpoint_states = {}
     for checkpoint_file in checkpoint_files:
         checkpoint_state = torch.load(checkpoint_file, map_location="cpu")
         del checkpoint_state["model"]
@@ -620,7 +620,7 @@ def load_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", s
     if len(checkpoint_files) > 1:
         warnings.warn(
             f"Found more than one file with prefix {checkpoint_prefix} in directory {checkpoint_dir}."
-            + "Attempting to load ZeRO checkpoint."
+            "Attempting to load ZeRO checkpoint."
         )
         is_partitioned = True
     if (not model.deepspeed_zero_stage_) and is_partitioned:

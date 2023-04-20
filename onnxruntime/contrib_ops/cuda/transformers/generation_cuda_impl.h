@@ -109,7 +109,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                     int* d_presence_mask,
                                     cudaStream_t stream);
 
-void UpdateDecoderMaskedSelfAttentionCacheIndirection(int32_t* tgt_indir_cache,
+void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_cache,
                                                            const int32_t* src_indir_cache,
                                                            const int32_t* beam_ids,
                                                            int batch_size,

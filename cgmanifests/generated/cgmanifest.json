@@ -272,7 +272,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f412df7a2b64421e1f1d61fde6055a6ea288e8f5",
+          "commitHash": "3e313478d91c04ac5821743688ce55fc27432c4f",
           "repositoryUrl": "https://github.com/microsoft/mimalloc.git"
         },
         "comments": "mimalloc"
@@ -292,7 +292,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "ad834eb73ee0cd9b6fa9ea892caeed5fa17d7dc0",
+          "commitHash": "3b58938e025c41d2fcd89fa22028eefaa81a18ad",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "onnx"
@@ -302,7 +302,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "369d6676423c2a6dbf4a5665c4b5010240d99d3c",
+          "commitHash": "ba6a4fb34fdeaa3613bf981610c657e7b663a699",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"

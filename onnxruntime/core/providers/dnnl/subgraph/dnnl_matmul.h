@@ -23,7 +23,7 @@ class DnnlMatMul {
 
   DnnlMatMul();
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
- 
+
  private:
   bool GetTransA(DnnlNode& node);
   bool GetTransBatchA(DnnlNode& node);

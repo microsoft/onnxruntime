@@ -33,11 +33,11 @@ static bool CheckBiasShape(const TensorShapeProto* bias_shape) {
 
 /**
 MatMulIntegerToFloatFusion will fuse subgraph like below into MatMulIntegerToFloat:
- 
+
  A   A_Zero B B_Zero  A_Scale) B_Scale  Bias (Const, Optional)
   \    |    |    /        \      /             |
    \   |    |   /          \    /              |
-    \  |    |  /            \  /               |  
+    \  |    |  /            \  /               |
     MatMulInteger            Mul               |                             (A, B, A_Scale, B_Scale, A_Zero, B_Zero, Bias)
       |                       |                |                                               |
       v                       v                |                                               v

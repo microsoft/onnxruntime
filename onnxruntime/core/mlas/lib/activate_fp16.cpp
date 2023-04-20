@@ -25,6 +25,20 @@ Abstract:
 template<MLAS_ACTIVATION_KIND ActivationKind>
 struct MLAS_HALF_ACTIVATION_FUNCTION;
 
+template <>
+struct MLAS_HALF_ACTIVATION_FUNCTION<MlasIdentityActivation> {
+    MLAS_HALF_ACTIVATION_FUNCTION(const MLAS_ACTIVATION& Activation)
+    {
+        MLAS_UNREFERENCED_PARAMETER(Activation);
+    }
+
+    MLAS_FLOAT16X8 Activate(MLAS_FLOAT16X8 Value) { return Value; }
+
+    MLAS_FLOAT16X4 Activate(MLAS_FLOAT16X4 Value) { return Value; }
+
+    float Activate(float Value) { return Value; }
+};
+
 template<>
 struct MLAS_HALF_ACTIVATION_FUNCTION<MlasReluActivation>
 {
@@ -582,7 +596,7 @@ inline
 void
 MlasActivationKernel(
     const MLAS_ACTIVATION& Activation,
-    MLAS_FP16* Buffer,
+    _mlas_fp16_* Buffer,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -592,8 +606,7 @@ MlasActivationKernel(
 {
     MLAS_HALF_ACTIVATION_FUNCTION<ActivationKind> ActivationFunction(Activation);
 
-    auto* CRow = reinterpret_cast<_mlas_fp16_*>(Buffer);
-    CRow += StartM * ldc + StartN;
+    auto* CRow = Buffer + StartM * ldc + StartN;
 
     while (CountM-- > 0) {
         _mlas_fp16_* buffer = CRow;
@@ -629,7 +642,7 @@ inline
 void
 MlasActivationKernel<MlasIdentityActivation>(
     const MLAS_ACTIVATION& Activation,
-    MLAS_FP16* Buffer,
+    _mlas_fp16_* Buffer,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -651,6 +664,68 @@ MlasActivationKernel<MlasIdentityActivation>(
 }
 
 
+template<MLAS_ACTIVATION_KIND ActivationKind>
+MLAS_FORCEINLINE
+void
+MlasActivationKernel(
+    const MLAS_ACTIVATION& Activation,
+    _mlas_fp16_* Buffer,
+    const _mlas_fp16_* Addon,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc
+    )
+{
+    MLAS_HALF_ACTIVATION_FUNCTION<ActivationKind> ActivationFunction(Activation);
+
+    auto* CRow = Buffer + StartM * ldc + StartN;
+    const auto* ARow = Addon + StartM * ldc + StartN;
+
+    while (CountM-- > 0) {
+        auto* buffer = CRow;
+        const auto* addsrc = ARow;
+        size_t n = CountN;
+
+        while (n >= 8) {
+            MLAS_FLOAT16X8 Vector = MlasLoadFloat16x8(buffer);
+            MLAS_FLOAT16X8 AVec = MlasLoadFloat16x8(addsrc);
+            addsrc += 8;
+            Vector = ActivationFunction.Activate(Vector);
+            Vector = MlasAddFloat16x8(Vector, AVec);
+            MlasStoreFloat16x8(buffer, Vector);
+            buffer += 8;
+            n -= 8;
+        }
+
+        if (n >= 4) {
+            MLAS_FLOAT16X4 Vector = MlasLoadFloat16x4(buffer);
+            MLAS_FLOAT16X4 AVec = MlasLoadFloat16x4(addsrc);
+            addsrc += 4;
+            Vector = ActivationFunction.Activate(Vector);
+            Vector = MlasAddFloat16x4(Vector, AVec);
+            MlasStoreFloat16x4(buffer, Vector);
+            buffer += 4;
+            n -= 4;
+        }
+
+        if (n > 0) {
+            MLAS_FLOAT16X4 buf;
+            std::memcpy(&buf, buffer, n * sizeof(_mlas_fp16_));
+            MLAS_FLOAT16X4 addbuf;
+            std::memcpy(&addbuf, addsrc, n * sizeof(_mlas_fp16_));
+            MLAS_FLOAT16X4 res = ActivationFunction.Activate(buf);
+            res = MlasAddFloat16x4(res, addbuf);
+            MlasStorePartialFloat16x4(buffer, res, n);
+        }
+
+        CRow += ldc;
+        ARow += ldc;
+    }
+}
+
+
 void
 MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
     MLAS_FP16* C,
@@ -661,46 +736,89 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
     size_t ldc
     ) const
 {
+    auto* Buffer = reinterpret_cast<_mlas_fp16_*>(C);
     switch (Activation_.ActivationKind) {
         case MlasIdentityActivation: {
-            MlasActivationKernel<MlasIdentityActivation>(Activation_, C, StartM, StartN, CountM,
-                                                         CountN, ldc);
+            if (SumBuf_) {
+                MlasActivationKernel<MlasIdentityActivation>(
+                    Activation_, Buffer, reinterpret_cast<const _mlas_fp16_*>(SumBuf_), StartM,
+                    StartN, CountM, CountN, ldc);
+            } else {
+                MlasActivationKernel<MlasIdentityActivation>(Activation_, Buffer, StartM, StartN,
+                                                             CountM, CountN, ldc);
+            }
             break;
         }
 
         case MlasReluActivation: {
-            MlasActivationKernel<MlasReluActivation>(Activation_, C, StartM, StartN, CountM, CountN,
-                                                     ldc);
+            if (SumBuf_) {
+                MlasActivationKernel<MlasReluActivation>(
+                    Activation_, Buffer, reinterpret_cast<const _mlas_fp16_*>(SumBuf_), StartM,
+                    StartN, CountM, CountN, ldc);
+            } else {
+                MlasActivationKernel<MlasReluActivation>(Activation_, Buffer, StartM, StartN,
+                                                         CountM, CountN, ldc);
+            }
             break;
         }
 
         case MlasLeakyReluActivation: {
-            MlasActivationKernel<MlasLeakyReluActivation>(Activation_, C, StartM, StartN, CountM,
-                                                          CountN, ldc);
+            if (SumBuf_) {
+                MlasActivationKernel<MlasLeakyReluActivation>(
+                    Activation_, Buffer, reinterpret_cast<const _mlas_fp16_*>(SumBuf_), StartM,
+                    StartN, CountM, CountN, ldc);
+            } else {
+                MlasActivationKernel<MlasLeakyReluActivation>(Activation_, Buffer, StartM, StartN,
+                                                              CountM, CountN, ldc);
+            }
             break;
         }
 
         case MlasTanhActivation: {
-            MlasActivationKernel<MlasTanhActivation>(Activation_, C, StartM, StartN, CountM, CountN,
-                                                     ldc);
+            if (SumBuf_) {
+                MlasActivationKernel<MlasTanhActivation>(
+                    Activation_, Buffer, reinterpret_cast<const _mlas_fp16_*>(SumBuf_), StartM,
+                    StartN, CountM, CountN, ldc);
+            } else {
+                MlasActivationKernel<MlasTanhActivation>(Activation_, Buffer, StartM, StartN,
+                                                         CountM, CountN, ldc);
+            }
             break;
         }
 
         case MlasLogisticActivation: {
-            MlasActivationKernel<MlasLogisticActivation>(Activation_, C, StartM, StartN, CountM,
-                                                         CountN, ldc);
+            if (SumBuf_) {
+                MlasActivationKernel<MlasLogisticActivation>(
+                    Activation_, Buffer, reinterpret_cast<const _mlas_fp16_*>(SumBuf_), StartM,
+                    StartN, CountM, CountN, ldc);
+            } else {
+                MlasActivationKernel<MlasLogisticActivation>(Activation_, Buffer, StartM, StartN,
+                                                             CountM, CountN, ldc);
+            }
             break;
         }
 
         case MlasClipActivation: {
-            MlasActivationKernel<MlasClipActivation>(Activation_, C, StartM, StartN, CountM, CountN,
-                                                     ldc);
+            if (SumBuf_) {
+                MlasActivationKernel<MlasClipActivation>(
+                    Activation_, Buffer, reinterpret_cast<const _mlas_fp16_*>(SumBuf_), StartM,
+                    StartN, CountM, CountN, ldc);
+            } else {
+                MlasActivationKernel<MlasClipActivation>(Activation_, Buffer, StartM, StartN,
+                                                         CountM, CountN, ldc);
+            }
             break;
         }
 
         case MlasHardSigmoidActivation: {
-            MlasActivationKernel<MlasHardSigmoidActivation>(Activation_, C, StartM, StartN, CountM,
-                                                            CountN, ldc);
+            if (SumBuf_) {
+                MlasActivationKernel<MlasHardSigmoidActivation>(
+                    Activation_, Buffer, reinterpret_cast<const _mlas_fp16_*>(SumBuf_), StartM,
+                    StartN, CountM, CountN, ldc);
+            } else {
+                MlasActivationKernel<MlasHardSigmoidActivation>(Activation_, Buffer, StartM, StartN,
+                                                                CountM, CountN, ldc);
+            }
             break;
         }
 
@@ -744,10 +862,20 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
     proc.Process(C, StartM, StartN, CountM, CountN, ldc);
 
     _mlas_fp16_* Output = reinterpret_cast<_mlas_fp16_*>(C);
-    const auto* CRow = buffer.data();
+    auto* CRow = buffer.data();
+    const _mlas_fp16_* CAdd = nullptr;
+    if (SumBuf_) {
+        CAdd = reinterpret_cast<const _mlas_fp16_*>(SumBuf_) + StartM * ldc + StartN;
+    }
     Output += StartM * ldc + StartN;
 
     while (CountM-- > 0) {
+        if (CAdd) {
+            for (size_t n = 0; n < CountN; n++) {
+                CRow[n] += MLAS_Half2Float(CAdd[n]);
+            }
+            CAdd += ldc;
+        }
         CvtFloat2Half(Output, CRow, CountN);
         CRow += CountN;
         Output += ldc;

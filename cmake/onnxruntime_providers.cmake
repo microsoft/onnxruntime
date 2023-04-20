@@ -491,6 +491,7 @@ if (onnxruntime_USE_CUDA)
   target_link_libraries(onnxruntime_providers_cuda PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
   if(onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+    target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
   endif()
 
   if (onnxruntime_USE_FLASH_ATTENTION)
@@ -528,10 +529,12 @@ if (onnxruntime_USE_CUDA)
 
   if (WIN32)
     # *.cu cannot use PCH
-    target_precompile_headers(onnxruntime_providers_cuda PUBLIC
-      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
-    )
+    if (NOT onnxruntime_BUILD_CACHE)
+      target_precompile_headers(onnxruntime_providers_cuda PUBLIC
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+      )
+    endif()
 
     # minimize the Windows includes.
     # this avoids an issue with CUDA 11.6 where 'small' is defined in the windows and cuda headers.
@@ -1535,10 +1538,16 @@ if (onnxruntime_USE_ROCM)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE ROCBLAS_BETA_FEATURES_API)
   endif()
 
+  if (onnxruntime_USE_HIPBLASLT)
+    find_package(hipblaslt REQUIRED)
+    target_link_libraries(onnxruntime_providers_rocm PRIVATE roc::hipblaslt)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_HIPBLASLT)
+  endif()
+  
   if (onnxruntime_USE_TRITON_KERNEL)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_TRITON_KERNEL)
   endif()
-
+  
   if (onnxruntime_USE_COMPOSABLE_KERNEL)
     include(composable_kernel)
     target_link_libraries(onnxruntime_providers_rocm PRIVATE

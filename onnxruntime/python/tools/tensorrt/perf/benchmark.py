@@ -456,7 +456,7 @@ def get_acl_version():
     home = str(Path.home())
     p = subprocess.run(["find", home, "-name", "libarm_compute.so"], check=True, stdout=subprocess.PIPE)
     libarm_compute_path = p.stdout.decode("ascii").strip()
-    if libarm_compute_path == "":
+    if not libarm_compute_path:
         return "No Compute Library Found"
     else:
         p = subprocess.run(["strings", libarm_compute_path], check=True, stdout=subprocess.PIPE)
@@ -517,7 +517,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
         output = get_output(["find", ".", "-name", "output*"])
         output_data = split_and_sort_output(output)
 
-        if len(output_data) > 0 and output_data[0] != "":
+        if len(output_data) > 0 and output_data[0]:
             logger.info(output_data)
             output_data_pb = []
             for data in output_data:

@@ -54,7 +54,7 @@ def base(model: onnx.ModelProto):
     Returns:
         ModelAccessor: The model accessor that contains the modified model.
     """
-    global _GLOBAL_ACCESSOR  # pylint: disable=global-statement
+    global _GLOBAL_ACCESSOR  # pylint: disable=global-statement  # noqa: PLW0603
     if _GLOBAL_ACCESSOR is not None:
         raise RuntimeError("Base onnx model already exists. Cannot create multiple ModelAccessors.")
 
@@ -66,7 +66,7 @@ def base(model: onnx.ModelProto):
             "model from scratch."
         )
 
-    _GLOBAL_ACCESSOR = ModelAccessor(model_clone)
+    _GLOBAL_ACCESSOR = ModelAccessor(model_clone)  # noqa: PLW0603
     try:
         yield _GLOBAL_ACCESSOR
     finally:
@@ -95,7 +95,7 @@ def empty_base(opset_version: Optional[int] = None):
     Returns:
         ModelAccessor: The model accessor that contains the modified model.
     """
-    global _GLOBAL_ACCESSOR  # pylint: disable=global-statement
+    global _GLOBAL_ACCESSOR  # pylint: disable=global-statement  # noqa: PLW0603
     if _GLOBAL_ACCESSOR is not None:
         raise RuntimeError("Base onnx model already exists. Cannot create multiple ModelAccessors.")
 
@@ -110,7 +110,7 @@ def empty_base(opset_version: Optional[int] = None):
         )
     )
 
-    _GLOBAL_ACCESSOR = ModelAccessor(model)
+    _GLOBAL_ACCESSOR = ModelAccessor(model)  # noqa: PLW0603
     try:
         yield _GLOBAL_ACCESSOR
     finally:

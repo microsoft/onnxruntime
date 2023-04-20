@@ -88,10 +88,10 @@ void addOrtValueMethods(pybind11::module& m) {
         const auto device = ml_value->Get<Tensor>().Location().device;
         if (device.Type() == OrtDevice::CPU) {
           onnxruntime::python::CopyDataToTensor(
-            py_values,
-            values_type,
-            *(ml_value->GetMutable<Tensor>()),
-            CpuToCpuMemCpy);
+              py_values,
+              values_type,
+              *(ml_value->GetMutable<Tensor>()),
+              CpuToCpuMemCpy);
         } else if (device.Type() == OrtDevice::GPU) {
 #ifdef USE_CUDA
           if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
@@ -99,10 +99,10 @@ void addOrtValueMethods(pybind11::module& m) {
           }
 
           onnxruntime::python::CopyDataToTensor(
-            py_values,
-            values_type,
-            *(ml_value->GetMutable<Tensor>()),
-            CpuToCudaMemCpy);
+              py_values,
+              values_type,
+              *(ml_value->GetMutable<Tensor>()),
+              CpuToCudaMemCpy);
 #elif USE_ROCM
           if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
             throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
@@ -246,12 +246,14 @@ void addOrtValueMethods(pybind11::module& m) {
 
         return *ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto);
       })
-      .def("element_type", [](const OrtValue* ort_value) -> int32_t {
-        return GetTensorProtoType(*ort_value);
-      }, "Returns an integer equal to the ONNX tensor proto type of the tensor or sequence. "
-         "This integer is one type defined by ONNX TensorProto_DataType "
-         "(such as onnx.TensorProto.FLOAT)."
-         "Raises an exception in any other case.")
+      .def(
+          "element_type", [](const OrtValue* ort_value) -> int32_t {
+            return GetTensorProtoType(*ort_value);
+          },
+          "Returns an integer equal to the ONNX tensor proto type of the tensor or sequence. "
+          "This integer is one type defined by ONNX TensorProto_DataType "
+          "(such as onnx.TensorProto.FLOAT)."
+          "Raises an exception in any other case.")
       .def("has_value", [](const OrtValue* ort_value) -> bool {
         return ort_value->IsAllocated();
       })
@@ -280,27 +282,34 @@ void addOrtValueMethods(pybind11::module& m) {
         return obj;
       })
 #ifdef ENABLE_TRAINING
-      .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
-      }, "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
-         "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
-         "is consumed.")
-      .def_static("from_dlpack", [](py::object data, bool is_bool_tensor) {
-        return FromDlpack(data.ptr(), is_bool_tensor);
-      }, py::arg("data"), py::arg("is_bool_tensor")=false,
-        "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
-      .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
-        return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
-       }, py::arg("stream")=py::none(),
-       "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
-       "This method does not copy the pointer shape, instead, it copies the pointer value. "
-       "The OrtValue must persist until the dlpack structure is consumed.")
-      .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
-        ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
-        const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
-        DLDevice device = onnxruntime::dlpack::GetDlpackDevice(*ort_value, tensor.Location().device.Id());
-        return py::make_tuple(static_cast<int>(device.device_type), device.device_id);
-       }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
+      .def(
+          "to_dlpack", [](OrtValue* ort_value) -> py::object {
+            return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
+          },
+          "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
+          "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
+          "is consumed.")
+      .def_static(
+          "from_dlpack", [](py::object data, bool is_bool_tensor) {
+            return FromDlpack(data.ptr(), is_bool_tensor);
+          },
+          py::arg("data"), py::arg("is_bool_tensor") = false, "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
+      .def(
+          "__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
+            return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
+          },
+          py::arg("stream") = py::none(),
+          "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
+          "This method does not copy the pointer shape, instead, it copies the pointer value. "
+          "The OrtValue must persist until the dlpack structure is consumed.")
+      .def(
+          "__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
+            ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
+            const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
+            DLDevice device = onnxruntime::dlpack::GetDlpackDevice(*ort_value, tensor.Location().device.Id());
+            return py::make_tuple(static_cast<int>(device.device_type), device.device_id);
+          },
+          "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
 #endif
       ;
 
@@ -310,40 +319,36 @@ void addOrtValueMethods(pybind11::module& m) {
         v->push_back(ortvalue);
       })
 #ifdef ENABLE_TRAINING
-      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
-        v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
-      }, "Add a new OrtValue after being ownership was transferred from the DLPack structure.",
-      py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
-      .def("push_back_batch", [](
-          std::vector<OrtValue>* v,
-          std::vector<py::object>& torch_tensors,
-          std::vector<int64_t>& data_ptrs,
-          std::vector<py::object>& element_types,
-          const std::vector<std::vector<int64_t>>& shapes,
-          const std::vector<OrtDevice>& devices) {
+      .def(
+          "push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
+            v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
+          },
+          "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
+      .def(
+          "push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
+            for (size_t i = 0; i < torch_tensors.size(); ++i) {
+              py::object& element_type = element_types.at(i);
+              const std::vector<int64_t>& shape = shapes.at(i);
+              int64_t data_ptr = data_ptrs.at(i);
 
-        for (size_t i = 0; i < torch_tensors.size(); ++i) {
-          py::object& element_type = element_types.at(i);
-          const std::vector<int64_t>& shape = shapes.at(i);
-          int64_t data_ptr = data_ptrs.at(i);
+              ORT_ENFORCE(data_ptr, "Pointer to data memory is not valid");
 
-          ORT_ENFORCE(data_ptr, "Pointer to data memory is not valid");
+              PyArray_Descr* dtype;
+              if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
+                throw std::runtime_error("Not a valid numpy type");
+              }
+              int type_num = dtype->type_num;
+              Py_DECREF(dtype);
 
-          PyArray_Descr* dtype;
-          if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
-            throw std::runtime_error("Not a valid numpy type");
-          }
-          int type_num = dtype->type_num;
-          Py_DECREF(dtype);
-
-          auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
-          auto device = devices.at(i);
-          OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
-          OrtValue ml_value;
-          Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
-          v->push_back(ml_value);
-        }
-      }, "Add a batch of OrtValue's by wrapping PyTorch tensors.")
+              auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
+              auto device = devices.at(i);
+              OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+              OrtValue ml_value;
+              Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
+              v->push_back(ml_value);
+            }
+          },
+          "Add a batch of OrtValue's by wrapping PyTorch tensors.")
 #endif
       .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
       .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
@@ -451,20 +456,23 @@ is difficult to parallelize as it goes through the GIL many times.
 It creates many tensors acquiring ownership of existing OrtValue.
 This method saves one object creation and an C++ allocation
 for every transferred tensor.
-)pbdoc", py::arg("to_tensor"))
+)pbdoc",
+          py::arg("to_tensor"))
 #endif
-  ;
+      ;
 
 #ifdef ENABLE_TRAINING
-  m.def("is_dlpack_uint8_tensor", [](py::capsule cap) -> bool {
-    // case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-    // dtype.code = DLDataTypeCode::kDLUInt;
-    // dtype.bits = sizeof(bool);
-    DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)cap.get_pointer();
-    return dlmanaged_tensor->dl_tensor.dtype.code == DLDataTypeCode::kDLUInt && dlmanaged_tensor->dl_tensor.dtype.bits == 8;
-  }, "Tells if a DLPack structure is a uint8 tensor.\n"
-     ".. note::\n"
-     "    Boolean tensors are also uint8 tensor once converted with DLPack protocol.");
+  m.def(
+      "is_dlpack_uint8_tensor", [](py::capsule cap) -> bool {
+        // case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+        // dtype.code = DLDataTypeCode::kDLUInt;
+        // dtype.bits = sizeof(bool);
+        DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)cap.get_pointer();
+        return dlmanaged_tensor->dl_tensor.dtype.code == DLDataTypeCode::kDLUInt && dlmanaged_tensor->dl_tensor.dtype.bits == 8;
+      },
+      "Tells if a DLPack structure is a uint8 tensor.\n"
+      ".. note::\n"
+      "    Boolean tensors are also uint8 tensor once converted with DLPack protocol.");
 #endif
 }
 

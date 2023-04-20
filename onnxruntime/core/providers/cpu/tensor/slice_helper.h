@@ -21,7 +21,7 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
   // Initialize axes to the provided axes attribute or to the default sequence
   TensorShapeVector axes;
   if (raw_axes.empty()) {
-    //axes are omitted, they are set to[0, ..., ndim - 1]
+    // axes are omitted, they are set to[0, ..., ndim - 1]
     axes.reserve(raw_starts.size());
     for (int64_t i = 0, limit = raw_starts.size(); i < limit; ++i) {
       axes.push_back(i);
@@ -81,7 +81,7 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
   // Initialize axes to the provided axes attribute or to the default sequence
   TensorShapeVector axes;
   if (raw_axes.empty()) {
-    //axes are omitted, they are set to[0, ..., ndim - 1]
+    // axes are omitted, they are set to[0, ..., ndim - 1]
     axes.reserve(raw_starts.size());
     for (int64_t i = 0, limit = raw_starts.size(); i < limit; ++i) {
       axes.push_back(i);

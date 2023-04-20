@@ -74,7 +74,7 @@ Status SnpeLib::SetupUserBufferAttributes(const std::vector<std::string>& tensor
 }
 
 Status SnpeLib::CheckInputsSize(const std::vector<std::string>& input_tensor_names,
-                              const std::vector<int64_t>& input_sizes) {
+                                const std::vector<int64_t>& input_sizes) {
   size_t elementSize = 1;
   for (size_t i = 0; i < input_tensor_names.size(); ++i) {
     auto input_shape = snpe_->getInputDimensions(input_tensor_names[i].c_str());
@@ -132,9 +132,9 @@ Status SnpeLib::InitializeSnpe(zdl::DlContainer::IDlContainer* container,
   buffer_type_ = snpe_settings.GetBufferType();
   bool use_user_buffer = buffer_type_ == BufferType::ITENSOR ? false : true;
   snpe_builder.setOutputTensors(dl_output_tensor_names)
-              .setRuntimeProcessor(snpe_settings.GetRuntimeTarget().Get())
-              .setExecutionPriorityHint(snpe_settings.GetExecutionPriority())
-              .setUseUserSuppliedBuffers(use_user_buffer);
+      .setRuntimeProcessor(snpe_settings.GetRuntimeTarget().Get())
+      .setExecutionPriorityHint(snpe_settings.GetExecutionPriority())
+      .setUseUserSuppliedBuffers(use_user_buffer);
 #ifdef __ANDROID__
   // use sustained performance mode on android variants.
   LOGS_DEFAULT(INFO) << "setPerformanceProfile to SUSTAINED_HIGH_PERFORMANCE for Android environment!";
@@ -174,7 +174,7 @@ Status SnpeLib::Initialize(const char* dlcPath,
                            const std::vector<int64_t>& input_sizes,
                            const SnpeRuntimeOptions& snpe_settings) {
   auto container = zdl::DlContainer::IDlContainer::open(zdl::DlSystem::String(dlcPath));
-  ORT_ENFORCE(container, "Failed open " , dlcPath, " container file");
+  ORT_ENFORCE(container, "Failed open ", dlcPath, " container file");
 
   ORT_RETURN_IF_ERROR(InitializeSnpe(container.get(),
                                      output_layer_names,
@@ -253,7 +253,7 @@ Status SnpeLib::SnpeProcessMultipleOutput(const unsigned char* input,
 }
 
 Status SnpeLib::SnpeProcess(const unsigned char* input, size_t input_size, unsigned char* output, size_t output_size,
-                          const std::unordered_map<std::string, size_t>& output_names_index) {
+                            const std::unordered_map<std::string, size_t>& output_names_index) {
   // Use SnpeProcessMultipleOutput with 1 output layer
   const int output_layer = 1;
   unsigned char* outputs_array[output_layer];
@@ -266,12 +266,12 @@ Status SnpeLib::SnpeProcess(const unsigned char* input, size_t input_size, unsig
 }
 
 Status SnpeLib::SnpeProcessMultiInputsMultiOutputs(const unsigned char** inputs,
-                                                 const size_t* input_sizes,
-                                                 size_t input_number,
-                                                 unsigned char** outputs,
-                                                 const size_t* output_sizes,
-                                                 size_t output_number,
-                                                 const std::unordered_map<std::string, size_t>& output_names_index) {
+                                                   const size_t* input_sizes,
+                                                   size_t input_number,
+                                                   unsigned char** outputs,
+                                                   const size_t* output_sizes,
+                                                   size_t output_number,
+                                                   const std::unordered_map<std::string, size_t>& output_names_index) {
   try {
     ORT_RETURN_IF(input_number != input_tensors_.size(),
                   "Snpe number of inputs doesn't match: expected ", input_number,
@@ -317,10 +317,10 @@ Status SnpeLib::SnpeProcessMultiInputsMultiOutputs(const unsigned char** inputs,
 }
 
 Status SnpeLib::SnpeProcessWithUserBuffer(const std::vector<std::string>& input_names,
-                                        const unsigned char** inputs,
-                                        size_t input_number,
-                                        unsigned char** outputs,
-                                        const std::unordered_map<std::string, size_t>& output_names_index) {
+                                          const unsigned char** inputs,
+                                          size_t input_number,
+                                          unsigned char** outputs,
+                                          const std::unordered_map<std::string, size_t>& output_names_index) {
   zdl::DlSystem::IUserBufferFactory& user_buffer_factory = zdl::SNPE::SNPEFactory::getUserBufferFactory();
   snpe_user_input_buffers_.clear();
   snpe_user_input_buffers_.reserve(input_number);
