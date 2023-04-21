@@ -101,7 +101,7 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
   size_t training_model_output_count_, eval_model_output_count_;
 
  public:
-  TrainingSession(const SessionOptions& session_options, CheckpointState& checkpoint_state,
+  TrainingSession(const Env& env, const SessionOptions& session_options, CheckpointState& checkpoint_state,
                   const std::basic_string<ORTCHAR_T>& train_model_path,
                   const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path = std::nullopt,
                   const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path = std::nullopt);

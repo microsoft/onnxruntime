@@ -19,8 +19,9 @@ namespace onnxruntime::training::test {
 TEST(TrainingCApiTest, SaveCheckpoint) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
 
+  Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
-  Ort::TrainingSession training_session = Ort::TrainingSession(Ort::SessionOptions(), checkpoint_state, model_uri);
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, model_uri);
 
   auto test_dir = ORT_TSTR("save_checkpoint_dir");
   if (Env::Default().FolderExists(test_dir)) {
@@ -33,7 +34,8 @@ TEST(TrainingCApiTest, SaveCheckpoint) {
   Ort::CheckpointState::SaveCheckpoint(checkpoint_state, checkpoint_path);
 
   Ort::CheckpointState new_checkpoint_state = Ort::CheckpointState::LoadCheckpoint(checkpoint_path);
-  Ort::TrainingSession new_training_session = Ort::TrainingSession(Ort::SessionOptions(), new_checkpoint_state, model_uri);
+  Ort::TrainingSession new_training_session = Ort::TrainingSession(env, Ort::SessionOptions(),
+                                                                   new_checkpoint_state, model_uri);
 }
 
 TEST(TrainingCApiTest, AddIntProperty) {
@@ -75,8 +77,9 @@ TEST(TrainingCApiTest, AddStringProperty) {
 TEST(TrainingCApiTest, InputNames) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
 
+  Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
-  Ort::TrainingSession training_session = Ort::TrainingSession(Ort::SessionOptions(), checkpoint_state, model_uri);
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, model_uri);
 
   const auto input_names = training_session.InputNames(true);
   ASSERT_EQ(input_names.size(), 2U);
@@ -87,8 +90,9 @@ TEST(TrainingCApiTest, InputNames) {
 TEST(TrainingCApiTest, OutputNames) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
 
+  Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
-  Ort::TrainingSession training_session = Ort::TrainingSession(Ort::SessionOptions(), checkpoint_state, model_uri);
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, model_uri);
 
   const auto output_names = training_session.OutputNames(true);
   ASSERT_EQ(output_names.size(), 1U);
@@ -98,8 +102,9 @@ TEST(TrainingCApiTest, OutputNames) {
 TEST(TrainingCApiTest, ToBuffer) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
 
+  Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
-  Ort::TrainingSession training_session = Ort::TrainingSession(Ort::SessionOptions(), checkpoint_state, model_uri);
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, model_uri);
 
   Ort::Value buffer = training_session.ToBuffer(true);
 
@@ -121,8 +126,9 @@ TEST(TrainingCApiTest, ToBuffer) {
 TEST(TrainingCApiTest, FromBuffer) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
 
+  Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
-  Ort::TrainingSession training_session = Ort::TrainingSession(Ort::SessionOptions(), checkpoint_state, model_uri);
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, model_uri);
 
   OrtValue* buffer_impl = std::make_unique<OrtValue>().release();
   GenerateRandomInput(std::array<int64_t, 1>{397510}, *buffer_impl);
