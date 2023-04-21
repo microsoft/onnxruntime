@@ -600,11 +600,18 @@ class OnnxModel:
            To use mixed precision, user need specify which graph inputs, outputs, operator type
            or list of nodes shall keep in float32.
 
-           By default, we use symbolic shape inference to get shape and type information.
-           If not, ONNX shape inference will be used.
+           Note that the conversion might not proceed without type information for the whole graph.
 
-           Note that symbolic/ONNX shape inference might fail, and the conversion might not proceed
-           without shape and type information.
+           By default, we use symbolic shape inference to get type information. The benefit of symbolic shape inference
+           is that it could handle fused operators in com.microsoft domain. Those operators cannot be handled in onnx shape
+           inference so symbolic shape inference is recommended for optimized model.
+
+           When symbolic shape inference is used (even if it failed), ONNX shape inference will be disabled.
+
+           Note that onnx shape inference will fail for model larger than 2GB. For large model, you have to eanble
+           symbolic shape inference. If your model is not optimized, you can also use model path to call
+           convert_float_to_float16 in float16.py (see https://github.com/microsoft/onnxruntime/pull/15067) to
+           avoid the 2GB limit.
 
         Args:
             use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference.
@@ -624,36 +631,34 @@ class OnnxModel:
             kwargs["keep_io_types"] = True
 
         model = self.model
-        is_shape_infer_done = False
         if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
             # are not recognized by onnx shape inference.
             shape_infer_helper = SymbolicShapeInferenceHelper(model)
-            model_with_shape = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
+            try:
+                model_with_shape = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
 
-            # auto_merge might cause issue (see https://github.com/microsoft/onnxruntime/issues/15521)
-            # we only merge tensor data type but not shape information back to the original onnx model.
-            # Note that float16 conversion need data type but not shape information.
-            if model_with_shape is not None:
-                name_vi = {}
-                for vi in model_with_shape.graph.value_info:
-                    vi_copy = ValueInfoProto()
-                    vi_copy.CopyFrom(vi)
-                    if hasattr(vi_copy.type, "tensor_type") and hasattr(vi_copy.type.tensor_type, "shape"):
-                        vi_copy.type.tensor_type.ClearField("shape")
-                    name_vi[vi.name] = vi_copy
+                # auto_merge might cause issue (see https://github.com/microsoft/onnxruntime/issues/15521)
+                # we only merge tensor data type but not shape information back to the original onnx model.
+                # Note that float16 conversion need data type but not shape information.
+                if model_with_shape is not None:
+                    name_vi = {}
+                    for vi in model_with_shape.graph.value_info:
+                        vi_copy = ValueInfoProto()
+                        vi_copy.CopyFrom(vi)
+                        if hasattr(vi_copy.type, "tensor_type") and hasattr(vi_copy.type.tensor_type, "shape"):
+                            vi_copy.type.tensor_type.ClearField("shape")
+                        name_vi[vi.name] = vi_copy
 
-                for vi in model.graph.value_info:
-                    if vi.name in name_vi:
-                        del name_vi[vi.name]
-                for _, vi in name_vi.items():
-                    model.graph.value_info.append(vi)
+                    for vi in model.graph.value_info:
+                        if vi.name in name_vi:
+                            del name_vi[vi.name]
+                    for _, vi in name_vi.items():
+                        model.graph.value_info.append(vi)
+            except Exception:
+                logger.warning("Failed to run symbolic shape inference. Please file an issue in https://github.com/microsoft/onnxruntime.")
 
-                is_shape_infer_done = True
-
-        # No need to run onnx shape inference since we got data type information from symbolic shape inference.
-        parameters = {"disable_shape_infer": is_shape_infer_done}
-
+        parameters = {"disable_shape_infer": use_symbolic_shape_infer}
         parameters.update(
             {
                 key: kwargs[key]
