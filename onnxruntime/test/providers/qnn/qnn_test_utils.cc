@@ -26,7 +26,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
   verification_params.graph_verifier = &graph_verify;
   verification_params.fp32_abs_err = fp32_abs_err;
   // Add kMSDomain to cover contrib op like Gelu
-  std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
+  const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
   onnxruntime::Model model(test_description, false, ModelMetaData(), PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
