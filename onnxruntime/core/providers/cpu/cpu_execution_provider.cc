@@ -900,7 +900,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 18, Op
 
 // Opset 19
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, AveragePool);
-
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, Pad);
 #endif
 
 // !!PLEASE READ BELOW!! Following that, add new entries above this comment
@@ -2283,6 +2283,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
 
     // Opset 19
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, AveragePool)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, Pad)>,
   };
 
   for (auto& function_table_entry : function_table) {
