@@ -6,8 +6,8 @@ from onnx import TensorProto, helper
 from transformers import WhisperConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from convert_generation import get_shared_initializers  # noqa: E402
-
+from benchmark_helper import Precision # noqa: E402
+from convert_generation import get_shared_initializers, update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha  # noqa: E402
 
 def chain_model(args):
     # Load encoder/decoder and insert necessary (but unused) graph inputs expected by BeamSearch op
@@ -49,8 +49,12 @@ def chain_model(args):
     )
 
     # beam graph inputs
+    float_data_type = TensorProto.FLOAT
+    if args.precision != Precision.FLOAT32:
+        float_data_type = TensorProto.FLOAT16
+
     input_features = helper.make_tensor_value_info(
-        "input_features", TensorProto.FLOAT, ["batch_size", "feature_size", "sequence_length"]
+        "input_features", float_data_type, ["batch_size", "feature_size", "sequence_length"]
     )
     max_length = helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
     min_length = helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
@@ -82,6 +86,11 @@ def chain_model(args):
 
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
+    if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
+        print("*****update t5 decoder subgraph successfully!!!*****")
+    else:
+        print("*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****")
+
     initializers = get_shared_initializers(encoder_model, decoder_model)
     node.attribute.extend(
         [
@@ -89,6 +98,8 @@ def chain_model(args):
             helper.make_attribute("encoder", encoder_model.graph),
         ]
     )
+
+
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
     beam_graph = helper.make_graph([node], "beam-search-test", graph_inputs, graph_outputs, initializers)

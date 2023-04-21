@@ -649,6 +649,7 @@ class FusionAttention(Fusion):
         mha_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
         return mha_node
 
+
     def create_attention_node(
         self,
         mask_index: str,

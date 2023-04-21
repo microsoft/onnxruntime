@@ -106,9 +106,9 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
   ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int32_type,
                 "decoder subgraph input 0 (input_ids) shall have int32 type");
 
-  auto float_type = subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type();
+  auto float_type = subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type();
   ORT_RETURN_IF(float_type != float32_type && float_type != float16_type,
-                "decoder subgraph input 2 (encoder_hidden_states) shall have float or float16 type");
+                "decoder subgraph input 1 (encoder_hidden_states) shall have float or float16 type");
 
   for (int i = first_past_input_index_; i < first_past_input_index_ + 4 * num_layers; i++) {
     ORT_RETURN_IF(subgraph_inputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,

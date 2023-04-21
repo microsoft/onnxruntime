@@ -353,7 +353,7 @@ class FusionBartAttention(FusionAttention):
                         past_v=past_v if decoder_attention_with_past else "",
                         present_k=present_k,
                         present_v=present_v,
-                        packed_qkv=decoder_attention_with_past,
+                        packed_qkv=False, #decoder_attention_with_past,
                     )
                     if self.use_multi_head_attention
                     else None
