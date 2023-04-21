@@ -656,7 +656,9 @@ class OnnxModel:
                     for _, vi in name_vi.items():
                         model.graph.value_info.append(vi)
             except Exception:
-                logger.warning("Failed to run symbolic shape inference. Please file an issue in https://github.com/microsoft/onnxruntime.")
+                logger.warning(
+                    "Failed to run symbolic shape inference. Please file an issue in https://github.com/microsoft/onnxruntime."
+                )
 
         parameters = {"disable_shape_infer": use_symbolic_shape_infer}
         parameters.update(
