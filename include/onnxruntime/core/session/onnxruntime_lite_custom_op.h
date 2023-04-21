@@ -41,7 +41,7 @@ class TensorT : public Tensor {
  public:
   using TT = typename std::remove_reference<T>::type;
   TensorT(OrtKernelContext* ctx, size_t indice, bool is_input) : Tensor(ctx), indice_(indice), is_input_(is_input) {
-    if (is_input) {
+    if (is_input_) {
       if (indice >= ctx_.GetInputCount()) {
         ORT_CXX_API_THROW("invalid indice for Ort::Custom::TensorT", OrtErrorCode::ORT_INVALID_ARGUMENT);
       }
@@ -52,6 +52,9 @@ class TensorT : public Tensor {
   }
 
   const std::vector<int64_t>& Shape() const {
+    if (!shape_.has_value()) {
+      ORT_CXX_API_THROW("tensor shape is not yet initialized", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    }
     return shape_.value();
   }
   int64_t NumberOfElement() const {
@@ -68,7 +71,7 @@ class TensorT : public Tensor {
     shape_ = shape;
     if (!data_) {
       shape_ = shape;
-      data_ = ctx_.GetOutput(indice_, shape).GetTensorMutableData<TT>();
+      data_ = ctx_.GetOutput(indice_, shape).template GetTensorMutableData<TT>();
     }
     return data_;
   }
@@ -103,7 +106,7 @@ class TensorT<std::string> : public Tensor {
   using strings = std::vector<std::string>;
 
   TensorT(OrtKernelContext* ctx, size_t indice, bool is_input) : Tensor(ctx), indice_(indice), is_input_(is_input) {
-    if (is_input) {
+    if (is_input_) {
       if (indice >= ctx_.GetInputCount()) {
         ORT_CXX_API_THROW("invalid indice for Ort::Custom::TensorT", OrtErrorCode::ORT_INVALID_ARGUMENT);
       }
@@ -150,7 +153,7 @@ class TensorT<std::string> : public Tensor {
     output.FillStringTensor(raw.data(), raw.size());
   }
   const Span<std::string>& AsSpan() {
-      ORT_CXX_API_THROW("span for TensorT<std::string> not implemented", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      ORT_CXX_API_THROW("span for TensorT of string not implemented", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
   }
   const std::string& AsScalar() {
     if (input_strings_.size() != 1) {
@@ -215,7 +218,7 @@ class TensorT<std::string_view> : public Tensor {
     output.FillStringTensor(raw.data(), raw.size());
   }
   const Span<std::string_view>& AsSpan() {
-      ORT_CXX_API_THROW("span for TensorT<std::string_view> not implemented", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      ORT_CXX_API_THROW("span for TensorT of string view not implemented", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
   }
   std::string_view AsScalar() {
     if (input_string_views_.size() != 1) {
