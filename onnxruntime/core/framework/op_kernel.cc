@@ -21,8 +21,8 @@ const onnxruntime::KernelDef& OpKernel::KernelDef() const {
   return op_kernel_info_->GetKernelDef();
 }
 
-const OrtMemoryInfo& OpKernel::Allocator(OrtMemType mem_type) const {
-  return op_kernel_info_->GetMemoryInfo(mem_type);
+const OrtDevice OpKernel::GetDevice(OrtMemType mem_type) const {
+  return op_kernel_info_->GetDevice(mem_type);
 }
 
 OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
@@ -93,7 +93,7 @@ int OpKernelContext::NumVariadicInputs(size_t arg_num) const {
 }
 
 Status OpKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
-  *output = execution_frame_->GetAllocator(kernel_->Allocator(OrtMemTypeDefault));
+  *output = execution_frame_->GetAllocator(kernel_->GetDevice(OrtMemTypeDefault));
   if (!*output)
     return Status(common::ONNXRUNTIME, common::FAIL, "TempSpace allocator not found");
   return Status::OK();
@@ -104,8 +104,7 @@ Status OpKernelContext::GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
   // (which is called via ExecutionFrame), the allocator lookup
   // logic doesn't key on OrtAllocatorType, so any OrtAllocatorType
   // is good here.
-  *output = execution_frame_->GetAllocator(
-      OrtMemoryInfo(CPU, OrtAllocatorType::OrtArenaAllocator));
+  *output = execution_frame_->GetAllocator(OrtDevice());
   if (!*output)
     return Status(common::ONNXRUNTIME, common::FAIL, "CPU allocator not found");
   return Status::OK();
