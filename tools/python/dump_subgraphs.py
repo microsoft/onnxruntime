@@ -7,11 +7,11 @@ import onnx
 def export_and_recurse(node, attribute, attribute_has_single_graph, can_check_attribute_type, output_dir, level):
     node_name = node.name.replace("/", "_")
 
-    attr_graph_protos = [attribute.g] if attribute_has_single_graph else attribute.graphs
+    attribute_graphs = [attribute.g] if attribute_has_single_graph else attribute.graphs
 
-    for idx, attr_graph_proto in enumerate(attr_graph_protos):
+    for idx, attribute_graph in enumerate(attribute_graphs):
         sub_model = onnx.ModelProto()
-        sub_model.graph.MergeFrom(attr_graph_proto)
+        sub_model.graph.MergeFrom(attribute_graph)
         attribute_graph_id = attribute.name if attribute_has_single_graph else f"{attribute.name}_{idx}"
         filename = f"L{level}_{node.op_type}_{attribute_graph_id}_{node_name}.onnx"
         onnx.save_model(sub_model, os.path.join(output_dir, filename))
