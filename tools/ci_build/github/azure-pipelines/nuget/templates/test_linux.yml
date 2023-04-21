@@ -1,5 +1,5 @@
 parameters:
-  AgentPool: 'Linux-CPU'
+  AgentPool: 'aiinfra-Linux-CPU'
   ArtifactSuffix: ''
   NugetPackageName : ''
 

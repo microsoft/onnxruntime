@@ -88,7 +88,7 @@ stages:
     timeoutInMinutes:  150
     variables:
       skipComponentGovernanceDetection: true
-    pool: 'Linux-CPU'
+    pool: 'aiinfra-Linux-CPU'
     steps:
       - template: templates/set-version-number-variables-step.yml
 
