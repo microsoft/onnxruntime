@@ -428,8 +428,8 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     }
 
     if (rel_pos_bias != nullptr) {
-      float rel_pos_bias_value = broadcast_rel_pos_bias ? float(rel_pos_bias[index % size_per_batch]) : float(rel_pos_bias[index]);
-      thread_data += rel_pos_bias_value;
+      float bias = broadcast_rel_pos_bias ? float(rel_pos_bias[index % size_per_batch]) : float(rel_pos_bias[index]);
+      thread_data += bias;
     }
   }
 
@@ -878,32 +878,36 @@ Status ComputeSoftmaxWithRawMask(cudaStream_t stream,
     const int blockSize = 256;
     const int sh_bytes = sizeof(float) * all_sequence_length;
     SoftmaxWithRawMaskLargeKernel<T, blockSize>
-        <<<grid, blockSize, sh_bytes, stream>>>(all_sequence_length, sequence_length,
-                                                attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
-                                                out, is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
-                                                use_persistent_softmax, mask_filter_value);
+        <<<grid, blockSize, sh_bytes, stream>>>(
+            all_sequence_length, sequence_length,
+            attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
+            out, is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+            use_persistent_softmax, mask_filter_value);
   }
 
   if (use_persistent_softmax) {
-    return onnxruntime::cuda::dispatch_warpwise_softmax_forward<T, T, float, false>(stream,
-                                                                                    output,
-                                                                                    persistent_softmax_workspace,
-                                                                                    all_sequence_length,
-                                                                                    all_sequence_length,
-                                                                                    batch_size * num_heads * sequence_length);
+    return onnxruntime::cuda::dispatch_warpwise_softmax_forward<T, T, float, false>(
+        stream,
+        output,
+        persistent_softmax_workspace,
+        all_sequence_length,
+        all_sequence_length,
+        batch_size * num_heads * sequence_length);
   }
 
   return CUDA_CALL(cudaGetLastError());
 }
 
 // Template Instantiation
-template Status ComputeSoftmax<float>(cudaStream_t stream, const int all_sequence_length, const int sequence_length,
-                                      const int batch_size, const int num_heads, const float* rel_pos_bias,
-                                      const bool broadcast_rel_pos_bias, float* input, float* output, bool is_unidirectional);
+template Status ComputeSoftmax<float>(
+    cudaStream_t stream, const int all_sequence_length, const int sequence_length,
+    const int batch_size, const int num_heads, const float* rel_pos_bias,
+    const bool broadcast_rel_pos_bias, float* input, float* output, bool is_unidirectional);
 
-template Status ComputeSoftmax<half>(cudaStream_t stream, const int all_sequence_length, const int sequence_length,
-                                     const int batch_size, const int num_heads, const half* rel_pos_bias,
-                                     const bool broadcast_rel_pos_bias, half* input, half* output, bool is_unidirectional);
+template Status ComputeSoftmax<half>(
+    cudaStream_t stream, const int all_sequence_length, const int sequence_length,
+    const int batch_size, const int num_heads, const half* rel_pos_bias,
+    const bool broadcast_rel_pos_bias, half* input, half* output, bool is_unidirectional);
 
 template Status ComputeSoftmaxWithCumSeqLength<float>(
     const float* input,
