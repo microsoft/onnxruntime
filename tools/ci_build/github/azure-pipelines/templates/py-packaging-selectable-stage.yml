@@ -48,7 +48,7 @@ stages:
       timeoutInMinutes: 90
       workspace:
         clean: all
-      pool: Linux-CPU
+      pool: aiinfra-Linux-CPU
       strategy:
         matrix:
           ${{ each PythonVersion in parameters.python_version }}:
