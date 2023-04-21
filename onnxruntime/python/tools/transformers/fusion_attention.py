@@ -5,6 +5,7 @@
 from logging import getLogger
 from typing import List, Optional, Tuple, Union
 
+import math
 import numpy as np
 from fusion_base import Fusion
 from fusion_options import AttentionMaskFormat
@@ -647,6 +648,133 @@ class FusionAttention(Fusion):
         )
         mha_node.domain = "com.microsoft"
         mha_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+        return mha_node
+
+    def get_initializer_input_tensor(self, node : NodeProto, convert_to_fp16 : bool = False):
+        if node is None:
+            return None
+        for input_name in node.input:
+            ini_tensor = self.model.get_initializer(input_name)
+            if ini_tensor:
+                if convert_to_fp16 and ini_tensor.data_type != 10:
+                    # Convert bias to FP16 if model is using FP16
+                    ini_tensor = numpy_helper.from_array(NumpyHelper.to_array(ini_tensor).astype(np.float16), bias.name + "_to_fp16")
+                    self.model.add_initializer(ini_tensor, self.this_graph_name)
+                return ini_tensor
+        raise ValueError(f"Can not found initializer for node: {node}")
+
+    def create_decoder_masked_multihead_attention_node(
+        self,
+        q_matmul: NodeProto,
+        k_matmul: Union[NodeProto, str, None],
+        v_matmul: Union[NodeProto, str, None],
+        q_add: NodeProto,
+        k_add: Union[NodeProto, None],
+        v_add: Union[NodeProto, None],
+        num_heads: int,
+        hidden_size: int,
+        output: str,
+        key_padding_mask: str = "",
+        add_qk: str = "",
+        past_k: str = "",
+        past_v: str = "",
+        present_k: str = "",
+        present_v: str = "",
+        past_sequence_length: str = "past_sequence_length",
+        beam_width: str = "beam_width",
+        cache_indirection: str = "cache_indirection"
+    ) -> Union[NodeProto, None]:
+        """Create a MultiHeadAttention node.
+
+        Args:
+            q_matmul (NodeProto): name of MatMul from Q path - (batch_size, sequence_length, hidden_size)
+            k_matmul (NodeProto): name of MatMul from K path - (batch_size, sequence_length, hidden_size) or (batch_size, num_heads, past_sequence_length, head_size)
+            v_matmul (NodeProto): name of MatMul from V path - (batch_size, sequence_length, hidden_size) or (batch_size, num_heads, past_sequence_length, head_size)
+            q_add (NodeProto): name of Add from Q path
+            k_add (NodeProto): name of Add from K path
+            v_add (NodeProto): name of Add from V path
+            num_heads (int): number of attention heads. If a model is pruned, it is the number of heads after pruning.
+            hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
+            output (str): output name of MHA
+            key_padding_mask (str): name of key padding mask
+            add_qk (str): name of add after Q x K'
+            past_k (str): name of past K value - (batch_size, num_heads, past_sequence_length, head_size)
+            past_v (str): name of past V value - (batch_size, num_heads, past_sequence_length, head_size)
+            present_k (str): name of present K value - (batch_size, num_heads, sequence_length, head_size)
+            present_v (str): name of present V value - (batch_size, num_heads, sequence_length, head_size)
+            past_sequence_length, beam_width, cache_indirection : name for the input tensor (maybe graph input)
+
+        Returns:
+            Union[NodeProto, None]: the node created or None if failed.
+        """
+        # B = batch size, N = num heads, P = past seq len, H = head size
+        assert num_heads > 0
+
+        if hidden_size > 0 and (hidden_size % num_heads) != 0:
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            return None
+
+        graph_input_names = set([node.name for node in self.model.graph().input])
+        graph_output_names = set([node.name for node in self.model.graph().output])
+        mha_node_name = self.model.create_node_name("DecoderMaskedMultiHeadAttention")
+
+        mha_inputs = []
+        # Add initial Q/K/V inputs for MHA
+        if type(k_matmul) == NodeProto and type(v_matmul) == NodeProto:
+            mha_inputs.extend([q_matmul.output[0], k_matmul.output[0], v_matmul.output[0]])
+        elif (
+            type(k_matmul) == str
+            and type(v_matmul) == str
+            and k_matmul in graph_input_names
+            and v_matmul in graph_input_names
+        ):
+            mha_inputs.extend([q_matmul.output[0], k_matmul, v_matmul])
+        else:
+            return None
+
+        # Create combined Q/K/V bias
+        q_bias = get_initializer_input_tensor(q_add)
+        k_bias = get_initializer_input_tensor(k_add)
+        v_bias = get_initializer_input_tensor(v_add)
+        has_bias  = q_bias is not None and k_bias is not None and v_bias is not None
+
+        # Add optional inputs for MHA
+        if past_k and past_v:
+            assert past_k in graph_input_names and past_v in graph_input_names
+            assert present_k and present_v
+
+        with_past_kv = 1 if past_k and past_v else 0
+        if with_past_kv:
+            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
+            mha_inputs.extend([past_sequence_length, beam_width, cache_indirection])
+        elif has_bias:
+            mha_inputs.extend(["", "", "", ""])
+            mha_inputs.extend(["", "", ""])
+
+        if has_bias:
+            mha_inputs.extend(["" if q_bias is None else q_bias.name])
+        if k_bias is not None or v_bias is not None:
+            mha_inputs.extend(["" if k_bias is None else k_bias.name])
+        if v_bias is not None:
+            mha_inputs.extend([v_bias.name])
+
+        # Add outputs for MHA
+        mha_outputs = [output]
+        if with_past_kv:
+            mha_outputs.extend([present_k, present_v])
+
+        mha_node = helper.make_node(
+            "DecoderMaskedMultiHeadAttention",
+            inputs=mha_inputs,
+            outputs=mha_outputs,
+            name=mha_node_name,
+        )
+        mha_node.domain = "com.microsoft"
+        mha_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+        mha_node.attribute.extend([helper.make_attribute("past_present_share_buffer", 1 if with_past_kv else 0)])
+        if hidden_size > 0:
+            mha_node.attribute.extend([helper.make_attribute("scale", 1.0 / math.sqrt(hidden_size / num_heads))])
+
         return mha_node
 
     def create_attention_node(
