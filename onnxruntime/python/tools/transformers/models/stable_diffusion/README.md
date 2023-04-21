@@ -74,13 +74,11 @@ Below is an example to optimize Stable Diffusion 1.5 in Linux. For Windows OS, p
 
 ### Setup Environment (CUDA)
 
-First, Let's create a python environment using [Anaconda](https://www.anaconda.com/products/distribution#Downloads) or
-[Miniconda](https://docs.conda.io/en/latest/miniconda.html), then install packages in [requirements.txt](./requirements.txt):
-
 ```
 conda create -n py310 python=3.10
 conda activate py310
 pip install -r requirements.txt
+pip install -r requirements-cuda.txt
 ```
 
 For Windows, the torch package installed from PyPI is CPU only. To enable support for GPU, it is necessary to install PyTorch version 1.13.1+cu117 or above using the following method:
@@ -101,13 +99,6 @@ pip uninstall onnxruntime-gpu
 pip install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
 ```
 
-Need install diffusers from source until v0.15 is released.
-```
-git clone https://github.com/huggingface/diffusers
-cd diffusers
-pip install -e .
-```
-
 ### Setup Environment (ROCm)
 
 It is recommended that the users should run the model with ROCm 5.4 or newer and Python 3.9. Note that Windows is not
@@ -117,6 +108,7 @@ supported for ROCm at the moment.
 conda create -n py39 python=3.9
 conda activate py39
 pip install -r requirements.txt
+pip install -r requirements-rocm.txt
 ```
 
 AMD GPU version of torch build can be installed from [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/),
@@ -189,6 +181,7 @@ conda create -n pt2 python=3.10
 conda activate pt2
 pip install torch --index-url https://download.pytorch.org/whl/cu117
 pip install -r requirements.txt
+pip install -r requirements_cuda.txt  # or requirements_rocm.txt
 python benchmark.py -e torch -b 1 --enable_torch_compile
 ```
 
@@ -282,16 +275,16 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
 | onnxruntime | dev                     | ROCMExecutionProvider | 1          | 2.2             | 5,548               | 4,908                |
 | torch       | 1.12.1+rocm5.4          | -                     | 1          | 3.4             | 6,653               | 4,613                |
-| torch       | 2.0.0a0+git254afb8      | default               | 1          | 3.2             | 5,991               | 4,384                |
-| torch       | 2.0.0a0+git254afb8      | compile               | 1          | 2.9             | 5,895               | 4,294                |
+| torch       | 2.0.0+rocm5.4.2         | default               | 1          | 3.2             | 5,977               | 4,368                |
+| torch       | 2.0.0a0+git254afb8      | compile               | 1          | 3.0             | 5,869               | 4,266                |
 | onnxruntime | dev                     | ROCMExecutionProvider | 4          | 6.6             | 5,546               | 4,906                |
 | torch       | 1.12.1+rocm5.4          | -                     | 4          | 10.1            | 19,477              | 11,325               |
-| torch       | 2.0.0a0+git254afb8      | default               | 4          | 10.5            | 13,073              | 7,324                |
-| torch       | 2.0.0a0+git254afb8      | compile               | 4          | 9.3             | 12,915              | 7,228                |
+| torch       | 2.0.0+rocm5.4.2         | default               | 4          | 10.5            | 13,051              | 7,300                |
+| torch       | 2.0.0+rocm5.4.2         | compile               | 4          | 9.2             | 12,879              | 7,190                |
 | onnxruntime | dev                     | ROCMExecutionProvider | 8          | 12.5            | 9,778               | 9,006                |
 | torch       | 1.12.1+rocm5.4          | -                     | 8          | 19.3            | 55,851              | 20,014               |
-| torch       | 2.0.0a0+git254afb8      | default               | 8          | 20.3            | 23,529              | 11,908               |
-| torch       | 2.0.0a0+git254afb8      | compile               | 8          | 17.8            | 23,295              | 11,788               |
+| torch       | 2.0.0+rocm5.4.2         | default               | 8          | 20.3            | 23,551              | 11,930               |
+| torch       | 2.0.0+rocm5.4.2         | compile               | 8          | 17.8            | 23,303              | 11,800               |
 
 ### Credits
 
