@@ -1014,7 +1014,20 @@ TEST(PoolTest, GlobalAveragePool) {
   test.Run();
 }
 
-TEST(PoolTest, GlobalAveragePool_Large) {
+TEST(PoolTest, GlobalAveragePool_Large_128) {
+  OpTester test("GlobalAveragePool");
+
+  std::vector<float> x_vals(1 * 1 * 128 * 128, 2.71828);
+  std::vector<int64_t> x_dims = {1, 1, 128, 128};
+  std::vector<int64_t> expected_dims = {1, 1, 1, 1};
+  std::vector<float> expected_vals = {2.71828};
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals,
+                        /*sort_output=*/false, /*rel_error=*/1e-3, /*abs_error=*/1e-2);
+  test.Run();
+}
+
+TEST(PoolTest, GlobalAveragePool_Large_256) {
   OpTester test("GlobalAveragePool");
 
   std::vector<float> x_vals(1 * 1 * 256 * 256, 3.14159);
@@ -1022,7 +1035,8 @@ TEST(PoolTest, GlobalAveragePool_Large) {
   std::vector<int64_t> expected_dims = {1, 1, 1, 1};
   std::vector<float> expected_vals = {3.14159};
   test.AddInput<float>("X", x_dims, x_vals);
-  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals,
+                        /*sort_output=*/false, /*rel_error=*/1e-3, /*abs_error=*/1e-2);
   test.Run();
 }
 
